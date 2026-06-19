@@ -6,7 +6,9 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -37,9 +39,20 @@ import java.util.Map;
 public class AiModelClient {
 
     private final RestClient restClient;
+    private final List<String> baseUrls;
 
-    public AiModelClient(@Qualifier("aiRestClient") RestClient restClient) {
+    public AiModelClient(@Qualifier("aiRestClient") RestClient restClient,
+                         @Qualifier("aiModelBaseUrls") List<String> baseUrls) {
         this.restClient = restClient;
+        this.baseUrls = baseUrls.stream()
+                .filter(url -> url != null && !url.isBlank())
+                .map(url -> trimTrailingSlash(url))
+                .distinct()
+                .toList();
+
+        if (this.baseUrls.isEmpty()) {
+            throw new IllegalArgumentException("At least one AI model base URL must be configured");
+        }
     }
 
     // ── Liveness ───────────────────────────────────────────────────────────────
@@ -51,26 +64,17 @@ public class AiModelClient {
     @SuppressWarnings("unchecked")
     public Map<String, Object> health() {
         log.debug("Calling GET /health");
-        return restClient.get()
-                .uri("/health")
-                .retrieve()
-                .body(Map.class);
+        return get("/health", Map.class);
     }
 
-    // ── Models ─────────────────────────────────────────────────────────────────
+// ── Models ─────────────────────────────────────────────────────────────────
 
     /**
      * Calls {@code GET /ai/models} and returns the list of available Ollama models.
      */
     public ModelsResponse listModels() {
         log.debug("Calling GET /ai/models");
-        return restClient.get()
-                .uri("/ai/models")
-                .retrieve()
-                .onStatus(HttpStatusCode::isError, (req, res) -> {
-                    throw new AiApiException("GET /ai/models", res.getStatusCode().value());
-                })
-                .body(ModelsResponse.class);
+        return get("/ai/models", ModelsResponse.class);
     }
 
     // ── Raw generation ─────────────────────────────────────────────────────────
@@ -83,17 +87,7 @@ public class AiModelClient {
      */
     public GenerateResponse generate(String prompt) {
         log.info("Calling POST /ai/generate (prompt length={})", prompt.length());
-        return restClient.post()
-                .uri("/ai/generate")
-                .body(new GenerateRequest(prompt))
-                .retrieve()
-                .onStatus(HttpStatusCode::is4xxClientError, (req, res) -> {
-                    throw new AiApiException("POST /ai/generate", res.getStatusCode().value());
-                })
-                .onStatus(HttpStatusCode::is5xxServerError, (req, res) -> {
-                    throw new AiApiException("POST /ai/generate", res.getStatusCode().value());
-                })
-                .body(GenerateResponse.class);
+        return post("/ai/generate", new GenerateRequest(prompt), GenerateResponse.class);
     }
 
     // ── Claim matching ─────────────────────────────────────────────────────────
@@ -111,17 +105,7 @@ public class AiModelClient {
     public ClaimMatchResponse matchClaim(ClaimMatchRequest request) {
         log.info("Calling POST /match/claim (claim length={}, topK={})",
                 request.claim().length(), request.topK());
-        return restClient.post()
-                .uri("/match/claim")
-                .body(request)
-                .retrieve()
-                .onStatus(HttpStatusCode::is4xxClientError, (req, res) -> {
-                    throw new AiApiException("POST /match/claim", res.getStatusCode().value());
-                })
-                .onStatus(HttpStatusCode::is5xxServerError, (req, res) -> {
-                    throw new AiApiException("POST /match/claim", res.getStatusCode().value());
-                })
-                .body(ClaimMatchResponse.class);
+        return post("/match/claim", request, ClaimMatchResponse.class);
     }
 
     // ── Claim analysis ─────────────────────────────────────────────────────────
@@ -140,17 +124,7 @@ public class AiModelClient {
     public ClaimAnalysisResponse processClaim(ClaimAnalysisRequest request) {
         log.info("Calling POST /process/claim (sourceId={}, claim length={})",
                 request.sourceId(), request.claim().length());
-        return restClient.post()
-                .uri("/process/claim")
-                .body(request)
-                .retrieve()
-                .onStatus(HttpStatusCode::is4xxClientError, (req, res) -> {
-                    throw new AiApiException("POST /process/claim", res.getStatusCode().value());
-                })
-                .onStatus(HttpStatusCode::is5xxServerError, (req, res) -> {
-                    throw new AiApiException("POST /process/claim", res.getStatusCode().value());
-                })
-                .body(ClaimAnalysisResponse.class);
+        return post("/process/claim", request, ClaimAnalysisResponse.class);
     }
 
     // ── Paper review ───────────────────────────────────────────────────────────
@@ -168,17 +142,28 @@ public class AiModelClient {
     public PaperReviewResponse reviewPaper(PaperReviewRequest request) {
         log.info("Calling POST /review/paper (paperId={}, targetStyle={}, useAi={})",
                 request.paperId(), request.targetStyle(), request.useAi());
-        return restClient.post()
-                .uri("/review/paper")
-                .body(request)
+        return post("/review/paper", request, PaperReviewResponse.class);
+    }
+
+    private <T> T get(String endpoint, Class<T> responseType) {
+        return callWithFallback(endpoint, absoluteUri -> restClient.get()
+                .uri(absoluteUri)
                 .retrieve()
-                .onStatus(HttpStatusCode::is4xxClientError, (req, res) -> {
-                    throw new AiApiException("POST /review/paper", res.getStatusCode().value());
+                .onStatus(HttpStatusCode::isError, (req, res) -> {
+                    throw new AiApiException("GET " + endpoint, res.getStatusCode().value());
                 })
-                .onStatus(HttpStatusCode::is5xxServerError, (req, res) -> {
-                    throw new AiApiException("POST /review/paper", res.getStatusCode().value());
+                .body(responseType));
+    }
+
+    private <T> T post(String endpoint, Object body, Class<T> responseType) {
+        return callWithFallback(endpoint, absoluteUri -> restClient.post()
+                .uri(absoluteUri)
+                .body(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, (req, res) -> {
+                    throw new AiApiException("POST " + endpoint, res.getStatusCode().value());
                 })
-                .body(PaperReviewResponse.class);
+                .body(responseType));
     }
 
     // ── Internal exception type ────────────────────────────────────────────────
@@ -186,17 +171,68 @@ public class AiModelClient {
     /**
      * Thrown when the AI API returns a non-2xx HTTP status.
      * Wraps the endpoint path and status code for clear error messages.
+    private <T> T callWithFallback(String endpoint, AiCall<T> call) {
+        RuntimeException lastFailure = null;
+
+        for (String baseUrl : baseUrls) {
+            try {
+                return call.execute(baseUrl + endpoint);
+            } catch (AiApiException e) {
+                if (!e.isRetriable()) {
+                    throw e;
+                }
+                lastFailure = e;
+                log.warn("AI endpoint {} failed at {} with HTTP {}. Trying next configured base URL.",
+                        endpoint, baseUrl, e.getStatusCode());
+            } catch (RestClientException e) {
+                lastFailure = e;
+                log.warn("AI endpoint {} failed at {}. Trying next configured base URL.",
+                        endpoint, baseUrl, e);
+            }
+        }
+
+        throw new AiApiException(endpoint, "all configured AI base URLs failed", lastFailure);
+    }
+
+    private static String trimTrailingSlash(String baseUrl) {
+        String normalized = baseUrl.trim();
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
+    }
+
+    @FunctionalInterface
+    private interface AiCall<T> {
+        T execute(String absoluteUri);
+    }
+
+    /**
+     * Thrown when the AI API returns a non-2xx status or all configured base URLs fail.
      */
     public static final class AiApiException extends RuntimeException {
         private final int statusCode;
 
         public AiApiException(String endpoint, int statusCode) {
-            super("AI API error on " + endpoint + " – HTTP " + statusCode);
+            this(endpoint, statusCode, null);
+        }
+
+        public AiApiException(String endpoint, int statusCode, Throwable cause) {
+            super("AI API error on " + endpoint + " - HTTP " + statusCode, cause);
             this.statusCode = statusCode;
+        }
+
+        public AiApiException(String endpoint, String message, Throwable cause) {
+            super("AI API error on " + endpoint + " - " + message, cause);
+            this.statusCode = 0;
         }
 
         public int getStatusCode() {
             return statusCode;
+        }
+
+        private boolean isRetriable() {
+            return statusCode == 0 || statusCode >= 500;
         }
     }
 }

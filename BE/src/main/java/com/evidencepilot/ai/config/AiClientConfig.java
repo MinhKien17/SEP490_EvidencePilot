@@ -7,6 +7,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 
+import java.util.List;
+
 /**
  * Spring configuration that creates a pre-configured {@link RestClient} bean
  * pointing at the teammate's AI model base URL.
@@ -26,11 +28,22 @@ import org.springframework.web.client.RestClient;
 @Configuration
 public class AiClientConfig {
 
-    @Value("${ai.model.base-url}")
-    private String baseUrl;
+    @Value("${ai.model.local-base-url}")
+    private String localBaseUrl;
+
+    @Value("${ai.model.ngrok-base-url}")
+    private String ngrokBaseUrl;
+
+    @Value("${ai.model.fallback-base-url:}")
+    private String fallbackBaseUrl;
 
     @Value("${ai.model.api-key:}")
     private String apiKey;
+
+    @Bean("aiModelBaseUrls")
+    public List<String> aiModelBaseUrls() {
+        return List.of(localBaseUrl, ngrokBaseUrl, fallbackBaseUrl);
+    }
 
     /**
      * Named bean {@code aiRestClient} injected into {@link com.evidencepilot.ai.AiModelClient}.
@@ -38,7 +51,6 @@ public class AiClientConfig {
     @Bean("aiRestClient")
     public RestClient aiRestClient() {
         RestClient.Builder builder = RestClient.builder()
-                .baseUrl(baseUrl)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 // Bypass ngrok browser-interstitial for any ngrok-hosted AI endpoint
