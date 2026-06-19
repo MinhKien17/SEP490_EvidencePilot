@@ -14,6 +14,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Intercepts every incoming request exactly once and validates the JWT
@@ -58,16 +59,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         //    (avoids overwriting an already-authenticated principal)
         if (SecurityContextHolder.getContext().getAuthentication() == null) {
             String email = jwtUtil.extractEmail(token);
+            String role = jwtUtil.extractRole(token);
+            String authority = "ROLE_" + (role == null ? "STUDENT" : role.toUpperCase(Locale.ROOT));
 
             // For this prototype we have no UserDetailsService, so we build
             // a minimal authentication token directly from the JWT claims.
-            // Grant a generic ROLE_USER authority — extend this when you
-            // need role-based access control from the token's claims.
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
                             email,
                             null,   // credentials — not needed post-authentication
-                            List.of(new SimpleGrantedAuthority("ROLE_USER"))
+                            List.of(new SimpleGrantedAuthority(authority))
                     );
 
             authentication.setDetails(

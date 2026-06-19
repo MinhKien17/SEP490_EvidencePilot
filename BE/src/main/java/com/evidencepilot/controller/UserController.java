@@ -2,9 +2,12 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.config.JwtUtil;
 import com.evidencepilot.domain.entity.User;
+import com.evidencepilot.domain.enums.UserRole;
 import com.evidencepilot.dto.LoginRequest;
 import com.evidencepilot.dto.RegisterRequest;
+import com.evidencepilot.dto.UserResponse;
 import com.evidencepilot.repository.UserRepository;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -37,13 +40,16 @@ public class UserController {
     // ── Read ───────────────────────────────────────────────────────────────────
 
     @GetMapping
-    public List<User> findAll() {
-        return userRepository.findAll();
+    public List<UserResponse> findAll() {
+        return userRepository.findAll().stream()
+                .map(UserResponse::from)
+                .toList();
     }
 
     @GetMapping("/{id}")
-    public User findById(@PathVariable Integer id) {
+    public UserResponse findById(@PathVariable Integer id) {
         return userRepository.findById(id)
+                .map(UserResponse::from)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "User not found: " + id));
     }
@@ -67,30 +73,48 @@ public class UserController {
      * </pre>
      * </p>
      *
-     * @return 201 Created with the saved user (the returned {@code passwordHash}
-     *         field contains the BCrypt hash, not the original plaintext)
+     * @return 201 Created with a safe user response.
      */
     @PostMapping
-    public ResponseEntity<User> create(@RequestBody User user) {
+    public ResponseEntity<UserResponse> create(@RequestBody User user) {
         guardPassword(user);
+        if (user.getEmail() == null || user.getEmail().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Email must not be blank.");
+        }
+        if (user.getRole() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Role must not be blank.");
+        }
+        if (userRepository.existsByEmail(user.getEmail())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Email already exists.");
+        }
         user.setPasswordHash(passwordEncoder.encode(user.getPasswordHash()));
         User saved = userRepository.save(user);
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+        return ResponseEntity.status(HttpStatus.CREATED).body(UserResponse.from(saved));
     }
 
     /**
      * Registration alias — identical to {@link #create} but lives at
      * {@code POST /api/users/register} so the frontend can call a semantic URL.
      *
-     * <p>Request body: {@code { "email", "password", "role" }}</p>
+     * <p>Request body: {@code { "email", "password" }}</p>
      */
     @PostMapping("/register")
-    public ResponseEntity<User> register(@RequestBody RegisterRequest request) {
+    public ResponseEntity<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Email already exists.");
+        }
         User user = new User();
         user.setEmail(request.getEmail());
         user.setPasswordHash(request.getPassword());
-        user.setRole(request.getRole());
-        return create(user);
+        user.setRole(UserRole.STUDENT);
+        guardPassword(user);
+        user.setPasswordHash(passwordEncoder.encode(user.getPasswordHash()));
+        User saved = userRepository.save(user);
+        return ResponseEntity.status(HttpStatus.CREATED).body(UserResponse.from(saved));
     }
 
     // ── Auth ───────────────────────────────────────────────────────────────────
@@ -107,7 +131,7 @@ public class UserController {
      * {@code Authorization: Bearer <token>} on subsequent requests.</p>
      */
     @PostMapping("/login")
-    public ResponseEntity<Map<String, Object>> login(@RequestBody LoginRequest request) {
+    public ResponseEntity<Map<String, Object>> login(@Valid @RequestBody LoginRequest request) {
         String email       = request.getEmail();
         String rawPassword = request.getPassword();
 
@@ -127,7 +151,7 @@ public class UserController {
         }
 
         // 3. Issue a signed JWT — valid for 24 hours
-        String token = jwtUtil.generateToken(user.getEmail());
+        String token = jwtUtil.generateToken(user.getEmail(), user.getRole());
 
         return ResponseEntity.ok(Map.of(
                 "token", token,
@@ -182,7 +206,7 @@ public class UserController {
      * BCrypt hash verbatim, it is left untouched to prevent double-hashing.</p>
      */
     @PutMapping("/{id}")
-    public User update(@PathVariable Integer id, @RequestBody User user) {
+    public UserResponse update(@PathVariable Integer id, @RequestBody User user) {
         User existing = userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "User not found: " + id));
@@ -202,7 +226,7 @@ public class UserController {
             user.setPasswordHash(existing.getPasswordHash());
         }
 
-        return userRepository.save(user);
+        return UserResponse.from(userRepository.save(user));
     }
 
     // ── Delete ─────────────────────────────────────────────────────────────────

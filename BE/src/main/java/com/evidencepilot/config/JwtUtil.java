@@ -1,8 +1,10 @@
 package com.evidencepilot.config;
 
+import com.evidencepilot.domain.enums.UserRole;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -25,16 +27,19 @@ import java.util.Date;
 public class JwtUtil {
 
     // ── Secret key (min 256 bits / 32 chars for HS256) ──────────────────────────
-    // TODO: move to application.yml → ${jwt.secret} before production
-    private static final String SECRET_STRING =
+    private static final String DEFAULT_SECRET_STRING =
             "EvidencePilot-Super-Secret-Key-2025!!";   // exactly 38 chars → 304 bits ✓
 
-    private static final long EXPIRATION_MS = 24L * 60 * 60 * 1000; // 24 hours
+    private static final long DEFAULT_EXPIRATION_MS = 24L * 60 * 60 * 1000; // 24 hours
 
     private final SecretKey signingKey;
+    private final long expirationMs;
 
-    public JwtUtil() {
-        this.signingKey = Keys.hmacShaKeyFor(SECRET_STRING.getBytes(StandardCharsets.UTF_8));
+    public JwtUtil(
+            @Value("${jwt.secret:" + DEFAULT_SECRET_STRING + "}") String secretString,
+            @Value("${jwt.expiration-ms:" + DEFAULT_EXPIRATION_MS + "}") long expirationMs) {
+        this.signingKey = Keys.hmacShaKeyFor(secretString.getBytes(StandardCharsets.UTF_8));
+        this.expirationMs = expirationMs;
     }
 
     // ── Generate ─────────────────────────────────────────────────────────────────
@@ -46,11 +51,16 @@ public class JwtUtil {
      * @return compact, signed JWT string (ready to send as {@code Bearer <token>})
      */
     public String generateToken(String email) {
+        return generateToken(email, UserRole.STUDENT);
+    }
+
+    public String generateToken(String email, UserRole role) {
         Date now    = new Date();
-        Date expiry = new Date(now.getTime() + EXPIRATION_MS);
+        Date expiry = new Date(now.getTime() + expirationMs);
 
         return Jwts.builder()
                 .subject(email)
+                .claim("role", role.name())
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(signingKey)           // defaults to HS256
@@ -84,6 +94,10 @@ public class JwtUtil {
      */
     public String extractEmail(String token) {
         return getClaims(token).getSubject();
+    }
+
+    public String extractRole(String token) {
+        return getClaims(token).get("role", String.class);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────────
