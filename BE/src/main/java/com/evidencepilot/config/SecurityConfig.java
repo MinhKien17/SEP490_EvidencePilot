@@ -24,7 +24,7 @@ import java.util.List;
  *
  * <ul>
  *   <li>CSRF disabled   — stateless REST API; CSRF protection is not needed.</li>
- *   <li>CORS enabled    — allows Vite (5173) and CRA (3000) origins.</li>
+ *   <li>CORS enabled    — allows local Vite (5173) and CRA (3000) origins.</li>
  *   <li>Sessions        — STATELESS; all state is carried inside the JWT.</li>
  *   <li>Public routes   — {@code /api/users/login}, {@code /api/users/register}.</li>
  *   <li>All other routes require a valid JWT.</li>
@@ -78,8 +78,13 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // Allow default Vite (5173) and Create React App (3000) ports
-        configuration.setAllowedOrigins(List.of("http://localhost:5173", "http://localhost:3000"));
+        // Allow default Vite (5173) and Create React App (3000) ports.
+        configuration.setAllowedOrigins(List.of(
+                "http://localhost:5173",
+                "http://localhost:3000",
+                "http://127.0.0.1:5173",
+                "http://127.0.0.1:3000"
+        ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         configuration.setAllowCredentials(true);
