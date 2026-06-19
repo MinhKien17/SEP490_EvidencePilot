@@ -78,15 +78,18 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // Allow default Vite (5173) and Create React App (3000) ports.
-        configuration.setAllowedOrigins(List.of(
+        // Allow default local frontend ports and temporary ngrok frontend URLs.
+        configuration.setAllowedOriginPatterns(List.of(
                 "http://localhost:5173",
                 "http://localhost:3000",
                 "http://127.0.0.1:5173",
-                "http://127.0.0.1:3000"
+                "http://127.0.0.1:3000",
+                "https://*.ngrok-free.app",
+                "https://*.ngrok.app",
+                "https://*.ngrok.dev"
         ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "ngrok-skip-browser-warning"));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
