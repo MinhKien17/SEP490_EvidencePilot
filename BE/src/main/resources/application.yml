@@ -66,10 +66,8 @@ app:
 # ── External AI model integration ────────────────────────────────────────
 ai:
   model:
-    # local first, ngrok second, then .env-defined fallback URL.
-    local-base-url: ${AI_MODEL_LOCAL_BASE_URL:http://127.0.0.1:8000}
-    ngrok-base-url: ${AI_MODEL_NGROK_BASE_URL:https://good-lumpish-headstone.ngrok-free.dev}
-    fallback-base-url: ${AI_MODEL_BASE_URL:}
+    # Local AI API base URL. In Docker, host.docker.internal reaches the host service.
+    base-url: ${AI_MODEL_BASE_URL:http://host.docker.internal:8000}
     # Optional API key forwarded as X-API-Key header.
     api-key: ${AI_MODEL_API_KEY:}
 

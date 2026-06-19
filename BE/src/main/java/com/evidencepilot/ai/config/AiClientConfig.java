@@ -28,21 +28,15 @@ import java.util.List;
 @Configuration
 public class AiClientConfig {
 
-    @Value("${ai.model.local-base-url}")
-    private String localBaseUrl;
-
-    @Value("${ai.model.ngrok-base-url}")
-    private String ngrokBaseUrl;
-
-    @Value("${ai.model.fallback-base-url:}")
-    private String fallbackBaseUrl;
+    @Value("${ai.model.base-url}")
+    private String baseUrl;
 
     @Value("${ai.model.api-key:}")
     private String apiKey;
 
     @Bean("aiModelBaseUrls")
     public List<String> aiModelBaseUrls() {
-        return List.of(localBaseUrl, ngrokBaseUrl, fallbackBaseUrl);
+        return List.of(baseUrl);
     }
 
     /**
