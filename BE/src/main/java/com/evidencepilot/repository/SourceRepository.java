@@ -14,4 +14,8 @@ public interface SourceRepository extends JpaRepository<Source, Integer> {
     List<Source> findByDatasetId(Integer datasetId);
 
     List<Source> findByUploadedById(Integer userId);
+
+    List<Source> findByProjectStudentId(Integer studentId);
+
+    List<Source> findByDatasetInstructorId(Integer instructorId);
 }

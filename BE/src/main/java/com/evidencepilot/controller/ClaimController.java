@@ -1,8 +1,12 @@
 package com.evidencepilot.controller;
 
 import com.evidencepilot.domain.entity.Claim;
+import com.evidencepilot.domain.entity.Project;
+import com.evidencepilot.domain.entity.User;
 import com.evidencepilot.repository.ClaimRepository;
+import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.AiAnalysisService;
+import com.evidencepilot.service.CurrentUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -22,47 +26,75 @@ import java.util.List;
 public class ClaimController {
 
     private final ClaimRepository claimRepository;
+    private final ProjectRepository projectRepository;
     private final AiAnalysisService aiAnalysisService;
+    private final CurrentUserService currentUserService;
 
     // ── CRUD ───────────────────────────────────────────────────────────────────
 
     @GetMapping
     public List<Claim> findAll() {
-        return claimRepository.findAll();
+        User currentUser = currentUserService.requireCurrentUser();
+        if (currentUserService.isAdmin(currentUser)) {
+            return claimRepository.findAll();
+        }
+        return claimRepository.findByProjectStudentId(currentUser.getId());
     }
 
     @GetMapping("/{id}")
     public Claim findById(@PathVariable Integer id) {
-        return claimRepository.findById(id)
+        User currentUser = currentUserService.requireCurrentUser();
+        Claim claim = claimRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Claim not found: " + id));
+        currentUserService.requireClaimAccess(currentUser, claim);
+        return claim;
     }
 
     @GetMapping("/by-project/{projectId}")
     public List<Claim> findByProject(@PathVariable Integer projectId) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Project not found: " + projectId));
+        currentUserService.requireProjectAccess(currentUser, project);
         return claimRepository.findByProjectId(projectId);
     }
 
     @PostMapping
     public ResponseEntity<Claim> create(@RequestBody Claim claim) {
+        User currentUser = currentUserService.requireCurrentUser();
+        if (claim.getProject() == null || claim.getProject().getId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project is required.");
+        }
+        Project project = projectRepository.findById(claim.getProject().getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Project not found: " + claim.getProject().getId()));
+        currentUserService.requireProjectAccess(currentUser, project);
+        claim.setProject(project);
         Claim saved = claimRepository.save(claim);
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
     @PutMapping("/{id}")
     public Claim update(@PathVariable Integer id, @RequestBody Claim claim) {
-        if (!claimRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Claim not found: " + id);
-        }
+        User currentUser = currentUserService.requireCurrentUser();
+        Claim existing = claimRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Claim not found: " + id));
+        currentUserService.requireClaimAccess(currentUser, existing);
         claim.setId(id);
+        claim.setProject(existing.getProject());
         return claimRepository.save(claim);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Integer id) {
-        if (!claimRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Claim not found: " + id);
-        }
+        User currentUser = currentUserService.requireCurrentUser();
+        Claim existing = claimRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Claim not found: " + id));
+        currentUserService.requireClaimAccess(currentUser, existing);
         claimRepository.deleteById(id);
         return ResponseEntity.noContent().build();
     }
@@ -95,9 +127,11 @@ public class ClaimController {
             @RequestParam(required = false) String excerpt,
             @RequestParam(required = false) String title) {
 
+        User currentUser = currentUserService.requireCurrentUser();
         Claim claim = claimRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Claim not found: " + id));
+        currentUserService.requireClaimAccess(currentUser, claim);
 
         boolean manualMode = sourceId != null && !sourceId.isBlank()
                           && excerpt  != null && !excerpt.isBlank();

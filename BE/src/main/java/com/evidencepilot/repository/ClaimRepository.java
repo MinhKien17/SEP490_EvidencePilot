@@ -10,4 +10,6 @@ import java.util.List;
 public interface ClaimRepository extends JpaRepository<Claim, Integer> {
 
     List<Claim> findByProjectId(Integer projectId);
+
+    List<Claim> findByProjectStudentId(Integer studentId);
 }

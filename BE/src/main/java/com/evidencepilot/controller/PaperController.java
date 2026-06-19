@@ -2,8 +2,10 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.domain.entity.Paper;
 import com.evidencepilot.domain.entity.Project;
+import com.evidencepilot.domain.entity.User;
 import com.evidencepilot.repository.PaperRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.service.CurrentUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -36,6 +38,7 @@ public class PaperController {
 
     private final PaperRepository paperRepository;
     private final ProjectRepository projectRepository;
+    private final CurrentUserService currentUserService;
 
     /** Root directory where uploaded files are stored inside the container. */
     @Value("${app.upload.dir:/app/uploads}")
@@ -45,26 +48,40 @@ public class PaperController {
 
     @GetMapping
     public List<Paper> findAll() {
-        return paperRepository.findAll();
+        User currentUser = currentUserService.requireCurrentUser();
+        if (currentUserService.isAdmin(currentUser)) {
+            return paperRepository.findAll();
+        }
+        return paperRepository.findByProjectStudentId(currentUser.getId());
     }
 
     @GetMapping("/{id}")
     public Paper findById(@PathVariable Integer id) {
-        return paperRepository.findById(id)
+        User currentUser = currentUserService.requireCurrentUser();
+        Paper paper = paperRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Paper not found: " + id));
+        currentUserService.requirePaperAccess(currentUser, paper);
+        return paper;
     }
 
     @GetMapping("/by-project/{projectId}")
     public List<Paper> findByProject(@PathVariable Integer projectId) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Project not found: " + projectId));
+        currentUserService.requireProjectAccess(currentUser, project);
         return paperRepository.findByProjectId(projectId);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Integer id) {
-        if (!paperRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Paper not found: " + id);
-        }
+        User currentUser = currentUserService.requireCurrentUser();
+        Paper paper = paperRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Paper not found: " + id));
+        currentUserService.requirePaperAccess(currentUser, paper);
         paperRepository.deleteById(id);
         return ResponseEntity.noContent().build();
     }
@@ -86,9 +103,11 @@ public class PaperController {
             @RequestParam("file") MultipartFile file,
             @RequestParam("projectId") Integer projectId) {
 
+        User currentUser = currentUserService.requireCurrentUser();
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Project not found: " + projectId));
+        currentUserService.requireProjectAccess(currentUser, project);
 
         String savedPath = storeFile(file, "papers");
 

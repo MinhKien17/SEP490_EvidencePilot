@@ -6,6 +6,7 @@ import com.evidencepilot.repository.DatasetRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.SourceRepository;
 import com.evidencepilot.repository.UserRepository;
+import com.evidencepilot.service.CurrentUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -39,6 +40,7 @@ public class SourceController {
     private final ProjectRepository projectRepository;
     private final DatasetRepository datasetRepository;
     private final UserRepository userRepository;
+    private final CurrentUserService currentUserService;
 
     /** Root directory where uploaded files are stored inside the container. */
     @Value("${app.upload.dir:/app/uploads}")
@@ -48,31 +50,53 @@ public class SourceController {
 
     @GetMapping
     public List<Source> findAll() {
-        return sourceRepository.findAll();
+        User currentUser = currentUserService.requireCurrentUser();
+        if (currentUserService.isAdmin(currentUser)) {
+            return sourceRepository.findAll();
+        }
+        if (currentUserService.isInstructor(currentUser)) {
+            return sourceRepository.findByDatasetInstructorId(currentUser.getId());
+        }
+        return sourceRepository.findByProjectStudentId(currentUser.getId());
     }
 
     @GetMapping("/{id}")
     public Source findById(@PathVariable Integer id) {
-        return sourceRepository.findById(id)
+        User currentUser = currentUserService.requireCurrentUser();
+        Source source = sourceRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Source not found: " + id));
+        currentUserService.requireSourceAccess(currentUser, source);
+        return source;
     }
 
     @GetMapping("/by-project/{projectId}")
     public List<Source> findByProject(@PathVariable Integer projectId) {
+        User currentUser = currentUserService.requireCurrentUser();
+        var project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Project not found: " + projectId));
+        currentUserService.requireProjectAccess(currentUser, project);
         return sourceRepository.findByProjectId(projectId);
     }
 
     @GetMapping("/by-dataset/{datasetId}")
     public List<Source> findByDataset(@PathVariable Integer datasetId) {
+        User currentUser = currentUserService.requireCurrentUser();
+        var dataset = datasetRepository.findById(datasetId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Dataset not found: " + datasetId));
+        currentUserService.requireDatasetAccess(currentUser, dataset);
         return sourceRepository.findByDatasetId(datasetId);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Integer id) {
-        if (!sourceRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Source not found: " + id);
-        }
+        User currentUser = currentUserService.requireCurrentUser();
+        Source source = sourceRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Source not found: " + id));
+        currentUserService.requireSourceAccess(currentUser, source);
         sourceRepository.deleteById(id);
         return ResponseEntity.noContent().build();
     }
@@ -98,6 +122,9 @@ public class SourceController {
             @RequestParam(value = "projectId", required = false) Integer projectId,
             @RequestParam(value = "datasetId", required = false) Integer datasetId) {
 
+        User currentUser = currentUserService.requireCurrentUser();
+        currentUserService.requireUserIdOrAdmin(currentUser, uploadedById);
+
         // ── Resolve relations ──────────────────────────────────────────────────
         User uploader = userRepository.findById(uploadedById)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -107,14 +134,18 @@ public class SourceController {
         source.setUploadedBy(uploader);
 
         if (projectId != null) {
-            source.setProject(projectRepository.findById(projectId)
+            var project = projectRepository.findById(projectId)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                            "Project not found: " + projectId)));
+                            "Project not found: " + projectId));
+            currentUserService.requireProjectAccess(currentUser, project);
+            source.setProject(project);
         }
         if (datasetId != null) {
-            source.setDataset(datasetRepository.findById(datasetId)
+            var dataset = datasetRepository.findById(datasetId)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                            "Dataset not found: " + datasetId)));
+                            "Dataset not found: " + datasetId));
+            currentUserService.requireDatasetAccess(currentUser, dataset);
+            source.setDataset(dataset);
         }
 
         // ── Persist the file ───────────────────────────────────────────────────
