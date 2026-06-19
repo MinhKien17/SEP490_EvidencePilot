@@ -60,7 +60,7 @@ public class ClaimController {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Project not found: " + projectId));
-        currentUserService.requireProjectAccess(currentUser, project);
+        currentUserService.requireProjectWriteAccess(currentUser, project);
         return claimRepository.findByProjectId(projectId);
     }
 
@@ -85,7 +85,7 @@ public class ClaimController {
         Claim existing = claimRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Claim not found: " + id));
-        currentUserService.requireClaimAccess(currentUser, existing);
+        currentUserService.requireProjectWriteAccess(currentUser, existing.getProject());
         claim.setId(id);
         claim.setProject(existing.getProject());
         return claimRepository.save(claim);
@@ -97,7 +97,7 @@ public class ClaimController {
         Claim existing = claimRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Claim not found: " + id));
-        currentUserService.requireClaimAccess(currentUser, existing);
+        currentUserService.requireProjectWriteAccess(currentUser, existing.getProject());
         claimRepository.deleteById(id);
         return ResponseEntity.noContent().build();
     }
@@ -134,7 +134,7 @@ public class ClaimController {
         Claim claim = claimRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Claim not found: " + id));
-        currentUserService.requireClaimAccess(currentUser, claim);
+        currentUserService.requireProjectWriteAccess(currentUser, claim.getProject());
 
         boolean hasSourceId = sourceId != null && !sourceId.isBlank();
         boolean hasExcerpt = excerpt != null && !excerpt.isBlank();

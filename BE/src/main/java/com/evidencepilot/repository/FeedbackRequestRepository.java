@@ -17,4 +17,6 @@ public interface FeedbackRequestRepository extends JpaRepository<FeedbackRequest
     List<FeedbackRequest> findByInstructorId(Integer instructorId);
 
     List<FeedbackRequest> findByStatus(FeedbackStatus status);
+
+    boolean existsByProjectIdAndInstructorId(Integer projectId, Integer instructorId);
 }

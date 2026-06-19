@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS `projects` (
     `student_id`  INT          NOT NULL,
     `title`       VARCHAR(255) NULL,
     `description` TEXT         NULL,
+    `status`      ENUM('ACTIVE','IN_REVIEW') NOT NULL DEFAULT 'ACTIVE',
     `created_at`  DATETIME     NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     CONSTRAINT `fk_projects_student`
@@ -203,7 +204,7 @@ CREATE TABLE IF NOT EXISTS `feedback_requests` (
     `project_id`    INT      NOT NULL,
     `student_id`    INT      NOT NULL,
     `instructor_id` INT      NOT NULL,
-    `status`        ENUM('PENDING','REVIEWED','REJECTED') NOT NULL DEFAULT 'PENDING',
+    `status`        ENUM('PENDING','RETURNED','REVIEWED','REJECTED') NOT NULL DEFAULT 'PENDING',
     `requested_at`  DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     CONSTRAINT `fk_feedback_req_project`

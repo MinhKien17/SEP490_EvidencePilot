@@ -75,7 +75,11 @@ public class SourceController {
         Source source = sourceRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Source not found: " + id));
-        currentUserService.requireSourceAccess(currentUser, source);
+        if (source.getProject() != null) {
+            currentUserService.requireProjectWriteAccess(currentUser, source.getProject());
+        } else {
+            currentUserService.requireSourceAccess(currentUser, source);
+        }
         return source;
     }
 
@@ -170,7 +174,7 @@ public class SourceController {
             var project = projectRepository.findById(projectId)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                             "Project not found: " + projectId));
-            currentUserService.requireProjectAccess(currentUser, project);
+            currentUserService.requireProjectWriteAccess(currentUser, project);
             source.setProject(project);
         }
         if (datasetId != null) {

@@ -5,6 +5,7 @@ package com.evidencepilot.domain.enums;
  */
 public enum FeedbackStatus {
     PENDING,
+    RETURNED,
     REVIEWED,
     REJECTED
 }

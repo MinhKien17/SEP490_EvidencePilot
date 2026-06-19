@@ -66,10 +66,13 @@ public class ProjectController {
         Project existing = projectRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Project not found: " + id));
-        currentUserService.requireProjectAccess(currentUser, existing);
+        currentUserService.requireProjectWriteAccess(currentUser, existing);
         project.setId(id);
         if (!currentUserService.isAdmin(currentUser)) {
             project.setStudent(existing.getStudent());
+        }
+        if (project.getStatus() == null) {
+            project.setStatus(existing.getStatus());
         }
         return projectRepository.save(project);
     }
@@ -80,7 +83,7 @@ public class ProjectController {
         Project existing = projectRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Project not found: " + id));
-        currentUserService.requireProjectAccess(currentUser, existing);
+        currentUserService.requireProjectWriteAccess(currentUser, existing);
         projectRepository.deleteById(id);
         return ResponseEntity.noContent().build();
     }

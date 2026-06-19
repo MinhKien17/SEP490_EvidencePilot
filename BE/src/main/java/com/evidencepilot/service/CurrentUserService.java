@@ -6,7 +6,9 @@ import com.evidencepilot.domain.entity.Paper;
 import com.evidencepilot.domain.entity.Project;
 import com.evidencepilot.domain.entity.Source;
 import com.evidencepilot.domain.entity.User;
+import com.evidencepilot.domain.enums.ProjectStatus;
 import com.evidencepilot.domain.enums.UserRole;
+import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,6 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class CurrentUserService {
 
     private final UserRepository userRepository;
+    private final FeedbackRequestRepository feedbackRequestRepository;
 
     public User requireCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -66,7 +69,26 @@ public class CurrentUserService {
             return;
         }
         if (project.getStudent() == null || !currentUser.getId().equals(project.getStudent().getId())) {
+            if (currentUser.getRole() == UserRole.INSTRUCTOR
+                    && project.getStatus() == ProjectStatus.IN_REVIEW
+                    && feedbackRequestRepository.existsByProjectIdAndInstructorId(project.getId(), currentUser.getId())) {
+                return;
+            }
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Project access denied.");
+        }
+    }
+
+    public void requireProjectWriteAccess(User currentUser, Project project) {
+        requireProjectAccess(currentUser, project);
+        if (isAdmin(currentUser)) {
+            return;
+        }
+        if (project.getStatus() == ProjectStatus.IN_REVIEW) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Project is in review and cannot be modified.");
+        }
+        if (project.getStudent() == null || !currentUser.getId().equals(project.getStudent().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Project write access denied.");
         }
     }
 

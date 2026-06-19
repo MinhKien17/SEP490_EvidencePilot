@@ -70,7 +70,7 @@ public class PaperController {
         Paper paper = paperRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Paper not found: " + id));
-        currentUserService.requirePaperAccess(currentUser, paper);
+        currentUserService.requireProjectWriteAccess(currentUser, paper.getProject());
         return paper;
     }
 
@@ -80,7 +80,7 @@ public class PaperController {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Project not found: " + projectId));
-        currentUserService.requireProjectAccess(currentUser, project);
+        currentUserService.requireProjectWriteAccess(currentUser, project);
         return paperRepository.findByProjectId(projectId);
     }
 

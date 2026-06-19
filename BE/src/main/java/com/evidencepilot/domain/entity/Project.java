@@ -1,5 +1,6 @@
 package com.evidencepilot.domain.entity;
 
+import com.evidencepilot.domain.enums.ProjectStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -36,6 +37,10 @@ public class Project {
 
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 20)
+    private ProjectStatus status = ProjectStatus.ACTIVE;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
