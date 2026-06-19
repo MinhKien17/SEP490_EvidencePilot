@@ -46,7 +46,7 @@ public class AiModelClient {
         this.restClient = restClient;
         this.baseUrls = baseUrls.stream()
                 .filter(url -> url != null && !url.isBlank())
-                .map(url -> trimTrailingSlash(url))
+                .map(AiModelClient::trimTrailingSlash)
                 .distinct()
                 .toList();
 
@@ -171,6 +171,7 @@ public class AiModelClient {
     /**
      * Thrown when the AI API returns a non-2xx HTTP status.
      * Wraps the endpoint path and status code for clear error messages.
+     */
     private <T> T callWithFallback(String endpoint, AiCall<T> call) {
         RuntimeException lastFailure = null;
 
