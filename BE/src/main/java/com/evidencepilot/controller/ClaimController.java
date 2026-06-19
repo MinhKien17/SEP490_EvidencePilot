@@ -136,8 +136,13 @@ public class ClaimController {
                         "Claim not found: " + id));
         currentUserService.requireClaimAccess(currentUser, claim);
 
-        boolean manualMode = sourceId != null && !sourceId.isBlank()
-                          && excerpt  != null && !excerpt.isBlank();
+        boolean hasSourceId = sourceId != null && !sourceId.isBlank();
+        boolean hasExcerpt = excerpt != null && !excerpt.isBlank();
+        if (hasSourceId != hasExcerpt) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Manual analysis requires both sourceId and excerpt.");
+        }
+        boolean manualMode = hasSourceId && hasExcerpt;
 
         if (manualMode) {
             return aiAnalysisService.analyzeAndPersist(claim, sourceId, excerpt, title);
