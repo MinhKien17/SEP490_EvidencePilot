@@ -1,11 +1,17 @@
 package com.evidencepilot.controller;
 
+import com.evidencepilot.ai.dto.PaperReviewResponse;
 import com.evidencepilot.domain.entity.Paper;
+import com.evidencepilot.domain.entity.PaperSection;
 import com.evidencepilot.domain.entity.Project;
 import com.evidencepilot.domain.entity.User;
 import com.evidencepilot.repository.PaperRepository;
+import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.CurrentUserService;
+import com.evidencepilot.service.PaperProcessingService;
+import com.evidencepilot.service.SourceExtractionService;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -37,8 +43,11 @@ import java.util.UUID;
 public class PaperController {
 
     private final PaperRepository paperRepository;
+    private final PaperSectionRepository paperSectionRepository;
     private final ProjectRepository projectRepository;
     private final CurrentUserService currentUserService;
+    private final SourceExtractionService sourceExtractionService;
+    private final PaperProcessingService paperProcessingService;
 
     /** Root directory where uploaded files are stored inside the container. */
     @Value("${app.upload.dir:/app/uploads}")
@@ -75,6 +84,29 @@ public class PaperController {
         return paperRepository.findByProjectId(projectId);
     }
 
+    @GetMapping("/{id}/sections")
+    public List<PaperSection> sections(@PathVariable Integer id) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Paper paper = paperRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Paper not found: " + id));
+        currentUserService.requirePaperAccess(currentUser, paper);
+        return paperSectionRepository.findByPaperIdOrderBySectionIndex(id);
+    }
+
+    @PostMapping("/{id}/review")
+    public PaperReviewResponse review(
+            @PathVariable Integer id,
+            @RequestParam(required = false) String targetStyle) {
+
+        User currentUser = currentUserService.requireCurrentUser();
+        Paper paper = paperRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Paper not found: " + id));
+        currentUserService.requirePaperAccess(currentUser, paper);
+        return paperProcessingService.review(paper, targetStyle);
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Integer id) {
         User currentUser = currentUserService.requireCurrentUser();
@@ -99,6 +131,7 @@ public class PaperController {
      * @param projectId the project this paper belongs to (required)
      */
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Transactional
     public ResponseEntity<Paper> upload(
             @RequestParam("file") MultipartFile file,
             @RequestParam("projectId") Integer projectId) {
@@ -109,14 +142,21 @@ public class PaperController {
                         "Project not found: " + projectId));
         currentUserService.requireProjectAccess(currentUser, project);
 
+        SourceExtractionService.ExtractedText extracted = sourceExtractionService.extractText(file);
         String savedPath = storeFile(file, "papers");
 
         Paper paper = new Paper();
         paper.setProject(project);
         paper.setFileUrl(savedPath);
+        paper.setOriginalFilename(safeOriginalFilename(file));
+        paper.setContentType(file.getContentType());
+        paper.setFileSizeBytes(file.getSize());
+        paper.setExtractedText(extracted.text());
+        paper.setExtractionMethod(extracted.method());
         paper.setSubmittedAt(LocalDateTime.now());
 
         Paper saved = paperRepository.save(paper);
+        paperProcessingService.detectAndPersistSections(saved);
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
@@ -127,7 +167,7 @@ public class PaperController {
             Path directory = Paths.get(uploadDir, subDir);
             Files.createDirectories(directory);
 
-            String filename = UUID.randomUUID() + "_" + file.getOriginalFilename();
+            String filename = UUID.randomUUID() + "_" + safeOriginalFilename(file);
             Path destination = directory.resolve(filename);
             Files.copy(file.getInputStream(), destination, StandardCopyOption.REPLACE_EXISTING);
 
@@ -136,5 +176,14 @@ public class PaperController {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Failed to store file: " + e.getMessage(), e);
         }
+    }
+
+    private String safeOriginalFilename(MultipartFile file) {
+        String original = file.getOriginalFilename();
+        if (original == null || original.isBlank()) {
+            return "uploaded-paper";
+        }
+        String filename = Paths.get(original).getFileName().toString();
+        return filename.replaceAll("[^A-Za-z0-9._-]", "_");
     }
 }

@@ -67,7 +67,7 @@ public class SourceExtractionService {
 
     @Transactional
     public void extractAndPersist(Source source, MultipartFile file) {
-        ExtractedText extracted = extract(file);
+        ExtractedText extracted = extractText(file);
 
         SourceText sourceText = new SourceText();
         sourceText.setSource(source);
@@ -92,7 +92,7 @@ public class SourceExtractionService {
         sourceReferenceRepository.saveAll(references);
     }
 
-    private ExtractedText extract(MultipartFile file) {
+    public ExtractedText extractText(MultipartFile file) {
         String filename = Optional.ofNullable(file.getOriginalFilename()).orElse("uploaded-source");
         String suffix = suffix(filename);
         try {
@@ -409,6 +409,6 @@ public class SourceExtractionService {
         return value == null || value.isBlank() ? null : value;
     }
 
-    private record ExtractedText(String text, String method) {
+    public record ExtractedText(String text, String method) {
     }
 }

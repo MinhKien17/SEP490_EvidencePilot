@@ -149,10 +149,15 @@ CREATE TABLE IF NOT EXISTS `source_references` (
   COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `papers` (
-    `id`           INT          NOT NULL AUTO_INCREMENT,
-    `project_id`   INT          NOT NULL,
-    `file_url`     VARCHAR(500) NOT NULL COMMENT 'Absolute path inside the container',
-    `submitted_at` DATETIME     NULL DEFAULT CURRENT_TIMESTAMP,
+    `id`                INT          NOT NULL AUTO_INCREMENT,
+    `project_id`        INT          NOT NULL,
+    `file_url`          VARCHAR(500) NOT NULL COMMENT 'Absolute path inside the container',
+    `original_filename` VARCHAR(255) NULL,
+    `content_type`      VARCHAR(255) NULL,
+    `file_size_bytes`   BIGINT       NULL,
+    `extracted_text`    LONGTEXT     NULL,
+    `extraction_method` VARCHAR(50)  NULL,
+    `submitted_at`      DATETIME     NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     CONSTRAINT `fk_papers_project`
         FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`)
@@ -164,6 +169,21 @@ CREATE TABLE IF NOT EXISTS `papers` (
 -- ── 7. graphs ─────────────────────────────────────────────────
 --  One-to-one with claims.  graph_data stores the full AI
 --  ClaimAnalysisResponse as a native JSON document.
+CREATE TABLE IF NOT EXISTS `paper_sections` (
+    `id`            INT          NOT NULL AUTO_INCREMENT,
+    `paper_id`      INT          NOT NULL,
+    `section_index` INT          NOT NULL,
+    `name`          VARCHAR(255) NOT NULL,
+    `text`          TEXT         NOT NULL,
+    PRIMARY KEY (`id`),
+    KEY `idx_paper_sections_paper` (`paper_id`, `section_index`),
+    CONSTRAINT `fk_paper_sections_paper`
+        FOREIGN KEY (`paper_id`) REFERENCES `papers` (`id`)
+        ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB
+  DEFAULT CHARSET=utf8mb4
+  COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS `graphs` (
     `id`         INT  NOT NULL AUTO_INCREMENT,
     `claim_id`   INT  NOT NULL,

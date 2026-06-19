@@ -34,6 +34,21 @@ public class Paper {
     @Column(name = "file_url", nullable = false)
     private String fileUrl;
 
+    @Column(name = "original_filename")
+    private String originalFilename;
+
+    @Column(name = "content_type")
+    private String contentType;
+
+    @Column(name = "file_size_bytes")
+    private Long fileSizeBytes;
+
+    @Column(name = "extracted_text", columnDefinition = "LONGTEXT")
+    private String extractedText;
+
+    @Column(name = "extraction_method", length = 50)
+    private String extractionMethod;
+
     @Column(name = "submitted_at")
     private LocalDateTime submittedAt;
 }
