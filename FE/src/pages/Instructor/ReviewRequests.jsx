@@ -18,7 +18,7 @@ export default function ReviewRequests() {
         console.error('Failed to fetch feedback requests from BE:', err);
         setError('Could not connect to the server. Using temporary mock data.');
         
-        // MOCK DATA: Chạy dự phòng nếu server ngrok của Kiên chưa bật endpoint này
+        // MOCK DATA: Chạy dự phòng nếu server ngrok chưa bật endpoint này
         setRequests([
           {
             id: 1,

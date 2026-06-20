@@ -44,7 +44,7 @@ export default function CreateDataset() {
     } catch (err) {
       console.error('Failed to connect to /api/datasets:', err);
       
-      // Giả lập thông báo thành công bằng Mock Data nếu Kiên chưa deploy endpoint này
+      // Giả lập thông báo thành công bằng Mock Data nếu chưa deploy endpoint này
       alert('[Mock Mode] Dataset simulated successfully! (Server endpoint is not ready yet).');
       setDatasetName('');
       setDescription('');
