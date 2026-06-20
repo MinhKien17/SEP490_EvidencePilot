@@ -12,4 +12,6 @@ public interface SourceReferenceRepository extends JpaRepository<SourceReference
     List<SourceReference> findBySourceIdOrderByReferenceIndex(Integer sourceId);
 
     List<SourceReference> findBySourceProjectIdOrderBySourceIdAscReferenceIndexAsc(Integer projectId);
+
+    List<SourceReference> findBySourceProjectIdAndSourceActiveTrueOrderBySourceIdAscReferenceIndexAsc(Integer projectId);
 }
