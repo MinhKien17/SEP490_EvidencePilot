@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS `projects` (
     `title`       VARCHAR(255) NULL,
     `description` TEXT         NULL,
     `status`      ENUM('ACTIVE','IN_REVIEW') NOT NULL DEFAULT 'ACTIVE',
+    `active`      BOOLEAN      NOT NULL DEFAULT TRUE,
     `created_at`  DATETIME     NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     CONSTRAINT `fk_projects_student`
@@ -52,6 +53,7 @@ CREATE TABLE IF NOT EXISTS `datasets` (
     `id`            INT          NOT NULL AUTO_INCREMENT,
     `instructor_id` INT          NOT NULL,
     `title`         VARCHAR(255) NULL,
+    `active`        BOOLEAN      NOT NULL DEFAULT TRUE,
     `created_at`    DATETIME     NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     CONSTRAINT `fk_datasets_instructor`
@@ -68,6 +70,7 @@ CREATE TABLE IF NOT EXISTS `claims` (
     `project_id`          INT          NOT NULL,
     `content`             TEXT         NOT NULL,
     `ai_confidence_score` DECIMAL(5,4) NULL COMMENT '0.0000–1.0000, populated by AI pipeline',
+    `active`              BOOLEAN      NOT NULL DEFAULT TRUE,
     PRIMARY KEY (`id`),
     CONSTRAINT `fk_claims_project`
         FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`)
@@ -84,6 +87,7 @@ CREATE TABLE IF NOT EXISTS `sources` (
     `original_filename` VARCHAR(255) NULL,
     `content_type`      VARCHAR(255) NULL,
     `file_size_bytes`   BIGINT       NULL,
+    `active`            BOOLEAN      NOT NULL DEFAULT TRUE,
     `project_id`        INT          NULL,
     `dataset_id`        INT          NULL,
     `uploaded_by`       INT          NOT NULL,
@@ -158,6 +162,7 @@ CREATE TABLE IF NOT EXISTS `papers` (
     `file_size_bytes`   BIGINT       NULL,
     `extracted_text`    LONGTEXT     NULL,
     `extraction_method` VARCHAR(50)  NULL,
+    `active`            BOOLEAN      NOT NULL DEFAULT TRUE,
     `submitted_at`      DATETIME     NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     CONSTRAINT `fk_papers_project`

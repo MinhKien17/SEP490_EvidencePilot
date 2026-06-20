@@ -34,6 +34,9 @@ public class Source {
     @Column(name = "file_size_bytes")
     private Long fileSizeBytes;
 
+    @Column(name = "active", nullable = false)
+    private boolean active = true;
+
     /**
      * The project this source belongs to (nullable).
      * Foreign key: sources.project_id → projects.id

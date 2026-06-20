@@ -29,10 +29,10 @@ public class DatasetController {
     public List<Dataset> findAll() {
         User currentUser = currentUserService.requireCurrentUser();
         if (currentUserService.isAdmin(currentUser)) {
-            return datasetRepository.findAll();
+            return datasetRepository.findByActiveTrue();
         }
         if (currentUserService.isInstructor(currentUser)) {
-            return datasetRepository.findByInstructorId(currentUser.getId());
+            return datasetRepository.findByInstructorIdAndActiveTrue(currentUser.getId());
         }
         return List.of();
     }
@@ -43,6 +43,9 @@ public class DatasetController {
         Dataset dataset = datasetRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Dataset not found: " + id));
+        if (!dataset.isActive()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Dataset not found: " + id);
+        }
         currentUserService.requireDatasetAccess(currentUser, dataset);
         return dataset;
     }
@@ -51,7 +54,7 @@ public class DatasetController {
     public List<Dataset> findByInstructor(@PathVariable Integer instructorId) {
         User currentUser = currentUserService.requireCurrentUser();
         currentUserService.requireUserIdOrAdmin(currentUser, instructorId);
-        return datasetRepository.findByInstructorId(instructorId);
+        return datasetRepository.findByInstructorIdAndActiveTrue(instructorId);
     }
 
     @PostMapping
@@ -86,7 +89,8 @@ public class DatasetController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Dataset not found: " + id));
         currentUserService.requireDatasetAccess(currentUser, existing);
-        datasetRepository.deleteById(id);
+        existing.setActive(false);
+        datasetRepository.save(existing);
         return ResponseEntity.noContent().build();
     }
 }

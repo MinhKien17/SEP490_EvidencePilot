@@ -28,9 +28,9 @@ public class ProjectController {
     public List<Project> findAll() {
         User currentUser = currentUserService.requireCurrentUser();
         if (currentUserService.isAdmin(currentUser)) {
-            return projectRepository.findAll();
+            return projectRepository.findByActiveTrue();
         }
-        return projectRepository.findByStudentId(currentUser.getId());
+        return projectRepository.findByStudentIdAndActiveTrue(currentUser.getId());
     }
 
     @GetMapping("/{id}")
@@ -39,6 +39,9 @@ public class ProjectController {
         Project project = projectRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Project not found: " + id));
+        if (!project.isActive()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: " + id);
+        }
         currentUserService.requireProjectAccess(currentUser, project);
         return project;
     }
@@ -47,7 +50,7 @@ public class ProjectController {
     public List<Project> findByStudent(@PathVariable Integer studentId) {
         User currentUser = currentUserService.requireCurrentUser();
         currentUserService.requireUserIdOrAdmin(currentUser, studentId);
-        return projectRepository.findByStudentId(studentId);
+        return projectRepository.findByStudentIdAndActiveTrue(studentId);
     }
 
     @PostMapping
@@ -84,7 +87,8 @@ public class ProjectController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Project not found: " + id));
         currentUserService.requireProjectWriteAccess(currentUser, existing);
-        projectRepository.deleteById(id);
+        existing.setActive(false);
+        projectRepository.save(existing);
         return ResponseEntity.noContent().build();
     }
 }

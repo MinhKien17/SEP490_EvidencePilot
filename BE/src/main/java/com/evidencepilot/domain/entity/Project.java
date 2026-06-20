@@ -42,6 +42,9 @@ public class Project {
     @Column(name = "status", nullable = false, length = 20)
     private ProjectStatus status = ProjectStatus.ACTIVE;
 
+    @Column(name = "active", nullable = false)
+    private boolean active = true;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 }

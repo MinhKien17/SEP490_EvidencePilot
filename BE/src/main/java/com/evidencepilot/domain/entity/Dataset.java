@@ -34,6 +34,9 @@ public class Dataset {
     @Column(name = "title")
     private String title;
 
+    @Column(name = "active", nullable = false)
+    private boolean active = true;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 }

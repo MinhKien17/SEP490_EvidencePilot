@@ -39,4 +39,7 @@ public class Claim {
      */
     @Column(name = "ai_confidence_score", precision = 5, scale = 4)
     private BigDecimal aiConfidenceScore;
+
+    @Column(name = "active", nullable = false)
+    private boolean active = true;
 }

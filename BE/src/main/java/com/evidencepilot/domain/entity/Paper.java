@@ -49,6 +49,9 @@ public class Paper {
     @Column(name = "extraction_method", length = 50)
     private String extractionMethod;
 
+    @Column(name = "active", nullable = false)
+    private boolean active = true;
+
     @Column(name = "submitted_at")
     private LocalDateTime submittedAt;
 }

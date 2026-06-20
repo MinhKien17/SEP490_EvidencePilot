@@ -10,4 +10,8 @@ import java.util.List;
 public interface DatasetRepository extends JpaRepository<Dataset, Integer> {
 
     List<Dataset> findByInstructorId(Integer instructorId);
+
+    List<Dataset> findByActiveTrue();
+
+    List<Dataset> findByInstructorIdAndActiveTrue(Integer instructorId);
 }

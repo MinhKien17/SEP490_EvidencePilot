@@ -39,9 +39,9 @@ public class ClaimController {
     public List<Claim> findAll() {
         User currentUser = currentUserService.requireCurrentUser();
         if (currentUserService.isAdmin(currentUser)) {
-            return claimRepository.findAll();
+            return claimRepository.findByActiveTrue();
         }
-        return claimRepository.findByProjectStudentId(currentUser.getId());
+        return claimRepository.findByProjectStudentIdAndActiveTrue(currentUser.getId());
     }
 
     @GetMapping("/{id}")
@@ -50,6 +50,9 @@ public class ClaimController {
         Claim claim = claimRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Claim not found: " + id));
+        if (!claim.isActive()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Claim not found: " + id);
+        }
         currentUserService.requireClaimAccess(currentUser, claim);
         return claim;
     }
@@ -61,7 +64,7 @@ public class ClaimController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Project not found: " + projectId));
         currentUserService.requireProjectWriteAccess(currentUser, project);
-        return claimRepository.findByProjectId(projectId);
+        return claimRepository.findByProjectIdAndActiveTrue(projectId);
     }
 
     @PostMapping
@@ -98,7 +101,8 @@ public class ClaimController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Claim not found: " + id));
         currentUserService.requireProjectWriteAccess(currentUser, existing.getProject());
-        claimRepository.deleteById(id);
+        existing.setActive(false);
+        claimRepository.save(existing);
         return ResponseEntity.noContent().build();
     }
 
@@ -134,6 +138,9 @@ public class ClaimController {
         Claim claim = claimRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Claim not found: " + id));
+        if (!claim.isActive()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Claim not found: " + id);
+        }
         currentUserService.requireProjectWriteAccess(currentUser, claim.getProject());
 
         boolean hasSourceId = sourceId != null && !sourceId.isBlank();
@@ -160,6 +167,9 @@ public class ClaimController {
         Claim claim = claimRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Claim not found: " + id));
+        if (!claim.isActive()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Claim not found: " + id);
+        }
         currentUserService.requireClaimAccess(currentUser, claim);
         return claimMatchingService.matchClaim(claim, topK);
     }

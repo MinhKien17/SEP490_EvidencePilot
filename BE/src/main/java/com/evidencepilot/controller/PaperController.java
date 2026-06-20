@@ -59,9 +59,9 @@ public class PaperController {
     public List<Paper> findAll() {
         User currentUser = currentUserService.requireCurrentUser();
         if (currentUserService.isAdmin(currentUser)) {
-            return paperRepository.findAll();
+            return paperRepository.findByActiveTrue();
         }
-        return paperRepository.findByProjectStudentId(currentUser.getId());
+        return paperRepository.findByProjectStudentIdAndActiveTrue(currentUser.getId());
     }
 
     @GetMapping("/{id}")
@@ -70,6 +70,9 @@ public class PaperController {
         Paper paper = paperRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Paper not found: " + id));
+        if (!paper.isActive()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Paper not found: " + id);
+        }
         currentUserService.requireProjectWriteAccess(currentUser, paper.getProject());
         return paper;
     }
@@ -81,7 +84,7 @@ public class PaperController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Project not found: " + projectId));
         currentUserService.requireProjectWriteAccess(currentUser, project);
-        return paperRepository.findByProjectId(projectId);
+        return paperRepository.findByProjectIdAndActiveTrue(projectId);
     }
 
     @GetMapping("/{id}/sections")
@@ -90,6 +93,9 @@ public class PaperController {
         Paper paper = paperRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Paper not found: " + id));
+        if (!paper.isActive()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Paper not found: " + id);
+        }
         currentUserService.requirePaperAccess(currentUser, paper);
         return paperSectionRepository.findByPaperIdOrderBySectionIndex(id);
     }
@@ -103,6 +109,9 @@ public class PaperController {
         Paper paper = paperRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Paper not found: " + id));
+        if (!paper.isActive()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Paper not found: " + id);
+        }
         currentUserService.requirePaperAccess(currentUser, paper);
         return paperProcessingService.review(paper, targetStyle);
     }
@@ -114,7 +123,8 @@ public class PaperController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Paper not found: " + id));
         currentUserService.requirePaperAccess(currentUser, paper);
-        paperRepository.deleteById(id);
+        paper.setActive(false);
+        paperRepository.save(paper);
         return ResponseEntity.noContent().build();
     }
 

@@ -11,5 +11,5 @@ public interface SourceChunkRepository extends JpaRepository<SourceChunk, Intege
 
     List<SourceChunk> findBySourceIdAndActiveTrueOrderByChunkIndex(Integer sourceId);
 
-    List<SourceChunk> findBySourceProjectIdAndActiveTrueOrderBySourceIdAscChunkIndexAsc(Integer projectId);
+    List<SourceChunk> findBySourceProjectIdAndSourceActiveTrueAndActiveTrueOrderBySourceIdAscChunkIndexAsc(Integer projectId);
 }

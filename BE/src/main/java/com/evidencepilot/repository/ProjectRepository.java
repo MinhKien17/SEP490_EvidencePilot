@@ -10,4 +10,8 @@ import java.util.List;
 public interface ProjectRepository extends JpaRepository<Project, Integer> {
 
     List<Project> findByStudentId(Integer studentId);
+
+    List<Project> findByActiveTrue();
+
+    List<Project> findByStudentIdAndActiveTrue(Integer studentId);
 }

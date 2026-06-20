@@ -18,4 +18,14 @@ public interface SourceRepository extends JpaRepository<Source, Integer> {
     List<Source> findByProjectStudentId(Integer studentId);
 
     List<Source> findByDatasetInstructorId(Integer instructorId);
+
+    List<Source> findByActiveTrue();
+
+    List<Source> findByProjectIdAndActiveTrue(Integer projectId);
+
+    List<Source> findByDatasetIdAndActiveTrue(Integer datasetId);
+
+    List<Source> findByProjectStudentIdAndActiveTrue(Integer studentId);
+
+    List<Source> findByDatasetInstructorIdAndActiveTrue(Integer instructorId);
 }

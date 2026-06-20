@@ -36,7 +36,7 @@ public class ClaimMatchingService {
         int safeTopK = Math.max(1, Math.min(topK, 10));
         Map<String, Long> claimTerms = tokens(claim.getContent());
         List<SourceChunk> chunks = sourceChunkRepository
-                .findBySourceProjectIdAndActiveTrueOrderBySourceIdAscChunkIndexAsc(claim.getProject().getId());
+                .findBySourceProjectIdAndSourceActiveTrueAndActiveTrueOrderBySourceIdAscChunkIndexAsc(claim.getProject().getId());
 
         List<ScoredChunk> scored = new ArrayList<>();
         for (SourceChunk chunk : chunks) {

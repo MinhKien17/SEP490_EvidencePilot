@@ -61,12 +61,12 @@ public class SourceController {
     public List<Source> findAll() {
         User currentUser = currentUserService.requireCurrentUser();
         if (currentUserService.isAdmin(currentUser)) {
-            return sourceRepository.findAll();
+            return sourceRepository.findByActiveTrue();
         }
         if (currentUserService.isInstructor(currentUser)) {
-            return sourceRepository.findByDatasetInstructorId(currentUser.getId());
+            return sourceRepository.findByDatasetInstructorIdAndActiveTrue(currentUser.getId());
         }
-        return sourceRepository.findByProjectStudentId(currentUser.getId());
+        return sourceRepository.findByProjectStudentIdAndActiveTrue(currentUser.getId());
     }
 
     @GetMapping("/{id}")
@@ -75,6 +75,9 @@ public class SourceController {
         Source source = sourceRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Source not found: " + id));
+        if (!source.isActive()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Source not found: " + id);
+        }
         if (source.getProject() != null) {
             currentUserService.requireProjectWriteAccess(currentUser, source.getProject());
         } else {
@@ -90,7 +93,7 @@ public class SourceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Project not found: " + projectId));
         currentUserService.requireProjectAccess(currentUser, project);
-        return sourceRepository.findByProjectId(projectId);
+        return sourceRepository.findByProjectIdAndActiveTrue(projectId);
     }
 
     @GetMapping("/by-dataset/{datasetId}")
@@ -100,7 +103,7 @@ public class SourceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Dataset not found: " + datasetId));
         currentUserService.requireDatasetAccess(currentUser, dataset);
-        return sourceRepository.findByDatasetId(datasetId);
+        return sourceRepository.findByDatasetIdAndActiveTrue(datasetId);
     }
 
     @GetMapping("/{id}/chunks")
@@ -109,6 +112,9 @@ public class SourceController {
         Source source = sourceRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Source not found: " + id));
+        if (!source.isActive()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Source not found: " + id);
+        }
         currentUserService.requireSourceAccess(currentUser, source);
         return sourceChunkRepository.findBySourceIdAndActiveTrueOrderByChunkIndex(id);
     }
@@ -119,6 +125,9 @@ public class SourceController {
         Source source = sourceRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Source not found: " + id));
+        if (!source.isActive()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Source not found: " + id);
+        }
         currentUserService.requireSourceAccess(currentUser, source);
         return sourceReferenceRepository.findBySourceIdOrderByReferenceIndex(id);
     }
@@ -130,7 +139,8 @@ public class SourceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Source not found: " + id));
         currentUserService.requireSourceAccess(currentUser, source);
-        sourceRepository.deleteById(id);
+        source.setActive(false);
+        sourceRepository.save(source);
         return ResponseEntity.noContent().build();
     }
 
