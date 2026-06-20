@@ -11,9 +11,15 @@ WORKDIR /build
 COPY pom.xml .
 RUN mvn dependency:go-offline -B --no-transfer-progress
 
-# Copy sources and build, skipping tests (tests run in CI, not in image build)
+# Copy sources and build. Tests run by default; use
+# --build-arg MAVEN_SKIP_TESTS=true only for an explicit fast local build.
 COPY src ./src
-RUN mvn package -DskipTests -B --no-transfer-progress
+ARG MAVEN_SKIP_TESTS=false
+RUN if [ "$MAVEN_SKIP_TESTS" = "true" ]; then \
+        mvn package -DskipTests -B --no-transfer-progress; \
+    else \
+        mvn package -B --no-transfer-progress; \
+    fi
 
 # ────────────────────────────────────────────────────────────────
 # Stage 2 – Runtime
