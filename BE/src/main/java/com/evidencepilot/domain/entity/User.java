@@ -5,12 +5,18 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
 /**
  * Represents a system user (student, instructor, or admin).
  * Maps to the {@code users} table.
+ *
+ * <p>
+ * {@code createdAt} is populated automatically by Hibernate's
+ * {@link CreationTimestamp} on first persist — no manual setter needed.
+ * </p>
  */
 @Entity
 @Table(name = "users")
@@ -34,6 +40,18 @@ public class User {
     @Column(name = "role", nullable = false, length = 20)
     private UserRole role;
 
-    @Column(name = "created_at")
+    // --- NEW PROFILE FIELDS ---
+    @Column(name = "first_name")
+    private String firstName;
+
+    @Column(name = "last_name")
+    private String lastName;
+
+    @Column(name = "age")
+    private Integer age;
+    // --------------------------
+
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 }

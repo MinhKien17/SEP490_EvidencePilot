@@ -19,6 +19,7 @@ import java.util.Date;
  * <ul>
  *   <li>Algorithm : HMAC-SHA256 (HS256)</li>
  *   <li>Expiration : 24 hours</li>
+ *   <li>Custom claim : {@code role} — the user's {@link com.evidencepilot.domain.enums.UserRole}</li>
  * </ul>
  */
 @Component
@@ -40,17 +41,20 @@ public class JwtUtil {
     // ── Generate ─────────────────────────────────────────────────────────────────
 
     /**
-     * Builds a signed JWT whose subject is the user's e-mail address.
+     * Builds a signed JWT whose subject is the user's e-mail address and
+     * whose {@code role} claim carries the user's role string.
      *
      * @param email the authenticated user's e-mail
+     * @param role  the user's role (e.g. "STUDENT", "INSTRUCTOR", "ADMIN")
      * @return compact, signed JWT string (ready to send as {@code Bearer <token>})
      */
-    public String generateToken(String email) {
+    public String generateToken(String email, String role) {
         Date now    = new Date();
         Date expiry = new Date(now.getTime() + EXPIRATION_MS);
 
         return Jwts.builder()
                 .subject(email)
+                .claim("role", role)
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(signingKey)           // defaults to HS256
@@ -84,6 +88,18 @@ public class JwtUtil {
      */
     public String extractEmail(String token) {
         return getClaims(token).getSubject();
+    }
+
+    // ── Extract role ──────────────────────────────────────────────────────────────
+
+    /**
+     * Extracts the {@code role} custom claim from a verified token.
+     *
+     * @param token raw JWT string
+     * @return the role string (e.g. "ADMIN", "STUDENT", "INSTRUCTOR")
+     */
+    public String extractRole(String token) {
+        return getClaims(token).get("role", String.class);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────────

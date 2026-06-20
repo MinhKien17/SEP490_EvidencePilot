@@ -20,9 +20,12 @@ import java.util.List;
  * present in the {@code Authorization: Bearer <token>} header.
  *
  * <p>If the token is valid the authenticated principal is stored in the
- * {@link SecurityContextHolder} so that downstream security rules can
- * evaluate it.  Invalid or missing tokens are silently ignored here —
- * the {@link SecurityConfig} chain will then reject the request with 401
+ * {@link SecurityContextHolder} with a {@link SimpleGrantedAuthority}
+ * derived from the token's {@code role} claim (prefixed with {@code ROLE_}
+ * so that Spring Security's {@code hasRole()} works correctly).</p>
+ *
+ * <p>Invalid or missing tokens are silently ignored here — the
+ * {@link SecurityConfig} chain will then reject the request with 401
  * if the endpoint requires authentication.</p>
  */
 @Component
@@ -58,16 +61,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         //    (avoids overwriting an already-authenticated principal)
         if (SecurityContextHolder.getContext().getAuthentication() == null) {
             String email = jwtUtil.extractEmail(token);
+            String role  = jwtUtil.extractRole(token);
 
-            // For this prototype we have no UserDetailsService, so we build
-            // a minimal authentication token directly from the JWT claims.
-            // Grant a generic ROLE_USER authority — extend this when you
-            // need role-based access control from the token's claims.
+            // Build the authority from the JWT's role claim.
+            // Spring Security's hasRole("X") checks for "ROLE_X", so we
+            // prefix unless the claim already includes it.
+            String authority = (role != null && !role.startsWith("ROLE_"))
+                    ? "ROLE_" + role
+                    : (role != null ? role : "ROLE_USER");
+
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
                             email,
                             null,   // credentials — not needed post-authentication
-                            List.of(new SimpleGrantedAuthority("ROLE_USER"))
+                            List.of(new SimpleGrantedAuthority(authority))
                     );
 
             authentication.setDetails(
