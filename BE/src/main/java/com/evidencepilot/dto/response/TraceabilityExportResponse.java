@@ -1,4 +1,4 @@
-package com.evidencepilot.dto;
+package com.evidencepilot.dto.response;
 
 import com.evidencepilot.domain.enums.FeedbackStatus;
 import com.evidencepilot.domain.enums.ProjectStatus;

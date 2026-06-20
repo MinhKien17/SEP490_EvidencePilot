@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS `projects` (
     `student_id`  INT          NOT NULL,
     `title`       VARCHAR(255) NULL,
     `description` TEXT         NULL,
-    `status`      ENUM('ACTIVE','IN_REVIEW') NOT NULL DEFAULT 'ACTIVE',
+    `status`      ENUM('DRAFT','ACTIVE','IN_REVIEW','COMPLETED','ARCHIVED','DELETED') NOT NULL DEFAULT 'DRAFT',
     `active`      BOOLEAN      NOT NULL DEFAULT TRUE,
     `created_at`  DATETIME     NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),

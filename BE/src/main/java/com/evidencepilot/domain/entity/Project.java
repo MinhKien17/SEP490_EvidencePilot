@@ -5,12 +5,18 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
 /**
  * Represents a student's research project.
  * Maps to the {@code projects} table.
+ *
+ * <p>
+ * {@code createdAt} is populated automatically by Hibernate's
+ * {@link CreationTimestamp} on first persist — no manual setter needed.
+ * </p>
  */
 @Entity
 @Table(name = "projects")
@@ -40,11 +46,12 @@ public class Project {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
-    private ProjectStatus status = ProjectStatus.ACTIVE;
+    private ProjectStatus status = ProjectStatus.DRAFT;
 
     @Column(name = "active", nullable = false)
     private boolean active = true;
 
-    @Column(name = "created_at")
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 }

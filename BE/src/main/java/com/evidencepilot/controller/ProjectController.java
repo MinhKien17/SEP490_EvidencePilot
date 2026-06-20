@@ -1,94 +1,149 @@
 package com.evidencepilot.controller;
 
-import com.evidencepilot.domain.entity.Project;
 import com.evidencepilot.domain.entity.User;
-import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.dto.request.ProjectCreateRequest;
+import com.evidencepilot.dto.request.ProjectUpdateRequest;
+import com.evidencepilot.dto.response.ProjectResponse;
 import com.evidencepilot.service.CurrentUserService;
+import com.evidencepilot.service.ProjectService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
 /**
  * REST controller for Project CRUD operations.
  * Base path: /api/projects
+ *
+ * <p>
+ * <strong>Security</strong>: every endpoint is gated to
+ * {@code ROLE_STUDENT} via {@link PreAuthorize}. The authenticated
+ * student's ID is extracted server-side from the Spring Security
+ * context and forwarded to the service layer — it is never accepted
+ * from the client.
+ * </p>
  */
 @RestController
 @RequestMapping("/api/projects")
+@PreAuthorize("hasRole('STUDENT')")
 @RequiredArgsConstructor
+@Tag(name = "Projects", description = "Student project CRUD — all endpoints are tenant-scoped to the authenticated student")
 public class ProjectController {
 
-    private final ProjectRepository projectRepository;
+    private final ProjectService projectService;
     private final CurrentUserService currentUserService;
 
+    @Operation(
+            summary = "List my projects",
+            description = "Returns all active projects owned by the authenticated student. "
+                    + "Soft-deleted projects are excluded. "
+                    + "**Security:** Requires JWT Bearer Token. **Roles Allowed:** STUDENT")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Project list returned successfully"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Forbidden — caller does not have STUDENT role")
+    })
     @GetMapping
-    public List<Project> findAll() {
-        User currentUser = currentUserService.requireCurrentUser();
-        if (currentUserService.isAdmin(currentUser)) {
-            return projectRepository.findByActiveTrue();
-        }
-        return projectRepository.findByStudentIdAndActiveTrue(currentUser.getId());
+    public List<ProjectResponse> getAllProjects() {
+        Integer studentId = getAuthenticatedStudentId();
+        return projectService.getAllProjects(studentId);
     }
 
+    @Operation(
+            summary = "Get project by ID",
+            description = "Returns a single active project by its ID, scoped to the authenticated student. "
+                    + "Returns 404 if the project does not exist or belongs to another student. "
+                    + "**Security:** Requires JWT Bearer Token. **Roles Allowed:** STUDENT")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Project returned successfully"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Forbidden — caller does not have STUDENT role"),
+            @ApiResponse(responseCode = "404", description = "Project not found or not owned by caller")
+    })
     @GetMapping("/{id}")
-    public Project findById(@PathVariable Integer id) {
-        User currentUser = currentUserService.requireCurrentUser();
-        Project project = projectRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Project not found: " + id));
-        if (!project.isActive()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: " + id);
-        }
-        currentUserService.requireProjectAccess(currentUser, project);
-        return project;
+    public ProjectResponse getProjectById(@PathVariable Integer id) {
+        Integer studentId = getAuthenticatedStudentId();
+        return projectService.getProjectById(id, studentId);
     }
 
-    @GetMapping("/by-student/{studentId}")
-    public List<Project> findByStudent(@PathVariable Integer studentId) {
-        User currentUser = currentUserService.requireCurrentUser();
-        currentUserService.requireUserIdOrAdmin(currentUser, studentId);
-        return projectRepository.findByStudentIdAndActiveTrue(studentId);
-    }
-
+    @Operation(
+            summary = "Create a new project",
+            description = "Creates a new project owned by the authenticated student. "
+                    + "Status defaults to DRAFT; the student ID is set server-side from the JWT. "
+                    + "**Security:** Requires JWT Bearer Token. **Roles Allowed:** STUDENT")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Project created successfully"),
+            @ApiResponse(responseCode = "400", description = "Validation error — invalid field values"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Forbidden — caller does not have STUDENT role")
+    })
     @PostMapping
-    public ResponseEntity<Project> create(@RequestBody Project project) {
-        User currentUser = currentUserService.requireCurrentUser();
-        if (!currentUserService.isAdmin(currentUser)) {
-            project.setStudent(currentUser);
-        }
-        Project saved = projectRepository.save(project);
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    public ResponseEntity<ProjectResponse> createProject(
+            @Valid @RequestBody ProjectCreateRequest request) {
+        Integer studentId = getAuthenticatedStudentId();
+        ProjectResponse response = projectService.createProject(request, studentId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @Operation(
+            summary = "Update project by ID",
+            description = "Updates the title and description of an existing project owned by the authenticated student. "
+                    + "Returns 404 if the project does not exist or belongs to another student. "
+                    + "**Security:** Requires JWT Bearer Token. **Roles Allowed:** STUDENT")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Project updated successfully"),
+            @ApiResponse(responseCode = "400", description = "Validation error — invalid field values"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Forbidden — caller does not have STUDENT role"),
+            @ApiResponse(responseCode = "404", description = "Project not found or not owned by caller")
+    })
     @PutMapping("/{id}")
-    public Project update(@PathVariable Integer id, @RequestBody Project project) {
-        User currentUser = currentUserService.requireCurrentUser();
-        Project existing = projectRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Project not found: " + id));
-        currentUserService.requireProjectWriteAccess(currentUser, existing);
-        project.setId(id);
-        if (!currentUserService.isAdmin(currentUser)) {
-            project.setStudent(existing.getStudent());
-        }
-        if (project.getStatus() == null) {
-            project.setStatus(existing.getStatus());
-        }
-        return projectRepository.save(project);
+    public ProjectResponse updateProject(
+            @PathVariable Integer id,
+            @Valid @RequestBody ProjectUpdateRequest request) {
+        Integer studentId = getAuthenticatedStudentId();
+        return projectService.updateProject(id, request, studentId);
     }
 
+    @Operation(
+            summary = "Soft-delete project by ID",
+            description = "Soft-deletes a project by setting active=false and status=DELETED. "
+                    + "The record is preserved in the database but excluded from all read queries. "
+                    + "Returns 404 if the project does not exist or belongs to another student. "
+                    + "**Security:** Requires JWT Bearer Token. **Roles Allowed:** STUDENT")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Project soft-deleted successfully"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Forbidden — caller does not have STUDENT role"),
+            @ApiResponse(responseCode = "404", description = "Project not found or not owned by caller")
+    })
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Integer id) {
-        User currentUser = currentUserService.requireCurrentUser();
-        Project existing = projectRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Project not found: " + id));
-        currentUserService.requireProjectWriteAccess(currentUser, existing);
-        existing.setActive(false);
-        projectRepository.save(existing);
+    public ResponseEntity<Void> deleteProject(@PathVariable Integer id) {
+        Integer studentId = getAuthenticatedStudentId();
+        projectService.deleteProject(id, studentId);
         return ResponseEntity.noContent().build();
+    }
+
+    // ------------------------------------------------------------------ //
+    // Internal helper
+    // ------------------------------------------------------------------ //
+
+    /**
+     * Extracts the authenticated student's database ID from the
+     * Spring Security context.
+     *
+     * @return the student's primary key ({@code users.id})
+     */
+    private Integer getAuthenticatedStudentId() {
+        User currentUser = currentUserService.requireCurrentUser();
+        return currentUser.getId();
     }
 }

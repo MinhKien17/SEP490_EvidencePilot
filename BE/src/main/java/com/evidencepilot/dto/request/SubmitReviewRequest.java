@@ -1,4 +1,4 @@
-package com.evidencepilot.dto;
+package com.evidencepilot.dto.request;
 
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;

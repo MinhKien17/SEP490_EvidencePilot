@@ -1,4 +1,4 @@
-package com.evidencepilot.dto;
+package com.evidencepilot.dto.response;
 
 import com.evidencepilot.domain.entity.User;
 import com.evidencepilot.domain.enums.UserRole;

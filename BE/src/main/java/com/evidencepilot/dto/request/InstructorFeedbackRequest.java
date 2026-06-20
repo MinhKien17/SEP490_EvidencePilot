@@ -1,4 +1,4 @@
-package com.evidencepilot.dto;
+package com.evidencepilot.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;

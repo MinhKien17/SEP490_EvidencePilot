@@ -1,4 +1,4 @@
-package com.evidencepilot.dto;
+package com.evidencepilot.dto.response;
 
 import java.time.Instant;
 import java.util.Map;

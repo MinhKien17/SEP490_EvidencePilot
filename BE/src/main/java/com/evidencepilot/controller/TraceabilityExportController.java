@@ -6,7 +6,7 @@ import com.evidencepilot.domain.entity.Project;
 import com.evidencepilot.domain.entity.Source;
 import com.evidencepilot.domain.entity.SourceReference;
 import com.evidencepilot.domain.entity.User;
-import com.evidencepilot.dto.TraceabilityExportResponse;
+import com.evidencepilot.dto.response.TraceabilityExportResponse;
 import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.GraphRepository;
