@@ -21,4 +21,5 @@ target/
 
 # ── Uploaded files (local dev only; in Docker they go in a volume) ─
 uploads/
-*.skils
+# ── Agent skill definitions (local dev only) ─────────────────────
+.skills/
