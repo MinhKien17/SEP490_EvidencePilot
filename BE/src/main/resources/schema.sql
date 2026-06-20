@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS `users` (
     `email`         VARCHAR(255) NOT NULL,
     `password_hash` VARCHAR(255) NOT NULL COMMENT 'BCrypt hash – never plain-text',
     `role`          ENUM('STUDENT','INSTRUCTOR','ADMIN') NOT NULL,
+    `first_name`    VARCHAR(100) NULL,
+    `last_name`     VARCHAR(100) NULL,
+    `age`           INT          NULL,
     `created_at`    DATETIME     NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     UNIQUE KEY `uq_users_email` (`email`)

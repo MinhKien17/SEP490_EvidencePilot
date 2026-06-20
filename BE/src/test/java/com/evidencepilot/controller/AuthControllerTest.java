@@ -3,7 +3,8 @@ package com.evidencepilot.controller;
 import com.evidencepilot.config.JwtUtil;
 import com.evidencepilot.domain.entity.User;
 import com.evidencepilot.domain.enums.UserRole;
-import com.evidencepilot.dto.RegisterRequest;
+import com.evidencepilot.dto.request.LoginRequest;
+import com.evidencepilot.dto.request.RegisterRequest;
 import com.evidencepilot.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -18,18 +19,19 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-class UserControllerTest {
+class AuthControllerTest {
 
     private final UserRepository userRepository = mock(UserRepository.class);
     private final JwtUtil jwtUtil = new JwtUtil("EvidencePilot-Test-Secret-Key-For-Jwt!!", 86_400_000L);
-    private final UserController controller =
-            new UserController(userRepository, new BCryptPasswordEncoder(), jwtUtil);
+    private final AuthController controller =
+            new AuthController(userRepository, new BCryptPasswordEncoder(), jwtUtil);
 
     @Test
-    void registerCreatesStudentAndDoesNotExposePasswordHash() {
+    void registerCreatesRequestedRoleAndDoesNotExposePasswordHash() {
         RegisterRequest request = new RegisterRequest();
         request.setEmail("student@example.com");
         request.setPassword("Passw0rd!");
+        request.setRole(UserRole.STUDENT);
 
         when(userRepository.existsByEmail("student@example.com")).thenReturn(false);
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
@@ -42,9 +44,10 @@ class UserControllerTest {
 
         var response = controller.register(request);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(response.getBody().email()).isEqualTo("student@example.com");
-        assertThat(response.getBody().role()).isEqualTo(UserRole.STUDENT);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).containsEntry("email", "student@example.com");
+        assertThat(response.getBody()).containsEntry("role", UserRole.STUDENT.name());
+        assertThat(response.getBody()).doesNotContainKey("passwordHash");
     }
 
     @Test
@@ -52,6 +55,7 @@ class UserControllerTest {
         RegisterRequest request = new RegisterRequest();
         request.setEmail("student@example.com");
         request.setPassword("Passw0rd!");
+        request.setRole(UserRole.STUDENT);
 
         when(userRepository.existsByEmail("student@example.com")).thenReturn(true);
 
@@ -71,13 +75,13 @@ class UserControllerTest {
 
         when(userRepository.findByEmail("instructor@example.com")).thenReturn(Optional.of(user));
 
-        var request = new com.evidencepilot.dto.LoginRequest();
+        LoginRequest request = new LoginRequest();
         request.setEmail("instructor@example.com");
         request.setPassword("Passw0rd!");
 
         var response = controller.login(request);
 
-        assertThat(jwtUtil.extractRole((String) response.getBody().get("token")))
+        assertThat(jwtUtil.extractRole(response.getBody().getToken()))
                 .isEqualTo(UserRole.INSTRUCTOR.name());
     }
 }
