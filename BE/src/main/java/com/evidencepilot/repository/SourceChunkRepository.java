@@ -15,5 +15,5 @@ public interface SourceChunkRepository extends JpaRepository<SourceChunk, Intege
 
     List<SourceChunk> findBySourceDatasetId(Integer datasetId);
 
-    long countSourceId(Integer sourceId);
+    long countBySourceId(Integer sourceId);
 }
