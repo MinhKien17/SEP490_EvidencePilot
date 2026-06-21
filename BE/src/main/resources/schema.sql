@@ -130,6 +130,7 @@ CREATE TABLE IF NOT EXISTS `source_chunks` (
     `chunk_index` INT     NOT NULL,
     `page`        INT     NULL,
     `text`        TEXT    NOT NULL,
+    `embedding`   TEXT    NULL,
     `active`      BOOLEAN NOT NULL DEFAULT TRUE,
     PRIMARY KEY (`id`),
     KEY `idx_source_chunks_source_active` (`source_id`, `active`, `chunk_index`),
