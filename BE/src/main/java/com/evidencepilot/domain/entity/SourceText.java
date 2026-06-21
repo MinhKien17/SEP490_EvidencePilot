@@ -21,6 +21,7 @@ public class SourceText {
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "source_id", nullable = false, unique = true)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Source source;
 
     @Column(name = "extracted_text", nullable = false, columnDefinition = "LONGTEXT")

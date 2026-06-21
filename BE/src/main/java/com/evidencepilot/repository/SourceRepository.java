@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface SourceRepository extends JpaRepository<Source, Integer> {
@@ -28,4 +29,8 @@ public interface SourceRepository extends JpaRepository<Source, Integer> {
     List<Source> findByProjectStudentIdAndActiveTrue(Integer studentId);
 
     List<Source> findByDatasetInstructorIdAndActiveTrue(Integer instructorId);
+
+    Optional<Source> findByIdAndProjectId(Integer id, Integer projectId);
+
+    Optional<Source> findByIdAndProjectIdAndActiveTrue(Integer id, Integer projectId);
 }

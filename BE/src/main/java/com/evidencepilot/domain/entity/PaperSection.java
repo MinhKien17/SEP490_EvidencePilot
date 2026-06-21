@@ -19,6 +19,7 @@ public class PaperSection {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "paper_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Paper paper;
 
     @Column(name = "section_index", nullable = false)

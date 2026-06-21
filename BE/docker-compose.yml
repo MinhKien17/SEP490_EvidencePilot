@@ -1,7 +1,7 @@
 services:
 
   # ─────────────────────────────────────────────────────────────
-  # MySQL 8.0 database
+  # MySQL 8.0 database (Relational Truth)
   # ─────────────────────────────────────────────────────────────
   db:
     image: mysql:8.0
@@ -9,26 +9,32 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
-      MYSQL_DATABASE:      ${MYSQL_DATABASE:-evidence_pilot}
-      MYSQL_USER:          ${MYSQL_USER:-ep_user}
-      MYSQL_PASSWORD:      ${MYSQL_PASSWORD:-ep_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-evidence_pilot}
+      MYSQL_USER: ${MYSQL_USER:-ep_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ep_password}
     ports:
       - "${DB_PORT_HOST:-3306}:3306"
     volumes:
       - db_data:/var/lib/mysql
-      # schema.sql is executed ONCE on the very first container start
-      # (when db_data volume is empty).  Subsequent starts skip it.
-      # The file uses CREATE TABLE IF NOT EXISTS so re-running is safe.
       - ./src/main/resources/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
     healthcheck:
-      # Use 127.0.0.1 (TCP) not localhost (Unix socket) so the healthcheck
-      # tests the same transport that Spring Boot's JDBC driver uses.
-      # $$MYSQL_ROOT_PASSWORD reads the env var from inside the container.
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent" ]
       interval: 10s
       timeout: 5s
       retries: 15
       start_period: 60s
+
+  # ─────────────────────────────────────────────────────────────
+  # Qdrant Vector Engine (Semantic Math & Search)
+  # ─────────────────────────────────────────────────────────────
+  vector_db:
+    image: qdrant/qdrant:latest
+    container_name: evidence_pilot_qdrant
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_PORT_HOST:-6333}:6333" # REST API
+    volumes:
+      - qdrant_data:/qdrant/storage
 
   # ─────────────────────────────────────────────────────────────
   # Spring Boot backend
@@ -42,13 +48,17 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      vector_db:
+        condition: service_started
     environment:
       # ── Database ────────────────────────────────────────────
-      DB_HOST:     db
-      DB_PORT:     3306
-      DB_NAME:     ${MYSQL_DATABASE:-evidence_pilot}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${MYSQL_DATABASE:-evidence_pilot}
       DB_USERNAME: ${MYSQL_USER:-ep_user}
       DB_PASSWORD: ${MYSQL_PASSWORD:-ep_password}
+      # ── Vector Engine ───────────────────────────────────────
+      QDRANT_URL: http://vector_db:6333
       # ── File storage ─────────────────────────────────────────
       APP_UPLOAD_DIR: /app/uploads
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
@@ -63,9 +73,9 @@ services:
     ports:
       - "${BACKEND_PORT_HOST:-8080}:8080"
     volumes:
-      # Named volume so uploaded files survive container restarts
       - uploads_data:/app/uploads
 
 volumes:
   db_data:
   uploads_data:
+  qdrant_data:

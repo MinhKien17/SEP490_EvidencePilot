@@ -35,6 +35,7 @@ public class InstructorFeedback {
      */
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "request_id", nullable = false, unique = true)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private FeedbackRequest request;
 
     /**
@@ -43,6 +44,7 @@ public class InstructorFeedback {
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "instructor_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private User instructor;
 
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")

@@ -24,6 +24,7 @@ import java.util.Map;
  *   <li>{@code GET  /health}           – liveness probe</li>
  *   <li>{@code GET  /ai/models}        – list available Ollama models</li>
  *   <li>{@code POST /ai/generate}      – raw prompt generation</li>
+ *   <li>{@code POST /ai/embeddings}    – dense vector embedding generation</li>
  *   <li>{@code POST /match/claim}      – semantic source search for a claim</li>
  *   <li>{@code POST /process/claim}    – deep claim analysis against a known source</li>
  *   <li>{@code POST /review/paper}     – structural review of an uploaded paper</li>
@@ -143,6 +144,30 @@ public class AiModelClient {
         log.info("Calling POST /review/paper (paperId={}, targetStyle={}, useAi={})",
                 request.paperId(), request.targetStyle(), request.useAi());
         return post("/review/paper", request, PaperReviewResponse.class);
+    }
+
+    // ── Embeddings ─────────────────────────────────────────────────────────────
+
+    /**
+     * Calls {@code POST /ai/embeddings} to generate a dense vector embedding
+     * for the given text.
+     *
+     * <p>The returned list contains floating-point values representing the
+     * text's position in the model's semantic space.  Typical dimensionality
+     * is 384 (nomic-embed-text) or 1536 (text-embedding-3-small).</p>
+     *
+     * @param text the text to embed
+     * @return the dense vector as a list of floats
+     * @throws AiApiException if the AI service returns null/empty or a non-2xx status
+     */
+    public List<Float> generateEmbedding(String text) {
+        log.info("Calling POST /ai/embeddings (text length={})", text.length());
+        EmbeddingResponse response = post("/ai/embeddings",
+                new EmbeddingRequest(text), EmbeddingResponse.class);
+        if (response == null || response.embedding() == null || response.embedding().isEmpty()) {
+            throw new AiApiException("/ai/embeddings", "returned null or empty embedding", null);
+        }
+        return response.embedding();
     }
 
     private <T> T get(String endpoint, Class<T> responseType) {

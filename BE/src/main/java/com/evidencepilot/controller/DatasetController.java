@@ -3,6 +3,7 @@ package com.evidencepilot.controller;
 import com.evidencepilot.domain.entity.Dataset;
 import com.evidencepilot.domain.entity.User;
 import com.evidencepilot.domain.enums.UserRole;
+import com.evidencepilot.dto.response.DatasetResponseDto;
 import com.evidencepilot.repository.DatasetRepository;
 import com.evidencepilot.service.CurrentUserService;
 import lombok.RequiredArgsConstructor;
@@ -26,19 +27,21 @@ public class DatasetController {
     private final CurrentUserService currentUserService;
 
     @GetMapping
-    public List<Dataset> findAll() {
+    public List<DatasetResponseDto> findAll() {
         User currentUser = currentUserService.requireCurrentUser();
+        List<Dataset> datasets;
         if (currentUserService.isAdmin(currentUser)) {
-            return datasetRepository.findByActiveTrue();
+            datasets = datasetRepository.findByActiveTrue();
+        } else if (currentUserService.isInstructor(currentUser)) {
+            datasets = datasetRepository.findByInstructorIdAndActiveTrue(currentUser.getId());
+        } else {
+            datasets = List.of();
         }
-        if (currentUserService.isInstructor(currentUser)) {
-            return datasetRepository.findByInstructorIdAndActiveTrue(currentUser.getId());
-        }
-        return List.of();
+        return datasets.stream().map(DatasetResponseDto::fromEntity).toList();
     }
 
     @GetMapping("/{id}")
-    public Dataset findById(@PathVariable Integer id) {
+    public DatasetResponseDto findById(@PathVariable Integer id) {
         User currentUser = currentUserService.requireCurrentUser();
         Dataset dataset = datasetRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -47,29 +50,31 @@ public class DatasetController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Dataset not found: " + id);
         }
         currentUserService.requireDatasetAccess(currentUser, dataset);
-        return dataset;
+        return DatasetResponseDto.fromEntity(dataset);
     }
 
     @GetMapping("/by-instructor/{instructorId}")
-    public List<Dataset> findByInstructor(@PathVariable Integer instructorId) {
+    public List<DatasetResponseDto> findByInstructor(@PathVariable Integer instructorId) {
         User currentUser = currentUserService.requireCurrentUser();
         currentUserService.requireUserIdOrAdmin(currentUser, instructorId);
-        return datasetRepository.findByInstructorIdAndActiveTrue(instructorId);
+        return datasetRepository.findByInstructorIdAndActiveTrue(instructorId).stream()
+                .map(DatasetResponseDto::fromEntity)
+                .toList();
     }
 
     @PostMapping
-    public ResponseEntity<Dataset> create(@RequestBody Dataset dataset) {
+    public ResponseEntity<DatasetResponseDto> create(@RequestBody Dataset dataset) {
         User currentUser = currentUserService.requireCurrentUser();
         currentUserService.requireRole(currentUser, UserRole.INSTRUCTOR);
         if (!currentUserService.isAdmin(currentUser)) {
             dataset.setInstructor(currentUser);
         }
         Dataset saved = datasetRepository.save(dataset);
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+        return ResponseEntity.status(HttpStatus.CREATED).body(DatasetResponseDto.fromEntity(saved));
     }
 
     @PutMapping("/{id}")
-    public Dataset update(@PathVariable Integer id, @RequestBody Dataset dataset) {
+    public DatasetResponseDto update(@PathVariable Integer id, @RequestBody Dataset dataset) {
         User currentUser = currentUserService.requireCurrentUser();
         Dataset existing = datasetRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -79,7 +84,8 @@ public class DatasetController {
         if (!currentUserService.isAdmin(currentUser)) {
             dataset.setInstructor(existing.getInstructor());
         }
-        return datasetRepository.save(dataset);
+        Dataset saved = datasetRepository.save(dataset);
+        return DatasetResponseDto.fromEntity(saved);
     }
 
     @DeleteMapping("/{id}")

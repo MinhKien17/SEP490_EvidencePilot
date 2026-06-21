@@ -29,6 +29,7 @@ public class Paper {
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Project project;
 
     @Column(name = "file_url", nullable = false)

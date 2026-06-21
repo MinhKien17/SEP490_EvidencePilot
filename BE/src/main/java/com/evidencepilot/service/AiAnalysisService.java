@@ -4,9 +4,13 @@ import com.evidencepilot.ai.AiModelClient;
 import com.evidencepilot.ai.AiModelClient.AiApiException;
 import com.evidencepilot.ai.dto.*;
 import com.evidencepilot.domain.entity.Claim;
-import com.evidencepilot.domain.entity.Graph;
+import com.evidencepilot.domain.entity.EvidenceEdge;
+import com.evidencepilot.domain.entity.SourceChunk;
+import com.evidencepilot.exception.AiValidationException;
 import com.evidencepilot.repository.ClaimRepository;
-import com.evidencepilot.repository.GraphRepository;
+import com.evidencepilot.repository.EvidenceEdgeRepository;
+import com.evidencepilot.repository.SourceChunkRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -14,8 +18,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.LinkedHashMap;
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
+
 
 /**
  * Orchestrates the full AI claim-analysis pipeline.
@@ -35,7 +41,7 @@ import java.util.Map;
  * <h2>Persistence</h2>
  * <ul>
  *   <li>{@code Claim.aiConfidenceScore} ← {@code confidence}</li>
- *   <li>{@code Graph.graphData}         ← full response payload as a JSON document</li>
+ *   <li>{@code EvidenceEdge}             ← stores the structured analysis verdict, explanation, and missing evidence</li>
  * </ul>
  *
  * <p>Both writes happen inside a single {@link Transactional} boundary so a partial
@@ -48,8 +54,10 @@ public class AiAnalysisService {
 
     private final AiModelClient aiModelClient;
     private final ClaimRepository claimRepository;
-    private final GraphRepository graphRepository;
+    private final EvidenceEdgeRepository evidenceEdgeRepository;
+    private final SourceChunkRepository sourceChunkRepository;
     private final ClaimMatchingService claimMatchingService;
+    private final ObjectMapper objectMapper;
 
     // ── Primary pipeline ───────────────────────────────────────────────────────
 
@@ -82,8 +90,13 @@ public class AiAnalysisService {
         log.info("Phase 1 complete – top match: sourceId={}, suitability={}, score={}",
                 topMatch.sourceId(), topMatch.suitability(), topMatch.score());
 
+        Integer chunkId = null;
+        try {
+            chunkId = Integer.valueOf(topMatch.chunkId());
+        } catch (NumberFormatException ignored) {}
+
         // ── Phase 2: deep analysis with the winning source ─────────────────────
-        return analyzeAndPersist(claim, topMatch.sourceId(), topMatch.excerpt(), null);
+        return analyzeAndPersistWithChunk(claim, topMatch.sourceId(), chunkId, topMatch.excerpt(), null);
     }
 
     /**
@@ -101,6 +114,10 @@ public class AiAnalysisService {
      */
     @Transactional
     public Claim analyzeAndPersist(Claim claim, String sourceId, String excerpt, String title) {
+        return analyzeAndPersistWithChunk(claim, sourceId, null, excerpt, title);
+    }
+
+    private Claim analyzeAndPersistWithChunk(Claim claim, String sourceId, Integer chunkId, String excerpt, String title) {
         // ── Phase 2: process/claim ─────────────────────────────────────────────
         log.info("Phase 2 – processing claim {} against sourceId={}", claim.getId(), sourceId);
 
@@ -124,42 +141,89 @@ public class AiAnalysisService {
                     "AI process/claim returned null for claim " + claim.getId());
         }
 
+        // ── Validate AI response integrity ─────────────────────────────────────
+        if (response.verdict() == null) {
+            throw new AiValidationException(
+                    "AI returned null verdict for claim " + claim.getId());
+        }
+        if (response.confidence() == null) {
+            throw new AiValidationException(
+                    "AI returned null confidence for claim " + claim.getId());
+        }
+        if (response.confidence().compareTo(BigDecimal.ZERO) < 0
+                || response.confidence().compareTo(BigDecimal.ONE) > 0) {
+            throw new AiValidationException(
+                    "AI returned out-of-range confidence " + response.confidence()
+                    + " for claim " + claim.getId() + ". Must be 0.0–1.0.");
+        }
+
         log.info("Phase 2 complete – verdict={}, confidence={}", response.verdict(), response.confidence());
 
         // ── Persist: update Claim.aiConfidenceScore ────────────────────────────
         claim.setAiConfidenceScore(response.confidence());
         Claim updatedClaim = claimRepository.save(claim);
 
-        // ── Persist: upsert Graph with full response JSON ──────────────────────
-        Map<String, Object> graphData = buildGraphData(response, sourceId);
-        Graph graph = graphRepository.findByClaimId(claim.getId()).orElse(new Graph());
-        graph.setClaim(updatedClaim);
-        graph.setGraphData(graphData);
-        graphRepository.save(graph);
+        // ── Find or fallback SourceChunk ───────────────────────────────────────
+        SourceChunk sourceChunk = null;
+        if (chunkId != null) {
+            sourceChunk = sourceChunkRepository.findById(chunkId).orElse(null);
+        }
+        if (sourceChunk == null) {
+            Integer srcIdVal = null;
+            try {
+                srcIdVal = Integer.valueOf(sourceId);
+            } catch (NumberFormatException ignored) {}
+            if (srcIdVal != null) {
+                List<SourceChunk> chunks = sourceChunkRepository.findBySourceIdAndActiveTrueOrderByChunkIndex(srcIdVal);
+                // 1. Exact match
+                for (SourceChunk c : chunks) {
+                    if (c.getText().equals(excerpt)) {
+                        sourceChunk = c;
+                        break;
+                    }
+                }
+                // 2. Substring/contains match
+                if (sourceChunk == null) {
+                    for (SourceChunk c : chunks) {
+                        if (c.getText().contains(excerpt) || excerpt.contains(c.getText())) {
+                            sourceChunk = c;
+                            break;
+                        }
+                    }
+                }
+                // 3. Fallback to first chunk if still null
+                if (sourceChunk == null && !chunks.isEmpty()) {
+                    sourceChunk = chunks.get(0);
+                }
+            }
+        }
 
-        log.info("Persisted AI results for claim {}", claim.getId());
+        if (sourceChunk == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Could not find or match a valid source chunk for source ID: " + sourceId);
+        }
+
+        // ── Persist: Create EvidenceEdge ───────────────────────────────────────
+        EvidenceEdge edge = new EvidenceEdge();
+        edge.setClaim(updatedClaim);
+        edge.setSourceChunk(sourceChunk);
+        edge.setVerdict(response.verdict());
+        edge.setConfidenceScore(response.confidence());
+        edge.setExplanation(response.explanation());
+
+        String missingEvidenceJson = null;
+        if (response.missingEvidence() != null) {
+            try {
+                missingEvidenceJson = objectMapper.writeValueAsString(response.missingEvidence());
+            } catch (Exception e) {
+                log.error("Failed to serialize missing evidence: {}", response.missingEvidence(), e);
+            }
+        }
+        edge.setMissingEvidence(missingEvidenceJson);
+
+        evidenceEdgeRepository.save(edge);
+
+        log.info("Persisted evidence edge for claim {}", claim.getId());
         return updatedClaim;
-    }
-
-    // ── Internal helpers ───────────────────────────────────────────────────────
-
-    /**
-     * Converts a {@link ClaimAnalysisResponse} to the {@code Map<String,Object>}
-     * format expected by {@link Graph#graphData}.
-     *
-     * <p>All Swagger response fields are preserved so the frontend can display
-     * the full AI rationale without a second round-trip.</p>
-     */
-    private static Map<String, Object> buildGraphData(ClaimAnalysisResponse response,
-                                                      String sourceIdUsed) {
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("verdict", response.verdict());
-        map.put("confidence", response.confidence());
-        map.put("explanation", response.explanation());
-        map.put("matched_source_ids", response.matchedSourceIds());
-        map.put("missing_evidence", response.missingEvidence());
-        // Record which source was used so the result is self-documenting in the DB
-        map.put("_source_id_used", sourceIdUsed);
-        return map;
     }
 }

@@ -1,5 +1,6 @@
 package com.evidencepilot.service;
 
+import com.evidencepilot.ai.AiModelClient;
 import com.evidencepilot.domain.entity.Source;
 import com.evidencepilot.domain.entity.SourceChunk;
 import com.evidencepilot.domain.entity.SourceReference;
@@ -8,6 +9,7 @@ import com.evidencepilot.repository.SourceChunkRepository;
 import com.evidencepilot.repository.SourceReferenceRepository;
 import com.evidencepilot.repository.SourceTextRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -39,19 +41,21 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SourceExtractionService {
 
     private static final int MAX_CHUNK_CHARS = 900;
-    private static final Pattern REFERENCE_PREFIX =
-            Pattern.compile("^\\s*(?:\\[\\d+]|\\d+[).]|[-*])\\s*");
-    private static final Pattern YEAR_PATTERN =
-            Pattern.compile("\\((?<paren>(?:18|19|20)\\d{2})\\)|\\b(?<plain>(?:18|19|20)\\d{2})\\b");
+    private static final Pattern REFERENCE_PREFIX = Pattern.compile("^\\s*(?:\\[\\d+]|\\d+[).]|[-*])\\s*");
+    private static final Pattern YEAR_PATTERN = Pattern
+            .compile("\\((?<paren>(?:18|19|20)\\d{2})\\)|\\b(?<plain>(?:18|19|20)\\d{2})\\b");
 
+    private final AiModelClient aiModelClient;
     private final SourceTextRepository sourceTextRepository;
     private final SourceChunkRepository sourceChunkRepository;
     private final SourceReferenceRepository sourceReferenceRepository;
+    private final QdrantClient qdrantClient;
 
     @Value("${mineru.command:}")
     private String mineruCommand;
@@ -86,7 +90,32 @@ public class SourceExtractionService {
             chunk.setActive(true);
             chunks.add(chunk);
         }
+
+        // ── Generate embeddings for each chunk ──────────────────────────────────
+        for (SourceChunk chunk : chunks) {
+            List<Float> vector = aiModelClient.generateEmbedding(chunk.getText());
+            chunk.setEmbedding(vector.toString());
+        }
+
         sourceChunkRepository.saveAll(chunks);
+
+        // ── Sync embedded chunks to Qdrant (two-step write) ─────────────────────
+        // MySQL is the relational truth; Qdrant is the search index.
+        // Failures here are logged but do NOT roll back the MySQL persist.
+        String projectId = source.getProject() != null
+                ? String.valueOf(source.getProject().getId())
+                : null;
+
+        for (SourceChunk chunk : chunks) {
+            if (chunk.getEmbedding() == null || chunk.getEmbedding().isBlank()) {
+                continue; // no embedding → nothing to index
+            }
+            List<Float> vector = parseEmbeddingString(chunk.getEmbedding());
+            qdrantClient.upsertVector(
+                    String.valueOf(chunk.getId()),
+                    vector,
+                    projectId != null ? projectId : "0");
+        }
 
         List<SourceReference> references = extractReferences(extracted.text(), source);
         sourceReferenceRepository.saveAll(references);
@@ -403,6 +432,26 @@ public class SourceExtractionService {
                     "No text could be extracted from uploaded file.");
         }
         return cleaned;
+    }
+
+    /**
+     * Parses a JSON-array embedding string (e.g. {@code "[0.123, -0.456, ...]"})
+     * back into a {@code List<Float>} for Qdrant upsert.
+     */
+    private static List<Float> parseEmbeddingString(String raw) {
+        String inner = raw.trim();
+        if (inner.startsWith("[")) {
+            inner = inner.substring(1);
+        }
+        if (inner.endsWith("]")) {
+            inner = inner.substring(0, inner.length() - 1);
+        }
+        String[] parts = inner.split(",");
+        List<Float> result = new ArrayList<>(parts.length);
+        for (String part : parts) {
+            result.add(Float.parseFloat(part.trim()));
+        }
+        return result;
     }
 
     private String blankToNull(String value) {

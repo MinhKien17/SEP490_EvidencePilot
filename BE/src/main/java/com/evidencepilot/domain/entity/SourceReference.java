@@ -19,6 +19,7 @@ public class SourceReference {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "source_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Source source;
 
     @Column(name = "reference_index", nullable = false)

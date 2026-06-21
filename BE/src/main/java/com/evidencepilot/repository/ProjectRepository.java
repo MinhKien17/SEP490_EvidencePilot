@@ -36,4 +36,6 @@ public interface ProjectRepository extends JpaRepository<Project, Integer> {
      * @return active projects for the student (never {@code null})
      */
     List<Project> findAllByStudentIdAndActiveTrue(Integer studentId);
+
+    boolean existsByIdAndStudentIdAndActiveTrue(Integer id, Integer studentId);
 }

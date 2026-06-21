@@ -1,6 +1,7 @@
 package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.response.ApiErrorResponse;
+import com.evidencepilot.exception.AiValidationException;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -58,6 +59,14 @@ public class GlobalExceptionHandler {
         HttpStatus status = HttpStatus.valueOf(exception.getStatusCode().value());
         String message = exception.getReason() == null ? status.getReasonPhrase() : exception.getReason();
         return build(status, message, request);
+    }
+
+    @ExceptionHandler(AiValidationException.class)
+    public ResponseEntity<ApiErrorResponse> handleAiValidation(
+            AiValidationException exception,
+            HttpServletRequest request) {
+
+        return build(HttpStatus.BAD_GATEWAY, exception.getMessage(), request);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

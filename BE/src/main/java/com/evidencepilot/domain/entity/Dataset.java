@@ -29,6 +29,7 @@ public class Dataset {
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "instructor_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private User instructor;
 
     @Column(name = "title")

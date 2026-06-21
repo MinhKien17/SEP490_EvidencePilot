@@ -36,6 +36,7 @@ public class Project {
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "student_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private User student;
 
     @Column(name = "title")

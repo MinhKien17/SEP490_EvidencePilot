@@ -2,6 +2,7 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.ai.dto.ClaimMatch;
 import com.evidencepilot.domain.entity.Claim;
+import com.evidencepilot.domain.entity.EvidenceEdge;
 import com.evidencepilot.domain.entity.Project;
 import com.evidencepilot.domain.entity.Source;
 import com.evidencepilot.domain.entity.SourceReference;
@@ -9,13 +10,15 @@ import com.evidencepilot.domain.entity.User;
 import com.evidencepilot.dto.response.TraceabilityExportResponse;
 import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
-import com.evidencepilot.repository.GraphRepository;
+import com.evidencepilot.repository.EvidenceEdgeRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.SourceReferenceRepository;
 import com.evidencepilot.repository.SourceRepository;
 import com.evidencepilot.service.ClaimMatchingService;
 import com.evidencepilot.service.CurrentUserService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/projects")
 @RequiredArgsConstructor
@@ -40,9 +44,10 @@ public class TraceabilityExportController {
     private final SourceRepository sourceRepository;
     private final SourceReferenceRepository sourceReferenceRepository;
     private final FeedbackRequestRepository feedbackRequestRepository;
-    private final GraphRepository graphRepository;
+    private final EvidenceEdgeRepository evidenceEdgeRepository;
     private final ClaimMatchingService claimMatchingService;
     private final CurrentUserService currentUserService;
+    private final ObjectMapper objectMapper;
 
     @GetMapping("/{projectId}/traceability-export")
     public TraceabilityExportResponse export(@PathVariable Integer projectId) {
@@ -112,9 +117,37 @@ public class TraceabilityExportController {
                 .map(match -> matchExport(match, firstReferenceBySource))
                 .toList();
 
-        Map<String, Object> graphData = graphRepository.findByClaimId(claim.getId())
-                .map(graph -> graph.getGraphData())
-                .orElse(Map.of("status", MISSING));
+        List<EvidenceEdge> edges = evidenceEdgeRepository.findByClaimId(claim.getId());
+        Map<String, Object> graphData;
+        if (edges.isEmpty()) {
+            graphData = Map.of("status", MISSING);
+        } else {
+            EvidenceEdge edge = edges.get(0);
+            Map<String, Object> map = new java.util.LinkedHashMap<>();
+            map.put("verdict", edge.getVerdict());
+            map.put("confidence", edge.getConfidenceScore());
+            map.put("explanation", edge.getExplanation());
+
+            if (edge.getSourceChunk() != null && edge.getSourceChunk().getSource() != null) {
+                map.put("matched_source_ids", List.of(String.valueOf(edge.getSourceChunk().getSource().getId())));
+                map.put("_source_id_used", String.valueOf(edge.getSourceChunk().getSource().getId()));
+            } else {
+                map.put("matched_source_ids", List.of());
+                map.put("_source_id_used", "");
+            }
+
+            List<String> missingEvidenceList = List.of();
+            if (edge.getMissingEvidence() != null && !edge.getMissingEvidence().isBlank()) {
+                try {
+                    missingEvidenceList = objectMapper.readValue(edge.getMissingEvidence(),
+                            new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+                } catch (Exception e) {
+                    log.error("Failed to parse missing evidence JSON for edge {}: {}", edge.getId(), edge.getMissingEvidence(), e);
+                }
+            }
+            map.put("missing_evidence", missingEvidenceList);
+            graphData = map;
+        }
 
         return new TraceabilityExportResponse.TraceabilityClaim(
                 claim.getId(),

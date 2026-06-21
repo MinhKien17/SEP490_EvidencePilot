@@ -43,6 +43,7 @@ public class Source {
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id")
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Project project;
 
     /**
@@ -51,6 +52,7 @@ public class Source {
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "dataset_id")
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Dataset dataset;
 
     /**
@@ -59,5 +61,6 @@ public class Source {
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "uploaded_by", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private User uploadedBy;
 }

@@ -4,6 +4,7 @@ import com.evidencepilot.ai.dto.ClaimMatchResponse;
 import com.evidencepilot.domain.entity.Claim;
 import com.evidencepilot.domain.entity.Project;
 import com.evidencepilot.domain.entity.User;
+import com.evidencepilot.dto.response.ClaimResponseDto;
 import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.AiAnalysisService;
@@ -36,16 +37,19 @@ public class ClaimController {
     // ── CRUD ───────────────────────────────────────────────────────────────────
 
     @GetMapping
-    public List<Claim> findAll() {
+    public List<ClaimResponseDto> findAll() {
         User currentUser = currentUserService.requireCurrentUser();
+        List<Claim> claims;
         if (currentUserService.isAdmin(currentUser)) {
-            return claimRepository.findByActiveTrue();
+            claims = claimRepository.findByActiveTrue();
+        } else {
+            claims = claimRepository.findByProjectStudentIdAndActiveTrue(currentUser.getId());
         }
-        return claimRepository.findByProjectStudentIdAndActiveTrue(currentUser.getId());
+        return claims.stream().map(ClaimResponseDto::fromEntity).toList();
     }
 
     @GetMapping("/{id}")
-    public Claim findById(@PathVariable Integer id) {
+    public ClaimResponseDto findById(@PathVariable Integer id) {
         User currentUser = currentUserService.requireCurrentUser();
         Claim claim = claimRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -54,21 +58,23 @@ public class ClaimController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Claim not found: " + id);
         }
         currentUserService.requireClaimAccess(currentUser, claim);
-        return claim;
+        return ClaimResponseDto.fromEntity(claim);
     }
 
     @GetMapping("/by-project/{projectId}")
-    public List<Claim> findByProject(@PathVariable Integer projectId) {
+    public List<ClaimResponseDto> findByProject(@PathVariable Integer projectId) {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Project not found: " + projectId));
         currentUserService.requireProjectWriteAccess(currentUser, project);
-        return claimRepository.findByProjectIdAndActiveTrue(projectId);
+        return claimRepository.findByProjectIdAndActiveTrue(projectId).stream()
+                .map(ClaimResponseDto::fromEntity)
+                .toList();
     }
 
     @PostMapping
-    public ResponseEntity<Claim> create(@RequestBody Claim claim) {
+    public ResponseEntity<ClaimResponseDto> create(@RequestBody Claim claim) {
         User currentUser = currentUserService.requireCurrentUser();
         if (claim.getProject() == null || claim.getProject().getId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project is required.");
@@ -79,11 +85,11 @@ public class ClaimController {
         currentUserService.requireProjectAccess(currentUser, project);
         claim.setProject(project);
         Claim saved = claimRepository.save(claim);
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ClaimResponseDto.fromEntity(saved));
     }
 
     @PutMapping("/{id}")
-    public Claim update(@PathVariable Integer id, @RequestBody Claim claim) {
+    public ClaimResponseDto update(@PathVariable Integer id, @RequestBody Claim claim) {
         User currentUser = currentUserService.requireCurrentUser();
         Claim existing = claimRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -91,7 +97,8 @@ public class ClaimController {
         currentUserService.requireProjectWriteAccess(currentUser, existing.getProject());
         claim.setId(id);
         claim.setProject(existing.getProject());
-        return claimRepository.save(claim);
+        Claim saved = claimRepository.save(claim);
+        return ClaimResponseDto.fromEntity(saved);
     }
 
     @DeleteMapping("/{id}")
@@ -125,10 +132,10 @@ public class ClaimController {
      * @param sourceId optional – AI-service source identifier to use directly
      * @param excerpt  optional – text excerpt from that source (required when sourceId is set)
      * @param title    optional – source title forwarded to the AI for context
-     * @return the updated Claim with {@code aiConfidenceScore} set and the Graph persisted
+     * @return the updated Claim with {@code aiConfidenceScore} set and the EvidenceEdge persisted
      */
     @PostMapping("/{id}/analyze")
-    public Claim analyze(
+    public ClaimResponseDto analyze(
             @PathVariable Integer id,
             @RequestParam(required = false) String sourceId,
             @RequestParam(required = false) String excerpt,
@@ -151,11 +158,13 @@ public class ClaimController {
         }
         boolean manualMode = hasSourceId && hasExcerpt;
 
+        Claim result;
         if (manualMode) {
-            return aiAnalysisService.analyzeAndPersist(claim, sourceId, excerpt, title);
+            result = aiAnalysisService.analyzeAndPersist(claim, sourceId, excerpt, title);
         } else {
-            return aiAnalysisService.analyzeAndPersist(claim);
+            result = aiAnalysisService.analyzeAndPersist(claim);
         }
+        return ClaimResponseDto.fromEntity(result);
     }
 
     @GetMapping("/{id}/matches")

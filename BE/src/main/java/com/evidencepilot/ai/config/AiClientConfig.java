@@ -5,8 +5,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
+import java.time.Duration;
 import java.util.List;
 
 /**
@@ -52,7 +54,12 @@ public class AiClientConfig {
      */
     @Bean("aiRestClient")
     public RestClient aiRestClient() {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofSeconds(5));
+        requestFactory.setReadTimeout(Duration.ofSeconds(30));
+
         RestClient.Builder builder = RestClient.builder()
+                .requestFactory(requestFactory)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 // Bypass ngrok browser-interstitial for any ngrok-hosted AI endpoint

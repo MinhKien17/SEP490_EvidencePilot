@@ -30,6 +30,7 @@ public class FeedbackRequest {
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Project project;
 
     /**
@@ -38,6 +39,7 @@ public class FeedbackRequest {
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "student_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private User student;
 
     /**
@@ -46,6 +48,7 @@ public class FeedbackRequest {
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "instructor_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private User instructor;
 
     @Enumerated(EnumType.STRING)

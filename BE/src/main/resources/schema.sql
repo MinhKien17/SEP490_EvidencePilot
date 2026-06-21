@@ -193,14 +193,20 @@ CREATE TABLE IF NOT EXISTS `paper_sections` (
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `graphs` (
-    `id`         INT  NOT NULL AUTO_INCREMENT,
-    `claim_id`   INT  NOT NULL,
-    `graph_data` JSON NOT NULL COMMENT 'AI ClaimAnalysisResponse payload',
+CREATE TABLE IF NOT EXISTS `evidence_edges` (
+    `id`               VARCHAR(36)    NOT NULL,
+    `claim_id`         INT            NOT NULL,
+    `source_chunk_id`  INT            NOT NULL,
+    `verdict`          VARCHAR(255)   NOT NULL,
+    `confidence_score` DECIMAL(5,4)   NOT NULL,
+    `explanation`      TEXT           NOT NULL,
+    `missing_evidence` TEXT           NULL,
     PRIMARY KEY (`id`),
-    UNIQUE KEY `uq_graphs_claim` (`claim_id`),
-    CONSTRAINT `fk_graphs_claim`
+    CONSTRAINT `fk_evidence_edges_claim`
         FOREIGN KEY (`claim_id`) REFERENCES `claims` (`id`)
+        ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT `fk_evidence_edges_source_chunk`
+        FOREIGN KEY (`source_chunk_id`) REFERENCES `source_chunks` (`id`)
         ON UPDATE CASCADE ON DELETE CASCADE
 ) ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4

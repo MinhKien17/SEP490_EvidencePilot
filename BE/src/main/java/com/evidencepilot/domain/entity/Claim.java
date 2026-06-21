@@ -29,6 +29,7 @@ public class Claim {
      */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Project project;
 
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
@@ -42,4 +43,9 @@ public class Claim {
 
     @Column(name = "active", nullable = false)
     private boolean active = true;
+
+    @OneToMany(mappedBy = "claim", cascade = CascadeType.ALL, orphanRemoval = true)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private java.util.List<EvidenceEdge> evidenceEdges;
 }
+

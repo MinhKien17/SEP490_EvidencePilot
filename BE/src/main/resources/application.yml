@@ -89,6 +89,10 @@ ai:
     # Optional API key forwarded as X-API-Key header.
     api-key: ${AI_MODEL_API_KEY:}
 
+# ── Qdrant vector database ────────────────────────────────────────────────
+qdrant:
+  url: ${QDRANT_URL:http://localhost:6333}
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

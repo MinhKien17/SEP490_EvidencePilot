@@ -5,6 +5,8 @@ import com.evidencepilot.domain.entity.Paper;
 import com.evidencepilot.domain.entity.PaperSection;
 import com.evidencepilot.domain.entity.Project;
 import com.evidencepilot.domain.entity.User;
+import com.evidencepilot.dto.response.PaperResponseDto;
+import com.evidencepilot.dto.response.PaperSectionResponseDto;
 import com.evidencepilot.repository.PaperRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
@@ -56,16 +58,19 @@ public class PaperController {
     // ── Standard CRUD ──────────────────────────────────────────────────────────
 
     @GetMapping
-    public List<Paper> findAll() {
+    public List<PaperResponseDto> findAll() {
         User currentUser = currentUserService.requireCurrentUser();
+        List<Paper> papers;
         if (currentUserService.isAdmin(currentUser)) {
-            return paperRepository.findByActiveTrue();
+            papers = paperRepository.findByActiveTrue();
+        } else {
+            papers = paperRepository.findByProjectStudentIdAndActiveTrue(currentUser.getId());
         }
-        return paperRepository.findByProjectStudentIdAndActiveTrue(currentUser.getId());
+        return papers.stream().map(PaperResponseDto::fromEntity).toList();
     }
 
     @GetMapping("/{id}")
-    public Paper findById(@PathVariable Integer id) {
+    public PaperResponseDto findById(@PathVariable Integer id) {
         User currentUser = currentUserService.requireCurrentUser();
         Paper paper = paperRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -74,21 +79,23 @@ public class PaperController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Paper not found: " + id);
         }
         currentUserService.requireProjectWriteAccess(currentUser, paper.getProject());
-        return paper;
+        return PaperResponseDto.fromEntity(paper);
     }
 
     @GetMapping("/by-project/{projectId}")
-    public List<Paper> findByProject(@PathVariable Integer projectId) {
+    public List<PaperResponseDto> findByProject(@PathVariable Integer projectId) {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Project not found: " + projectId));
         currentUserService.requireProjectWriteAccess(currentUser, project);
-        return paperRepository.findByProjectIdAndActiveTrue(projectId);
+        return paperRepository.findByProjectIdAndActiveTrue(projectId).stream()
+                .map(PaperResponseDto::fromEntity)
+                .toList();
     }
 
     @GetMapping("/{id}/sections")
-    public List<PaperSection> sections(@PathVariable Integer id) {
+    public List<PaperSectionResponseDto> sections(@PathVariable Integer id) {
         User currentUser = currentUserService.requireCurrentUser();
         Paper paper = paperRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
@@ -97,7 +104,9 @@ public class PaperController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Paper not found: " + id);
         }
         currentUserService.requirePaperAccess(currentUser, paper);
-        return paperSectionRepository.findByPaperIdOrderBySectionIndex(id);
+        return paperSectionRepository.findByPaperIdOrderBySectionIndex(id).stream()
+                .map(PaperSectionResponseDto::fromEntity)
+                .toList();
     }
 
     @PostMapping("/{id}/review")
@@ -142,7 +151,7 @@ public class PaperController {
      */
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Transactional
-    public ResponseEntity<Paper> upload(
+    public ResponseEntity<PaperResponseDto> upload(
             @RequestParam("file") MultipartFile file,
             @RequestParam("projectId") Integer projectId) {
 
@@ -167,7 +176,7 @@ public class PaperController {
 
         Paper saved = paperRepository.save(paper);
         paperProcessingService.detectAndPersistSections(saved);
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+        return ResponseEntity.status(HttpStatus.CREATED).body(PaperResponseDto.fromEntity(saved));
     }
 
     // ── Internal helpers ───────────────────────────────────────────────────────

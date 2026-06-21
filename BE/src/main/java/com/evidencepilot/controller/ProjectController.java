@@ -4,8 +4,10 @@ import com.evidencepilot.domain.entity.User;
 import com.evidencepilot.dto.request.ProjectCreateRequest;
 import com.evidencepilot.dto.request.ProjectUpdateRequest;
 import com.evidencepilot.dto.response.ProjectResponse;
+import com.evidencepilot.dto.response.SourceResponseDto;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.ProjectService;
+import com.evidencepilot.service.SourceQueryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -40,6 +42,7 @@ public class ProjectController {
 
     private final ProjectService projectService;
     private final CurrentUserService currentUserService;
+    private final SourceQueryService sourceQueryService;
 
     @Operation(
             summary = "List my projects",
@@ -130,6 +133,46 @@ public class ProjectController {
         Integer studentId = getAuthenticatedStudentId();
         projectService.deleteProject(id, studentId);
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(
+            summary = "List project sources",
+            description = "Returns all active sources associated with the specified project. "
+                    + "Enforces tenancy: students can only fetch sources for projects they own; "
+                    + "instructors can access projects in review with an active feedback request; "
+                    + "admins have unrestricted access. "
+                    + "**Security:** Requires JWT Bearer Token. **Roles Allowed:** STUDENT, INSTRUCTOR, ADMIN")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Sources list returned successfully"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Forbidden — project access denied"),
+            @ApiResponse(responseCode = "404", description = "Project not found")
+    })
+    @GetMapping("/{projectId}/sources")
+    @PreAuthorize("hasAnyRole('STUDENT', 'INSTRUCTOR', 'ADMIN')")
+    public ResponseEntity<List<SourceResponseDto>> findByProject(@PathVariable Integer projectId) {
+        List<SourceResponseDto> sources = sourceQueryService.getSourcesByProject(projectId);
+        return ResponseEntity.ok(sources);
+    }
+
+    @Operation(
+            summary = "Get project source by ID",
+            description = "Retrieves a specific source belonging to a project. Enforces project-level read access."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Source metadata returned successfully"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Forbidden — project access denied"),
+            @ApiResponse(responseCode = "404", description = "Source not found or inactive")
+    })
+    @GetMapping("/{projectId}/sources/{sourceId}")
+    @PreAuthorize("hasAnyRole('STUDENT', 'INSTRUCTOR', 'ADMIN')")
+    public ResponseEntity<SourceResponseDto> getProjectSource(
+            @PathVariable Integer projectId,
+            @PathVariable Integer sourceId) {
+        User currentUser = currentUserService.requireCurrentUser();
+        SourceResponseDto response = sourceQueryService.getProjectSource(projectId, sourceId, currentUser);
+        return ResponseEntity.ok(response);
     }
 
     // ------------------------------------------------------------------ //

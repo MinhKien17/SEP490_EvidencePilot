@@ -9,6 +9,8 @@ import com.evidencepilot.domain.enums.ProjectStatus;
 import com.evidencepilot.domain.enums.UserRole;
 import com.evidencepilot.dto.request.InstructorFeedbackRequest;
 import com.evidencepilot.dto.request.SubmitReviewRequest;
+import com.evidencepilot.dto.response.FeedbackRequestResponseDto;
+import com.evidencepilot.dto.response.InstructorFeedbackResponseDto;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.ProjectRepository;
@@ -37,20 +39,22 @@ public class FeedbackController {
     private final CurrentUserService currentUserService;
 
     @GetMapping("/feedback-requests")
-    public List<FeedbackRequest> findAll() {
+    public List<FeedbackRequestResponseDto> findAll() {
         User currentUser = currentUserService.requireCurrentUser();
+        List<FeedbackRequest> requests;
         if (currentUserService.isAdmin(currentUser)) {
-            return feedbackRequestRepository.findAll();
+            requests = feedbackRequestRepository.findAll();
+        } else if (currentUserService.isInstructor(currentUser)) {
+            requests = feedbackRequestRepository.findByInstructorId(currentUser.getId());
+        } else {
+            requests = feedbackRequestRepository.findByStudentId(currentUser.getId());
         }
-        if (currentUserService.isInstructor(currentUser)) {
-            return feedbackRequestRepository.findByInstructorId(currentUser.getId());
-        }
-        return feedbackRequestRepository.findByStudentId(currentUser.getId());
+        return requests.stream().map(FeedbackRequestResponseDto::fromEntity).toList();
     }
 
     @PostMapping("/projects/{projectId}/submit-review")
     @Transactional
-    public ResponseEntity<FeedbackRequest> submitForReview(
+    public ResponseEntity<FeedbackRequestResponseDto> submitForReview(
             @PathVariable Integer projectId,
             @Valid @RequestBody SubmitReviewRequest request) {
 
@@ -78,12 +82,12 @@ public class FeedbackController {
         projectRepository.save(project);
 
         FeedbackRequest saved = feedbackRequestRepository.save(feedbackRequest);
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+        return ResponseEntity.status(HttpStatus.CREATED).body(FeedbackRequestResponseDto.fromEntity(saved));
     }
 
     @PostMapping("/feedback-requests/{id}/feedback")
     @Transactional
-    public InstructorFeedback comment(
+    public InstructorFeedbackResponseDto comment(
             @PathVariable Integer id,
             @Valid @RequestBody InstructorFeedbackRequest request) {
 
@@ -98,25 +102,26 @@ public class FeedbackController {
                 : currentUser);
         feedback.setContent(request.getContent());
         feedback.setCreatedAt(LocalDateTime.now());
-        return instructorFeedbackRepository.save(feedback);
+        InstructorFeedback saved = instructorFeedbackRepository.save(feedback);
+        return InstructorFeedbackResponseDto.fromEntity(saved);
     }
 
     @PostMapping("/feedback-requests/{id}/return-to-active")
     @Transactional
-    public FeedbackRequest returnToActive(@PathVariable Integer id) {
-        return transition(id, FeedbackStatus.RETURNED, ProjectStatus.ACTIVE);
+    public FeedbackRequestResponseDto returnToActive(@PathVariable Integer id) {
+        return FeedbackRequestResponseDto.fromEntity(transition(id, FeedbackStatus.RETURNED, ProjectStatus.ACTIVE));
     }
 
     @PostMapping("/feedback-requests/{id}/reviewed")
     @Transactional
-    public FeedbackRequest markReviewed(@PathVariable Integer id) {
-        return transition(id, FeedbackStatus.REVIEWED, ProjectStatus.ACTIVE);
+    public FeedbackRequestResponseDto markReviewed(@PathVariable Integer id) {
+        return FeedbackRequestResponseDto.fromEntity(transition(id, FeedbackStatus.REVIEWED, ProjectStatus.ACTIVE));
     }
 
     @PostMapping("/feedback-requests/{id}/rejected")
     @Transactional
-    public FeedbackRequest markRejected(@PathVariable Integer id) {
-        return transition(id, FeedbackStatus.REJECTED, ProjectStatus.ACTIVE);
+    public FeedbackRequestResponseDto markRejected(@PathVariable Integer id) {
+        return FeedbackRequestResponseDto.fromEntity(transition(id, FeedbackStatus.REJECTED, ProjectStatus.ACTIVE));
     }
 
     private FeedbackRequest transition(Integer id, FeedbackStatus status, ProjectStatus projectStatus) {
