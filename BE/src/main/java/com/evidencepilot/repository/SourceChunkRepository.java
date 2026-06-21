@@ -9,7 +9,11 @@ import java.util.List;
 @Repository
 public interface SourceChunkRepository extends JpaRepository<SourceChunk, Integer> {
 
-    List<SourceChunk> findBySourceIdAndActiveTrueOrderByChunkIndex(Integer sourceId);
+    List<SourceChunk> findBySourceId(Integer sourceId);
 
-    List<SourceChunk> findBySourceProjectIdAndSourceActiveTrueAndActiveTrueOrderBySourceIdAscChunkIndexAsc(Integer projectId);
+    List<SourceChunk> findBySourceProjectId(Integer projectId);
+
+    List<SourceChunk> findBySourceDatasetId(Integer datasetId);
+
+    long countSourceId(Integer sourceId);
 }
