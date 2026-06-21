@@ -174,7 +174,7 @@ public class AiAnalysisService {
                 srcIdVal = Integer.valueOf(sourceId);
             } catch (NumberFormatException ignored) {}
             if (srcIdVal != null) {
-                List<SourceChunk> chunks = sourceChunkRepository.findBySourceIdAndActiveTrueOrderByChunkIndex(srcIdVal);
+                List<SourceChunk> chunks = sourceChunkRepository.findBySourceId(srcIdVal);
                 // 1. Exact match
                 for (SourceChunk c : chunks) {
                     if (c.getText().equals(excerpt)) {

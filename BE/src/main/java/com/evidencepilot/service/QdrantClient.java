@@ -11,8 +11,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.math.BigDecimal;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -77,12 +81,36 @@ public class QdrantClient {
      * @param projectId the MySQL {@code projects.id} (stored as payload for filtering)
      */
     public void upsertVector(String chunkId, List<Float> embedding, String projectId) {
+        upsertVector(chunkId, embedding, "PROJECT", projectId);
+    }
+
+    /**
+     * Upserts a single point scoped to either a project or an instructor dataset.
+     *
+     * @param chunkId   the MySQL {@code source_chunks.id} (must be numeric)
+     * @param embedding the dense vector produced by the embedding model
+     * @param scopeType {@code PROJECT}, {@code DATASET}, or another uppercase scope label
+     * @param scopeId   the corresponding relational ID as a string
+     */
+    public void upsertVector(String chunkId, List<Float> embedding, String scopeType, String scopeId) {
         ensureCollection(embedding.size());
+
+        String normalizedScopeType = normalizeScopeType(scopeType);
+        String normalizedScopeId = normalizeScopeId(scopeId);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("scope_type", normalizedScopeType);
+        payload.put("scope_id", normalizedScopeId);
+        if ("PROJECT".equals(normalizedScopeType)) {
+            payload.put("project_id", normalizedScopeId);
+        }
+        if ("DATASET".equals(normalizedScopeType)) {
+            payload.put("dataset_id", normalizedScopeId);
+        }
 
         Map<String, Object> point = Map.of(
                 "id", Long.parseLong(chunkId),
                 "vector", embedding,
-                "payload", Map.of("project_id", projectId)
+                "payload", payload
         );
 
         Map<String, Object> body = Map.of("points", List.of(point));
@@ -97,7 +125,8 @@ public class QdrantClient {
                         throw new QdrantException("Failed to sync vector to Qdrant");
                     })
                     .toBodilessEntity();
-            log.debug("Upserted chunkId={} into Qdrant (projectId={})", chunkId, projectId);
+            log.debug("Upserted chunkId={} into Qdrant (scopeType={}, scopeId={})",
+                    chunkId, normalizedScopeType, normalizedScopeId);
         } catch (RestClientException e) {
             throw new QdrantException("Failed to sync vector to Qdrant", e);
         }
@@ -115,17 +144,42 @@ public class QdrantClient {
      *         results are found
      */
     public String findClosestChunkId(List<Float> queryVector, String projectId) {
+        return findClosestChunks(queryVector, "PROJECT", projectId, 1).stream()
+                .findFirst()
+                .map(QdrantSearchResult::chunkId)
+                .orElse(null);
+    }
+
+    /**
+     * Finds closest chunk vectors inside a project or dataset scope.
+     *
+     * @param queryVector the dense vector for the search query
+     * @param scopeType   {@code PROJECT} or {@code DATASET}
+     * @param scopeId     the corresponding relational ID as a string
+     * @param topK        number of nearest chunks to return, clamped to 1..20
+     * @return ordered chunk IDs with Qdrant similarity scores
+     */
+    public List<QdrantSearchResult> findClosestChunks(
+            List<Float> queryVector,
+            String scopeType,
+            String scopeId,
+            int topK) {
+        int safeTopK = Math.max(1, Math.min(topK, 20));
+        String normalizedScopeType = normalizeScopeType(scopeType);
+        String normalizedScopeId = normalizeScopeId(scopeId);
         Map<String, Object> filter = Map.of(
                 "must", List.of(
-                        Map.of("key", "project_id",
-                                "match", Map.of("value", projectId))
+                        Map.of("key", "scope_type",
+                                "match", Map.of("value", normalizedScopeType)),
+                        Map.of("key", "scope_id",
+                                "match", Map.of("value", normalizedScopeId))
                 )
         );
 
         Map<String, Object> body = Map.of(
                 "vector", queryVector,
                 "filter", filter,
-                "limit", 1,
+                "limit", safeTopK,
                 "with_payload", false
         );
 
@@ -148,19 +202,27 @@ public class QdrantClient {
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> results = (List<Map<String, Object>>) response.get("result");
             if (results == null || results.isEmpty()) {
-                log.debug("Qdrant search returned no results for projectId={}", projectId);
-                return null;
+                log.debug("Qdrant search returned no results for scopeType={}, scopeId={}",
+                        normalizedScopeType, normalizedScopeId);
+                return List.of();
             }
 
-            // The "id" field is a numeric point ID that maps 1:1 to MySQL chunk ID
-            Object id = results.get(0).get("id");
-            String chunkId = String.valueOf(id);
-            log.debug("Qdrant top hit: chunkId={}, score={}", chunkId, results.get(0).get("score"));
-            return chunkId;
+            List<QdrantSearchResult> matches = new ArrayList<>();
+            for (Map<String, Object> result : results) {
+                Object id = result.get("id");
+                if (id == null) {
+                    continue;
+                }
+                matches.add(new QdrantSearchResult(String.valueOf(id), score(result.get("score"))));
+            }
+            log.debug("Qdrant returned {} hits for scopeType={}, scopeId={}",
+                    matches.size(), normalizedScopeType, normalizedScopeId);
+            return matches;
         } catch (QdrantException e) {
             throw e;
         } catch (Exception e) {
-            log.error("Qdrant search failed for projectId={}", projectId, e);
+            log.error("Qdrant search failed for scopeType={}, scopeId={}",
+                    normalizedScopeType, normalizedScopeId, e);
             throw new QdrantException("POST search", e.getMessage(), e);
         }
     }
@@ -238,6 +300,33 @@ public class QdrantClient {
             normalized = normalized.substring(0, normalized.length() - 1);
         }
         return normalized;
+    }
+
+    private static String normalizeScopeType(String scopeType) {
+        if (scopeType == null || scopeType.isBlank()) {
+            return "PROJECT";
+        }
+        return scopeType.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private static String normalizeScopeId(String scopeId) {
+        if (scopeId == null || scopeId.isBlank()) {
+            return "0";
+        }
+        return scopeId.trim();
+    }
+
+    private static BigDecimal score(Object rawScore) {
+        if (rawScore instanceof BigDecimal decimal) {
+            return decimal;
+        }
+        if (rawScore instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue());
+        }
+        if (rawScore == null) {
+            return BigDecimal.ZERO;
+        }
+        return new BigDecimal(String.valueOf(rawScore));
     }
 
     /** Sentinel exception used only inside ensureCollection to detect 404. */

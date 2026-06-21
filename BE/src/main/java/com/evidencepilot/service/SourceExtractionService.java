@@ -102,19 +102,23 @@ public class SourceExtractionService {
         // ── Sync embedded chunks to Qdrant (two-step write) ─────────────────────
         // MySQL is the relational truth; Qdrant is the search index.
         // Failures here are logged but do NOT roll back the MySQL persist.
-        String projectId = source.getProject() != null
-                ? String.valueOf(source.getProject().getId())
-                : null;
+        VectorScope vectorScope = vectorScope(source);
 
         for (SourceChunk chunk : chunks) {
             if (chunk.getEmbedding() == null || chunk.getEmbedding().isBlank()) {
                 continue; // no embedding → nothing to index
             }
             List<Float> vector = parseEmbeddingString(chunk.getEmbedding());
-            qdrantClient.upsertVector(
-                    String.valueOf(chunk.getId()),
-                    vector,
-                    projectId != null ? projectId : "0");
+            try {
+                qdrantClient.upsertVector(
+                        String.valueOf(chunk.getId()),
+                        vector,
+                        vectorScope.type(),
+                        vectorScope.id());
+            } catch (QdrantException e) {
+                log.warn("Could not sync chunk {} to Qdrant for {} scope {}",
+                        chunk.getId(), vectorScope.type(), vectorScope.id(), e);
+            }
         }
 
         List<SourceReference> references = extractReferences(extracted.text(), source);
@@ -454,10 +458,23 @@ public class SourceExtractionService {
         return result;
     }
 
+    private static VectorScope vectorScope(Source source) {
+        if (source.getProject() != null && source.getProject().getId() != null) {
+            return new VectorScope("PROJECT", String.valueOf(source.getProject().getId()));
+        }
+        if (source.getDataset() != null && source.getDataset().getId() != null) {
+            return new VectorScope("DATASET", String.valueOf(source.getDataset().getId()));
+        }
+        return new VectorScope("SOURCE", String.valueOf(source.getId()));
+    }
+
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
     }
 
     public record ExtractedText(String text, String method) {
+    }
+
+    private record VectorScope(String type, String id) {
     }
 }

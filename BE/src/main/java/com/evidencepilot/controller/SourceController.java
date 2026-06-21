@@ -124,7 +124,7 @@ public class SourceController {
                         throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Source not found: " + id);
                 }
                 currentUserService.requireSourceAccess(currentUser, source);
-                return sourceChunkRepository.findBySourceIdAndActiveTrueOrderByChunkIndex(id).stream()
+                return sourceChunkRepository.findBySourceId(id).stream()
                                 .map(SourceChunkResponseDto::fromEntity)
                                 .toList();
         }
