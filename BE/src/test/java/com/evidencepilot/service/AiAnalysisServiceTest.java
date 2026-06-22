@@ -130,7 +130,7 @@ class AiAnalysisServiceTest {
     }
 
     @Test
-    void analyzeAndPersistWrapsAiProcessErrorsAsBadGateway() {
+    void analyzeAndPersistWrapsAiProcessErrorsAsServiceUnavailable() {
         Claim claim = claim(42, "Claim text.");
         when(aiModelClient.processClaim(any(ClaimAnalysisRequest.class)))
                 .thenThrow(new AiModelClient.AiApiException("POST /process/claim", 500));
@@ -139,7 +139,7 @@ class AiAnalysisServiceTest {
                 aiAnalysisService.analyzeAndPersist(claim, "1", "excerpt", null))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.BAD_GATEWAY);
+                .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
 
         verify(claimRepository, never()).save(any());
         verify(evidenceEdgeRepository, never()).save(any());
