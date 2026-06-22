@@ -77,6 +77,8 @@ ai:
     base-url: ${AI_MODEL_BASE_URL:}
     # Optional API key forwarded as X-API-Key header.
     api-key: ${AI_MODEL_API_KEY:}
+    # MinerU extraction can take longer than ordinary AI calls for PDFs/DOCX files.
+    read-timeout-seconds: ${AI_MODEL_READ_TIMEOUT_SECONDS:600}
 
 # ── Qdrant vector database ────────────────────────────────────────────────
 qdrant:

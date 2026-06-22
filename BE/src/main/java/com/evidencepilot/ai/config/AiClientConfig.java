@@ -18,6 +18,7 @@ import java.time.Duration;
  * <ul>
  *   <li>{@code ai.model.base-url}       / {@code AI_MODEL_BASE_URL}       - AI worker base URL</li>
  *   <li>{@code ai.model.api-key}        / {@code AI_MODEL_API_KEY}        - optional, sent as {@code X-API-Key}</li>
+ *   <li>{@code ai.model.read-timeout-seconds} / {@code AI_MODEL_READ_TIMEOUT_SECONDS} - response timeout</li>
  * </ul>
  * </p>
  *
@@ -35,6 +36,9 @@ public class AiClientConfig {
     @Value("${ai.model.api-key:}")
     private String apiKey;
 
+    @Value("${ai.model.read-timeout-seconds:600}")
+    private long readTimeoutSeconds;
+
     @Bean("aiModelBaseUrl")
     public String aiModelBaseUrl() {
         return baseUrl;
@@ -47,7 +51,7 @@ public class AiClientConfig {
     public RestClient aiRestClient() {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(5));
-        requestFactory.setReadTimeout(Duration.ofSeconds(30));
+        requestFactory.setReadTimeout(Duration.ofSeconds(Math.max(1, readTimeoutSeconds)));
 
         RestClient.Builder builder = RestClient.builder()
                 .requestFactory(requestFactory)
