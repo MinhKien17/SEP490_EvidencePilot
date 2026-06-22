@@ -6,7 +6,7 @@ export default function Home() {
       {/* 1. Header / Navigation Bar */}
       <header className="bg-[#1e3a8a] text-white px-8 py-3 flex justify-between items-center shadow-sm">
         <div className="flex items-center space-x-3">
-          <span className="text-xl font-bold tracking-wider">Evidence Pilot 🚀</span>
+          <span className="text-xl font-bold tracking-wider">Evidence Pilot</span>
         </div>
         <nav className="space-x-6 flex items-center">
           <a href="#features" className="text-blue-200 hover:text-white font-medium text-sm transition">Features</a>

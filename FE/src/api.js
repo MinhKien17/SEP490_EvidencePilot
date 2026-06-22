@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  // Link ngrok mới nhất của Kiên
+  // Link ngrok mới nhất 
   baseURL: 'https://dolores-nonconspiratorial-loyd.ngrok-free.dev', 
   headers: {
     'Content-Type': 'application/json',

@@ -7,7 +7,7 @@ import Register from './pages/Register.jsx';
 import Profile from './pages/Profile.jsx';
 import ReviewRequests from './pages/Instructor/ReviewRequests.jsx';
 import CreateDataset from './pages/Instructor/CreateDataset.jsx';
-
+import Dashboard from './pages/Instructor/Dashboard.jsx'
 function App() {
   return (
     <BrowserRouter>
@@ -20,6 +20,7 @@ function App() {
         <Route path="/profile" element={<Profile />} />
         
         {/* Hãy chú ý gõ chính xác chữ thường khớp với URL trên trình duyệt nhé */}
+        <Route path="/instructor/dashboard" element={<Dashboard />} />
         <Route path="/instructor/requests" element={<ReviewRequests />} />
         <Route path="/instructor/dataset" element={<CreateDataset />} />
       </Routes>
