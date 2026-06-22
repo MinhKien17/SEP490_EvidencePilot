@@ -10,36 +10,23 @@ import com.evidencepilot.repository.SourceReferenceRepository;
 import com.evidencepilot.repository.SourceTextRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
-import org.w3c.dom.Document;
-import org.w3c.dom.NodeList;
-import org.xml.sax.InputSource;
 
-import javax.xml.XMLConstants;
-import javax.xml.parsers.DocumentBuilderFactory;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 
 @Slf4j
 @Service
@@ -57,18 +44,6 @@ public class SourceExtractionService {
     private final SourceReferenceRepository sourceReferenceRepository;
     private final QdrantClient qdrantClient;
 
-    @Value("${mineru.command:}")
-    private String mineruCommand;
-
-    @Value("${mineru.method:auto}")
-    private String mineruMethod;
-
-    @Value("${mineru.backend:}")
-    private String mineruBackend;
-
-    @Value("${mineru.timeout-seconds:600}")
-    private long mineruTimeoutSeconds;
-
     @Transactional
     public void extractAndPersist(Source source, MultipartFile file) {
         ExtractedText extracted = extractText(file);
@@ -79,6 +54,7 @@ public class SourceExtractionService {
         sourceText.setExtractionMethod(extracted.method());
         sourceText.setCreatedAt(LocalDateTime.now());
         sourceTextRepository.save(sourceText);
+        saveExtractedMarkdown(source, extracted.text());
 
         List<SourceChunk> chunks = new ArrayList<>();
         List<String> chunkTexts = chunkText(extracted.text());
@@ -133,117 +109,48 @@ public class SourceExtractionService {
             if (isTextFile(suffix, file.getContentType())) {
                 return new ExtractedText(cleanText(new String(raw, StandardCharsets.UTF_8)), "text");
             }
-            return tryMinerU(filename, raw)
-                    .orElseGet(() -> fallbackExtract(filename, suffix, raw));
+            return extractWithAiWorker(filename, file.getContentType(), raw);
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Could not read uploaded file.", e);
         }
     }
 
-    private Optional<ExtractedText> tryMinerU(String filename, byte[] raw) {
-        if (mineruCommand == null || mineruCommand.isBlank()) {
-            return Optional.empty();
-        }
-
-        Path workDir = null;
+    private ExtractedText extractWithAiWorker(String filename, String contentType, byte[] raw) {
         try {
-            workDir = Files.createTempDirectory("evidencepilot-mineru-");
-            Path input = workDir.resolve("input" + suffix(filename));
-            Path output = workDir.resolve("output");
-            Files.write(input, raw);
-            Files.createDirectories(output);
-
-            List<String> args = new ArrayList<>();
-            args.add(mineruCommand);
-            args.add("--path");
-            args.add(input.toString());
-            args.add("--output");
-            args.add(output.toString());
-            args.add("--method");
-            args.add(mineruMethod);
-            if (mineruBackend != null && !mineruBackend.isBlank()) {
-                args.add("--backend");
-                args.add(mineruBackend);
+            AiModelClient.ExtractDocumentResponse response = aiModelClient.extractDocument(filename, contentType, raw);
+            if (response == null || response.markdown() == null || response.markdown().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "AI extraction returned no Markdown.");
             }
-
-            Process process = new ProcessBuilder(args).redirectErrorStream(true).start();
-            boolean finished = process.waitFor(mineruTimeoutSeconds, TimeUnit.SECONDS);
-            if (!finished) {
-                process.destroyForcibly();
-                return Optional.empty();
-            }
-            if (process.exitValue() != 0) {
-                return Optional.empty();
-            }
-            return readLargestMarkdown(output).map(text -> new ExtractedText(cleanText(text), "mineru"));
-        } catch (Exception ignored) {
-            return Optional.empty();
-        } finally {
-            deleteQuietly(workDir);
+            String method = response.method() == null || response.method().isBlank() ? "ai-extract" : response.method();
+            return new ExtractedText(cleanText(response.markdown()), method);
+        } catch (AiModelClient.AiApiException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "AI model offline. Check AI_MODEL_BASE_URL.", e);
         }
     }
 
-    private ExtractedText fallbackExtract(String filename, String suffix, byte[] raw) {
-        if (".docx".equals(suffix)) {
-            return new ExtractedText(extractDocx(raw), "docx-fallback");
+    private void saveExtractedMarkdown(Source source, String text) {
+        if (source.getFileUrl() == null || source.getFileUrl().isBlank()) {
+            return;
         }
-        if (".pdf".equals(suffix)) {
-            return new ExtractedText(extractPdf(raw), "pdf-fallback");
+        try {
+            Path original = Path.of(source.getFileUrl()).toAbsolutePath().normalize();
+            Path markdown = extractedMarkdownPath(original);
+            Files.createDirectories(markdown.getParent());
+            Files.writeString(markdown, text, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to store extracted Markdown.", e);
         }
-        throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Unsupported source file type: " + filename);
     }
 
-    private String extractDocx(byte[] raw) {
-        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(raw))) {
-            ZipEntry entry;
-            while ((entry = zip.getNextEntry()) != null) {
-                if ("word/document.xml".equals(entry.getName())) {
-                    String xml = new String(zip.readAllBytes(), StandardCharsets.UTF_8);
-                    return cleanText(readWordText(xml));
-                }
-            }
-        } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Could not extract text from DOCX.", e);
-        }
-        throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Could not extract text from DOCX.");
-    }
-
-    private String readWordText(String xml) throws Exception {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-        factory.setNamespaceAware(true);
-        Document document = factory.newDocumentBuilder()
-                .parse(new InputSource(new StringReader(xml)));
-        NodeList textNodes = document.getElementsByTagNameNS("*", "t");
-        List<String> parts = new ArrayList<>();
-        for (int i = 0; i < textNodes.getLength(); i++) {
-            parts.add(textNodes.item(i).getTextContent());
-        }
-        return String.join(" ", parts);
-    }
-
-    private String extractPdf(byte[] raw) {
-        String body = new String(raw, StandardCharsets.ISO_8859_1);
-        Matcher matcher = Pattern.compile("\\(([^()]{3,})\\)").matcher(body);
-        List<String> fragments = new ArrayList<>();
-        while (matcher.find()) {
-            String fragment = matcher.group(1)
-                    .replace("\\(", "(")
-                    .replace("\\)", ")")
-                    .replace("\\n", "\n");
-            if (fragment.chars().filter(Character::isLetter).count() >= 3) {
-                fragments.add(fragment);
-            }
-        }
-        if (fragments.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                    "Could not extract text from PDF.");
-        }
-        return cleanText(String.join("\n", fragments));
+    private Path extractedMarkdownPath(Path original) {
+        String filename = original.getFileName().toString();
+        int dot = filename.lastIndexOf('.');
+        String baseName = dot <= 0 ? filename : filename.substring(0, dot);
+        return original.resolveSibling(baseName + ".extracted.md");
     }
 
     private List<String> chunkText(String text) {
@@ -370,45 +277,6 @@ public class SourceExtractionService {
         }
         String[] parts = reference.split("\\.");
         return parts.length >= 2 ? blankToNull(parts[1].trim()) : null;
-    }
-
-    private Optional<String> readLargestMarkdown(Path output) throws IOException {
-        try (Stream<Path> paths = Files.walk(output)) {
-            return paths.filter(path -> path.toString().endsWith(".md"))
-                    .filter(Files::isRegularFile)
-                    .max(Comparator.comparingLong(this::sizeQuietly))
-                    .map(path -> {
-                        try {
-                            return Files.readString(path, StandardCharsets.UTF_8);
-                        } catch (IOException e) {
-                            return "";
-                        }
-                    })
-                    .filter(text -> !text.isBlank());
-        }
-    }
-
-    private long sizeQuietly(Path path) {
-        try {
-            return Files.size(path);
-        } catch (IOException e) {
-            return 0;
-        }
-    }
-
-    private void deleteQuietly(Path path) {
-        if (path == null || !Files.exists(path)) {
-            return;
-        }
-        try (Stream<Path> paths = Files.walk(path)) {
-            paths.sorted(Comparator.reverseOrder()).forEach(item -> {
-                try {
-                    Files.deleteIfExists(item);
-                } catch (IOException ignored) {
-                }
-            });
-        } catch (IOException ignored) {
-        }
     }
 
     private boolean isTextFile(String suffix, String contentType) {

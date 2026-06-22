@@ -1,5 +1,6 @@
 package com.evidencepilot.controller;
 
+import com.evidencepilot.ai.AiModelClient;
 import com.evidencepilot.dto.response.ApiErrorResponse;
 import com.evidencepilot.exception.AiValidationException;
 import com.evidencepilot.exception.ResourceNotFoundException;
@@ -64,6 +65,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AiValidationException.class)
     public ResponseEntity<ApiErrorResponse> handleAiValidation(
             AiValidationException exception,
+            HttpServletRequest request) {
+
+        return build(HttpStatus.BAD_GATEWAY, exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(AiModelClient.AiApiException.class)
+    public ResponseEntity<ApiErrorResponse> handleAiApi(
+            AiModelClient.AiApiException exception,
             HttpServletRequest request) {
 
         return build(HttpStatus.BAD_GATEWAY, exception.getMessage(), request);

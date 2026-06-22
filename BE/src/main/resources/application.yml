@@ -72,19 +72,8 @@ app:
     password: ${ADMIN_PASSWORD:}
 
 # ── External AI model integration ────────────────────────────────────────
-mineru:
-  # Optional. Leave blank to use Java fallback extraction.
-  command: ${MINERU_COMMAND:}
-  method: ${MINERU_METHOD:auto}
-  backend: ${MINERU_BACKEND:}
-  timeout-seconds: ${MINERU_TIMEOUT_SECONDS:600}
-
 ai:
   model:
-    # Fallback order: local host AI, ngrok tunnel, then the configured/default AI service.
-    local-base-url: ${AI_MODEL_LOCAL_BASE_URL:http://127.0.0.1:8000}
-    ngrok-base-url: ${AI_MODEL_NGROK_BASE_URL:}
-    # Final fallback AI API base URL. In Docker, host.docker.internal reaches the host service.
     base-url: ${AI_MODEL_BASE_URL:http://host.docker.internal:8000}
     # Optional API key forwarded as X-API-Key header.
     api-key: ${AI_MODEL_API_KEY:}

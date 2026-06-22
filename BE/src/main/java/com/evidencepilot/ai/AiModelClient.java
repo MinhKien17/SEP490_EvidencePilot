@@ -3,8 +3,14 @@ package com.evidencepilot.ai;
 import com.evidencepilot.ai.dto.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -12,48 +18,26 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Low-level HTTP client for the teammate's Ollama Claim Analysis API (v0.2.0).
+ * Low-level HTTP client for the configured Python AI worker.
  *
- * <p>This component is intentionally thin — it owns only HTTP mechanics
- * (serialization, status-code handling, structured logging).
- * All orchestration and DB persistence live in
- * {@link com.evidencepilot.service.AiAnalysisService}.</p>
- *
- * <p><b>Active endpoints covered:</b>
- * <ul>
- *   <li>{@code GET  /health}           – liveness probe</li>
- *   <li>{@code GET  /ai/models}        – list available Ollama models</li>
- *   <li>{@code POST /ai/generate}      – raw prompt generation</li>
- *   <li>{@code POST /ai/embeddings}    – dense vector embedding generation</li>
- *   <li>{@code POST /match/claim}      – semantic source search for a claim</li>
- *   <li>{@code POST /process/claim}    – deep claim analysis against a known source</li>
- *   <li>{@code POST /review/paper}     – structural review of an uploaded paper</li>
- * </ul>
- * </p>
- *
- * <p><b>Excluded:</b> {@code POST /sources} and {@code POST /papers} — the Java
- * backend is the sole authority for physical file storage; those endpoints are
- * internal AI-team testing scaffolding only.</p>
+ * <p>Java owns upload persistence, references, graph data, and orchestration.
+ * The Python service is a stateless worker for extraction, embeddings,
+ * generation, and claim analysis.</p>
  */
 @Slf4j
 @Component
 public class AiModelClient {
 
     private final RestClient restClient;
-    private final List<String> baseUrls;
+    private final String baseUrl;
 
     public AiModelClient(@Qualifier("aiRestClient") RestClient restClient,
-                         @Qualifier("aiModelBaseUrls") List<String> baseUrls) {
+                         @Qualifier("aiModelBaseUrl") String baseUrl) {
         this.restClient = restClient;
-        this.baseUrls = baseUrls.stream()
-                .filter(url -> url != null && !url.isBlank())
-                .map(AiModelClient::trimTrailingSlash)
-                .distinct()
-                .toList();
-
-        if (this.baseUrls.isEmpty()) {
-            throw new IllegalArgumentException("At least one AI model base URL must be configured");
+        if (baseUrl == null || baseUrl.isBlank()) {
+            throw new IllegalArgumentException("AI model base URL must be configured");
         }
+        this.baseUrl = trimTrailingSlash(baseUrl);
     }
 
     // ── Liveness ───────────────────────────────────────────────────────────────
@@ -62,7 +46,7 @@ public class AiModelClient {
      * Calls {@code GET /health} and returns the raw response map.
      * Useful as a startup readiness check.
      */
-    @SuppressWarnings("unchecked")
+        @SuppressWarnings("unchecked")
     public Map<String, Object> health() {
         log.debug("Calling GET /health");
         return get("/health", Map.class);
@@ -77,7 +61,7 @@ public class AiModelClient {
         log.debug("Calling GET /ai/models");
         return get("/ai/models", ModelsResponse.class);
     }
-
+    
     // ── Raw generation ─────────────────────────────────────────────────────────
 
     /**
@@ -170,23 +154,56 @@ public class AiModelClient {
         return response.embedding();
     }
 
+    public ExtractDocumentResponse extractDocument(String filename, String contentType, byte[] raw) {
+        log.info("Calling POST /extract (filename={}, bytes={})", filename, raw.length);
+
+        ByteArrayResource resource = new ByteArrayResource(raw) {
+            @Override
+            public String getFilename() {
+                return filename;
+            }
+        };
+
+        HttpHeaders fileHeaders = new HttpHeaders();
+        if (contentType != null && !contentType.isBlank()) {
+            fileHeaders.setContentType(MediaType.parseMediaType(contentType));
+        }
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("file", new HttpEntity<>(resource, fileHeaders));
+
+        return postMultipart("/extract", body, ExtractDocumentResponse.class);
+    }
+
     private <T> T get(String endpoint, Class<T> responseType) {
-        return callWithFallback(endpoint, absoluteUri -> restClient.get()
-                .uri(absoluteUri)
+        return call(endpoint, () -> restClient.get()
+                .uri(baseUrl + endpoint)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, (req, res) -> {
-                    throw new AiApiException("GET " + endpoint, res.getStatusCode().value());
+                    throw statusException("GET " + endpoint, res.getStatusCode().value());
                 })
                 .body(responseType));
     }
 
     private <T> T post(String endpoint, Object body, Class<T> responseType) {
-        return callWithFallback(endpoint, absoluteUri -> restClient.post()
-                .uri(absoluteUri)
+        return call(endpoint, () -> restClient.post()
+                .uri(baseUrl + endpoint)
                 .body(body)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, (req, res) -> {
-                    throw new AiApiException("POST " + endpoint, res.getStatusCode().value());
+                    throw statusException("POST " + endpoint, res.getStatusCode().value());
+                })
+                .body(responseType));
+    }
+
+    private <T> T postMultipart(String endpoint, MultiValueMap<String, Object> body, Class<T> responseType) {
+        return call(endpoint, () -> restClient.post()
+                .uri(baseUrl + endpoint)
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .body(body)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, (req, res) -> {
+                    throw statusException("POST " + endpoint, res.getStatusCode().value());
                 })
                 .body(responseType));
     }
@@ -197,27 +214,22 @@ public class AiModelClient {
      * Thrown when the AI API returns a non-2xx HTTP status.
      * Wraps the endpoint path and status code for clear error messages.
      */
-    private <T> T callWithFallback(String endpoint, AiCall<T> call) {
-        RuntimeException lastFailure = null;
-
-        for (String baseUrl : baseUrls) {
-            try {
-                return call.execute(baseUrl + endpoint);
-            } catch (AiApiException e) {
-                if (!e.isRetriable()) {
-                    throw e;
-                }
-                lastFailure = e;
-                log.warn("AI endpoint {} failed at {} with HTTP {}. Trying next configured base URL.",
-                        endpoint, baseUrl, e.getStatusCode());
-            } catch (RestClientException e) {
-                lastFailure = e;
-                log.warn("AI endpoint {} failed at {}. Trying next configured base URL.",
-                        endpoint, baseUrl, e);
-            }
+    private <T> T call(String endpoint, AiCall<T> call) {
+        try {
+            return call.execute();
+        } catch (AiApiException e) {
+            throw e;
+        } catch (RestClientException e) {
+            log.warn("AI endpoint {} failed at configured base URL {}.", endpoint, baseUrl, e);
+            throw new AiApiException(endpoint, "AI model offline at " + baseUrl, e);
         }
+    }
 
-        throw new AiApiException(endpoint, "all configured AI base URLs failed", lastFailure);
+    private AiApiException statusException(String operation, int statusCode) {
+        if (statusCode >= 500) {
+            return new AiApiException(operation, "AI model offline at " + baseUrl + " - HTTP " + statusCode, null);
+        }
+        return new AiApiException(operation, statusCode);
     }
 
     private static String trimTrailingSlash(String baseUrl) {
@@ -230,7 +242,10 @@ public class AiModelClient {
 
     @FunctionalInterface
     private interface AiCall<T> {
-        T execute(String absoluteUri);
+        T execute();
+    }
+
+    public record ExtractDocumentResponse(String filename, String method, String markdown) {
     }
 
     /**
@@ -255,10 +270,6 @@ public class AiModelClient {
 
         public int getStatusCode() {
             return statusCode;
-        }
-
-        private boolean isRetriable() {
-            return statusCode == 0 || statusCode >= 500;
         }
     }
 }
