@@ -29,15 +29,22 @@ import java.util.Map;
 public class AiModelClient {
 
     private final RestClient restClient;
-    private final String baseUrl;
+    private final List<String> baseUrls;
 
     public AiModelClient(@Qualifier("aiRestClient") RestClient restClient,
-                         @Qualifier("aiModelBaseUrl") String baseUrl) {
+                         @Qualifier("aiModelBaseUrls") List<String> baseUrls) {
         this.restClient = restClient;
-        if (baseUrl == null || baseUrl.isBlank()) {
-            throw new IllegalArgumentException("AI model base URL must be configured");
+        if (baseUrls == null) {
+            throw new IllegalArgumentException("At least one AI model base URL must be configured");
         }
-        this.baseUrl = trimTrailingSlash(baseUrl);
+        this.baseUrls = baseUrls.stream()
+                .filter(url -> url != null && !url.isBlank())
+                .map(url -> trimTrailingSlash(url))
+                .distinct()
+                .toList();
+        if (this.baseUrls.isEmpty()) {
+            throw new IllegalArgumentException("At least one AI model base URL must be configured");
+        }
     }
 
     // ── Liveness ───────────────────────────────────────────────────────────────
@@ -176,34 +183,34 @@ public class AiModelClient {
     }
 
     private <T> T get(String endpoint, Class<T> responseType) {
-        return call(endpoint, () -> restClient.get()
+        return call(endpoint, baseUrl -> restClient.get()
                 .uri(baseUrl + endpoint)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, (req, res) -> {
-                    throw statusException("GET " + endpoint, res.getStatusCode().value());
+                    throw statusException("GET " + endpoint, baseUrl, res.getStatusCode().value());
                 })
                 .body(responseType));
     }
 
     private <T> T post(String endpoint, Object body, Class<T> responseType) {
-        return call(endpoint, () -> restClient.post()
+        return call(endpoint, baseUrl -> restClient.post()
                 .uri(baseUrl + endpoint)
                 .body(body)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, (req, res) -> {
-                    throw statusException("POST " + endpoint, res.getStatusCode().value());
+                    throw statusException("POST " + endpoint, baseUrl, res.getStatusCode().value());
                 })
                 .body(responseType));
     }
 
     private <T> T postMultipart(String endpoint, MultiValueMap<String, Object> body, Class<T> responseType) {
-        return call(endpoint, () -> restClient.post()
+        return call(endpoint, baseUrl -> restClient.post()
                 .uri(baseUrl + endpoint)
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(body)
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, (req, res) -> {
-                    throw statusException("POST " + endpoint, res.getStatusCode().value());
+                    throw statusException("POST " + endpoint, baseUrl, res.getStatusCode().value());
                 })
                 .body(responseType));
     }
@@ -215,19 +222,32 @@ public class AiModelClient {
      * Wraps the endpoint path and status code for clear error messages.
      */
     private <T> T call(String endpoint, AiCall<T> call) {
-        try {
-            return call.execute();
-        } catch (AiApiException e) {
-            throw e;
-        } catch (RestClientException e) {
-            log.warn("AI endpoint {} failed at configured base URL {}.", endpoint, baseUrl, e);
-            throw new AiApiException(endpoint, "AI model offline at " + baseUrl, e);
+        for (int i = 0; i < baseUrls.size(); i++) {
+            String baseUrl = baseUrls.get(i);
+            boolean lastUrl = i == baseUrls.size() - 1;
+            try {
+                return call.execute(baseUrl);
+            } catch (AiApiException e) {
+                if (e.getStatusCode() < 500 || lastUrl) {
+                    throw e;
+                }
+                log.warn("AI endpoint {} returned HTTP {} at configured base URL {}; trying fallback.",
+                        endpoint, e.getStatusCode(), baseUrl);
+            } catch (RestClientException e) {
+                if (lastUrl) {
+                    log.warn("AI endpoint {} failed at configured base URL {}.", endpoint, baseUrl, e);
+                    throw new AiApiException(endpoint, "AI model offline at " + baseUrl, e);
+                }
+                log.warn("AI endpoint {} failed at configured base URL {}; trying fallback.",
+                        endpoint, baseUrl, e);
+            }
         }
+        throw new AiApiException(endpoint, "all configured AI model base URLs failed", null);
     }
 
-    private AiApiException statusException(String operation, int statusCode) {
+    private AiApiException statusException(String operation, String baseUrl, int statusCode) {
         if (statusCode >= 500) {
-            return new AiApiException(operation, "AI model offline at " + baseUrl + " - HTTP " + statusCode, null);
+            return new AiApiException(operation, statusCode, "AI model offline at " + baseUrl + " - HTTP " + statusCode, null);
         }
         return new AiApiException(operation, statusCode);
     }
@@ -242,7 +262,7 @@ public class AiModelClient {
 
     @FunctionalInterface
     private interface AiCall<T> {
-        T execute();
+        T execute(String baseUrl);
     }
 
     public record ExtractDocumentResponse(String filename, String method, String markdown) {
@@ -260,6 +280,11 @@ public class AiModelClient {
 
         public AiApiException(String endpoint, int statusCode, Throwable cause) {
             super("AI API error on " + endpoint + " - HTTP " + statusCode, cause);
+            this.statusCode = statusCode;
+        }
+
+        public AiApiException(String endpoint, int statusCode, String message, Throwable cause) {
+            super("AI API error on " + endpoint + " - " + message, cause);
             this.statusCode = statusCode;
         }
 

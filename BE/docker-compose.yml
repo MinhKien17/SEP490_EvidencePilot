@@ -64,6 +64,8 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       # ── Teammate's AI model ───────────────────────────────────
+      AI_MODEL_LOCAL_BASE_URL: ${AI_MODEL_LOCAL_BASE_URL:-http://127.0.0.1:8000}
+      AI_MODEL_NGROK_BASE_URL: ${AI_MODEL_NGROK_BASE_URL:-https://good-lumpish-headstone.ngrok-free.dev}
       AI_MODEL_BASE_URL: ${AI_MODEL_BASE_URL:-http://host.docker.internal:8000}
       AI_MODEL_API_KEY: ${AI_MODEL_API_KEY:-}
       # ── Server ───────────────────────────────────────────────
