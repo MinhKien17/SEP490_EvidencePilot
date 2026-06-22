@@ -67,7 +67,8 @@ public class SecurityConfig {
                 "http://127.0.0.1:3000",
                 "https://*.ngrok-free.app",
                 "https://*.ngrok.app",
-                "https://*.ngrok.dev"));
+                "https://*.ngrok.dev",
+                "https://sep-490-prototype.vercel.app"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "ngrok-skip-browser-warning"));
         configuration.setAllowCredentials(true);
