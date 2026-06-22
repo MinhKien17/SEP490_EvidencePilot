@@ -126,7 +126,7 @@ public class SourceExtractionService {
             String method = response.method() == null || response.method().isBlank() ? "ai-extract" : response.method();
             return new ExtractedText(cleanText(response.markdown()), method);
         } catch (AiModelClient.AiApiException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "AI model offline. Check AI_MODEL_BASE_URL.", e);
         }
     }

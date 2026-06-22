@@ -75,7 +75,7 @@ public class GlobalExceptionHandler {
             AiModelClient.AiApiException exception,
             HttpServletRequest request) {
 
-        return build(HttpStatus.BAD_GATEWAY, exception.getMessage(), request);
+        return build(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage(), request);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

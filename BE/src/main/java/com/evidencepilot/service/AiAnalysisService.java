@@ -71,7 +71,7 @@ public class AiAnalysisService {
      * @param claim the Claim to analyse (must already be persisted in the DB)
      * @return the updated Claim with {@code aiConfidenceScore} populated
      * @throws ResponseStatusException 404 if no matching sources are found in the AI system,
-     *                                 502 on any AI API error
+     *                                 503 on any AI API error
      */
     @Transactional
     public Claim analyzeAndPersist(Claim claim) {
@@ -132,7 +132,7 @@ public class AiAnalysisService {
         try {
             response = aiModelClient.processClaim(request);
         } catch (AiApiException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "AI process/claim call failed for claim " + claim.getId() + ": " + e.getMessage(), e);
         }
 
