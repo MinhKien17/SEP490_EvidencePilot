@@ -1,22 +1,46 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 export default function Home() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [role, setRole] = useState('');
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const savedRole = localStorage.getItem('role');
+    if (token) {
+      setIsLoggedIn(true);
+      setRole(savedRole || '');
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#fcfcfc] text-[#333333] font-sans flex flex-col">
       {/* 1. Header / Navigation Bar */}
       <header className="bg-[#1e3a8a] text-white px-8 py-3 flex justify-between items-center shadow-sm">
         <div className="flex items-center space-x-3">
-          <span className="text-xl font-bold tracking-wider">Evidence Pilot</span>
+          <span className="text-xl font-bold tracking-wider">Evidence Pilot 🚀</span>
         </div>
         <nav className="space-x-6 flex items-center">
           <a href="#features" className="text-blue-200 hover:text-white font-medium text-sm transition">Features</a>
           <a href="#about" className="text-blue-200 hover:text-white font-medium text-sm transition">About Us</a>
-          <Link to="/login" className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white px-4 py-1.5 rounded text-sm font-medium transition shadow-sm">
-            Log In
-          </Link>
-          <Link to="/register" className="bg-transparent hover:bg-white/10 text-white border border-white/50 px-4 py-1.5 rounded text-sm font-medium transition">
-            Register
-          </Link>
+          {isLoggedIn ? (
+            <Link 
+              to={role === 'INSTRUCTOR' ? '/instructor/requests' : '/student/workspace'} 
+              className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white px-4 py-1.5 rounded text-sm font-medium transition shadow-sm"
+            >
+              Go to Workspace
+            </Link>
+          ) : (
+            <>
+              <Link to="/login" className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white px-4 py-1.5 rounded text-sm font-medium transition shadow-sm">
+                Log In
+              </Link>
+              <Link to="/register" className="bg-transparent hover:bg-white/10 text-white border border-white/50 px-4 py-1.5 rounded text-sm font-medium transition">
+                Register
+              </Link>
+            </>
+          )}
         </nav>
       </header>
 
@@ -31,9 +55,18 @@ export default function Home() {
             Evidence Pilot is a comprehensive platform for scientific research management, evaluating projects, sources, and claims tailored for both students and instructors.
           </p>
           <div className="pt-4">
-            <Link to="/register" className="bg-[#1e3a8a] hover:bg-[#1e40af] text-white px-8 py-3.5 rounded text-base font-semibold transition shadow-md inline-block">
-              Create a New Account
-            </Link>
+            {isLoggedIn ? (
+              <Link 
+                to={role === 'INSTRUCTOR' ? '/instructor/requests' : '/student/workspace'} 
+                className="bg-[#1e3a8a] hover:bg-[#1e40af] text-white px-8 py-3.5 rounded text-base font-semibold transition shadow-md inline-block"
+              >
+                Go to Workspace
+              </Link>
+            ) : (
+              <Link to="/register" className="bg-[#1e3a8a] hover:bg-[#1e40af] text-white px-8 py-3.5 rounded text-base font-semibold transition shadow-md inline-block">
+                Create a New Account
+              </Link>
+            )}
           </div>
         </div>
       </main>
