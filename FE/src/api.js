@@ -1,8 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  // Link ngrok mới nhất 
-  baseURL: 'https://dolores-nonconspiratorial-loyd.ngrok-free.dev', 
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080', 
   headers: {
     'Content-Type': 'application/json',
     // BẮT BUỘC: Thêm dòng này để vượt qua trang cảnh báo bảo mật mặc định của ngrok free
