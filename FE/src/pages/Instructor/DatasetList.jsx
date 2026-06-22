@@ -12,6 +12,14 @@ export default function DatasetList() {
   const [datasetSources, setDatasetSources] = useState({});
   const [loadingSources, setLoadingSources] = useState(false);
 
+  // --- STATE PHỤC VỤ TÍNH NĂNG UPDATE ---
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [editingDatasetId, setEditingDatasetId] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
+
   useEffect(() => {
     fetchDatasets();
   }, []);
@@ -30,27 +38,29 @@ export default function DatasetList() {
     }
   };
 
+  const fetchSources = async (datasetId) => {
+    try {
+      setLoadingSources(true);
+      const response = await api.get(`/api/datasets/${datasetId}/sources`);
+      setDatasetSources(prev => ({
+        ...prev,
+        [datasetId]: Array.isArray(response.data) ? response.data : []
+      }));
+    } catch (err) {
+      console.error('Failed to fetch dataset sources:', err);
+    } finally {
+      setLoadingSources(false);
+    }
+  };
+
   const handleToggleExpand = async (datasetId) => {
     if (expandedDatasetId === datasetId) {
       setExpandedDatasetId(null);
       return;
     }
-
     setExpandedDatasetId(datasetId);
-
     if (!datasetSources[datasetId]) {
-      try {
-        setLoadingSources(true);
-        const response = await api.get(`/api/datasets/${datasetId}/sources`);
-        setDatasetSources(prev => ({
-          ...prev,
-          [datasetId]: Array.isArray(response.data) ? response.data : []
-        }));
-      } catch (err) {
-        console.error('Failed to fetch dataset sources:', err);
-      } finally {
-        setLoadingSources(false);
-      }
+      await fetchSources(datasetId);
     }
   };
 
@@ -70,37 +80,104 @@ export default function DatasetList() {
     }
   };
 
-  // 🔥 HÀM XỬ LÝ MỞ FILE PDF CHUẨN CÓ ĐÍNH KÈM TOKEN ĐĂNG NHẬP
-  const handleViewFile = async (e, datasetId, fileId, fileName) => {
-    e.stopPropagation(); // Ngăn chặn sự kiện đóng/mở folder cha khi click vào nút xem file
-    
+  // 🔥 ĐÃ FIX: CHỨC NĂNG XÓA FILE CON THEO ĐƯỜNG DẪN ĐỘC LẬP /api/sources/:id
+  const handleDeleteSource = async (e, datasetId, sourceId) => {
+    e.stopPropagation(); 
+    const isConfirmed = window.confirm('Are you sure you want to remove this source file?');
+    if (!isConfirmed) return;
+
     try {
-      // Lấy token đăng nhập từ localStorage (đề phòng các trường hợp key đặt tên là 'token' hoặc 'accessToken')
-      const token = localStorage.getItem('token') || localStorage.getItem('accessToken') || localStorage.getItem('jwt');
+      // Đổi từ URL lồng nhau sang URL direct thẳng tới sourceId để tránh lỗi 404
+      await api.delete(`/api/sources/${sourceId}`);
       
+      // Xóa thành công thì cập nhật lại UI state ngay lập tức
+      setDatasetSources(prev => ({
+        ...prev,
+        [datasetId]: prev[datasetId].filter(source => source.id !== sourceId)
+      }));
+      
+      alert('Source file removed successfully!');
+    } catch (err) {
+      console.error('Failed to delete source file:', err);
+      alert(err.response?.data?.message || 'Failed to delete source file. Please make sure the API method is correct.');
+    }
+  };
+
+  // MỞ MODAL CHỈNH SỬA & ĐỔ DỮ LIỆU CŨ VÀO FORM
+  const handleOpenEditModal = (e, dataset) => {
+    e.stopPropagation(); 
+    setEditingDatasetId(dataset.id);
+    setEditTitle(dataset.title || '');
+    setEditDescription(dataset.description || '');
+    setSelectedFile(null); 
+    setIsEditModalOpen(true);
+  };
+
+  // GỬI DỮ LIỆU CẬP NHẬT LÊN BACKEND
+  const handleUpdateDataset = async (e) => {
+    e.preventDefault();
+    if (!editTitle.trim()) {
+      alert('Dataset name cannot be empty!');
+      return;
+    }
+
+    try {
+      setIsUpdating(true);
+
+      // 1. Cập nhật Tiêu đề & Mô tả
+      await api.put(`/api/datasets/${editingDatasetId}`, {
+        title: editTitle,
+        description: editDescription
+      });
+
+      // 2. Nếu chọn đính kèm thêm file mới thì tiến hành upload
+      if (selectedFile) {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+
+        await api.post(`/api/datasets/${editingDatasetId}/sources`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        
+        await fetchSources(editingDatasetId);
+      }
+
+      setDatasets(prev => prev.map(d => 
+        d.id === editingDatasetId ? { ...d, title: editTitle, description: editDescription } : d
+      ));
+
+      setIsEditModalOpen(false);
+      alert('Dataset updated successfully!');
+    } catch (err) {
+      console.error('Failed to update dataset:', err);
+      alert(err.response?.data?.message || 'Failed to update dataset.');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // XỬ LÝ XEM FILE PDF CÓ ĐÍNH KÈM TOKEN ĐĂNG NHẬP
+  const handleViewFile = async (e, datasetId, fileId, fileName) => {
+    e.stopPropagation(); 
+    try {
+      const token = localStorage.getItem('token') || localStorage.getItem('accessToken') || localStorage.getItem('jwt');
       const headers = {};
       if (token) {
-        // Đính kèm token Bearer theo đúng chuẩn cấu hình bảo mật (Authorize) 
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      // Gọi API lấy file dưới dạng blob (binary data)
-      // Nếu đường dẫn endpoint download file thực tế khác đoạn này, bạn chỉ cần sửa lại URL trong `api.get`
       const response = await api.get(`/api/datasets/${datasetId}/sources/${fileId}`, {
         responseType: 'blob',
         headers: headers 
       });
 
-      // Tạo một URL tạm thời đại diện cho dữ liệu nhị phân của file PDF nhận được từ server
       const fileBlob = new Blob([response.data], { type: 'application/pdf' });
       const fileUrl = URL.createObjectURL(fileBlob);
 
-      // Mở file ra một tab mới hoàn toàn sạch sẽ
       const newTab = window.open();
       if (newTab) {
         newTab.location.href = fileUrl;
       } else {
-        // Dự phòng trường hợp trình duyệt chặn popup block không cho mở tab mới tự động
         const link = document.createElement('a');
         link.href = fileUrl;
         link.download = fileName || 'document.pdf';
@@ -108,14 +185,7 @@ export default function DatasetList() {
       }
     } catch (err) {
       console.error('Failed to open PDF file:', err);
-      const status = err.response?.status;
-      if (status === 401 || status === 403) {
-        alert('Phiên đăng nhập đã hết hạn hoặc bạn không có quyền xem file này (Lỗi Authen Token).');
-      } else if (status === 404) {
-        alert('Không tìm thấy file trên hệ thống (Lỗi 404 - Hãy kiểm tra lại ID Dataset/Source có trùng DB Backend không).');
-      } else {
-        alert(`Không thể mở file PDF này. Mã lỗi hệ thống: ${status || 'Unknown error'}`);
-      }
+      alert('Không thể mở file PDF này. Hãy kiểm tra lại kết nối hoặc quyền truy cập.');
     }
   };
 
@@ -159,42 +229,30 @@ export default function DatasetList() {
           </button>
         </div>
 
-        {/* LOADING & ERROR STATES */}
+        {/* DATASET LIST RENDERING */}
         {loading ? (
           <div className="text-center py-12">
-            <div className="animate-spin inline-block w-8 h-8 border-[3px] border-current border-t-transparent text-blue-600 rounded-full mb-3" role="status" aria-label="loading"></div>
+            <div className="animate-spin inline-block w-8 h-8 border-[3px] border-current border-t-transparent text-blue-600 rounded-full mb-3"></div>
             <p className="text-gray-500 italic">Loading datasets from server...</p>
           </div>
         ) : error ? (
           <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded text-center my-6">
             <p className="font-semibold">{error}</p>
-            <button 
-              onClick={fetchDatasets}
-              className="mt-3 px-4 py-1.5 bg-red-600 text-white rounded text-xs font-bold hover:bg-red-700 transition"
-            >
-              Retry
-            </button>
+            <button onClick={fetchDatasets} className="mt-3 px-4 py-1.5 bg-red-600 text-white rounded text-xs font-bold hover:bg-red-700 transition">Retry</button>
           </div>
         ) : datasets.length === 0 ? (
           <div className="bg-white border border-gray-200 rounded p-12 text-center shadow-sm">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1} stroke="currentColor" className="w-16 h-16 mx-auto text-gray-300 mb-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 0 0-1.883 2.542l.857 6a2.25 2.25 0 0 0 2.227 1.932H19.05a2.25 2.25 0 0 0 2.227-1.932l.857-6a2.25 2.25 0 0 0-1.883-2.542m-16.5 0V6A2.25 2.25 0 0 1 6 3.75h3.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 0 1.06.44H18A2.25 2.25 0 0 1 20.25 9v.776" />
-            </svg>
             <h3 className="text-lg font-bold text-gray-700 mb-1">No Datasets Found</h3>
-            <p className="text-gray-500 text-sm max-w-sm mx-auto mb-6">You haven't created any datasets yet.</p>
           </div>
         ) : (
-          /* DATASET LIST RENDERING */
           <div className="space-y-4">
             {datasets.map((dataset) => {
               const isExpanded = expandedDatasetId === dataset.id;
               const sources = datasetSources[dataset.id] || [];
 
               return (
-                <div 
-                  key={dataset.id} 
-                  className="bg-white border border-gray-200 rounded shadow-sm hover:border-gray-300 transition overflow-hidden group"
-                >
+                <div key={dataset.id} className="bg-white border border-gray-200 rounded shadow-sm hover:border-gray-300 transition overflow-hidden group">
+                  
                   {/* FOLDER ACCORDION HEADER */}
                   <div 
                     onClick={() => handleToggleExpand(dataset.id)}
@@ -206,27 +264,30 @@ export default function DatasetList() {
                           <path d="M19.5 21a3 3 0 0 0 3-3v-4.5a3 3 0 0 0-3-3h-15a3 3 0 0 0-3 3V18a3 3 0 0 0 3 3h15ZM1.5 10.146V6a3 3 0 0 1 3-3h5.379a2.25 2.25 0 0 1 1.59.659l2.122 2.121c.14.141.331.22.53.22H19.5a3 3 0 0 1 3 3v1.146A4.483 4.483 0 0 0 19.5 9h-15a4.483 4.483 0 0 0-3 1.146Z" />
                         </svg>
                       </div>
-                      
                       <div className="truncate">
                         <h4 className="font-bold text-gray-800 text-base truncate group-hover:text-blue-700 transition">
                           {dataset.title || <span className="italic text-gray-400">Untitled Dataset</span>}
                         </h4>
-                        <p className="text-sm text-gray-500 truncate mt-0.5">
-                          {dataset.description || <span className="italic text-gray-400">No description provided</span>}
-                        </p>
+                        <p className="text-sm text-gray-500 truncate mt-0.5">{dataset.description || <span className="italic text-gray-400">No description provided</span>}</p>
                       </div>
                     </div>
                     
-                    <div className="flex items-center space-x-5">
-                      <span className="text-xs px-2.5 py-1 bg-gray-100 text-gray-500 rounded-full font-medium">
-                        ID: {dataset.id}
-                      </span>
+                    <div className="flex items-center space-x-3">
+                      <span className="text-xs px-2.5 py-1 bg-gray-100 text-gray-500 rounded-full font-medium">ID: {dataset.id}</span>
+
+                      {/* ICON BÚT CHÌ ĐƠN THUẦN CHỈNH SỬA */}
+                      <button
+                        onClick={(e) => handleOpenEditModal(e, dataset)}
+                        className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition duration-200"
+                        title="Update Dataset"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" />
+                        </svg>
+                      </button>
 
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteDataset(dataset.id);
-                        }}
+                        onClick={(e) => { e.stopPropagation(); handleDeleteDataset(dataset.id); }}
                         className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition duration-200"
                         title="Delete Dataset"
                       >
@@ -247,9 +308,7 @@ export default function DatasetList() {
                   <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
                     <div className="overflow-hidden">
                       <div className="bg-gray-50/50 border-t border-gray-100 p-5 pl-[4.5rem] space-y-3">
-                        <h5 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">
-                          Attached Source Files ({loadingSources ? '...' : sources.length})
-                        </h5>
+                        <h5 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Attached Source Files ({loadingSources ? '...' : sources.length})</h5>
 
                         {loadingSources ? (
                           <div className="text-sm text-gray-500 italic py-2 flex items-center space-x-2">
@@ -257,39 +316,48 @@ export default function DatasetList() {
                             <span>Fetching files...</span>
                           </div>
                         ) : sources.length === 0 ? (
-                          <div className="text-sm text-gray-400 italic py-2 flex items-center">
-                            This dataset is empty (No PDF files attached yet).
-                          </div>
+                          <div className="text-sm text-gray-400 italic py-2">This dataset is empty (No PDF files attached yet).</div>
                         ) : (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {sources.map((file) => {
                               const currentFileName = file.fileName || file.name || 'Unknown_File.pdf';
                               
                               return (
-                                <div 
-                                  key={file.id} 
-                                  className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded text-sm shadow-sm hover:border-blue-200 transition"
-                                >
+                                <div key={file.id} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded text-sm shadow-sm hover:border-blue-200 transition">
                                   <div className="flex items-center space-x-3 truncate mr-2 flex-1">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-gray-400 flex-shrink-0">
                                       <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
                                     </svg>
                                     <div className="truncate flex-1">
-                                      {/* TRIGGER BUTTON: Gọi hàm handleViewFile có gửi kèm Token */}
                                       <button 
                                         type="button"
                                         onClick={(e) => handleViewFile(e, dataset.id, file.id, currentFileName)}
-                                        className="font-semibold text-gray-700 hover:text-blue-600 hover:underline block truncate text-left w-full cursor-pointer focus:outline-none"
-                                        title="Click to view/download file"
+                                        className="font-semibold text-gray-700 hover:text-blue-600 hover:underline block truncate text-left w-full focus:outline-none"
+                                        title="Click to view file"
                                       >
                                         {currentFileName}
                                       </button>
                                       <p className="text-xs text-gray-400">ID: {file.id}</p>
                                     </div>
                                   </div>
-                                  <span className="text-[11px] text-[#1e3a8a] bg-blue-50 px-2.5 py-1 rounded-full font-bold uppercase tracking-wide flex-shrink-0">
-                                    Active
-                                  </span>
+
+                                  {/* NÚT XÓA FILE ĐÃ ĐƯỢC FIX LỖI ROUTER BACKEND */}
+                                  <div className="flex items-center space-x-2 flex-shrink-0">
+                                    <span className="text-[10px] text-green-700 bg-green-50 px-2 py-0.5 rounded font-bold uppercase tracking-wide">
+                                      Active
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleDeleteSource(e, dataset.id, file.id)}
+                                      className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition cursor-pointer"
+                                      title="Delete this file"
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                      </svg>
+                                    </button>
+                                  </div>
+
                                 </div>
                               );
                             })}
@@ -304,6 +372,88 @@ export default function DatasetList() {
           </div>
         )}
       </main>
+
+      {/* ================= EDIT DATASET MODAL ================= */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-xl border border-gray-200 max-w-lg w-full overflow-hidden">
+            <div className="bg-[#1e3a8a] text-white p-4 flex justify-between items-center">
+              <h3 className="font-bold text-lg">Update Dataset (ID: {editingDatasetId})</h3>
+              <button onClick={() => setIsEditModalOpen(false)} className="text-white/80 hover:text-white text-xl font-bold focus:outline-none">&times;</button>
+            </div>
+
+            <form onSubmit={handleUpdateDataset} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Dataset Name *</label>
+                <input 
+                  type="text" 
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-[#1e3a8a] transition"
+                  placeholder="Enter dataset name..."
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Description</label>
+                <textarea 
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  rows={3}
+                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:border-[#1e3a8a] transition"
+                  placeholder="Enter dataset descriptions..."
+                />
+              </div>
+
+              <div className="border-t border-gray-100 pt-4">
+                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Source Files (PDF only)</label>
+                <p className="text-[11px] text-gray-400 mb-2">Choose a file if you want to append/upload more document files to this dataset</p>
+                <div className="relative border border-gray-300 rounded px-3 py-2.5 bg-gray-50 flex items-center hover:bg-gray-100 transition cursor-pointer">
+                  <input 
+                    type="file" 
+                    accept="application/pdf"
+                    onChange={(e) => setSelectedFile(e.target.files[0])}
+                    className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
+                  />
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-500 mr-2 flex-shrink-0">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                  </svg>
+                  <span className="text-sm font-medium text-gray-600 truncate">
+                    {selectedFile ? selectedFile.name : "Choose new PDF file..."}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex justify-end items-center space-x-3 pt-4 border-t border-gray-100">
+                <button
+                  type="button"
+                  disabled={isUpdating}
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-4 py-2 text-sm font-semibold text-gray-500 bg-gray-100 rounded hover:bg-gray-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdating}
+                  className="px-5 py-2 text-sm font-semibold text-white bg-[#1e3a8a] rounded hover:bg-[#152e75] transition flex items-center space-x-2"
+                >
+                  {isUpdating ? (
+                    <>
+                      <div className="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full"></div>
+                      <span>Saving Changes...</span>
+                    </>
+                  ) : (
+                    <span>Save Changes</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
