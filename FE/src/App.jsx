@@ -8,6 +8,7 @@ import Profile from './pages/Profile.jsx';
 import ReviewRequests from './pages/Instructor/ReviewRequests.jsx';
 import CreateDataset from './pages/Instructor/CreateDataset.jsx';
 import Dashboard from './pages/Instructor/Dashboard.jsx'
+import DatasetList from './pages/Instructor/DatasetList.jsx';
 function App() {
   return (
     <BrowserRouter>
@@ -19,10 +20,13 @@ function App() {
         {/* BƯỚC 2: Khai báo các tuyến đường mới để hết bị trắng trang */}
         <Route path="/profile" element={<Profile />} />
         
-        {/* Hãy chú ý gõ chính xác chữ thường khớp với URL trên trình duyệt nhé */}
+        {/* Các tuyến đường Instructor */}
         <Route path="/instructor/dashboard" element={<Dashboard />} />
         <Route path="/instructor/requests" element={<ReviewRequests />} />
-        <Route path="/instructor/dataset" element={<CreateDataset />} />
+        
+        {/* FIX CHỖ NÀY: Chia rõ trang Danh sách và trang Tạo mới */}
+        <Route path="/instructor/dataset" element={<DatasetList />} />
+        <Route path="/instructor/dataset/create" element={<CreateDataset />} />
       </Routes>
     </BrowserRouter>
   );
