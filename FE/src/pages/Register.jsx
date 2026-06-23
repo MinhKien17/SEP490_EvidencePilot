@@ -69,7 +69,18 @@ export default function Register() {
 
       {/* Right Column: Form */}
       <div className="flex-1 flex items-center justify-center p-8 sm:p-12 lg:p-24 bg-white">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-md relative">
+          
+          {/* Back to Home Button */}
+          <div className="mb-8">
+            <Link to="/" className="inline-flex items-center text-xs font-semibold text-gray-500 hover:text-indigo-600 transition-colors gap-1.5 group">
+              <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Quay lại Trang chủ
+            </Link>
+          </div>
+
           <div className="mb-10 text-center sm:text-left">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Create an account</h1>
             <p className="text-gray-500">Sign up to get started.</p>
