@@ -5,9 +5,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
- * Response body for {@code POST /review/paper}.
+ * Response body for the backend's local paper review.
  *
- * <p>All fields are required per the Swagger spec.
+ * <p>All fields are returned by the local review service.
  * Style enums: conference | article | magazine | report | thesis | unknown</p>
  */
 public record PaperReviewResponse(

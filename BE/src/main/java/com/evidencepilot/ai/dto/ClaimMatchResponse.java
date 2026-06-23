@@ -5,9 +5,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
- * Response body for {@code POST /match/claim}.
+ * Response body for local claim-to-source matching.
  *
- * <p>Swagger field summary:
+ * <p>Field summary:
  * <ul>
  *   <li>{@code claim}   – required; echo of the request claim text</li>
  *   <li>{@code matches} – required; ordered list of {@link ClaimMatch} items</li>
@@ -22,7 +22,7 @@ public record ClaimMatchResponse(
         @JsonProperty("matches")
         List<ClaimMatch> matches
 ) {
-    /** Returns {@code true} when the AI found at least one matching source. */
+    /** Returns {@code true} when the backend found at least one matching source. */
     public boolean hasMatches() {
         return matches != null && !matches.isEmpty();
     }

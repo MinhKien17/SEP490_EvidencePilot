@@ -1,6 +1,12 @@
 package com.evidencepilot.ai;
 
-import com.evidencepilot.ai.dto.*;
+import com.evidencepilot.ai.dto.ClaimAnalysisRequest;
+import com.evidencepilot.ai.dto.ClaimAnalysisResponse;
+import com.evidencepilot.ai.dto.EmbeddingRequest;
+import com.evidencepilot.ai.dto.EmbeddingResponse;
+import com.evidencepilot.ai.dto.GenerateRequest;
+import com.evidencepilot.ai.dto.GenerateResponse;
+import com.evidencepilot.ai.dto.ModelsResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.ByteArrayResource;
@@ -72,24 +78,6 @@ public class AiModelClient {
         return post("/ai/generate", new GenerateRequest(prompt), GenerateResponse.class);
     }
 
-    // ── Claim matching ─────────────────────────────────────────────────────────
-
-    /**
-     * Calls {@code POST /match/claim} to find sources semantically related to a claim.
-     *
-     * <p>Use the returned {@link ClaimMatchResponse#matches()} list to pick the best
-     * {@code source_id} and {@code excerpt} before calling
-     * {@link #processClaim(ClaimAnalysisRequest)}.</p>
-     *
-     * @param request the match request (use {@link ClaimMatchRequest#of(String)} for defaults)
-     * @return ordered list of matching sources with suitability scores
-     */
-    public ClaimMatchResponse matchClaim(ClaimMatchRequest request) {
-        log.info("Calling POST /match/claim (claim length={}, topK={})",
-                request.claim().length(), request.topK());
-        return post("/match/claim", request, ClaimMatchResponse.class);
-    }
-
     // ── Claim analysis ─────────────────────────────────────────────────────────
 
     /**
@@ -110,22 +98,6 @@ public class AiModelClient {
     }
 
     // ── Paper review ───────────────────────────────────────────────────────────
-
-    /**
-     * Calls {@code POST /review/paper} to get a structural review of a paper
-     * that the AI service already has registered under the given {@code paperId}.
-     *
-     * <p>Note: {@code paperId} here is an identifier inside the AI service's own
-     * registry, not the {@code papers.id} primary key in our MySQL database.</p>
-     *
-     * @param request the review request
-     * @return structural feedback including missing/weak sections and claim recommendations
-     */
-    public PaperReviewResponse reviewPaper(PaperReviewRequest request) {
-        log.info("Calling POST /review/paper (paperId={}, targetStyle={}, useAi={})",
-                request.paperId(), request.targetStyle(), request.useAi());
-        return post("/review/paper", request, PaperReviewResponse.class);
-    }
 
     // ── Embeddings ─────────────────────────────────────────────────────────────
 

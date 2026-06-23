@@ -119,9 +119,9 @@ public class ClaimController {
      * Triggers the two-phase AI analysis pipeline for a single claim.
      *
      * <h3>Auto mode (no parameters)</h3>
-     * <p>The service calls {@code POST /match/claim} first to locate the best
-     * source in the AI system, then calls {@code POST /process/claim} with that
-     * source.  Use this when you want the AI to pick the evidence automatically.</p>
+     * <p>The service searches persisted source chunks first to locate the best
+     * source, then calls {@code POST /process/claim} with that source. Use this
+     * when you want the backend to pick the evidence automatically.</p>
      *
      * <h3>Manual mode (sourceId + excerpt provided)</h3>
      * <p>Skips the match phase and calls {@code POST /process/claim} directly with

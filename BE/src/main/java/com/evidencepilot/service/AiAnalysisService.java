@@ -28,8 +28,8 @@ import java.util.Map;
  *
  * <h2>Two-phase workflow</h2>
  * <ol>
- *   <li><b>Match</b> – calls {@code POST /match/claim} with the claim text to let
- *       the AI locate relevant source chunks it already knows about.  The best
+ *   <li><b>Match</b> – embeds the claim text and searches persisted Qdrant
+ *       source chunks for the current project.  The best
  *       match supplies the {@code source_id} and {@code excerpt} required by the
  *       next step.</li>
  *   <li><b>Process</b> – calls {@code POST /process/claim} with the claim, the
@@ -64,8 +64,8 @@ public class AiAnalysisService {
     /**
      * Full two-phase pipeline: match → process → persist.
      *
-     * <p>Automatically discovers the best-matching source by calling
-     * {@code POST /match/claim} first.  Use the overload below if the caller
+     * <p>Automatically discovers the best-matching source by searching the
+     * backend's persisted source chunks first.  Use the overload below if the caller
      * already knows the exact {@code source_id} and {@code excerpt}.</p>
      *
      * @param claim the Claim to analyse (must already be persisted in the DB)
