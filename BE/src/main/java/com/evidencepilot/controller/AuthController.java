@@ -2,6 +2,7 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.config.JwtUtil;
 import com.evidencepilot.domain.entity.User;
+import com.evidencepilot.domain.enums.UserRole;
 import com.evidencepilot.dto.request.LoginRequest;
 import com.evidencepilot.dto.request.RegisterRequest;
 import com.evidencepilot.dto.request.UpdatePasswordRequest;
@@ -42,7 +43,7 @@ public class AuthController {
     private final UserRepository  userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil         jwtUtil;
-
+    
     // ── Register ──────────────────────────────────────────────────────────────
 
     /**
@@ -78,7 +79,7 @@ public class AuthController {
         User user = new User();
         user.setEmail(request.getEmail());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
-        user.setRole(request.getRole());
+        user.setRole(UserRole.STUDENT);
         // createdAt is set automatically by @CreationTimestamp
 
         userRepository.save(user);

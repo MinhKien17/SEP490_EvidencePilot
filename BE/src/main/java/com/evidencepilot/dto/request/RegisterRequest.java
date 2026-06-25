@@ -1,9 +1,7 @@
 package com.evidencepilot.dto.request;
 
-import com.evidencepilot.domain.enums.UserRole;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -27,7 +25,4 @@ public class RegisterRequest {
 
     @NotBlank(message = "Password is required")
     private String password;
-
-    @NotNull(message = "Role is required")
-    private UserRole role;
 }
