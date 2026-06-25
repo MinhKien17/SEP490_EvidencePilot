@@ -40,6 +40,19 @@ class EmailVerificationServiceTest {
     }
 
     @Test
+    void createVerificationTokenRequiresConfiguredVerificationUrl() {
+        EmailVerificationService missingUrlService =
+                new EmailVerificationService(userRepository, null, "", Duration.ofHours(24));
+        User user = new User();
+        user.setEmail("student@example.com");
+
+        assertThatThrownBy(() -> missingUrlService.createVerificationToken(user))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+    }
+
+    @Test
     void verifyEmailMarksUserVerifiedAndClearsToken() {
         User user = new User();
         user.setEmail("student@example.com");

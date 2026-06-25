@@ -34,7 +34,7 @@ public class EmailVerificationService {
     public EmailVerificationService(
             UserRepository userRepository,
             ObjectProvider<JavaMailSender> mailSenderProvider,
-            @Value("${app.email-verification.url:http://localhost:5173/verify-email}") String verificationUrl,
+            @Value("${app.email-verification.url:}") String verificationUrl,
             @Value("${app.email-verification.token-ttl-hours:24}") long tokenTtlHours) {
         this(userRepository, mailSenderProvider.getIfAvailable(), verificationUrl, Duration.ofHours(tokenTtlHours));
     }
@@ -51,6 +51,8 @@ public class EmailVerificationService {
     }
 
     public String createVerificationToken(User user) {
+        requireVerificationUrl();
+
         byte[] tokenBytes = new byte[32];
         secureRandom.nextBytes(tokenBytes);
         String rawToken = Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes);
@@ -108,6 +110,13 @@ public class EmailVerificationService {
             return HexFormat.of().formatHex(hashed);
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is not available", exception);
+        }
+    }
+
+    private void requireVerificationUrl() {
+        if (verificationUrl == null || verificationUrl.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "EMAIL_VERIFICATION_URL is not configured");
         }
     }
 }

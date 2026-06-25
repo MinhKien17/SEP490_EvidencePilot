@@ -48,6 +48,18 @@ spring:
       max-file-size: 50MB
       max-request-size: 52MB
 
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS_ENABLE:true}
+
 server:
   port: ${SERVER_PORT:8080}
   forward-headers-strategy: framework
@@ -70,6 +82,9 @@ app:
   admin:
     email: ${ADMIN_EMAIL:}
     password: ${ADMIN_PASSWORD:}
+  email-verification:
+    url: ${EMAIL_VERIFICATION_URL:}
+    token-ttl-hours: ${EMAIL_VERIFICATION_TOKEN_TTL_HOURS:24}
 
 # ── External AI model integration ────────────────────────────────────────
 ai:
