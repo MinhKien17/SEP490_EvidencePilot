@@ -41,6 +41,9 @@ public class AdminInitializer implements ApplicationRunner {
         User admin = userRepository.findByEmail(email).orElseGet(User::new);
         admin.setEmail(email);
         admin.setRole(UserRole.ADMIN);
+        admin.setEmailVerified(true);
+        admin.setEmailVerificationTokenHash(null);
+        admin.setEmailVerificationTokenExpiresAt(null);
         admin.setPasswordHash(passwordEncoder.encode(password));
         userRepository.save(admin);
         log.info("Default admin {}", email);

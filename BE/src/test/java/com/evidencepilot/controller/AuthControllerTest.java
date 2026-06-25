@@ -6,6 +6,7 @@ import com.evidencepilot.domain.enums.UserRole;
 import com.evidencepilot.dto.request.LoginRequest;
 import com.evidencepilot.dto.request.RegisterRequest;
 import com.evidencepilot.repository.UserRepository;
+import com.evidencepilot.service.EmailVerificationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -17,27 +18,34 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AuthControllerTest {
 
     private final UserRepository userRepository = mock(UserRepository.class);
+    private final EmailVerificationService emailVerificationService = mock(EmailVerificationService.class);
     private final JwtUtil jwtUtil = new JwtUtil("EvidencePilot-Test-Secret-Key-For-Jwt!!", 86_400_000L);
     private final AuthController controller =
-            new AuthController(userRepository, new BCryptPasswordEncoder(), jwtUtil);
+            new AuthController(userRepository, new BCryptPasswordEncoder(), jwtUtil, emailVerificationService);
 
     @Test
-    void registerCreatesRequestedRoleAndDoesNotExposePasswordHash() {
+    void registerCreatesUnverifiedStudentAndDoesNotExposePasswordHash() {
         RegisterRequest request = new RegisterRequest();
         request.setEmail("student@example.com");
         request.setPassword("Passw0rd!");
-        request.setRole(UserRole.STUDENT);
 
         when(userRepository.existsByEmail("student@example.com")).thenReturn(false);
+        when(emailVerificationService.createVerificationToken(any(User.class))).thenAnswer(invocation -> {
+            User user = invocation.getArgument(0);
+            user.setEmailVerified(false);
+            return "raw-token";
+        });
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
             User saved = invocation.getArgument(0);
             saved.setId(7);
             assertThat(saved.getRole()).isEqualTo(UserRole.STUDENT);
+            assertThat(saved.getEmailVerified()).isFalse();
             assertThat(saved.getPasswordHash()).startsWith("$2");
             return saved;
         });
@@ -47,7 +55,10 @@ class AuthControllerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).containsEntry("email", "student@example.com");
         assertThat(response.getBody()).containsEntry("role", UserRole.STUDENT.name());
+        assertThat(response.getBody()).containsEntry("message",
+                "User registered successfully. Please verify your email before logging in.");
         assertThat(response.getBody()).doesNotContainKey("passwordHash");
+        verify(emailVerificationService).sendVerificationEmail(any(User.class), any(String.class));
     }
 
     @Test
@@ -55,7 +66,6 @@ class AuthControllerTest {
         RegisterRequest request = new RegisterRequest();
         request.setEmail("student@example.com");
         request.setPassword("Passw0rd!");
-        request.setRole(UserRole.STUDENT);
 
         when(userRepository.existsByEmail("student@example.com")).thenReturn(true);
 
@@ -71,6 +81,7 @@ class AuthControllerTest {
         user.setId(7);
         user.setEmail("instructor@example.com");
         user.setRole(UserRole.INSTRUCTOR);
+        user.setEmailVerified(true);
         user.setPasswordHash(new BCryptPasswordEncoder().encode("Passw0rd!"));
 
         when(userRepository.findByEmail("instructor@example.com")).thenReturn(Optional.of(user));
@@ -83,5 +94,37 @@ class AuthControllerTest {
 
         assertThat(jwtUtil.extractRole(response.getBody().getToken()))
                 .isEqualTo(UserRole.INSTRUCTOR.name());
+    }
+
+    @Test
+    void loginRejectsUnverifiedEmail() {
+        User user = new User();
+        user.setId(7);
+        user.setEmail("student@example.com");
+        user.setRole(UserRole.STUDENT);
+        user.setEmailVerified(false);
+        user.setPasswordHash(new BCryptPasswordEncoder().encode("Passw0rd!"));
+
+        when(userRepository.findByEmail("student@example.com")).thenReturn(Optional.of(user));
+
+        LoginRequest request = new LoginRequest();
+        request.setEmail("student@example.com");
+        request.setPassword("Passw0rd!");
+
+        assertThatThrownBy(() -> controller.login(request))
+                .isInstanceOf(ResponseStatusException.class)
+                .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void verifyEmailActivatesMatchingToken() {
+        when(emailVerificationService.verifyEmail("raw-token")).thenReturn("student@example.com");
+
+        var response = controller.verifyEmail("raw-token");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).containsEntry("email", "student@example.com");
+        assertThat(response.getBody()).containsEntry("message", "Email verified successfully");
     }
 }

@@ -40,6 +40,15 @@ public class User {
     @Column(name = "role", nullable = false, length = 20)
     private UserRole role;
 
+    @Column(name = "email_verified", nullable = false, columnDefinition = "BOOLEAN DEFAULT TRUE")
+    private Boolean emailVerified = true;
+
+    @Column(name = "email_verification_token_hash", unique = true)
+    private String emailVerificationTokenHash;
+
+    @Column(name = "email_verification_token_expires_at")
+    private LocalDateTime emailVerificationTokenExpiresAt;
+
     // --- NEW PROFILE FIELDS ---
     @Column(name = "first_name")
     private String firstName;

@@ -24,12 +24,16 @@ CREATE TABLE IF NOT EXISTS `users` (
     `email`         VARCHAR(255) NOT NULL,
     `password_hash` VARCHAR(255) NOT NULL COMMENT 'BCrypt hash – never plain-text',
     `role`          ENUM('STUDENT','INSTRUCTOR','ADMIN') NOT NULL,
+    `email_verified` BOOLEAN      NOT NULL DEFAULT TRUE,
+    `email_verification_token_hash` VARCHAR(255) NULL,
+    `email_verification_token_expires_at` DATETIME NULL,
     `first_name`    VARCHAR(100) NULL,
     `last_name`     VARCHAR(100) NULL,
     `age`           INT          NULL,
     `created_at`    DATETIME     NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
-    UNIQUE KEY `uq_users_email` (`email`)
+    UNIQUE KEY `uq_users_email` (`email`),
+    UNIQUE KEY `uq_users_email_verification_token_hash` (`email_verification_token_hash`)
 ) ENGINE=InnoDB
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_unicode_ci;

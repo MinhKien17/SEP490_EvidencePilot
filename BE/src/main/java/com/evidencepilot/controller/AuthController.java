@@ -8,6 +8,7 @@ import com.evidencepilot.dto.request.RegisterRequest;
 import com.evidencepilot.dto.request.UpdatePasswordRequest;
 import com.evidencepilot.dto.response.AuthResponse;
 import com.evidencepilot.repository.UserRepository;
+import com.evidencepilot.service.EmailVerificationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -43,7 +44,8 @@ public class AuthController {
     private final UserRepository  userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil         jwtUtil;
-    
+    private final EmailVerificationService emailVerificationService;
+
     // ── Register ──────────────────────────────────────────────────────────────
 
     /**
@@ -59,7 +61,7 @@ public class AuthController {
      */
     @Operation(
             summary = "Register a new user",
-            description = "Creates a new user account with the provided email, password, and role. "
+            description = "Creates an unverified student account with the provided email and password. "
                         + "**Security:** Public — no token required.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "User registered successfully"),
@@ -80,14 +82,33 @@ public class AuthController {
         user.setEmail(request.getEmail());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setRole(UserRole.STUDENT);
+        String verificationToken = emailVerificationService.createVerificationToken(user);
         // createdAt is set automatically by @CreationTimestamp
 
         userRepository.save(user);
+        emailVerificationService.sendVerificationEmail(user, verificationToken);
 
         return ResponseEntity.ok(Map.of(
-                "message", "User registered successfully",
+                "message", "User registered successfully. Please verify your email before logging in.",
                 "email",   user.getEmail(),
                 "role",    user.getRole().name()
+        ));
+    }
+
+    @Operation(
+            summary = "Verify registered email",
+            description = "Activates a newly registered account using the verification token sent by email. "
+                        + "**Security:** Public — no token required.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Email verified successfully"),
+            @ApiResponse(responseCode = "400", description = "Missing, invalid, or expired verification token")
+    })
+    @GetMapping("/verify-email")
+    public ResponseEntity<Map<String, String>> verifyEmail(@RequestParam String token) {
+        String email = emailVerificationService.verifyEmail(token);
+        return ResponseEntity.ok(Map.of(
+                "message", "Email verified successfully",
+                "email", email
         ));
     }
 
@@ -126,6 +147,10 @@ public class AuthController {
         // 2. Compare plaintext password against the stored BCrypt hash
         if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
+        }
+
+        if (Boolean.FALSE.equals(user.getEmailVerified())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Email is not verified");
         }
 
         // 3. Issue a signed JWT with the role claim — valid for 24 hours
