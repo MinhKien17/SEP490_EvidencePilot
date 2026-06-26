@@ -4,6 +4,7 @@ import com.evidencepilot.domain.entity.User;
 import com.evidencepilot.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.MailException;
@@ -31,6 +32,7 @@ public class EmailVerificationService {
     private final Duration tokenTtl;
     private final SecureRandom secureRandom = new SecureRandom();
 
+    @Autowired
     public EmailVerificationService(
             UserRepository userRepository,
             ObjectProvider<JavaMailSender> mailSenderProvider,

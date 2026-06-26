@@ -4,11 +4,14 @@ import com.evidencepilot.domain.entity.User;
 import com.evidencepilot.domain.enums.UserRole;
 import com.evidencepilot.repository.UserRepository;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.core.env.MapPropertySource;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -23,6 +26,22 @@ class EmailVerificationServiceTest {
     private final UserRepository userRepository = mock(UserRepository.class);
     private final EmailVerificationService service =
             new EmailVerificationService(userRepository, null, "http://localhost:5173/verify-email", Duration.ofHours(24));
+
+    @Test
+    void springCanInstantiateEmailVerificationService() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.getBeanFactory().registerSingleton("userRepository", userRepository);
+            context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("test", Map.of(
+                    "app.email-verification.url", "http://localhost:5173/verify-email",
+                    "app.email-verification.token-ttl-hours", "24"
+            )));
+            context.register(EmailVerificationService.class);
+
+            context.refresh();
+
+            assertThat(context.getBean(EmailVerificationService.class)).isNotNull();
+        }
+    }
 
     @Test
     void createVerificationTokenStoresHashAndExpiryWithoutVerifyingUser() {
