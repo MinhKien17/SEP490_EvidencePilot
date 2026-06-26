@@ -3,6 +3,11 @@ package com.evidencepilot.controller;
 import com.evidencepilot.dto.request.CollectionRequest;
 import com.evidencepilot.dto.response.CollectionResponse;
 import com.evidencepilot.service.CollectionService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -21,29 +26,62 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/collections")
 @RequiredArgsConstructor
+@Tag(name = "Collections", description = "Instructor collection (evidence library) management")
 public class CollectionController {
 
     private final CollectionService collectionService;
 
+    @Operation(summary = "Create a collection",
+            description = "Creates a new evidence collection owned by the current instructor user. "
+                    + "Optionally associates it with a project.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Collection created"),
+            @ApiResponse(responseCode = "400", description = "Validation error"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT")
+    })
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public CollectionResponse createCollection(@Valid @RequestBody CollectionRequest request) {
         return collectionService.createCollection(request);
     }
 
+    @Operation(summary = "Get collection by ID",
+            description = "Returns a single collection by its UUID.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Collection returned"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "404", description = "Collection not found")
+    })
     @GetMapping("/{id}")
-    public CollectionResponse getCollectionById(@PathVariable UUID id) {
+    public CollectionResponse getCollectionById(
+            @Parameter(description = "Collection UUID") @PathVariable UUID id) {
         return collectionService.getCollectionById(id);
     }
 
-    @GetMapping("/project/{projectId}")
-    public List<CollectionResponse> getCollectionsByProject(@PathVariable UUID projectId) {
+    @Operation(summary = "List collections by project",
+            description = "Returns all collections associated with the specified project.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Collection list returned"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "404", description = "Project not found")
+    })
+    @GetMapping("/api/projects/{projectId}/collections")
+    public List<CollectionResponse> getCollectionsByProject(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
         return collectionService.getCollectionsByProjectId(projectId);
     }
 
+    @Operation(summary = "Soft-delete a collection",
+            description = "Sets the collection's active flag to false.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Collection soft-deleted"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "404", description = "Collection not found")
+    })
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteCollection(@PathVariable UUID id) {
+    public void deleteCollection(
+            @Parameter(description = "Collection UUID") @PathVariable UUID id) {
         collectionService.deleteCollection(id);
     }
 }

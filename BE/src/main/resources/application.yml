@@ -7,7 +7,7 @@ spring:
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
 
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:evidence_pilot}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    url: jdbc:mysql://${DB_HOST:db}:${DB_PORT:3306}/${DB_NAME:evidence_pilot}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -50,7 +50,7 @@ spring:
 
   # ── RabbitMQ configuration ────────────────────────────────────────────────
   rabbitmq:
-    host: ${RABBITMQ_HOST:evidence_pilot_rabbitmq}
+    host: ${RABBITMQ_HOST:rabbitmq}
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USERNAME:rabbitmqadmin}
     password: ${RABBITMQ_PASSWORD:RabbitMqAdminPass123!}
@@ -85,7 +85,7 @@ ai:
 
 # ── Qdrant vector database ────────────────────────────────────────────────
 qdrant:
-  url: ${QDRANT_URL:http://localhost:6333}
+  url: ${QDRANT_URL:http://vector_db:6333}
 
 springdoc:
   swagger-ui:
@@ -95,7 +95,7 @@ springdoc:
 
 # ── MinIO configuration ─────────────────────────────────────────────────────
 minio:
-  url: ${MINIO_URL:http://localhost:9000}
+  url: ${MINIO_URL:http://minio:9000}
   access-key: ${MINIO_ACCESS_KEY:minioadmin}
-  secret-key: ${MINIO_SECRET_KEY:minioadminsecret}
+  secret-key: ${MINIO_SECRET_KEY:MinioAdminSecurePass123!}
   bucket-name: ${MINIO_BUCKET_NAME:evidence-pilot-bucket}

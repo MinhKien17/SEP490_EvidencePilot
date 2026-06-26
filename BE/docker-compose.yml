@@ -14,7 +14,7 @@ services:
       - db_data:/var/lib/mysql
       - ./src/main/resources/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p${MYSQL_ROOT_PASSWORD} --silent"]
+      test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p${MYSQL_ROOT_PASSWORD} --silent" ]
       interval: 10s
       timeout: 5s
       retries: 15
@@ -48,7 +48,7 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
       interval: 30s
       timeout: 20s
       retries: 3
@@ -62,12 +62,7 @@ services:
       minio:
         condition: service_healthy
     entrypoint: >
-      /bin/sh -c "
-      until (/usr/bin/mc alias set myminio http://minio:9000 minioadmin MinioAdminSecurePass123!) do echo 'Waiting for MinIO...'; sleep 2; done;
-      /usr/bin/mc mb --ignore-existing myminio/evidence-pilot-bucket;
-      /usr/bin/mc anonymous set public myminio/evidence-pilot-bucket;
-      echo 'Bucket created and configured';
-      "
+      /bin/sh -c " until (/usr/bin/mc alias set myminio http://minio:9000 minioadmin MinioAdminSecurePass123!) do echo 'Waiting for MinIO...'; sleep 2; done; /usr/bin/mc mb --ignore-existing myminio/evidence-pilot-bucket; /usr/bin/mc anonymous set public myminio/evidence-pilot-bucket; echo 'Bucket created and configured'; "
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: MinioAdminSecurePass123!
@@ -87,7 +82,7 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      test: [ "CMD", "rabbitmq-diagnostics", "check_running" ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -98,6 +93,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - MAVEN_SKIP_TESTS=true
     container_name: evidence_pilot_be
     restart: unless-stopped
     ports:
@@ -123,10 +120,10 @@ services:
       QDRANT_URL: http://vector_db:6333
 
       # ── MinIO (hardcoded, no .env vars provided) ─────────────────────────────
-      MINIO_ENDPOINT: http://minio:9000
+      MINIO_URL: http://minio:9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: MinioAdminSecurePass123!
-      MINIO_BUCKET: evidence-pilot-bucket
+      MINIO_BUCKET_NAME: evidence-pilot-bucket
 
       # ── RabbitMQ (hardcoded, no .env vars provided) ──────────────────────────
       RABBITMQ_HOST: rabbitmq

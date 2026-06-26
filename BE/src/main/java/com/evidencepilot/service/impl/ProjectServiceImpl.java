@@ -7,6 +7,7 @@ import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.enums.ProjectRole;
+import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.User;
 import com.evidencepilot.repository.ProjectMemberRepository;
 import com.evidencepilot.repository.ProjectRepository;
@@ -53,15 +54,16 @@ public class ProjectServiceImpl implements ProjectService {
         User currentUser = currentUserService.requireCurrentUser();
 
         Project project = new Project();
-project.setTitle(request.title());
+        project.setTitle(request.title());
         project.setDescription(request.description());
         project.setTargetStandard(request.targetStandard());
+        project.setStatus(ProjectStatus.ACTIVE);
         project.setCreatedAt(LocalDateTime.now());
 
         Project saved = projectRepository.save(project);
 
         ProjectMember owner = new ProjectMember();
-owner.setProject(saved);
+        owner.setProject(saved);
         owner.setUser(currentUser);
         owner.setRole(ProjectRole.OWNER);
         owner.setJoinedAt(LocalDateTime.now());
@@ -112,7 +114,7 @@ owner.setProject(saved);
                 .orElseThrow(() -> new ResourceNotFoundException(userId, "User"));
 
         ProjectMember member = new ProjectMember();
-member.setProject(project);
+        member.setProject(project);
         member.setUser(user);
         member.setRole(role);
         member.setJoinedAt(LocalDateTime.now());

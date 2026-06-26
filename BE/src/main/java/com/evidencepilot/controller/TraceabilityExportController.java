@@ -5,7 +5,6 @@ import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.EvidenceEdge;
 import com.evidencepilot.model.Project;
-import com.evidencepilot.model.Source;
 import com.evidencepilot.model.SourceReference;
 import com.evidencepilot.model.User;
 import com.evidencepilot.repository.ClaimRepository;
@@ -18,6 +17,11 @@ import com.evidencepilot.repository.SourceRepository;
 import com.evidencepilot.service.ClaimMatchingService;
 import com.evidencepilot.service.CurrentUserService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -38,6 +42,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/projects")
 @RequiredArgsConstructor
+@Tag(name = "Traceability", description = "Project-level traceability matrix export")
 public class TraceabilityExportController {
 
     private static final String MISSING = "MISSING";
@@ -53,8 +58,18 @@ public class TraceabilityExportController {
     private final CurrentUserService currentUserService;
     private final ObjectMapper objectMapper;
 
-    @GetMapping("/{projectId}/traceability-export")
-    public TraceabilityExportResponse export(@PathVariable UUID projectId) {
+    @Operation(summary = "Export traceability matrix",
+            description = "Generates a full traceability export for a project, including claims, "
+                    + "evidence sources, AI matches, evidence edges, and feedback history.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Traceability export returned"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Project not found")
+    })
+    @GetMapping("/{projectId}/traceability")
+    public TraceabilityExportResponse export(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,

@@ -6,10 +6,14 @@ import com.evidencepilot.dto.response.ProjectResponse;
 import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.service.ProjectService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,60 +24,132 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+
 import java.util.List;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/projects")
 @RequiredArgsConstructor
+@Tag(name = "Projects", description = "Project lifecycle and membership management")
 public class ProjectController {
 
     private final ProjectService projectService;
 
+    @Operation(summary = "List all projects",
+            description = "Returns all active projects accessible to the current user. "
+                    + "Admins see all projects; others see only their own.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Project list returned"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT")
+    })
     @GetMapping
     public List<ProjectResponse> getAllProjects() {
         return projectService.getAllProjects();
     }
 
+    @Operation(summary = "Get project by ID",
+            description = "Returns a single project if the current user has access.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Project returned"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Project not found")
+    })
     @GetMapping("/{id}")
-    public ProjectResponse getProjectById(@PathVariable UUID id) {
+    public ProjectResponse getProjectById(
+            @Parameter(description = "Project UUID") @PathVariable UUID id) {
         return projectService.getProjectById(id);
     }
 
+    @Operation(summary = "Create a project",
+            description = "Creates a new project and assigns the current user as the OWNER member.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Project created"),
+            @ApiResponse(responseCode = "400", description = "Validation error"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT")
+    })
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ProjectResponse createProject(@Valid @RequestBody ProjectCreateRequest request) {
         return projectService.createProject(request);
     }
 
+    @Operation(summary = "Update a project",
+            description = "Updates project metadata. Requires write access.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Project updated"),
+            @ApiResponse(responseCode = "400", description = "Validation error"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Project not found")
+    })
     @PutMapping("/{id}")
-    public ProjectResponse updateProject(@PathVariable UUID id,
-                                          @Valid @RequestBody ProjectUpdateRequest request) {
+    public ProjectResponse updateProject(
+            @Parameter(description = "Project UUID") @PathVariable UUID id,
+            @Valid @RequestBody ProjectUpdateRequest request) {
         return projectService.updateProject(id, request);
     }
 
+    @Operation(summary = "Soft-delete a project",
+            description = "Sets the project's active flag to false. Requires write access.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Project soft-deleted"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Project not found")
+    })
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteProject(@PathVariable UUID id) {
+    public void deleteProject(
+            @Parameter(description = "Project UUID") @PathVariable UUID id) {
         projectService.deleteProject(id);
     }
 
+    @Operation(summary = "List project members",
+            description = "Returns all members of a project.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Member list returned"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "404", description = "Project not found")
+    })
     @GetMapping("/{id}/members")
-    public List<ProjectMember> getProjectMembers(@PathVariable UUID id) {
+    public List<ProjectMember> getProjectMembers(
+            @Parameter(description = "Project UUID") @PathVariable UUID id) {
         return projectService.getProjectMembers(id);
     }
 
+    @Operation(summary = "Add a member to a project",
+            description = "Adds a user to the project with the specified role. Requires write access.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Member added"),
+            @ApiResponse(responseCode = "400", description = "Invalid user ID or role"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Project or user not found")
+    })
     @PostMapping("/{id}/members")
     @ResponseStatus(HttpStatus.CREATED)
-    public void addMember(@PathVariable UUID id,
-                           @RequestParam UUID userId,
-                           @RequestParam ProjectRole role) {
+    public void addMember(
+            @Parameter(description = "Project UUID") @PathVariable UUID id,
+            @Parameter(description = "User UUID to add") @RequestParam UUID userId,
+            @Parameter(description = "Role to assign") @RequestParam ProjectRole role) {
         projectService.addMember(id, userId, role);
     }
 
+    @Operation(summary = "Remove a member from a project",
+            description = "Removes a user from the project. Requires write access.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Member removed"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Project or member not found")
+    })
     @DeleteMapping("/{id}/members/{userId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void removeMember(@PathVariable UUID id, @PathVariable UUID userId) {
+    public void removeMember(
+            @Parameter(description = "Project UUID") @PathVariable UUID id,
+            @Parameter(description = "User UUID to remove") @PathVariable UUID userId) {
         projectService.removeMember(id, userId);
     }
 }
