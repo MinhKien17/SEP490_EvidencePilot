@@ -10,8 +10,10 @@ public class RabbitMQConfig {
 
     public static final String EXCHANGE = "evidence.exchange";
     public static final String EXTRACTION_QUEUE = "extraction.queue";
+    public static final String EXTRACTION_RESULT_QUEUE = "extraction.result.queue";
     public static final String VECTORIZATION_QUEUE = "vectorization.queue";
     public static final String ROUTING_KEY_EXTRACTION = "document.extract";
+    public static final String ROUTING_KEY_RESULT = "extraction.result";
     public static final String ROUTING_KEY_VECTORIZATION = "chunk.vectorize";
 
     @Bean
@@ -34,6 +36,18 @@ public class RabbitMQConfig {
         return BindingBuilder.bind(extractionQueue)
                 .to(exchange)
                 .with(ROUTING_KEY_EXTRACTION);
+    }
+
+    @Bean
+    public Queue extractionResultQueue() {
+        return QueueBuilder.durable(EXTRACTION_RESULT_QUEUE).build();
+    }
+
+    @Bean
+    public Binding extractionResultBinding(Queue extractionResultQueue, DirectExchange exchange) {
+        return BindingBuilder.bind(extractionResultQueue)
+                .to(exchange)
+                .with(ROUTING_KEY_RESULT);
     }
 
     @Bean

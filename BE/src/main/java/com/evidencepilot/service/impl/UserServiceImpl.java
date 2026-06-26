@@ -1,11 +1,13 @@
 package com.evidencepilot.service.impl;
 
+import com.evidencepilot.dto.request.UserProfileUpdateRequest;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.User;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+
 import java.util.UUID;
 
 @Service
@@ -24,5 +26,17 @@ public class UserServiceImpl implements UserService {
     public User findByEmail(String email) {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User with email " + email + " not found"));
+    }
+
+    @Override
+    public User updateProfile(UUID userId, UserProfileUpdateRequest request) {
+        User user = findById(userId);
+        if (request.getFirstName() != null) {
+            user.setFirstName(request.getFirstName());
+        }
+        if (request.getLastName() != null) {
+            user.setLastName(request.getLastName());
+        }
+        return userRepository.save(user);
     }
 }
