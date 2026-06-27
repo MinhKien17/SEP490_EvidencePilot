@@ -2,9 +2,19 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.request.ProjectCreateRequest;
 import com.evidencepilot.dto.request.ProjectUpdateRequest;
+import com.evidencepilot.dto.response.ClaimResponse;
+import com.evidencepilot.dto.response.CollectionResponse;
+import com.evidencepilot.dto.response.DocumentResponse;
+import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.dto.response.ProjectResponse;
 import com.evidencepilot.model.ProjectMember;
+import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.model.enums.ProjectRole;
+import com.evidencepilot.model.enums.ProjectStatus;
+import com.evidencepilot.service.ClaimService;
+import com.evidencepilot.service.CollectionService;
+import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.ProjectService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -35,6 +45,9 @@ import java.util.UUID;
 public class ProjectController {
 
     private final ProjectService projectService;
+    private final DocumentService documentService;
+    private final ClaimService claimService;
+    private final CollectionService collectionService;
 
     @Operation(summary = "List all projects",
             description = "Returns all active projects accessible to the current user. "
@@ -44,8 +57,14 @@ public class ProjectController {
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT")
     })
     @GetMapping
-    public List<ProjectResponse> getAllProjects() {
-        return projectService.getAllProjects();
+    public PagedResponse<ProjectResponse> getAllProjects(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "createdAt,desc") String sort,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) ProjectStatus status,
+            @RequestParam(required = false) Boolean active) {
+        return projectService.getAllProjects(page, size, sort, q, status, active);
     }
 
     @Operation(summary = "Get project by ID",
@@ -117,6 +136,64 @@ public class ProjectController {
     public List<ProjectMember> getProjectMembers(
             @Parameter(description = "Project UUID") @PathVariable UUID id) {
         return projectService.getProjectMembers(id);
+    }
+
+    @Operation(summary = "List project documents",
+            description = "Returns paged documents in a project with optional search, filters, and sorting.")
+    @GetMapping("/{projectId}/documents")
+    public PagedResponse<DocumentResponse> getProjectDocuments(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "createdAt,desc") String sort,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) DocumentType docType,
+            @RequestParam(required = false) ProcessingStatus processingStatus,
+            @RequestParam(required = false) Boolean active) {
+        return documentService.getDocumentsByProject(
+                projectId, page, size, sort, q, docType, processingStatus, active);
+    }
+
+    @Operation(summary = "List project sources",
+            description = "Returns paged evidence-source documents in a project.")
+    @GetMapping("/{projectId}/sources")
+    public PagedResponse<DocumentResponse> getProjectSources(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "createdAt,desc") String sort,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) ProcessingStatus processingStatus,
+            @RequestParam(required = false) Boolean active) {
+        return documentService.getSourcesByProject(
+                projectId, page, size, sort, q, processingStatus, active);
+    }
+
+    @Operation(summary = "List project claims",
+            description = "Returns paged claims in a project with optional text search and active filtering.")
+    @GetMapping("/{projectId}/claims")
+    public PagedResponse<ClaimResponse> getProjectClaims(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "createdAt,desc") String sort,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Boolean active) {
+        return claimService.getClaimsByProject(projectId, page, size, sort, q, active);
+    }
+
+    @Operation(summary = "List project collections",
+            description = "Returns paged collections in a project with optional search and active filtering.")
+    @GetMapping("/{projectId}/collections")
+    public PagedResponse<CollectionResponse> getProjectCollections(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "createdAt,desc") String sort,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Boolean active) {
+        return collectionService.getCollectionsByProjectId(
+                projectId, page, size, sort, q, active);
     }
 
     @Operation(summary = "Add a member to a project",

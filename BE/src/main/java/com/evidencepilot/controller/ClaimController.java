@@ -5,6 +5,7 @@ import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.dto.response.ClaimEvidenceMappingResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
 import com.evidencepilot.dto.response.EvidenceEdgeResponse;
+import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.service.ClaimService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -47,8 +48,13 @@ public class ClaimController {
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT")
     })
     @GetMapping
-    public List<ClaimResponse> getAllClaims() {
-        return claimService.getAllClaims();
+    public PagedResponse<ClaimResponse> getAllClaims(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "createdAt,desc") String sort,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Boolean active) {
+        return claimService.getAllClaims(page, size, sort, q, active);
     }
 
     @Operation(summary = "Get claim by ID",

@@ -2,6 +2,7 @@ package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.request.ProjectCreateRequest;
 import com.evidencepilot.dto.request.ProjectUpdateRequest;
+import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.dto.response.ProjectResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Project;
@@ -15,16 +16,25 @@ import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.ProjectService;
 import com.evidencepilot.service.SystemNotificationService;
+import com.evidencepilot.support.PagingRequest;
+import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class ProjectServiceImpl implements ProjectService {
+
+    private static final Set<String> PROJECT_SORT_FIELDS = Set.of(
+            "title", "status", "createdAt", "updatedAt");
 
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
@@ -40,6 +50,23 @@ public class ProjectServiceImpl implements ProjectService {
                 .filter(Project::isActive)
                 .map(ProjectResponse::from)
                 .toList();
+    }
+
+    @Override
+    public PagedResponse<ProjectResponse> getAllProjects(
+            int page,
+            int size,
+            String sort,
+            String q,
+            ProjectStatus status,
+            Boolean active) {
+        User currentUser = currentUserService.requireCurrentUser();
+        var pageable = PagingRequest.pageable(
+                page, size, sort, PROJECT_SORT_FIELDS, "createdAt,desc");
+        var results = projectRepository.findAll(
+                projectSpec(currentUser, q, status, active),
+                pageable);
+        return PagedResponse.from(results.map(ProjectResponse::from));
     }
 
     @Override
@@ -152,5 +179,38 @@ public class ProjectServiceImpl implements ProjectService {
             throw new ResourceNotFoundException(id, "Project");
         }
         return project;
+    }
+
+    private Specification<Project> projectSpec(
+            User currentUser,
+            String q,
+            ProjectStatus status,
+            Boolean active) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("active"), active != null ? active : true));
+
+            if (!currentUserService.isAdmin(currentUser)) {
+                if (query != null) {
+                    query.distinct(true);
+                }
+                var members = root.join("projectMembers");
+                predicates.add(cb.equal(members.get("user").get("id"), currentUser.getId()));
+            }
+
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+
+            if (q != null && !q.isBlank()) {
+                String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("title")), like),
+                        cb.like(cb.lower(root.get("description")), like),
+                        cb.like(cb.lower(root.get("targetStandard")), like)));
+            }
+
+            return cb.and(predicates.toArray(Predicate[]::new));
+        };
     }
 }
