@@ -17,7 +17,7 @@ public class AiModelClient {
     private final String baseUrl;
 
     public AiModelClient(@Qualifier("aiRestClient") RestClient restClient,
-                         @Qualifier("aiModelBaseUrl") String baseUrl) {
+            @Qualifier("aiModelBaseUrl") String baseUrl) {
         this.restClient = restClient;
         this.baseUrl = baseUrl == null || baseUrl.isBlank() ? "" : trimTrailingSlash(baseUrl);
     }
@@ -81,19 +81,6 @@ public class AiModelClient {
         return result;
     }
 
-    public ExtractDocumentResponse extractDocument(UUID documentId, String filename, String contentType, byte[] raw) {
-        log.info("Calling POST /extract (documentId={}, filename={}, bytes={})", documentId, filename, raw.length);
-        var response = call("/extract", () -> restClient.post()
-                .uri(baseUrl + "/extract")
-                .body(Map.of("document_id", documentId.toString(), "filename", filename,
-                        "content_type", contentType))
-                .retrieve()
-                .body(Map.class));
-        String method = response != null ? (String) response.getOrDefault("method", "") : "";
-        String markdown = response != null ? (String) response.getOrDefault("markdown", "") : "";
-        return new ExtractDocumentResponse(filename, method, markdown);
-    }
-
     public void indexChunk(UUID chunkId, UUID documentId, String text) {
         log.info("Calling POST /index/chunk (chunkId={}, documentId={})", chunkId, documentId);
         call("/index/chunk", () -> restClient.post()
@@ -130,9 +117,6 @@ public class AiModelClient {
         T execute();
     }
 
-    public record ExtractDocumentResponse(String filename, String method, String markdown) {
-    }
-
     public static final class AiApiException extends RuntimeException {
         private final int statusCode;
 
@@ -145,7 +129,8 @@ public class AiModelClient {
         }
 
         public AiApiException(String endpoint, int statusCode, String message, Throwable cause) {
-            super("AI API error on " + endpoint + " - HTTP " + statusCode + (message != null ? " " + message : ""), cause);
+            super("AI API error on " + endpoint + " - HTTP " + statusCode + (message != null ? " " + message : ""),
+                    cause);
             this.statusCode = statusCode;
         }
 

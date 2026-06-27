@@ -55,6 +55,9 @@ spring:
     username: ${RABBITMQ_USERNAME:rabbitmqadmin}
     password: ${RABBITMQ_PASSWORD:RabbitMqAdminPass123!}
 
+  # ── SMTP mail configuration (used for email verification) ─────────────────
+  # IMPORTANT: MAIL_PASSWORD must be an App Password, NOT your primary account
+  # password. For Gmail, generate one at https://myaccount.google.com/apppasswords.
   mail:
     host: ${MAIL_HOST:}
     port: ${MAIL_PORT:587}

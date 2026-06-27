@@ -15,6 +15,7 @@ import com.evidencepilot.repository.DocumentTextRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
+import com.evidencepilot.service.SourceExtractionService;
 import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
@@ -23,7 +24,6 @@ import jakarta.annotation.PostConstruct;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import java.time.LocalDateTime;
@@ -42,7 +42,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final DocumentTextRepository documentTextRepository;
     private final ProjectRepository projectRepository;
     private final CurrentUserService currentUserService;
-    private final RabbitTemplate rabbitTemplate;
+    private final SourceExtractionService sourceExtractionService;
     private final DocumentMapper documentMapper;
     private final MinioClient minioClient;
 
@@ -86,31 +86,13 @@ public class DocumentServiceImpl implements DocumentService {
         }
 
         String originalName = file.getOriginalFilename();
-        String extension = "";
-        if (originalName != null && originalName.contains(".")) {
-            extension = originalName.substring(originalName.lastIndexOf("."));
-        }
 
-        UUID docId = UUID.randomUUID();
-        String objectName = docId + extension;
-
-        try (var in = file.getInputStream()) {
-            minioClient.putObject(PutObjectArgs.builder()
-                    .bucket(BUCKET)
-                    .object(objectName)
-                    .stream(in, file.getSize(), -1)
-                    .contentType(file.getContentType())
-                    .build());
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to upload file to MinIO", e);
-        }
-
+        // 1. Save Document first — Hibernate auto-generates UUID
         Document document = new Document();
-        document.setId(docId);
         document.setProject(project);
         document.setUploadedBy(currentUser);
         document.setDocType(docType);
-        document.setFileUrl(objectName);
+        document.setFileUrl("pending");
         document.setOriginalFilename(originalName);
         document.setContentType(file.getContentType());
         document.setFileSizeBytes(file.getSize());
@@ -119,7 +101,23 @@ public class DocumentServiceImpl implements DocumentService {
         document.setCreatedAt(LocalDateTime.now());
         document = documentRepository.save(document);
 
-        rabbitTemplate.convertAndSend("extraction.queue", document.getId().toString());
+        // 2. Upload to MinIO using the auto-generated UUID
+        String objectKey = "sources/raw/" + document.getId().toString() + ".pdf";
+        document.setFileUrl(objectKey);
+
+        try (var in = file.getInputStream()) {
+            minioClient.putObject(PutObjectArgs.builder()
+                    .bucket(BUCKET)
+                    .object(objectKey)
+                    .stream(in, file.getSize(), -1)
+                    .contentType(file.getContentType())
+                    .build());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to upload file to MinIO", e);
+        }
+
+        // 3. Publish document ID to extraction queue
+        sourceExtractionService.triggerExtraction(document.getId());
 
         return DocumentResponse.from(document);
     }
