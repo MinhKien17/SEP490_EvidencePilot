@@ -2,6 +2,7 @@ package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.request.CollectionRequest;
 import com.evidencepilot.dto.response.CollectionResponse;
+import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Collection;
 import com.evidencepilot.model.Project;
@@ -10,17 +11,25 @@ import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.CollectionService;
 import com.evidencepilot.service.CurrentUserService;
+import com.evidencepilot.support.PagingRequest;
+import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class CollectionServiceImpl implements CollectionService {
+
+    private static final Set<String> COLLECTION_SORT_FIELDS = Set.of("title", "createdAt");
 
     private final CollectionRepository collectionRepository;
     private final ProjectRepository projectRepository;
@@ -64,6 +73,27 @@ collection.setTitle(request.name());
     }
 
     @Override
+    public PagedResponse<CollectionResponse> getCollectionsByProjectId(
+            UUID projectId,
+            int page,
+            int size,
+            String sort,
+            String q,
+            Boolean active) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
+        currentUserService.requireProjectAccess(currentUser, project);
+
+        var pageable = PagingRequest.pageable(
+                page, size, sort, COLLECTION_SORT_FIELDS, "createdAt,desc");
+        var results = collectionRepository.findAll(
+                collectionSpec(projectId, active, q),
+                pageable);
+        return PagedResponse.from(results.map(this::toResponse));
+    }
+
+    @Override
     @Transactional
     public void deleteCollection(UUID id) {
         Collection collection = collectionRepository.findById(id)
@@ -79,5 +109,22 @@ collection.setTitle(request.name());
                 collection.getDescription(),
                 collection.getProject() != null ? collection.getProject().getId() : null,
                 collection.getCreatedAt());
+    }
+
+    private Specification<Collection> collectionSpec(UUID projectId, Boolean active, String q) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("project").get("id"), projectId));
+            predicates.add(cb.equal(root.get("active"), active != null ? active : true));
+
+            if (q != null && !q.isBlank()) {
+                String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("title")), like),
+                        cb.like(cb.lower(root.get("description")), like)));
+            }
+
+            return cb.and(predicates.toArray(Predicate[]::new));
+        };
     }
 }

@@ -16,6 +16,7 @@ import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.CurrentUserService;
+import com.evidencepilot.service.SystemNotificationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -51,6 +52,7 @@ public class FeedbackController {
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
+    private final SystemNotificationService systemNotificationService;
 
     @Operation(summary = "List feedback requests",
             description = "Returns all feedback requests scoped to the current user. "
@@ -113,6 +115,12 @@ public class FeedbackController {
         projectRepository.save(project);
 
         FeedbackRequest saved = feedbackRequestRepository.save(feedbackRequest);
+        systemNotificationService.createNotification(
+                instructor,
+                currentUser,
+                "REVIEW_SUBMITTED",
+                saved.getId(),
+                currentUser.getEmail() + " submitted project \"" + project.getTitle() + "\" for review.");
         return ResponseEntity.status(HttpStatus.CREATED).body(FeedbackRequestResponseDto.fromEntity(saved));
     }
 
@@ -143,6 +151,13 @@ public class FeedbackController {
         feedback.setContent(request.content());
         feedback.setCreatedAt(LocalDateTime.now());
         InstructorFeedback saved = instructorFeedbackRepository.save(feedback);
+        systemNotificationService.createNotification(
+                feedbackRequest.getStudent(),
+                currentUser,
+                "INSTRUCTOR_FEEDBACK_ADDED",
+                feedbackRequest.getId(),
+                currentUser.getEmail() + " added feedback to project \""
+                        + feedbackRequest.getProject().getTitle() + "\".");
         return InstructorFeedbackResponseDto.fromEntity(saved);
     }
 
@@ -161,11 +176,19 @@ public class FeedbackController {
     public FeedbackRequestResponseDto updateStatus(
             @Parameter(description = "Feedback request UUID") @PathVariable UUID id,
             @Parameter(description = "New status: RETURNED, REVIEWED, or REJECTED") @RequestParam FeedbackStatus status) {
-        return FeedbackRequestResponseDto.fromEntity(transition(id, status, ProjectStatus.ACTIVE));
+        User currentUser = currentUserService.requireCurrentUser();
+        FeedbackRequest feedbackRequest = transition(id, status, ProjectStatus.ACTIVE, currentUser);
+        systemNotificationService.createNotification(
+                feedbackRequest.getStudent(),
+                currentUser,
+                "REVIEW_STATUS_CHANGED",
+                feedbackRequest.getId(),
+                "Review status for project \"" + feedbackRequest.getProject().getTitle()
+                        + "\" changed to " + status + ".");
+        return FeedbackRequestResponseDto.fromEntity(feedbackRequest);
     }
 
-    private FeedbackRequest transition(UUID id, FeedbackStatus status, ProjectStatus projectStatus) {
-        User currentUser = currentUserService.requireCurrentUser();
+    private FeedbackRequest transition(UUID id, FeedbackStatus status, ProjectStatus projectStatus, User currentUser) {
         FeedbackRequest feedbackRequest = requireFeedbackAccess(id, currentUser, true);
         feedbackRequest.setStatus(status);
         feedbackRequest.getProject().setStatus(projectStatus);

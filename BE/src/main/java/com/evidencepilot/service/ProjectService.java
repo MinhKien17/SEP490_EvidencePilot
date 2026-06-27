@@ -2,14 +2,23 @@ package com.evidencepilot.service;
 
 import com.evidencepilot.dto.request.ProjectCreateRequest;
 import com.evidencepilot.dto.request.ProjectUpdateRequest;
+import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.dto.response.ProjectResponse;
 import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.enums.ProjectRole;
+import com.evidencepilot.model.enums.ProjectStatus;
 import java.util.List;
 import java.util.UUID;
 
 public interface ProjectService {
     List<ProjectResponse> getAllProjects();
+    PagedResponse<ProjectResponse> getAllProjects(
+            int page,
+            int size,
+            String sort,
+            String q,
+            ProjectStatus status,
+            Boolean active);
     ProjectResponse getProjectById(UUID id);
     ProjectResponse createProject(ProjectCreateRequest request);
     ProjectResponse updateProject(UUID id, ProjectUpdateRequest request);

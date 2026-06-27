@@ -38,7 +38,8 @@ public class SystemNotification {
     @Column(nullable = false)
     private String message;
 
-    private boolean isRead = false;
+    @Column(name = "is_read", nullable = false)
+    private boolean read = false;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

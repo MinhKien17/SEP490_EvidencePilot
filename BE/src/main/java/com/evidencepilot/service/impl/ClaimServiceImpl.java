@@ -5,6 +5,7 @@ import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.dto.response.ClaimEvidenceMappingResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
 import com.evidencepilot.dto.response.EvidenceEdgeResponse;
+import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.ClaimMapper;
 import com.evidencepilot.model.AiSuggestion;
@@ -22,16 +23,25 @@ import com.evidencepilot.repository.ProjectMemberRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.ClaimService;
 import com.evidencepilot.service.CurrentUserService;
+import com.evidencepilot.support.PagingRequest;
+import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class ClaimServiceImpl implements ClaimService {
+
+    private static final Set<String> CLAIM_SORT_FIELDS = Set.of(
+            "createdAt", "claimVersion", "aiConfidenceScore");
 
     private final ClaimRepository claimRepository;
     private final ProjectRepository projectRepository;
@@ -63,6 +73,22 @@ public class ClaimServiceImpl implements ClaimService {
     }
 
     @Override
+    public PagedResponse<ClaimResponse> getAllClaims(
+            int page,
+            int size,
+            String sort,
+            String q,
+            Boolean active) {
+        User currentUser = currentUserService.requireCurrentUser();
+        var pageable = PagingRequest.pageable(
+                page, size, sort, CLAIM_SORT_FIELDS, "createdAt,desc");
+        var results = claimRepository.findAll(
+                claimSpec(currentUser, null, active, q),
+                pageable);
+        return PagedResponse.from(results.map(claimMapper::toClaimResponse));
+    }
+
+    @Override
     public ClaimResponse getClaimById(UUID id) {
         Claim claim = findActiveClaim(id);
         User currentUser = currentUserService.requireCurrentUser();
@@ -80,6 +106,27 @@ public class ClaimServiceImpl implements ClaimService {
                 .filter(Claim::isActive)
                 .map(claimMapper::toClaimResponse)
                 .toList();
+    }
+
+    @Override
+    public PagedResponse<ClaimResponse> getClaimsByProject(
+            UUID projectId,
+            int page,
+            int size,
+            String sort,
+            String q,
+            Boolean active) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
+        currentUserService.requireProjectAccess(currentUser, project);
+
+        var pageable = PagingRequest.pageable(
+                page, size, sort, CLAIM_SORT_FIELDS, "createdAt,desc");
+        var results = claimRepository.findAll(
+                claimSpec(currentUser, projectId, active, q),
+                pageable);
+        return PagedResponse.from(results.map(claimMapper::toClaimResponse));
     }
 
     @Override
@@ -198,5 +245,34 @@ suggestion.setClaim(claim);
             throw new ResourceNotFoundException(id, "Claim");
         }
         return claim;
+    }
+
+    private Specification<Claim> claimSpec(
+            User currentUser,
+            UUID projectId,
+            Boolean active,
+            String q) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("active"), active != null ? active : true));
+
+            if (projectId != null) {
+                predicates.add(cb.equal(root.get("project").get("id"), projectId));
+            } else if (!currentUserService.isAdmin(currentUser)) {
+                if (query != null) {
+                    query.distinct(true);
+                }
+                var project = root.join("project");
+                var members = project.join("projectMembers");
+                predicates.add(cb.equal(members.get("user").get("id"), currentUser.getId()));
+            }
+
+            if (q != null && !q.isBlank()) {
+                String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
+                predicates.add(cb.like(cb.lower(root.get("content")), like));
+            }
+
+            return cb.and(predicates.toArray(Predicate[]::new));
+        };
     }
 }
