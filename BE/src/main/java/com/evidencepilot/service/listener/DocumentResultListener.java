@@ -7,6 +7,7 @@ import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.service.QdrantService;
+import com.evidencepilot.service.SystemNotificationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,7 @@ public class DocumentResultListener {
     private final DocumentRepository documentRepository;
     private final DocumentChunkRepository documentChunkRepository;
     private final QdrantService qdrantService;
+    private final SystemNotificationService systemNotificationService;
     private final ObjectMapper objectMapper;
 
     @RabbitListener(queues = "extraction.result.queue")
@@ -68,6 +70,10 @@ public class DocumentResultListener {
             document.setProcessingStatus(ProcessingStatus.COMPLETED);
             document.setProcessedAt(LocalDateTime.now());
             documentRepository.save(document);
+            notifyUploadOwner(
+                    document,
+                    "DOCUMENT_PROCESSING_COMPLETED",
+                    "Document \"" + document.getOriginalFilename() + "\" finished processing.");
             log.info("Document {} processing completed successfully", payload.documentId());
 
         } catch (Exception e) {
@@ -75,6 +81,25 @@ public class DocumentResultListener {
             document.setProcessingStatus(ProcessingStatus.FAILED);
             document.setProcessingError(e.getMessage() != null ? e.getMessage() : "Unknown error");
             documentRepository.save(document);
+            notifyUploadOwner(
+                    document,
+                    "DOCUMENT_PROCESSING_FAILED",
+                    "Document \"" + document.getOriginalFilename() + "\" failed processing.");
+        }
+    }
+
+    private void notifyUploadOwner(Document document, String actionType, String message) {
+        try {
+            systemNotificationService.createNotification(
+                    document.getUploadedBy(),
+                    null,
+                    actionType,
+                    document.getId(),
+                    message);
+        } catch (Exception notificationError) {
+            log.warn("Could not notify uploader for document {}: {}",
+                    document.getId(),
+                    notificationError.getMessage());
         }
     }
 }

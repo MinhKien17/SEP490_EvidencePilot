@@ -14,6 +14,7 @@ import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.ProjectService;
+import com.evidencepilot.service.SystemNotificationService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,7 @@ public class ProjectServiceImpl implements ProjectService {
     private final ProjectMemberRepository projectMemberRepository;
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
+    private final SystemNotificationService systemNotificationService;
 
     @Override
     public List<ProjectResponse> getAllProjects() {
@@ -119,6 +121,12 @@ public class ProjectServiceImpl implements ProjectService {
         member.setRole(role);
         member.setJoinedAt(LocalDateTime.now());
         projectMemberRepository.save(member);
+        systemNotificationService.createNotification(
+                user,
+                currentUser,
+                "PROJECT_MEMBER_ADDED",
+                project.getId(),
+                currentUser.getEmail() + " added you to project \"" + project.getTitle() + "\".");
     }
 
     @Override
@@ -128,6 +136,12 @@ public class ProjectServiceImpl implements ProjectService {
         Project project = findActiveProject(projectId);
         currentUserService.requireProjectWriteAccess(currentUser, project);
         List<ProjectMember> members = projectMemberRepository.findByProjectIdAndUserId(projectId, userId);
+        members.forEach(member -> systemNotificationService.createNotification(
+                member.getUser(),
+                currentUser,
+                "PROJECT_MEMBER_REMOVED",
+                project.getId(),
+                currentUser.getEmail() + " removed you from project \"" + project.getTitle() + "\"."));
         projectMemberRepository.deleteAll(members);
     }
 
