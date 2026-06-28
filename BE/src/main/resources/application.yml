@@ -107,7 +107,7 @@ ai:
 
 # ── Qdrant vector database ────────────────────────────────────────────────
 qdrant:
-  url: ${QDRANT_URL:http://vector_db:6333}
+  url: ${QDRANT_URL:http://vector-db:6333}
 
 springdoc:
   swagger-ui:

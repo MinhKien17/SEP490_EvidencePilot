@@ -22,7 +22,7 @@ services:
     networks:
       - evidence-network
 
-  vector_db:
+  vector-db:
     image: qdrant/qdrant:latest
     container_name: evidence_pilot_qdrant
     restart: unless-stopped
@@ -102,7 +102,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      vector_db:
+      vector-db:
         condition: service_started
       minio:
         condition: service_healthy
@@ -117,7 +117,7 @@ services:
       DB_PASSWORD: ${MYSQL_PASSWORD}
 
       # ── Qdrant (internal Docker network) ─────────────────────────────────────
-      QDRANT_URL: http://vector_db:6333
+      QDRANT_URL: http://vector-db:6333
 
       # ── MinIO (hardcoded, no .env vars provided) ─────────────────────────────
       MINIO_URL: http://minio:9000
