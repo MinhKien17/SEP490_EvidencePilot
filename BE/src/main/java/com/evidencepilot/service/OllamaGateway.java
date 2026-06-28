@@ -19,7 +19,7 @@ public class OllamaGateway {
     public OllamaGateway(
             @Value("${ollama.url:https://good-lumpish-headstone.ngrok-free.dev}") String ollamaUrl,
             @Value("${ollama.embedding.model:nomic-embed-text}") String embeddingModel,
-            @Value("${ollama.generation.model:llama3}") String generationModel) {
+            @Value("${ollama.generation.model:evidencopilot:latest}") String generationModel) {
         this.restClient = RestClient.builder()
                 .baseUrl(ollamaUrl)
                 .defaultHeader("ngrok-skip-browser-warning", "true")
