@@ -64,6 +64,9 @@ public class Document {
     @Column(name = "processing_error")
     private String processingError;
 
+    @Column(name = "chunk_count")
+    private Integer chunkCount;
+
     @Column(name = "processed_at")
     private LocalDateTime processedAt;
 

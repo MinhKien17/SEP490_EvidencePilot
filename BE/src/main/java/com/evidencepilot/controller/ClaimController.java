@@ -71,20 +71,6 @@ public class ClaimController {
         return claimService.getClaimById(id);
     }
 
-    @Operation(summary = "List claims by project",
-            description = "Returns all active claims belonging to a project.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Claim list returned"),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
-            @ApiResponse(responseCode = "403", description = "Access denied"),
-            @ApiResponse(responseCode = "404", description = "Project not found")
-    })
-    @GetMapping("/api/projects/{projectId}/claims")
-    public List<ClaimResponse> getClaimsByProject(
-            @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
-        return claimService.getClaimsByProject(projectId);
-    }
-
     @Operation(summary = "Create a claim",
             description = "Creates a new claim attached to a paper section and project. "
                     + "Requires write access to the project.")

@@ -72,6 +72,7 @@ CREATE TABLE documents (
     file_hash_sha256 VARCHAR(64),
     processing_status VARCHAR(50) NOT NULL CHECK (processing_status IN ('UPLOADED', 'QUEUED', 'PROCESSING', 'READY', 'COMPLETED', 'FAILED')),
     processing_error TEXT,
+    chunk_count INT DEFAULT 0,
     processed_at DATETIME,
     published_at DATETIME,
     active BOOLEAN NOT NULL DEFAULT TRUE,

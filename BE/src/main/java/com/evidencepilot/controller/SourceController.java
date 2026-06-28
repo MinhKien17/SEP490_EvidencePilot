@@ -67,27 +67,6 @@ public class SourceController {
         return DocumentResponse.from(doc);
     }
 
-    @Operation(summary = "List sources by project",
-            description = "Returns active source documents belonging to a project.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Sources list returned"),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
-            @ApiResponse(responseCode = "404", description = "Project not found")
-    })
-    @GetMapping("/api/projects/{projectId}/sources")
-    public List<DocumentResponse> findByProject(
-            @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
-        User currentUser = currentUserService.requireCurrentUser();
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Project not found: " + projectId));
-        currentUserService.requireProjectAccess(currentUser, project);
-        return documentRepository.findByProjectId(projectId).stream()
-                .filter(this::isActiveSource)
-                .map(DocumentResponse::from)
-                .toList();
-    }
-
     @Operation(summary = "Get text chunks of a source",
             description = "Retrieves all active text chunks for the specified source document.")
     @ApiResponses({
