@@ -2,7 +2,13 @@ package com.evidencepilot.infrastructure;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -31,19 +37,15 @@ public class AiModelClient {
     }
 
     public String generate(String prompt) {
-        return call("/ai/generate", () -> restClient.post()
+        Map<String, Object> response = call("/ai/generate", () -> restClient.post()
                 .uri(baseUrl + "/ai/generate")
                 .body(Map.of("prompt", prompt))
                 .retrieve()
-                .body(String.class));
-    }
-
-    public Map<String, Object> matchClaim(UUID claimId, String claimText, int topK) {
-        return call("/match/claim", () -> restClient.post()
-                .uri(baseUrl + "/match/claim")
-                .body(Map.of("claim_id", claimId.toString(), "claim", claimText, "top_k", topK))
-                .retrieve()
                 .body(Map.class));
+        if (response == null || response.get("response") == null) {
+            throw new AiApiException("/ai/generate", "returned null or empty response", null);
+        }
+        return String.valueOf(response.get("response"));
     }
 
     public Map<String, Object> processClaim(UUID claimId, String claimText, UUID sourceId, String excerpt) {
@@ -55,12 +57,34 @@ public class AiModelClient {
                 .body(Map.class));
     }
 
-    public Map<String, Object> reviewPaper(UUID paperId, String targetStyle, boolean useAi) {
-        return call("/review/paper", () -> restClient.post()
-                .uri(baseUrl + "/review/paper")
-                .body(Map.of("paper_id", paperId.toString(), "target_style", targetStyle, "use_ai", useAi))
+    @SuppressWarnings("unchecked")
+    public ExtractedDocument extractDocument(String filename, String contentType, byte[] content) {
+        ByteArrayResource resource = new ByteArrayResource(content) {
+            @Override
+            public String getFilename() {
+                return filename == null || filename.isBlank() ? "document" : filename;
+            }
+        };
+
+        HttpHeaders partHeaders = new HttpHeaders();
+        partHeaders.setContentType(parseMediaType(contentType));
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("file", new HttpEntity<>(resource, partHeaders));
+
+        Map<String, Object> response = call("/extract", () -> restClient.post()
+                .uri(baseUrl + "/extract")
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .body(body)
                 .retrieve()
                 .body(Map.class));
+
+        if (response == null || response.get("markdown") == null) {
+            throw new AiApiException("/extract", "returned null or empty markdown", null);
+        }
+        return new ExtractedDocument(
+                stringValue(response.get("filename"), filename),
+                stringValue(response.get("method"), "unknown"),
+                stringValue(response.get("markdown"), ""));
     }
 
     public double[] generateEmbedding(String text) {
@@ -79,15 +103,6 @@ public class AiModelClient {
             result[i] = list.get(i).doubleValue();
         }
         return result;
-    }
-
-    public void indexChunk(UUID chunkId, UUID documentId, String text) {
-        log.info("Calling POST /index/chunk (chunkId={}, documentId={})", chunkId, documentId);
-        call("/index/chunk", () -> restClient.post()
-                .uri(baseUrl + "/index/chunk")
-                .body(Map.of("chunk_id", chunkId.toString(), "document_id", documentId.toString(), "text", text))
-                .retrieve()
-                .toBodilessEntity());
     }
 
     private <T> T call(String endpoint, AiCall<T> call) {
@@ -110,6 +125,27 @@ public class AiModelClient {
             normalized = normalized.substring(0, normalized.length() - 1);
         }
         return normalized;
+    }
+
+    private static MediaType parseMediaType(String contentType) {
+        if (contentType == null || contentType.isBlank()) {
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
+        try {
+            return MediaType.parseMediaType(contentType);
+        } catch (IllegalArgumentException e) {
+            return MediaType.APPLICATION_OCTET_STREAM;
+        }
+    }
+
+    private static String stringValue(Object value, String fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        return String.valueOf(value);
+    }
+
+    public record ExtractedDocument(String filename, String method, String markdown) {
     }
 
     @FunctionalInterface

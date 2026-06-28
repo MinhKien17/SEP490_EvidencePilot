@@ -58,6 +58,10 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USERNAME:rabbitmqadmin}
     password: ${RABBITMQ_PASSWORD:RabbitMqAdminPass123!}
+    listener:
+      simple:
+        prefetch: ${RABBITMQ_LISTENER_PREFETCH:1}
+        concurrency: ${RABBITMQ_LISTENER_CONCURRENCY:1}
 
   # ── SMTP mail configuration (used for email verification) ─────────────────
   # IMPORTANT: MAIL_PASSWORD must be an App Password, NOT your primary account
@@ -102,7 +106,7 @@ ai:
     base-url: ${AI_MODEL_BASE_URL:}
     # Optional API key forwarded as X-API-Key header.
     api-key: ${AI_MODEL_API_KEY:}
-    # MinerU extraction can take longer than ordinary AI calls for PDFs/DOCX files.
+    # LiteParse extraction can take longer than ordinary AI calls for PDFs/DOCX files.
     read-timeout-seconds: ${AI_MODEL_READ_TIMEOUT_SECONDS:600}
 
 # ── Qdrant vector database ────────────────────────────────────────────────

@@ -72,11 +72,11 @@ public class QdrantClient {
     /**
      * Upserts a single point into the {@code source_chunks} collection.
      *
-     * <p>The Qdrant point uses the MySQL chunk ID as a numeric point ID.
+     * <p>The Qdrant point uses the database chunk ID as the point ID.
      * A {@code project_id} payload is attached so that reads can be filtered
      * per project.</p>
      *
-     * @param chunkId   the MySQL {@code source_chunks.id} (must be numeric)
+     * @param chunkId   the database {@code source_chunks.id}
      * @param embedding the dense vector produced by the embedding model
      * @param projectId the MySQL {@code projects.id} (stored as payload for filtering)
      */
@@ -87,12 +87,21 @@ public class QdrantClient {
     /**
      * Upserts a single point scoped to either a project or an instructor collection.
      *
-     * @param chunkId   the MySQL {@code source_chunks.id} (must be numeric)
+     * @param chunkId   the database {@code source_chunks.id}
      * @param embedding the dense vector produced by the embedding model
      * @param scopeType {@code PROJECT}, {@code COLLECTION}, or another uppercase scope label
      * @param scopeId   the corresponding relational ID as a string
      */
     public void upsertVector(String chunkId, List<Float> embedding, String scopeType, String scopeId) {
+        upsertVector(chunkId, embedding, scopeType, scopeId, Map.of());
+    }
+
+    public void upsertVector(
+            String chunkId,
+            List<Float> embedding,
+            String scopeType,
+            String scopeId,
+            Map<String, Object> extraPayload) {
         ensureCollection(embedding.size());
 
         String normalizedScopeType = normalizeScopeType(scopeType);
@@ -106,9 +115,10 @@ public class QdrantClient {
         if ("COLLECTION".equals(normalizedScopeType)) {
             payload.put("collection_id", normalizedScopeId);
         }
+        payload.putAll(extraPayload);
 
         Map<String, Object> point = Map.of(
-                "id", Long.parseLong(chunkId),
+                "id", chunkId,
                 "vector", embedding,
                 "payload", payload
         );

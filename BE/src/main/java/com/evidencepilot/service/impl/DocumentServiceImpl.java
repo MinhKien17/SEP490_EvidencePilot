@@ -166,7 +166,7 @@ public class DocumentServiceImpl implements DocumentService {
         document = documentRepository.save(document);
 
         // 2. Upload to MinIO using the auto-generated UUID
-        String objectKey = "sources/raw/" + document.getId().toString() + ".pdf";
+        String objectKey = "sources/raw/" + document.getId().toString() + fileExtension(originalName);
         document.setFileUrl(objectKey);
 
         try (var in = file.getInputStream()) {
@@ -253,5 +253,20 @@ public class DocumentServiceImpl implements DocumentService {
 
             return cb.and(predicates.toArray(Predicate[]::new));
         };
+    }
+
+    private static String fileExtension(String filename) {
+        if (filename == null || filename.isBlank()) {
+            return ".bin";
+        }
+        int dot = filename.lastIndexOf('.');
+        if (dot < 0 || dot == filename.length() - 1) {
+            return ".bin";
+        }
+        String extension = filename.substring(dot).toLowerCase(Locale.ROOT);
+        if (!extension.matches("\\.[a-z0-9]{1,12}")) {
+            return ".bin";
+        }
+        return extension;
     }
 }

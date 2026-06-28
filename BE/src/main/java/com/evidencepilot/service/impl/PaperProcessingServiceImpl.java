@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -21,6 +20,8 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 @Slf4j
 public class PaperProcessingServiceImpl implements PaperProcessingService {
+
+    private static final int REVIEW_TEXT_LIMIT = 10_000;
 
     private final AiModelClient aiModelClient;
     private final PaperSectionRepository paperSectionRepository;
@@ -41,8 +42,17 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     @Override
     public Map<String, Object> review(Document document, String targetStyle) {
         String style = targetStyle != null ? targetStyle : "default";
+        String text = document.getDocumentText() != null
+                ? document.getDocumentText().getExtractedText() : "";
+        String prompt = "Review this paper for target style: " + style
+                + ". Return concise, actionable feedback.\n\n"
+                + text.substring(0, Math.min(text.length(), REVIEW_TEXT_LIMIT));
         try {
-            return aiModelClient.reviewPaper(document.getId(), style, true);
+            String review = aiModelClient.generate(prompt);
+            return Map.of(
+                    "paper_id", document.getId().toString(),
+                    "target_style", style,
+                    "review", review);
         } catch (AiModelClient.AiApiException e) {
             log.error("Paper review failed for document {}: {}", document.getId(), e.getMessage());
             throw new org.springframework.web.server.ResponseStatusException(
@@ -68,7 +78,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             }
 
             PaperSection section = new PaperSection();
-section.setDocument(document);
+            section.setDocument(document);
             section.setSectionOrder(index);
             section.setSectionTitle(sectionName);
             sections.add(section);
@@ -83,7 +93,7 @@ section.setDocument(document);
 
         if (sections.isEmpty()) {
             PaperSection section = new PaperSection();
-section.setDocument(document);
+            section.setDocument(document);
             section.setSectionOrder(0);
             section.setSectionTitle("Full Text");
             section.setContentTex(text);

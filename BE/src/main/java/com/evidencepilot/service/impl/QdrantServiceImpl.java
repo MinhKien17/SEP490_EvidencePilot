@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.Map;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -37,7 +39,13 @@ public class QdrantServiceImpl implements QdrantService {
                     chunk.chunkId().toString(),
                     chunk.embedding(),
                     "PROJECT",
-                    projectId
+                    projectId,
+                    Map.of(
+                            "document_id", payload.documentId().toString(),
+                            "chunk_id", chunk.chunkId().toString(),
+                            "chunk_index", chunk.chunkIndex(),
+                            "text", chunk.text()
+                    )
             );
         }
         log.info("Upserted {} vectors to Qdrant for document {}",
