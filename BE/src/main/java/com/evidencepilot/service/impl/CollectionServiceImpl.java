@@ -11,7 +11,7 @@ import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.CollectionService;
 import com.evidencepilot.service.CurrentUserService;
-import com.evidencepilot.support.PagingRequest;
+import com.evidencepilot.dto.request.PagingRequest;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;

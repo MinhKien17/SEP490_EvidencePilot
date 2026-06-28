@@ -4,19 +4,7 @@ import com.evidencepilot.dto.request.InstructorFeedbackRequest;
 import com.evidencepilot.dto.request.SubmitReviewRequest;
 import com.evidencepilot.dto.response.FeedbackRequestResponseDto;
 import com.evidencepilot.dto.response.InstructorFeedbackResponseDto;
-import com.evidencepilot.model.FeedbackRequest;
-import com.evidencepilot.model.FeedbackStatus;
-import com.evidencepilot.model.InstructorFeedback;
-import com.evidencepilot.model.Project;
-import com.evidencepilot.model.User;
-import com.evidencepilot.model.enums.ProjectStatus;
-import com.evidencepilot.model.enums.UserRole;
-import com.evidencepilot.repository.FeedbackRequestRepository;
-import com.evidencepilot.repository.InstructorFeedbackRepository;
-import com.evidencepilot.repository.ProjectRepository;
-import com.evidencepilot.repository.UserRepository;
-import com.evidencepilot.service.CurrentUserService;
-import com.evidencepilot.service.SystemNotificationService;
+import com.evidencepilot.service.FeedbackService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -26,7 +14,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,9 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -47,12 +32,7 @@ import java.util.UUID;
 @Tag(name = "Feedback", description = "Feedback request lifecycle and instructor review")
 public class FeedbackController {
 
-    private final FeedbackRequestRepository feedbackRequestRepository;
-    private final InstructorFeedbackRepository instructorFeedbackRepository;
-    private final ProjectRepository projectRepository;
-    private final UserRepository userRepository;
-    private final CurrentUserService currentUserService;
-    private final SystemNotificationService systemNotificationService;
+    private final FeedbackService feedbackService;
 
     @Operation(summary = "List feedback requests",
             description = "Returns all feedback requests scoped to the current user. "
@@ -63,16 +43,7 @@ public class FeedbackController {
     })
     @GetMapping("/feedback-requests")
     public List<FeedbackRequestResponseDto> findAll() {
-        User currentUser = currentUserService.requireCurrentUser();
-        List<FeedbackRequest> requests;
-        if (currentUserService.isAdmin(currentUser)) {
-            requests = feedbackRequestRepository.findAll();
-        } else if (currentUserService.isInstructor(currentUser)) {
-            requests = feedbackRequestRepository.findByInstructorId(currentUser.getId());
-        } else {
-            requests = feedbackRequestRepository.findByStudentId(currentUser.getId());
-        }
-        return requests.stream().map(FeedbackRequestResponseDto::fromEntity).toList();
+        return feedbackService.findAllForCurrentUser();
     }
 
     @Operation(summary = "Submit project for review",
@@ -86,42 +57,11 @@ public class FeedbackController {
             @ApiResponse(responseCode = "404", description = "Project or instructor not found")
     })
     @PostMapping("/projects/{projectId}/reviews")
-    @Transactional
     public ResponseEntity<FeedbackRequestResponseDto> submitForReview(
             @Parameter(description = "Project UUID") @PathVariable UUID projectId,
             @Valid @RequestBody SubmitReviewRequest request) {
-
-        User currentUser = currentUserService.requireCurrentUser();
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Project not found: " + projectId));
-        currentUserService.requireProjectWriteAccess(currentUser, project);
-
-        User instructor = userRepository.findById(request.instructorId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Instructor not found: " + request.instructorId()));
-        if (instructor.getRole() != UserRole.INSTRUCTOR) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Assigned user is not an instructor.");
-        }
-
-        FeedbackRequest feedbackRequest = new FeedbackRequest();
-        feedbackRequest.setProject(project);
-        feedbackRequest.setStudent(project.getStudent());
-        feedbackRequest.setInstructor(instructor);
-        feedbackRequest.setStatus(FeedbackStatus.PENDING);
-        feedbackRequest.setRequestedAt(LocalDateTime.now());
-
-        project.setStatus(ProjectStatus.IN_REVIEW);
-        projectRepository.save(project);
-
-        FeedbackRequest saved = feedbackRequestRepository.save(feedbackRequest);
-        systemNotificationService.createNotification(
-                instructor,
-                currentUser,
-                "REVIEW_SUBMITTED",
-                saved.getId(),
-                currentUser.getEmail() + " submitted project \"" + project.getTitle() + "\" for review.");
-        return ResponseEntity.status(HttpStatus.CREATED).body(FeedbackRequestResponseDto.fromEntity(saved));
+        FeedbackRequestResponseDto response = feedbackService.submitForReview(projectId, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @Operation(summary = "Submit instructor feedback",
@@ -134,31 +74,10 @@ public class FeedbackController {
             @ApiResponse(responseCode = "404", description = "Feedback request not found")
     })
     @PostMapping("/feedback-requests/{id}/feedback")
-    @Transactional
     public InstructorFeedbackResponseDto comment(
             @Parameter(description = "Feedback request UUID") @PathVariable UUID id,
             @Valid @RequestBody InstructorFeedbackRequest request) {
-
-        User currentUser = currentUserService.requireCurrentUser();
-        FeedbackRequest feedbackRequest = requireFeedbackAccess(id, currentUser, true);
-
-        InstructorFeedback feedback = instructorFeedbackRepository.findByRequestId(id)
-                .orElseGet(InstructorFeedback::new);
-        feedback.setRequest(feedbackRequest);
-        feedback.setInstructor(currentUserService.isAdmin(currentUser)
-                ? feedbackRequest.getInstructor()
-                : currentUser);
-        feedback.setContent(request.content());
-        feedback.setCreatedAt(LocalDateTime.now());
-        InstructorFeedback saved = instructorFeedbackRepository.save(feedback);
-        systemNotificationService.createNotification(
-                feedbackRequest.getStudent(),
-                currentUser,
-                "INSTRUCTOR_FEEDBACK_ADDED",
-                feedbackRequest.getId(),
-                currentUser.getEmail() + " added feedback to project \""
-                        + feedbackRequest.getProject().getTitle() + "\".");
-        return InstructorFeedbackResponseDto.fromEntity(saved);
+        return feedbackService.comment(id, request);
     }
 
     @Operation(summary = "Update feedback request status",
@@ -172,44 +91,9 @@ public class FeedbackController {
             @ApiResponse(responseCode = "404", description = "Feedback request not found")
     })
     @PatchMapping("/feedback-requests/{id}/status")
-    @Transactional
     public FeedbackRequestResponseDto updateStatus(
             @Parameter(description = "Feedback request UUID") @PathVariable UUID id,
-            @Parameter(description = "New status: RETURNED, REVIEWED, or REJECTED") @RequestParam FeedbackStatus status) {
-        User currentUser = currentUserService.requireCurrentUser();
-        FeedbackRequest feedbackRequest = transition(id, status, ProjectStatus.ACTIVE, currentUser);
-        systemNotificationService.createNotification(
-                feedbackRequest.getStudent(),
-                currentUser,
-                "REVIEW_STATUS_CHANGED",
-                feedbackRequest.getId(),
-                "Review status for project \"" + feedbackRequest.getProject().getTitle()
-                        + "\" changed to " + status + ".");
-        return FeedbackRequestResponseDto.fromEntity(feedbackRequest);
-    }
-
-    private FeedbackRequest transition(UUID id, FeedbackStatus status, ProjectStatus projectStatus, User currentUser) {
-        FeedbackRequest feedbackRequest = requireFeedbackAccess(id, currentUser, true);
-        feedbackRequest.setStatus(status);
-        feedbackRequest.getProject().setStatus(projectStatus);
-        projectRepository.save(feedbackRequest.getProject());
-        return feedbackRequestRepository.save(feedbackRequest);
-    }
-
-    private FeedbackRequest requireFeedbackAccess(UUID id, User currentUser, boolean instructorOnly) {
-        FeedbackRequest feedbackRequest = feedbackRequestRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Feedback request not found: " + id));
-        if (currentUserService.isAdmin(currentUser)) {
-            return feedbackRequest;
-        }
-        boolean isInstructor = feedbackRequest.getInstructor() != null
-                && currentUser.getId().equals(feedbackRequest.getInstructor().getId());
-        boolean isStudent = feedbackRequest.getStudent() != null
-                && currentUser.getId().equals(feedbackRequest.getStudent().getId());
-        if ((instructorOnly && isInstructor) || (!instructorOnly && (isInstructor || isStudent))) {
-            return feedbackRequest;
-        }
-        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Feedback access denied.");
+            @Parameter(description = "New status: RETURNED, REVIEWED, or REJECTED") @RequestParam String status) {
+        return feedbackService.updateStatus(id, status);
     }
 }

@@ -32,7 +32,28 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     networks:
+      evidence-network:
+        aliases:
+          - qdrant
+
+  qdrant-init:
+    image: curlimages/curl:latest
+    container_name: evidence_pilot_qdrant_init
+    depends_on:
+      vector-db:
+        condition: service_started
+    networks:
       - evidence-network
+    entrypoint: >
+      /bin/sh -c "
+        echo 'Waiting for Qdrant...';
+        until curl -sf http://qdrant:6333/readyz; do 
+          sleep 2; 
+        done;
+        echo 'Qdrant ready. Creating collection...';
+        curl -X PUT http://qdrant:6333/collections/source_chunks -H 'Content-Type: application/json' -d '{\"vectors\":{\"dense\":{\"size\":768,\"distance\":\"Cosine\"}},\"sparse_vectors\":{\"sparse\":{\"modifier\":\"idf\"}}}' && echo 'Collection created by qdrant-init' || echo 'Collection may already exist (ignore 409)';
+        echo 'Qdrant initialization complete';
+      "
 
   minio:
     image: minio/minio:latest
@@ -103,6 +124,8 @@ services:
       db:
         condition: service_healthy
       vector-db:
+        condition: service_started
+      qdrant-init:
         condition: service_started
       minio:
         condition: service_healthy

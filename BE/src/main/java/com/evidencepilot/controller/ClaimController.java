@@ -6,7 +6,6 @@ import com.evidencepilot.dto.response.ClaimEvidenceMappingResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
 import com.evidencepilot.dto.response.EvidenceEdgeResponse;
 import com.evidencepilot.dto.response.PagedResponse;
-import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.service.ClaimService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -168,12 +167,8 @@ public class ClaimController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void updateSuggestionStatus(
             @Parameter(description = "Suggestion UUID") @PathVariable UUID suggestionId,
-            @Parameter(description = "New status: ACCEPTED or REJECTED") @RequestParam SuggestionStatus status) {
-        if (status == SuggestionStatus.ACCEPTED) {
-            claimService.acceptSuggestion(suggestionId);
-        } else if (status == SuggestionStatus.REJECTED) {
-            claimService.rejectSuggestion(suggestionId);
-        }
+            @Parameter(description = "New status: ACCEPTED or REJECTED") @RequestParam String status) {
+        claimService.updateSuggestionStatus(suggestionId, status);
     }
 
     @Operation(summary = "List evidence mappings for a claim",

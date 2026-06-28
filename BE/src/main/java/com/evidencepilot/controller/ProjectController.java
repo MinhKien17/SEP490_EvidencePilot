@@ -8,7 +8,6 @@ import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.dto.response.ProjectMemberResponse;
 import com.evidencepilot.dto.response.ProjectResponse;
-import com.evidencepilot.mapper.ProjectMapper;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.model.enums.ProjectRole;
@@ -49,7 +48,6 @@ public class ProjectController {
     private final DocumentService documentService;
     private final ClaimService claimService;
     private final CollectionService collectionService;
-    private final ProjectMapper projectMapper;
 
     @Operation(summary = "List all projects",
             description = "Returns all active projects accessible to the current user. "
@@ -137,9 +135,7 @@ public class ProjectController {
     @GetMapping("/{id}/members")
     public List<ProjectMemberResponse> getProjectMembers(
             @Parameter(description = "Project UUID") @PathVariable UUID id) {
-        return projectService.getProjectMembers(id).stream()
-                .map(projectMapper::toProjectMemberResponse)
-                .toList();
+        return projectService.getProjectMemberResponses(id);
     }
 
     @Operation(summary = "List project documents",

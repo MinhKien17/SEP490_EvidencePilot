@@ -1,6 +1,6 @@
 package com.evidencepilot.controller;
 
-import com.evidencepilot.infrastructure.AiModelClient;
+import com.evidencepilot.service.AiModelClient;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;

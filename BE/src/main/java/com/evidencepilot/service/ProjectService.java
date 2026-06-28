@@ -3,6 +3,7 @@ package com.evidencepilot.service;
 import com.evidencepilot.dto.request.ProjectCreateRequest;
 import com.evidencepilot.dto.request.ProjectUpdateRequest;
 import com.evidencepilot.dto.response.PagedResponse;
+import com.evidencepilot.dto.response.ProjectMemberResponse;
 import com.evidencepilot.dto.response.ProjectResponse;
 import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.enums.ProjectRole;
@@ -24,6 +25,7 @@ public interface ProjectService {
     ProjectResponse updateProject(UUID id, ProjectUpdateRequest request);
     void deleteProject(UUID id);
     List<ProjectMember> getProjectMembers(UUID projectId);
+    List<ProjectMemberResponse> getProjectMemberResponses(UUID projectId);
     void addMember(UUID projectId, UUID userId, ProjectRole role);
     void removeMember(UUID projectId, UUID userId);
 }

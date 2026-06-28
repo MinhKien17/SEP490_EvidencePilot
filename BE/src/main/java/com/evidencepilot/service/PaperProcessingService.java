@@ -1,13 +1,15 @@
 package com.evidencepilot.service;
 
-import com.evidencepilot.model.Document;
-import com.evidencepilot.model.PaperSection;
+import com.evidencepilot.dto.response.PaperSectionResponse;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 public interface PaperProcessingService {
 
-    List<PaperSection> detectAndPersistSections(Document document);
+    List<PaperSectionResponse> getPaperSections(UUID documentId);
 
-    Map<String, Object> review(Document document, String targetStyle);
+    List<PaperSectionResponse> detectAndPersistSections(UUID documentId);
+
+    Map<String, Object> review(UUID documentId, String targetStyle);
 }

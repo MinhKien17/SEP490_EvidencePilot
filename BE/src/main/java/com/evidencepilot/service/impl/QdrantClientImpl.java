@@ -1,5 +1,12 @@
-package com.evidencepilot.client.qdrant;
+package com.evidencepilot.service.impl;
 
+import com.evidencepilot.dto.NamedVectors;
+import com.evidencepilot.dto.QdrantSearchResult;
+import com.evidencepilot.dto.SparseVector;
+import com.evidencepilot.dto.UpsertBody;
+import com.evidencepilot.dto.UpsertPoint;
+import com.evidencepilot.exception.QdrantException;
+import com.evidencepilot.service.QdrantClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
@@ -19,39 +26,18 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * Thin REST client for the Qdrant vector database.
- *
- * <p>Handles two operations:
- * <ol>
- *   <li>{@link #upsertVector(String, List, String)} – writes a point into the
- *       {@code source_chunks} collection with the MySQL chunk ID and a
- *       {@code project_id} payload for filtered search.</li>
- *   <li>{@link #findClosestChunkId(List, String)} – performs a nearest-neighbour
- *       search filtered by {@code project_id} and returns the MySQL chunk ID of
- *       the top result.</li>
- * </ol>
- *
- * <p>The collection is auto-created on the first upsert if it does not already
- * exist.  This avoids external setup steps and keeps the Docker Compose
- * experience zero-config.</p>
- *
- * <p><b>Configuration:</b> requires {@code QDRANT_URL} environment variable
- * (mapped via {@code qdrant.url} in {@code application.yml}).</p>
- */
 @Slf4j
 @Service
-public class QdrantClient {
+public class QdrantClientImpl implements QdrantClient {
 
     private static final String COLLECTION = "source_chunks";
 
     private final RestClient restClient;
     private final String baseUrl;
 
-    /** Tracks whether we have already ensured the collection exists in this JVM lifetime. */
     private volatile boolean collectionEnsured = false;
 
-    public QdrantClient(@Value("${qdrant.url:http://localhost:6333}") String qdrantUrl) {
+    public QdrantClientImpl(@Value("${qdrant.url:http://localhost:6333}") String qdrantUrl) {
         this.baseUrl = trimTrailingSlash(qdrantUrl);
 
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -69,40 +55,15 @@ public class QdrantClient {
 
     // ── Write ──────────────────────────────────────────────────────────────────
 
-    /**
-     * Upserts a single point into the {@code source_chunks} collection.
-     *
-     * <p>The Qdrant point uses the database chunk ID as the point ID.
-     * A {@code project_id} payload is attached so that reads can be filtered
-     * per project.</p>
-     *
-     * @param chunkId   the database {@code source_chunks.id}
-     * @param embedding the dense vector produced by the embedding model
-     * @param projectId the MySQL {@code projects.id} (stored as payload for filtering)
-     */
-    public void upsertVector(String chunkId, List<Float> embedding, String projectId) {
-        upsertVector(chunkId, embedding, "PROJECT", projectId);
-    }
-
-    /**
-     * Upserts a single point scoped to either a project or an instructor collection.
-     *
-     * @param chunkId   the database {@code source_chunks.id}
-     * @param embedding the dense vector produced by the embedding model
-     * @param scopeType {@code PROJECT}, {@code COLLECTION}, or another uppercase scope label
-     * @param scopeId   the corresponding relational ID as a string
-     */
-    public void upsertVector(String chunkId, List<Float> embedding, String scopeType, String scopeId) {
-        upsertVector(chunkId, embedding, scopeType, scopeId, Map.of());
-    }
-
+    @Override
     public void upsertVector(
             String chunkId,
-            List<Float> embedding,
+            List<Float> denseVector,
+            SparseVector sparseVector,
             String scopeType,
             String scopeId,
             Map<String, Object> extraPayload) {
-        ensureCollection(embedding.size());
+        ensureCollection(denseVector.size());
 
         String normalizedScopeType = normalizeScopeType(scopeType);
         String normalizedScopeId = normalizeScopeId(scopeId);
@@ -117,13 +78,9 @@ public class QdrantClient {
         }
         payload.putAll(extraPayload);
 
-        Map<String, Object> point = Map.of(
-                "id", chunkId,
-                "vector", embedding,
-                "payload", payload
-        );
-
-        Map<String, Object> body = Map.of("points", List.of(point));
+        NamedVectors namedVectors = new NamedVectors(denseVector, sparseVector);
+        UpsertPoint point = new UpsertPoint(chunkId, namedVectors, payload);
+        UpsertBody body = new UpsertBody(List.of(point));
         String url = baseUrl + "/collections/" + COLLECTION + "/points?wait=true";
 
         try {
@@ -144,15 +101,7 @@ public class QdrantClient {
 
     // ── Read ───────────────────────────────────────────────────────────────────
 
-    /**
-     * Finds the MySQL chunk ID of the closest vector in the {@code source_chunks}
-     * collection, scoped to the given project.
-     *
-     * @param queryVector the dense vector for the search query (e.g. embedded claim)
-     * @param projectId   the project to filter by (matches the {@code project_id} payload)
-     * @return the MySQL chunk ID of the top-scoring point, or {@code null} if no
-     *         results are found
-     */
+    @Override
     public String findClosestChunkId(List<Float> queryVector, String projectId) {
         return findClosestChunks(queryVector, "PROJECT", projectId, 1).stream()
                 .findFirst()
@@ -160,15 +109,7 @@ public class QdrantClient {
                 .orElse(null);
     }
 
-    /**
-     * Finds closest chunk vectors inside a project or collection scope.
-     *
-     * @param queryVector the dense vector for the search query
-     * @param scopeType   {@code PROJECT} or {@code COLLECTION}
-     * @param scopeId     the corresponding relational ID as a string
-     * @param topK        number of nearest chunks to return, clamped to 1..20
-     * @return ordered chunk IDs with Qdrant similarity scores
-     */
+    @Override
     public List<QdrantSearchResult> findClosestChunks(
             List<Float> queryVector,
             String scopeType,
@@ -239,10 +180,6 @@ public class QdrantClient {
 
     // ── Collection bootstrap ───────────────────────────────────────────────────
 
-    /**
-     * Creates the {@code source_chunks} collection if it does not exist.
-     * Uses cosine distance to match the embedding model's expected similarity metric.
-     */
     private void ensureCollection(int vectorSize) {
         if (collectionEnsured) {
             return;
@@ -273,11 +210,13 @@ public class QdrantClient {
                 // Fall through to creation
             }
 
-            // Create the collection with cosine distance
+            // Create the collection with named vectors (dense + sparse)
             Map<String, Object> createBody = Map.of(
                     "vectors", Map.of(
-                            "size", vectorSize,
-                            "distance", "Cosine"
+                            "dense", Map.of("size", vectorSize, "distance", "Cosine")
+                    ),
+                    "sparse_vectors", Map.of(
+                            "sparse", Map.of("modifier", "idf")
                     )
             );
 
@@ -291,8 +230,8 @@ public class QdrantClient {
                         })
                         .toBodilessEntity();
 
-                log.info("Created Qdrant collection '{}' (vectorSize={}, distance=Cosine)",
-                        COLLECTION, vectorSize);
+                log.info("Created Qdrant collection '{}' with named vectors (dense/sparse)",
+                        COLLECTION);
                 collectionEnsured = true;
             } catch (Exception e) {
                 log.warn("Failed to create Qdrant collection '{}'. It may already exist " +
@@ -339,9 +278,7 @@ public class QdrantClient {
         return new BigDecimal(String.valueOf(rawScore));
     }
 
-    /** Sentinel exception used only inside ensureCollection to detect 404. */
     private static final class CollectionNotFoundException extends RuntimeException {
     }
-
 
 }

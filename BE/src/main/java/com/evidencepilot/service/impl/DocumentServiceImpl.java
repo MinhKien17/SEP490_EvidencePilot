@@ -8,6 +8,7 @@ import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.DocumentMapper;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.Project;
+import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.repository.CollectionRepository;
@@ -18,7 +19,7 @@ import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.SourceExtractionService;
-import com.evidencepilot.support.PagingRequest;
+import com.evidencepilot.dto.request.PagingRequest;
 import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
@@ -76,6 +77,33 @@ public class DocumentServiceImpl implements DocumentService {
     public DocumentResponse getDocumentById(UUID id) {
         return DocumentResponse.from(documentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(id, "Document")));
+    }
+
+    @Override
+    public DocumentResponse getSourceById(UUID id) {
+        Document doc = documentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException(id, "Document"));
+        if (doc.getDocType() != DocumentType.SOURCE || !doc.isActive()) {
+            throw new ResourceNotFoundException(id, "Source");
+        }
+        return DocumentResponse.from(doc);
+    }
+
+    @Override
+    public List<DocumentResponse> getAllPapersForCurrentUser() {
+        User currentUser = currentUserService.requireCurrentUser();
+        if (currentUserService.isAdmin(currentUser)) {
+            return documentRepository.findAll().stream()
+                    .filter(d -> d.isActive() && d.getDocType() == DocumentType.PAPER)
+                    .map(DocumentResponse::from)
+                    .toList();
+        }
+        return documentRepository.findAll().stream()
+                .filter(d -> d.isActive() && d.getDocType() == DocumentType.PAPER
+                        && d.getProject() != null && d.getProject().getStudent() != null
+                        && d.getProject().getStudent().getId().equals(currentUser.getId()))
+                .map(DocumentResponse::from)
+                .toList();
     }
 
     @Override

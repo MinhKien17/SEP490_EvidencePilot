@@ -3,8 +3,10 @@ package com.evidencepilot.service.impl;
 import com.evidencepilot.dto.request.ProjectCreateRequest;
 import com.evidencepilot.dto.request.ProjectUpdateRequest;
 import com.evidencepilot.dto.response.PagedResponse;
+import com.evidencepilot.dto.response.ProjectMemberResponse;
 import com.evidencepilot.dto.response.ProjectResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
+import com.evidencepilot.mapper.ProjectMapper;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.enums.ProjectRole;
@@ -16,7 +18,7 @@ import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.ProjectService;
 import com.evidencepilot.service.SystemNotificationService;
-import com.evidencepilot.support.PagingRequest;
+import com.evidencepilot.dto.request.PagingRequest;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +43,7 @@ public class ProjectServiceImpl implements ProjectService {
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
     private final SystemNotificationService systemNotificationService;
+    private final ProjectMapper projectMapper;
 
     @Override
     public List<ProjectResponse> getAllProjects() {
@@ -130,6 +133,13 @@ public class ProjectServiceImpl implements ProjectService {
     public List<ProjectMember> getProjectMembers(UUID projectId) {
         findActiveProject(projectId);
         return projectMemberRepository.findByProjectId(projectId);
+    }
+
+    @Override
+    public List<ProjectMemberResponse> getProjectMemberResponses(UUID projectId) {
+        return getProjectMembers(projectId).stream()
+                .map(projectMapper::toProjectMemberResponse)
+                .toList();
     }
 
     @Override

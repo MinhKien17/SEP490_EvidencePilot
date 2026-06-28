@@ -1,7 +1,9 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.request.UserProfileUpdateRequest;
+import com.evidencepilot.dto.response.UserResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
+import com.evidencepilot.mapper.UserMapper;
 import com.evidencepilot.model.User;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.UserService;
@@ -15,28 +17,25 @@ import java.util.UUID;
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
+    private final UserMapper userMapper;
 
     @Override
-    public User findById(UUID id) {
-        return userRepository.findById(id)
+    public UserResponse findUserById(UUID id) {
+        User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(id, "User"));
+        return userMapper.toUserResponse(user);
     }
 
     @Override
-    public User findByEmail(String email) {
-        return userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("User with email " + email + " not found"));
-    }
-
-    @Override
-    public User updateProfile(UUID userId, UserProfileUpdateRequest request) {
-        User user = findById(userId);
+    public UserResponse updateUserProfile(UUID userId, UserProfileUpdateRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(userId, "User"));
         if (request.getFirstName() != null) {
             user.setFirstName(request.getFirstName());
         }
         if (request.getLastName() != null) {
             user.setLastName(request.getLastName());
         }
-        return userRepository.save(user);
+        return userMapper.toUserResponse(userRepository.save(user));
     }
 }

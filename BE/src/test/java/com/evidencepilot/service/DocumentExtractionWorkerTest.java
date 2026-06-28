@@ -1,7 +1,9 @@
 package com.evidencepilot.service;
 
+import com.evidencepilot.dto.SparseVector;
 import com.evidencepilot.dto.ExtractionResultPayload;
-import com.evidencepilot.infrastructure.AiModelClient;
+import com.evidencepilot.service.impl.DocumentExtractionWorkerImpl;
+import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.DocumentText;
@@ -44,6 +46,9 @@ class DocumentExtractionWorkerTest {
     private AiModelClient aiModelClient;
 
     @Mock
+    private OllamaGateway ollamaGateway;
+
+    @Mock
     private QdrantService qdrantService;
 
     @Test
@@ -55,20 +60,21 @@ class DocumentExtractionWorkerTest {
         when(documentObjectStorage.read("sources/raw/" + documentId + ".pdf")).thenReturn(raw);
         when(aiModelClient.extractDocument("source.pdf", "application/pdf", raw))
                 .thenReturn(new AiModelClient.ExtractedDocument("source.pdf", "liteparse", "First paragraph.\n\nSecond paragraph."));
-        when(aiModelClient.generateEmbedding(any()))
-                .thenReturn(new double[] {0.25d, -0.5d});
+        when(ollamaGateway.getEmbedding(any())).thenReturn(List.of(0.25f, -0.5f));
+        when(ollamaGateway.getSparseEmbedding(any())).thenReturn(new SparseVector(List.of(0L, 1L), List.of(0.25f, -0.5f)));
         when(documentChunkRepository.save(any(DocumentChunk.class))).thenAnswer(invocation -> {
             DocumentChunk chunk = invocation.getArgument(0);
             chunk.setId(UUID.randomUUID());
             return chunk;
         });
 
-        new DocumentExtractionWorker(
+        new DocumentExtractionWorkerImpl(
                 documentRepository,
                 documentTextRepository,
                 documentChunkRepository,
                 documentObjectStorage,
                 aiModelClient,
+                ollamaGateway,
                 qdrantService).process(documentId);
 
         ArgumentCaptor<DocumentText> textCaptor = ArgumentCaptor.forClass(DocumentText.class);
@@ -82,7 +88,8 @@ class DocumentExtractionWorkerTest {
         ExtractionResultPayload payload = payloadCaptor.getValue();
         assertThat(payload.documentId()).isEqualTo(documentId);
         assertThat(payload.chunks()).hasSize(1);
-        assertThat(payload.chunks().getFirst().embedding()).isEqualTo(List.of(0.25f, -0.5f));
+        assertThat(payload.chunks().getFirst().denseEmbedding()).isEqualTo(List.of(0.25f, -0.5f));
+        assertThat(payload.chunks().getFirst().sparseEmbedding()).isNotNull();
         assertThat(document.getProcessingStatus()).isEqualTo(ProcessingStatus.READY);
         assertThat(document.getChunkCount()).isEqualTo(1);
         assertThat(document.getProcessingError()).isNull();
@@ -99,12 +106,13 @@ class DocumentExtractionWorkerTest {
         when(aiModelClient.extractDocument("source.pdf", "application/pdf", raw))
                 .thenThrow(new AiModelClient.AiApiException("/extract", 503, "AI offline", null));
 
-        DocumentExtractionWorker worker = new DocumentExtractionWorker(
+        DocumentExtractionWorkerImpl worker = new DocumentExtractionWorkerImpl(
                 documentRepository,
                 documentTextRepository,
                 documentChunkRepository,
                 documentObjectStorage,
                 aiModelClient,
+                ollamaGateway,
                 qdrantService);
 
         assertThatThrownBy(() -> worker.process(documentId))

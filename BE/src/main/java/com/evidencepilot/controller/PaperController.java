@@ -2,14 +2,7 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.PaperSectionResponse;
-import com.evidencepilot.model.Document;
-import com.evidencepilot.model.Project;
-import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
-import com.evidencepilot.repository.DocumentRepository;
-import com.evidencepilot.repository.PaperSectionRepository;
-import com.evidencepilot.repository.ProjectRepository;
-import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.PaperProcessingService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -42,12 +35,8 @@ import java.util.UUID;
 @Tag(name = "Papers", description = "Student paper submissions, sections, and AI review")
 public class PaperController {
 
-    private final DocumentRepository documentRepository;
-    private final PaperSectionRepository paperSectionRepository;
-    private final ProjectRepository projectRepository;
-    private final CurrentUserService currentUserService;
-    private final PaperProcessingService paperProcessingService;
     private final DocumentService documentService;
+    private final PaperProcessingService paperProcessingService;
 
     @Operation(summary = "List all papers",
             description = "Returns all active paper documents. "
@@ -58,20 +47,7 @@ public class PaperController {
     })
     @GetMapping
     public List<DocumentResponse> findAll() {
-        User currentUser = currentUserService.requireCurrentUser();
-        List<Document> docs;
-        if (currentUserService.isAdmin(currentUser)) {
-            docs = documentRepository.findAll().stream()
-                    .filter(this::isActivePaper)
-                    .toList();
-        } else {
-            docs = documentRepository.findAll().stream()
-                    .filter(d -> isActivePaper(d) && d.getProject() != null
-                            && d.getProject().getStudent() != null
-                            && d.getProject().getStudent().getId().equals(currentUser.getId()))
-                    .toList();
-        }
-        return docs.stream().map(DocumentResponse::from).toList();
+        return documentService.getAllPapersForCurrentUser();
     }
 
     @Operation(summary = "Get paper by ID",
@@ -85,12 +61,11 @@ public class PaperController {
     @GetMapping("/{id}")
     public DocumentResponse findById(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
-        User currentUser = currentUserService.requireCurrentUser();
-        Document doc = requirePaperDocument(id);
-        if (doc.getProject() != null) {
-            currentUserService.requireProjectWriteAccess(currentUser, doc.getProject());
+        DocumentResponse doc = documentService.getDocumentById(id);
+        if (doc.docType() != DocumentType.PAPER || !doc.active()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Paper not found: " + id);
         }
-        return DocumentResponse.from(doc);
+        return doc;
     }
 
     @Operation(summary = "List papers by project",
@@ -104,14 +79,8 @@ public class PaperController {
     @GetMapping("/api/projects/{projectId}/papers")
     public List<DocumentResponse> findByProject(
             @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
-        User currentUser = currentUserService.requireCurrentUser();
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Project not found: " + projectId));
-        currentUserService.requireProjectWriteAccess(currentUser, project);
-        return documentRepository.findByProjectId(projectId).stream()
-                .filter(this::isActivePaper)
-                .map(DocumentResponse::from)
+        return documentService.getDocumentsByProject(projectId).stream()
+                .filter(d -> d.docType() == DocumentType.PAPER && d.active())
                 .toList();
     }
 
@@ -126,16 +95,7 @@ public class PaperController {
     @GetMapping("/{id}/sections")
     public List<PaperSectionResponse> sections(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
-        User currentUser = currentUserService.requireCurrentUser();
-        Document doc = requirePaperDocument(id);
-        currentUserService.requireProjectAccess(currentUser, doc.getProject());
-        return paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(id).stream()
-                .map(s -> new PaperSectionResponse(
-                        s.getId(), s.getDocument().getId(),
-                        s.getAssignedUser() != null ? s.getAssignedUser().getId() : null,
-                        s.getSectionOrder(), s.getSectionTitle(),
-                        s.getContentTex(), s.getContentMdCache(), s.getUpdatedAt()))
-                .toList();
+        return paperProcessingService.getPaperSections(id);
     }
 
     @Operation(summary = "Generate AI paper review",
@@ -151,11 +111,7 @@ public class PaperController {
     public Map<String, Object> review(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id,
             @Parameter(description = "Target output style (optional)") @RequestParam(required = false) String targetStyle) {
-
-        User currentUser = currentUserService.requireCurrentUser();
-        Document doc = requirePaperDocument(id);
-        currentUserService.requireProjectAccess(currentUser, doc.getProject());
-        return paperProcessingService.review(doc, targetStyle);
+        return paperProcessingService.review(id, targetStyle);
     }
 
     @Operation(summary = "Soft-delete a paper",
@@ -169,11 +125,7 @@ public class PaperController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
-        User currentUser = currentUserService.requireCurrentUser();
-        Document doc = requirePaperDocument(id);
-        currentUserService.requireProjectAccess(currentUser, doc.getProject());
-        doc.setActive(false);
-        documentRepository.save(doc);
+        documentService.deleteDocument(id);
         return ResponseEntity.noContent().build();
     }
 
@@ -193,33 +145,9 @@ public class PaperController {
             @Parameter(description = "File to upload") @RequestParam("file") MultipartFile file,
             @Parameter(description = "Project UUID") @RequestParam("projectId") UUID projectId) {
 
-        User currentUser = currentUserService.requireCurrentUser();
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Project not found: " + projectId));
-        currentUserService.requireProjectAccess(currentUser, project);
-
         DocumentResponse response = documentService.uploadDocument(projectId, file, DocumentType.PAPER);
-
-        Document saved = documentRepository.findById(response.id())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "Saved document not found immediately after upload"));
-        paperProcessingService.detectAndPersistSections(saved);
+        paperProcessingService.detectAndPersistSections(response.id());
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
-
-    private Document requirePaperDocument(UUID id) {
-        Document doc = documentRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Paper not found: " + id));
-        if (!isActivePaper(doc)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Paper not found: " + id);
-        }
-        return doc;
-    }
-
-    private boolean isActivePaper(Document doc) {
-        return doc.isActive() && doc.getDocType() == DocumentType.PAPER;
     }
 }

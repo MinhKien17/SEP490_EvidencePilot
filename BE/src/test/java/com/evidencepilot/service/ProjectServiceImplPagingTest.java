@@ -1,5 +1,6 @@
 package com.evidencepilot.service;
 
+import com.evidencepilot.mapper.ProjectMapper;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.ProjectStatus;
@@ -46,6 +47,9 @@ class ProjectServiceImplPagingTest {
     @Mock
     private SystemNotificationService systemNotificationService;
 
+    @Mock
+    private ProjectMapper projectMapper;
+
     @Test
     void getAllProjectsReturnsPagedMetadataAndWhitelistedSort() {
         User admin = new User();
@@ -71,7 +75,8 @@ class ProjectServiceImplPagingTest {
                 projectMemberRepository,
                 userRepository,
                 currentUserService,
-                systemNotificationService);
+                systemNotificationService,
+                projectMapper);
 
         var response = service.getAllProjects(
                 1,

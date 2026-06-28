@@ -1,4 +1,4 @@
-package com.evidencepilot.client.qdrant;
+package com.evidencepilot.dto;
 
 import java.math.BigDecimal;
 

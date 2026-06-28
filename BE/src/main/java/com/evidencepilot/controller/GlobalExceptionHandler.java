@@ -1,6 +1,6 @@
 package com.evidencepilot.controller;
 
-import com.evidencepilot.infrastructure.AiModelClient;
+import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.dto.response.ApiErrorResponse;
 import com.evidencepilot.exception.AiValidationException;
 import com.evidencepilot.exception.ResourceNotFoundException;

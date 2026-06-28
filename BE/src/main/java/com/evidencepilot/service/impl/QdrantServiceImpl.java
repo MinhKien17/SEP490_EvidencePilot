@@ -1,6 +1,6 @@
 package com.evidencepilot.service.impl;
 
-import com.evidencepilot.client.qdrant.QdrantClient;
+import com.evidencepilot.service.QdrantClient;
 import com.evidencepilot.dto.ExtractionResultPayload;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.repository.DocumentRepository;
@@ -10,6 +10,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
+
+import static java.util.Map.entry;
 
 @Service
 @RequiredArgsConstructor
@@ -31,20 +33,21 @@ public class QdrantServiceImpl implements QdrantService {
                 : "0";
 
         for (ExtractionResultPayload.ChunkPayload chunk : payload.chunks()) {
-            if (chunk.embedding() == null || chunk.embedding().isEmpty()) {
+            if (chunk.denseEmbedding() == null || chunk.denseEmbedding().isEmpty()) {
                 log.debug("Skipping chunk {} with empty embedding", chunk.chunkId());
                 continue;
             }
             qdrantClient.upsertVector(
                     chunk.chunkId().toString(),
-                    chunk.embedding(),
+                    chunk.denseEmbedding(),
+                    chunk.sparseEmbedding(),
                     "PROJECT",
                     projectId,
-                    Map.of(
-                            "document_id", payload.documentId().toString(),
-                            "chunk_id", chunk.chunkId().toString(),
-                            "chunk_index", chunk.chunkIndex(),
-                            "text", chunk.text()
+                    Map.ofEntries(
+                            entry("document_id", payload.documentId().toString()),
+                            entry("chunk_id", chunk.chunkId().toString()),
+                            entry("chunk_index", chunk.chunkIndex()),
+                            entry("text", chunk.text())
                     )
             );
         }

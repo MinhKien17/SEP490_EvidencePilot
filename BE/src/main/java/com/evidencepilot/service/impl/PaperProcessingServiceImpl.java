@@ -1,18 +1,25 @@
 package com.evidencepilot.service.impl;
 
-import com.evidencepilot.infrastructure.AiModelClient;
+import com.evidencepilot.dto.response.PaperSectionResponse;
+import com.evidencepilot.exception.ResourceNotFoundException;
+import com.evidencepilot.mapper.ProjectMapper;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.PaperSection;
+import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
+import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.PaperProcessingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -25,10 +32,21 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
 
     private final AiModelClient aiModelClient;
     private final PaperSectionRepository paperSectionRepository;
+    private final DocumentRepository documentRepository;
+    private final ProjectMapper projectMapper;
+
+    @Override
+    public List<PaperSectionResponse> getPaperSections(UUID documentId) {
+        return paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(documentId).stream()
+                .map(projectMapper::toPaperSectionResponse)
+                .toList();
+    }
 
     @Override
     @Transactional
-    public List<PaperSection> detectAndPersistSections(Document document) {
+    public List<PaperSectionResponse> detectAndPersistSections(UUID documentId) {
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException(documentId, "Document"));
         String text = document.getDocumentText() != null
                 ? document.getDocumentText().getExtractedText() : null;
         if (text == null || text.isBlank()) {
@@ -36,11 +54,15 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         }
 
         List<PaperSection> sections = parseSections(text, document);
-        return paperSectionRepository.saveAll(sections);
+        return paperSectionRepository.saveAll(sections).stream()
+                .map(projectMapper::toPaperSectionResponse)
+                .toList();
     }
 
     @Override
-    public Map<String, Object> review(Document document, String targetStyle) {
+    public Map<String, Object> review(UUID documentId, String targetStyle) {
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException(documentId, "Document"));
         String style = targetStyle != null ? targetStyle : "default";
         String text = document.getDocumentText() != null
                 ? document.getDocumentText().getExtractedText() : "";
@@ -55,7 +77,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
                     "review", review);
         } catch (AiModelClient.AiApiException e) {
             log.error("Paper review failed for document {}: {}", document.getId(), e.getMessage());
-            throw new org.springframework.web.server.ResponseStatusException(
+            throw new ResponseStatusException(
                     org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
                     "Paper review service unavailable", e);
         }

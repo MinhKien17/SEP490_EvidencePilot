@@ -2,6 +2,7 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.request.UserProfileUpdateRequest;
 import com.evidencepilot.dto.response.UserResponse;
+import com.evidencepilot.mapper.UserMapper;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -29,6 +30,7 @@ public class UserController {
 
     private final UserService userService;
     private final CurrentUserService currentUserService;
+    private final UserMapper userMapper;
 
     @Operation(summary = "Get user by ID", description = "Returns a user's profile by UUID. Requires authentication.")
     @ApiResponses({
@@ -39,7 +41,7 @@ public class UserController {
     @GetMapping("/{id}")
     public ResponseEntity<UserResponse> findById(
             @Parameter(description = "User UUID") @PathVariable UUID id) {
-        return ResponseEntity.ok(UserResponse.from(userService.findById(id)));
+        return ResponseEntity.ok(userService.findUserById(id));
     }
 
     @Operation(summary = "Get current user profile",
@@ -52,7 +54,7 @@ public class UserController {
     @GetMapping("/profile")
     public ResponseEntity<UserResponse> profile() {
         return ResponseEntity.ok(
-                UserResponse.from(currentUserService.requireCurrentUser()));
+                userMapper.toUserResponse(currentUserService.requireCurrentUser()));
     }
 
     @Operation(summary = "Update current user profile",
@@ -67,7 +69,6 @@ public class UserController {
     public ResponseEntity<UserResponse> updateProfile(
             @Valid @RequestBody UserProfileUpdateRequest request) {
         UUID userId = currentUserService.requireCurrentUser().getId();
-        return ResponseEntity.ok(
-                UserResponse.from(userService.updateProfile(userId, request)));
+        return ResponseEntity.ok(userService.updateUserProfile(userId, request));
     }
 }

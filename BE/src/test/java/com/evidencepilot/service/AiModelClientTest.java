@@ -1,5 +1,6 @@
-package com.evidencepilot.infrastructure;
+package com.evidencepilot.service;
 
+import com.evidencepilot.service.impl.AiModelClientImpl;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -26,7 +27,7 @@ class AiModelClientTest {
                         """,
                         MediaType.APPLICATION_JSON));
 
-        AiModelClient client = new AiModelClient(builder.build(), "http://ai.test");
+        AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test");
 
         assertThat(client.generate("Review this")).isEqualTo("Review text");
         server.verify();
@@ -46,7 +47,7 @@ class AiModelClientTest {
                         """,
                         MediaType.APPLICATION_JSON));
 
-        AiModelClient client = new AiModelClient(builder.build(), "http://ai.test");
+        AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test");
 
         AiModelClient.ExtractedDocument result = client.extractDocument(
                 "source.pdf",

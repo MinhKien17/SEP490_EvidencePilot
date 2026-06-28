@@ -11,6 +11,7 @@ public record ExtractionResultPayload(
         UUID chunkId,
         Integer chunkIndex,
         String text,
-        List<Float> embedding
+        List<Float> denseEmbedding,
+        SparseVector sparseEmbedding
     ) {}
 }

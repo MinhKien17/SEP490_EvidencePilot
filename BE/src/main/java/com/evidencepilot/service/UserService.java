@@ -1,12 +1,10 @@
 package com.evidencepilot.service;
 
 import com.evidencepilot.dto.request.UserProfileUpdateRequest;
-import com.evidencepilot.model.User;
-
+import com.evidencepilot.dto.response.UserResponse;
 import java.util.UUID;
 
 public interface UserService {
-    User findById(UUID id);
-    User findByEmail(String email);
-    User updateProfile(UUID userId, UserProfileUpdateRequest request);
+    UserResponse findUserById(UUID id);
+    UserResponse updateUserProfile(UUID userId, UserProfileUpdateRequest request);
 }

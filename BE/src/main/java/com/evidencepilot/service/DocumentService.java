@@ -12,7 +12,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 public interface DocumentService {
     DocumentResponse getDocumentById(UUID id);
+    DocumentResponse getSourceById(UUID id);
     List<DocumentResponse> getDocumentsByProject(UUID projectId);
+    List<DocumentResponse> getAllPapersForCurrentUser();
     PagedResponse<DocumentResponse> getDocumentsByProject(
             UUID projectId,
             int page,

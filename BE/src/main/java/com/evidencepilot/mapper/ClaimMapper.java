@@ -8,69 +8,39 @@ import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.ClaimEvidenceMapping;
 import com.evidencepilot.model.EvidenceEdge;
-import org.springframework.stereotype.Component;
-import java.util.UUID;
+import com.evidencepilot.model.enums.MappingStatus;
+import com.evidencepilot.model.enums.SuggestionStatus;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 
-@Component
-public class ClaimMapper {
+@Mapper(componentModel = "spring")
+public interface ClaimMapper {
 
-    public ClaimResponse toClaimResponse(Claim entity) {
-        if (entity == null) return null;
-        UUID projectId = entity.getProject() != null ? entity.getProject().getId() : null;
-        UUID sectionId = entity.getSection() != null ? entity.getSection().getId() : null;
-        return new ClaimResponse(
-                entity.getId(),
-                projectId,
-                sectionId,
-                entity.getContent(),
-                entity.getAiConfidenceScore(),
-                entity.getClaimVersion(),
-                entity.isActive(),
-                entity.getCreatedAt());
+    @Mapping(target = "projectId", source = "project.id")
+    @Mapping(target = "sectionId", source = "section.id")
+    ClaimResponse toClaimResponse(Claim entity);
+
+    @Mapping(target = "claimId", source = "claim.id")
+    @Mapping(target = "documentChunkId", source = "documentChunk.id")
+    @Mapping(target = "status", source = "status")
+    AiSuggestionResponse toAiSuggestionResponse(AiSuggestion entity);
+
+    @Mapping(target = "claimId", source = "claim.id")
+    @Mapping(target = "documentChunkId", source = "documentChunk.id")
+    EvidenceEdgeResponse toEvidenceEdgeResponse(EvidenceEdge entity);
+
+    @Mapping(target = "claimId", source = "claim.id")
+    @Mapping(target = "documentChunkId", source = "documentChunk.id")
+    @Mapping(target = "suggestionId", source = "suggestion.id")
+    @Mapping(target = "createdBy", source = "createdBy.id")
+    @Mapping(target = "status", source = "status")
+    ClaimEvidenceMappingResponse toClaimEvidenceMappingResponse(ClaimEvidenceMapping entity);
+
+    default String mapSuggestionStatus(SuggestionStatus status) {
+        return status != null ? status.name() : null;
     }
 
-    public AiSuggestionResponse toAiSuggestionResponse(AiSuggestion entity) {
-        if (entity == null) return null;
-        UUID claimId = entity.getClaim() != null ? entity.getClaim().getId() : null;
-        UUID documentChunkId = entity.getDocumentChunk() != null ? entity.getDocumentChunk().getId() : null;
-        return new AiSuggestionResponse(
-                entity.getId(),
-                claimId,
-                documentChunkId,
-                entity.getStatus().name(),
-                entity.getScore(),
-                entity.getExplanation(),
-                entity.getClaimVersion(),
-                entity.getCreatedAt());
-    }
-
-    public EvidenceEdgeResponse toEvidenceEdgeResponse(EvidenceEdge entity) {
-        if (entity == null) return null;
-        UUID claimId = entity.getClaim() != null ? entity.getClaim().getId() : null;
-        UUID documentChunkId = entity.getDocumentChunk() != null ? entity.getDocumentChunk().getId() : null;
-        return new EvidenceEdgeResponse(
-                entity.getId(),
-                claimId,
-                documentChunkId,
-                entity.getVerdict(),
-                entity.getConfidenceScore(),
-                entity.getExplanation(),
-                entity.getCreatedAt());
-    }
-
-    public ClaimEvidenceMappingResponse toClaimEvidenceMappingResponse(ClaimEvidenceMapping entity) {
-        if (entity == null) return null;
-        UUID claimId = entity.getClaim() != null ? entity.getClaim().getId() : null;
-        UUID documentChunkId = entity.getDocumentChunk() != null ? entity.getDocumentChunk().getId() : null;
-        UUID suggestionId = entity.getSuggestion() != null ? entity.getSuggestion().getId() : null;
-        UUID createdById = entity.getCreatedBy() != null ? entity.getCreatedBy().getId() : null;
-        return new ClaimEvidenceMappingResponse(
-                entity.getId(),
-                claimId,
-                documentChunkId,
-                suggestionId,
-                createdById,
-                entity.getStatus().name(),
-                entity.getCreatedAt());
+    default String mapMappingStatus(MappingStatus status) {
+        return status != null ? status.name() : null;
     }
 }

@@ -1,6 +1,7 @@
 package com.evidencepilot.ai.config;
 
-import com.evidencepilot.infrastructure.AiModelClient;
+import com.evidencepilot.service.AiModelClient;
+import com.evidencepilot.service.impl.AiModelClientImpl;
 import com.evidencepilot.client.ai.config.AiClientConfig;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Disabled;
@@ -63,7 +64,7 @@ class AiClientConfigTest {
                             "ai.model.api-key=",
                             "ai.model.read-timeout-seconds=1")
                     .run(context -> {
-                        AiModelClient client = new AiModelClient(
+                        AiModelClientImpl client = new AiModelClientImpl(
                                 context.getBean("aiRestClient", RestClient.class),
                                 context.getBean("aiModelBaseUrl", String.class));
 

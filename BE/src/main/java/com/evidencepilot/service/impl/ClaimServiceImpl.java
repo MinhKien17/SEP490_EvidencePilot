@@ -23,12 +23,15 @@ import com.evidencepilot.repository.ProjectMemberRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.ClaimService;
 import com.evidencepilot.service.CurrentUserService;
-import com.evidencepilot.support.PagingRequest;
+import com.evidencepilot.dto.request.PagingRequest;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -141,7 +144,7 @@ public class ClaimServiceImpl implements ClaimService {
         currentUserService.requireProjectWriteAccess(currentUser, project);
 
         Claim claim = new Claim();
-claim.setProject(project);
+        claim.setProject(project);
         claim.setSection(section);
         claim.setContent(request.content());
         claim.setAiConfidenceScore(request.aiConfidenceScore());
@@ -189,11 +192,11 @@ claim.setProject(project);
     @Override
     @Transactional
     public AiSuggestionResponse createSuggestion(UUID claimId, UUID documentChunkId,
-                                                  Float score, String explanation) {
+            Float score, String explanation) {
         Claim claim = findActiveClaim(claimId);
 
         AiSuggestion suggestion = new AiSuggestion();
-suggestion.setClaim(claim);
+        suggestion.setClaim(claim);
         suggestion.setDocumentChunk(null);
         suggestion.setStatus(SuggestionStatus.PENDING);
         suggestion.setScore(score);
@@ -220,6 +223,22 @@ suggestion.setClaim(claim);
                 .orElseThrow(() -> new ResourceNotFoundException(suggestionId, "AiSuggestion"));
         suggestion.setStatus(SuggestionStatus.REJECTED);
         aiSuggestionRepository.save(suggestion);
+    }
+
+    @Override
+    @Transactional
+    public void updateSuggestionStatus(UUID suggestionId, String status) {
+        SuggestionStatus newStatus;
+        try {
+            newStatus = SuggestionStatus.valueOf(status.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status: " + status);
+        }
+        if (newStatus == SuggestionStatus.ACCEPTED) {
+            acceptSuggestion(suggestionId);
+        } else if (newStatus == SuggestionStatus.REJECTED) {
+            rejectSuggestion(suggestionId);
+        }
     }
 
     @Override

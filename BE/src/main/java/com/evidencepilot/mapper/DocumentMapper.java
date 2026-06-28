@@ -6,35 +6,20 @@ import com.evidencepilot.dto.response.DocumentTextResponse;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.DocumentText;
-import org.springframework.stereotype.Component;
-import java.util.UUID;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 
-@Component
-public class DocumentMapper {
+@Mapper(componentModel = "spring")
+public interface DocumentMapper {
 
-    public DocumentResponse toDocumentResponse(Document entity) {
-        if (entity == null) return null;
-        return DocumentResponse.from(entity);
-    }
+    @Mapping(target = "projectId", source = "project.id")
+    @Mapping(target = "collectionId", source = "collection.id")
+    @Mapping(target = "uploadedBy", source = "uploadedBy.id")
+    DocumentResponse toDocumentResponse(Document entity);
 
-    public DocumentTextResponse toDocumentTextResponse(DocumentText entity) {
-        if (entity == null) return null;
-        UUID documentId = entity.getDocument() != null ? entity.getDocument().getId() : null;
-        return new DocumentTextResponse(
-                entity.getId(),
-                documentId,
-                entity.getExtractedText(),
-                entity.getExtractionMethod());
-    }
+    @Mapping(target = "documentId", source = "document.id")
+    DocumentTextResponse toDocumentTextResponse(DocumentText entity);
 
-    public DocumentChunkResponse toDocumentChunkResponse(DocumentChunk entity) {
-        if (entity == null) return null;
-        UUID documentId = entity.getDocument() != null ? entity.getDocument().getId() : null;
-        return new DocumentChunkResponse(
-                entity.getId(),
-                documentId,
-                entity.getChunkIndex(),
-                entity.getText(),
-                entity.isActive());
-    }
+    @Mapping(target = "documentId", source = "document.id")
+    DocumentChunkResponse toDocumentChunkResponse(DocumentChunk entity);
 }

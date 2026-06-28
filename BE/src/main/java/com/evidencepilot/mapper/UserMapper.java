@@ -2,19 +2,10 @@ package com.evidencepilot.mapper;
 
 import com.evidencepilot.dto.response.UserResponse;
 import com.evidencepilot.model.User;
-import org.springframework.stereotype.Component;
+import org.mapstruct.Mapper;
 
-@Component
-public class UserMapper {
+@Mapper(componentModel = "spring")
+public interface UserMapper {
 
-    public UserResponse toUserResponse(User user) {
-        if (user == null) return null;
-        return UserResponse.builder()
-                .id(user.getId())
-                .email(user.getEmail())
-                .role(user.getRole())
-                .firstName(user.getFirstName())
-                .lastName(user.getLastName())
-                .build();
-    }
+    UserResponse toUserResponse(User user);
 }

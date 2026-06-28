@@ -1,4 +1,4 @@
-package com.evidencepilot.client.qdrant;
+package com.evidencepilot.exception;
 
 public class QdrantException extends RuntimeException {
     private final int statusCode;

@@ -33,6 +33,7 @@ public interface ClaimService {
     AiSuggestionResponse createSuggestion(UUID claimId, UUID documentChunkId, Float score, String explanation);
     void acceptSuggestion(UUID suggestionId);
     void rejectSuggestion(UUID suggestionId);
+    void updateSuggestionStatus(UUID suggestionId, String status);
     List<ClaimEvidenceMappingResponse> getMappingsForClaim(UUID claimId);
     List<EvidenceEdgeResponse> getEdgesForClaim(UUID claimId);
 }

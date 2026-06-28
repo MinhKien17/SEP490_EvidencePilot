@@ -1,5 +1,6 @@
-package com.evidencepilot.infrastructure;
+package com.evidencepilot.service.impl;
 
+import com.evidencepilot.service.AiModelClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.ByteArrayResource;
@@ -17,18 +18,19 @@ import java.util.UUID;
 
 @Slf4j
 @Component
-public class AiModelClient {
+public class AiModelClientImpl implements AiModelClient {
 
     private final RestClient restClient;
     private final String baseUrl;
 
-    public AiModelClient(@Qualifier("aiRestClient") RestClient restClient,
+    public AiModelClientImpl(@Qualifier("aiRestClient") RestClient restClient,
             @Qualifier("aiModelBaseUrl") String baseUrl) {
         this.restClient = restClient;
         this.baseUrl = baseUrl == null || baseUrl.isBlank() ? "" : trimTrailingSlash(baseUrl);
     }
 
     @SuppressWarnings("unchecked")
+    @Override
     public Map<String, Object> health() {
         return call("/health", () -> restClient.get()
                 .uri(baseUrl + "/health")
@@ -36,6 +38,7 @@ public class AiModelClient {
                 .body(Map.class));
     }
 
+    @Override
     public String generate(String prompt) {
         Map<String, Object> response = call("/ai/generate", () -> restClient.post()
                 .uri(baseUrl + "/ai/generate")
@@ -48,6 +51,7 @@ public class AiModelClient {
         return String.valueOf(response.get("response"));
     }
 
+    @Override
     public Map<String, Object> processClaim(UUID claimId, String claimText, UUID sourceId, String excerpt) {
         return call("/process/claim", () -> restClient.post()
                 .uri(baseUrl + "/process/claim")
@@ -58,6 +62,7 @@ public class AiModelClient {
     }
 
     @SuppressWarnings("unchecked")
+    @Override
     public ExtractedDocument extractDocument(String filename, String contentType, byte[] content) {
         ByteArrayResource resource = new ByteArrayResource(content) {
             @Override
@@ -87,6 +92,7 @@ public class AiModelClient {
                 stringValue(response.get("markdown"), ""));
     }
 
+    @Override
     public double[] generateEmbedding(String text) {
         Map<String, Object> response = call("/ai/embeddings", () -> restClient.post()
                 .uri(baseUrl + "/ai/embeddings")
@@ -145,38 +151,8 @@ public class AiModelClient {
         return String.valueOf(value);
     }
 
-    public record ExtractedDocument(String filename, String method, String markdown) {
-    }
-
     @FunctionalInterface
     private interface AiCall<T> {
         T execute();
-    }
-
-    public static final class AiApiException extends RuntimeException {
-        private final int statusCode;
-
-        public AiApiException(String endpoint, int statusCode) {
-            this(endpoint, statusCode, null, null);
-        }
-
-        public AiApiException(String endpoint, int statusCode, Throwable cause) {
-            this(endpoint, statusCode, null, cause);
-        }
-
-        public AiApiException(String endpoint, int statusCode, String message, Throwable cause) {
-            super("AI API error on " + endpoint + " - HTTP " + statusCode + (message != null ? " " + message : ""),
-                    cause);
-            this.statusCode = statusCode;
-        }
-
-        public AiApiException(String endpoint, String message, Throwable cause) {
-            super("AI API error on " + endpoint + " - " + message, cause);
-            this.statusCode = 0;
-        }
-
-        public int getStatusCode() {
-            return statusCode;
-        }
     }
 }

@@ -1,4 +1,4 @@
-package com.evidencepilot.support;
+package com.evidencepilot.dto.request;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;

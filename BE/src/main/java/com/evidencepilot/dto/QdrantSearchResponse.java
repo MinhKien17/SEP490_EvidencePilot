@@ -1,11 +1,11 @@
-package com.evidencepilot.client.qdrant;
+package com.evidencepilot.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record QdrantSearchResponse(List<ScoredPoint> result) {
+public record QdrantSearchResponse(List<ScoredPoint> points) {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record ScoredPoint(float score, Map<String, Object> payload) {
