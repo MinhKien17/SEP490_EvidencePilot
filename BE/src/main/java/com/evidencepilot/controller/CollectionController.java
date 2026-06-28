@@ -58,19 +58,6 @@ public class CollectionController {
         return collectionService.getCollectionById(id);
     }
 
-    @Operation(summary = "List collections by project",
-            description = "Returns all collections associated with the specified project.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Collection list returned"),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
-            @ApiResponse(responseCode = "404", description = "Project not found")
-    })
-    @GetMapping("/api/projects/{projectId}/collections")
-    public List<CollectionResponse> getCollectionsByProject(
-            @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
-        return collectionService.getCollectionsByProjectId(projectId);
-    }
-
     @Operation(summary = "Soft-delete a collection",
             description = "Sets the collection's active flag to false.")
     @ApiResponses({

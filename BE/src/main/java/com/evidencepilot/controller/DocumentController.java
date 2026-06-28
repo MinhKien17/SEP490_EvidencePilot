@@ -47,19 +47,6 @@ public class DocumentController {
         return documentService.getDocumentById(id);
     }
 
-    @Operation(summary = "List documents by project",
-            description = "Returns all documents associated with the specified project.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Document list returned"),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
-            @ApiResponse(responseCode = "404", description = "Project not found")
-    })
-    @GetMapping("/api/projects/{projectId}/documents")
-    public List<DocumentResponse> getDocumentsByProject(
-            @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
-        return documentService.getDocumentsByProject(projectId);
-    }
-
     @Operation(summary = "Upload a document",
             description = "Uploads a document (multipart/form-data) and streams it directly to MinIO. "
                     + "Returns 202 Accepted — processing happens asynchronously via RabbitMQ.")

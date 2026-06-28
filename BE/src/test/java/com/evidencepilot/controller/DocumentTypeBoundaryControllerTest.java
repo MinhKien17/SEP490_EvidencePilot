@@ -62,7 +62,6 @@ class DocumentTypeBoundaryControllerTest {
 
         SourceController controller = new SourceController(
                 documentRepository,
-                projectRepository,
                 userRepository,
                 documentChunkRepository,
                 documentTextRepository,
