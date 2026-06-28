@@ -16,6 +16,9 @@ public class RabbitMQConfig {
     public static final String ROUTING_KEY_RESULT = "extraction.result";
     public static final String ROUTING_KEY_VECTORIZATION = "chunk.vectorize";
 
+    public static final String DLX_NAME = "extraction.dlx";
+    public static final String DLQ_NAME = "extraction.result.dlq";
+
     @Bean
     public DirectExchange exchange() {
         return ExchangeBuilder.directExchange(EXCHANGE).durable(true).build();
@@ -38,9 +41,31 @@ public class RabbitMQConfig {
                 .with(ROUTING_KEY_EXTRACTION);
     }
 
+    // ── Dead Letter Exchange & Queue ────────────────────────────────────
+    @Bean
+    public DirectExchange deadLetterExchange() {
+        return new DirectExchange(DLX_NAME);
+    }
+
+    @Bean
+    public Queue deadLetterQueue() {
+        return QueueBuilder.durable(DLQ_NAME).build();
+    }
+
+    @Bean
+    public Binding deadLetterBinding() {
+        return BindingBuilder.bind(deadLetterQueue())
+                .to(deadLetterExchange())
+                .with(EXTRACTION_RESULT_QUEUE);
+    }
+
+    // ── Main Result Queue (wired to DLX) ────────────────────────────────
     @Bean
     public Queue extractionResultQueue() {
-        return QueueBuilder.durable(EXTRACTION_RESULT_QUEUE).build();
+        return QueueBuilder.durable(EXTRACTION_RESULT_QUEUE)
+                .withArgument("x-dead-letter-exchange", DLX_NAME)
+                .withArgument("x-dead-letter-routing-key", EXTRACTION_RESULT_QUEUE)
+                .build();
     }
 
     @Bean
@@ -62,3 +87,4 @@ public class RabbitMQConfig {
         return new Jackson2JsonMessageConverter();
     }
 }
+
