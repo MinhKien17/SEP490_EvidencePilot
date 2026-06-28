@@ -35,6 +35,10 @@ public class Document {
     @JoinColumn(name = "uploaded_by", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     private User uploadedBy;
 
+    @ManyToOne
+    @JoinColumn(name = "original_document_id", columnDefinition = "BINARY(16)", referencedColumnName = "id")
+    private Document originalDocument;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "doc_type")
     private DocumentType docType;
@@ -62,6 +66,9 @@ public class Document {
 
     @Column(name = "processed_at")
     private LocalDateTime processedAt;
+
+    @Column(name = "published_at")
+    private LocalDateTime publishedAt;
 
     private boolean active = true;
 

@@ -2,7 +2,6 @@ package com.evidencepilot.service.impl;
 
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Document;
-import com.evidencepilot.model.Source;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.service.SourceExtractionService;
@@ -35,14 +34,6 @@ public class SourceExtractionServiceImpl implements SourceExtractionService {
 
         rabbitTemplate.convertAndSend("extraction.queue", documentId.toString());
         log.info("Published document {} to extraction.queue", documentId);
-    }
-
-    @Override
-    @Transactional
-    public void extractAndPersist(Source source, MultipartFile file) {
-        ExtractedText extracted = extractText(file);
-        source.setExtractedText(extracted.text());
-        source.setExtractionMethod(extracted.method());
     }
 
     @Override

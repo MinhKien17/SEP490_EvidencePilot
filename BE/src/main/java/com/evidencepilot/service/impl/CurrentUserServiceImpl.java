@@ -1,9 +1,7 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.model.Claim;
-import com.evidencepilot.model.Paper;
 import com.evidencepilot.model.Project;
-import com.evidencepilot.model.Source;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.UserRepository;
@@ -128,23 +126,5 @@ public class CurrentUserServiceImpl implements CurrentUserService {
     @Override
     public void requireClaimAccess(User currentUser, Claim claim) {
         requireProjectAccess(currentUser, claim.getProject());
-    }
-
-    @Override
-    public void requirePaperAccess(User currentUser, Paper paper) {
-        requireProjectAccess(currentUser, paper.getProject());
-    }
-
-    @Override
-    public void requireSourceAccess(User currentUser, Source source) {
-        if (source.getProject() != null) {
-            requireProjectAccess(currentUser, source.getProject());
-        } else if (source.getCollection() != null) {
-            requireCollectionAccess(currentUser, source.getCollection());
-        } else {
-            throw new ResponseStatusException(
-                    org.springframework.http.HttpStatus.FORBIDDEN,
-                    "Source not associated with project or collection");
-        }
     }
 }

@@ -63,15 +63,17 @@ CREATE TABLE documents (
     project_id BINARY(16),
     collection_id BINARY(16),
     uploaded_by BINARY(16) NOT NULL,
-    doc_type VARCHAR(50) NOT NULL CHECK (doc_type IN ('EVIDENCE_SOURCE', 'STUDENT_SUBMISSION')),
+    original_document_id BINARY(16),
+    doc_type VARCHAR(50) NOT NULL CHECK (doc_type IN ('PAPER', 'SOURCE')),
     file_url VARCHAR(500) NOT NULL,
     original_filename VARCHAR(255),
     content_type VARCHAR(255),
     file_size_bytes BIGINT,
     file_hash_sha256 VARCHAR(64),
-    processing_status VARCHAR(50) NOT NULL CHECK (processing_status IN ('UPLOADED', 'QUEUED', 'PROCESSING', 'READY', 'FAILED')),
+    processing_status VARCHAR(50) NOT NULL CHECK (processing_status IN ('UPLOADED', 'QUEUED', 'PROCESSING', 'READY', 'COMPLETED', 'FAILED')),
     processing_error TEXT,
     processed_at DATETIME,
+    published_at DATETIME,
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_documents_project_id (project_id),
@@ -79,7 +81,8 @@ CREATE TABLE documents (
     INDEX idx_documents_file_hash_sha256 (file_hash_sha256),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE SET NULL,
-    FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (original_document_id) REFERENCES documents(id) ON DELETE SET NULL
 );
 
 -- ==========================================
@@ -252,67 +255,3 @@ CREATE TABLE system_notifications (
     FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- ==========================================
--- 9. LEGACY PAPERS & SOURCES
--- ==========================================
-CREATE TABLE papers (
-    id BINARY(16) NOT NULL PRIMARY KEY,
-    project_id BINARY(16) NOT NULL,
-    file_url VARCHAR(500) NOT NULL,
-    original_filename VARCHAR(255),
-    content_type VARCHAR(255),
-    file_size_bytes BIGINT,
-    extracted_text LONGTEXT,
-    extraction_method VARCHAR(50),
-    active BOOLEAN NOT NULL DEFAULT TRUE,
-    submitted_at DATETIME,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
-);
-
-CREATE TABLE sources (
-    id BINARY(16) NOT NULL PRIMARY KEY,
-    file_url VARCHAR(500) NOT NULL,
-    original_filename VARCHAR(255),
-    content_type VARCHAR(255),
-    file_size_bytes BIGINT,
-    active BOOLEAN NOT NULL DEFAULT TRUE,
-    extracted_text LONGTEXT,
-    extraction_method VARCHAR(50),
-    project_id BINARY(16),
-    collection_id BINARY(16),
-    uploaded_by BINARY(16) NOT NULL,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-    FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE SET NULL,
-    FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE source_chunks (
-    id BINARY(16) NOT NULL PRIMARY KEY,
-    source_id BINARY(16) NOT NULL,
-    chunk_index INT NOT NULL,
-    page INT,
-    text TEXT NOT NULL,
-    embedding TEXT,
-    active BOOLEAN NOT NULL DEFAULT TRUE,
-    INDEX idx_source_chunks_source_id (source_id),
-    FOREIGN KEY (source_id) REFERENCES sources(id) ON DELETE CASCADE
-);
-
-CREATE TABLE source_references (
-    id BINARY(16) NOT NULL PRIMARY KEY,
-    source_id BINARY(16) NOT NULL,
-    reference_index INT NOT NULL,
-    raw_text TEXT NOT NULL,
-    title VARCHAR(255),
-    publication_year INT,
-    FOREIGN KEY (source_id) REFERENCES sources(id) ON DELETE CASCADE
-);
-
-CREATE TABLE source_texts (
-    id BINARY(16) NOT NULL PRIMARY KEY,
-    source_id BINARY(16) NOT NULL UNIQUE,
-    extracted_text LONGTEXT NOT NULL,
-    extraction_method VARCHAR(50) NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (source_id) REFERENCES sources(id) ON DELETE CASCADE
-);
