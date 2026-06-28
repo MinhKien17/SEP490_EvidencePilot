@@ -8,7 +8,8 @@ import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import Profile from './pages/Profile.jsx';
 import AdminDashboard from './pages/Admin/AdminDashboard.jsx';
-// INSTRUCTOR SUB-SYSTEM IMPORTS (Đã map chuẩn xác theo thực tế API Collection)
+
+// INSTRUCTOR SUB-SYSTEM IMPORTS
 import CollectionList from './pages/Instructor/CollectionList.jsx';
 import CreateCollection from './pages/Instructor/CreateCollection.jsx';
 import ReviewRequests from './pages/Instructor/ReviewRequests.jsx';
@@ -29,27 +30,34 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
 
-            {/* Shared Authenticated Node */}
+            {/* Shared Authenticated Node (Giữ nguyên cho các thành phần chung nếu cần) */}
+            <Route path="/profile" element={
+              <ProtectedRoute><Profile /></ProtectedRoute>
+            } />
+
+            {/* =========================================================================
+                🔥 CẬP NHẬT: THÊM ROUTE PROFILE DÀNH RIÊNG CHO INSTRUCTOR
+                ========================================================================= */}
             <Route path="/instructor/profile" element={
-  
+              <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}>
                 <Profile /> 
-           
+              </ProtectedRoute>
             } />
 
             {/* Instructor / Admin Telemetry Control Hubs */}
             <Route path="/instructor/dashboard" element={
-             <InstructorDashboard />
+              <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}><InstructorDashboard /></ProtectedRoute>
             } />
             <Route path="/instructor/requests" element={
-              <ReviewRequests />
+              <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}><ReviewRequests /></ProtectedRoute>
             } />
             
             {/* Đồng bộ cấu trúc route riêng biệt cho phân hệ Evidence Collection */}
             <Route path="/instructor/collections" element={
-              <CollectionList />
+              <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}><CollectionList /></ProtectedRoute>
             } />
             <Route path="/instructor/collections/create" element={
-              <CreateCollection />
+              <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}><CreateCollection /></ProtectedRoute>
             } />
 
             {/* Student Sandbox Execution Workspace */}
@@ -59,9 +67,11 @@ function App() {
             <Route path="/student/projects/:projectId" element={
               <ProtectedRoute allowedRoles={['STUDENT']}><Workspace /></ProtectedRoute>
             } />
+            
+            {/* Admin Control Hub */}
             <Route path="/admin/dashboard" element={
-            <AdminDashboard />
-          } />
+              <ProtectedRoute allowedRoles={['ADMIN']}><AdminDashboard /></ProtectedRoute>
+            } />
           </Routes>
         </LanguageProvider>
       </AuthProvider>
