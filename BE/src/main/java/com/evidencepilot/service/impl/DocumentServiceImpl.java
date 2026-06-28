@@ -10,6 +10,7 @@ import com.evidencepilot.model.Document;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
+import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.DocumentTextRepository;
@@ -50,6 +51,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final DocumentChunkRepository documentChunkRepository;
     private final DocumentTextRepository documentTextRepository;
     private final ProjectRepository projectRepository;
+    private final CollectionRepository collectionRepository;
     private final CurrentUserService currentUserService;
     private final SourceExtractionService sourceExtractionService;
     private final DocumentMapper documentMapper;
@@ -117,7 +119,7 @@ public class DocumentServiceImpl implements DocumentService {
                 size,
                 sort,
                 q,
-                DocumentType.EVIDENCE_SOURCE,
+                DocumentType.SOURCE,
                 processingStatus,
                 active);
     }
@@ -125,6 +127,12 @@ public class DocumentServiceImpl implements DocumentService {
     @Override
     @Transactional
     public DocumentResponse uploadDocument(UUID projectId, MultipartFile file, DocumentType docType) {
+        return uploadDocument(projectId, null, file, docType);
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse uploadDocument(UUID projectId, UUID collectionId, MultipartFile file, DocumentType docType) {
         var currentUser = currentUserService.requireCurrentUser();
 
         Project project = null;
@@ -133,11 +141,19 @@ public class DocumentServiceImpl implements DocumentService {
                     .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
         }
 
+        com.evidencepilot.model.Collection collection = null;
+        if (collectionId != null) {
+            collection = collectionRepository.findById(collectionId)
+                    .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
+            currentUserService.requireCollectionAccess(currentUser, collection);
+        }
+
         String originalName = file.getOriginalFilename();
 
         // 1. Save Document first — Hibernate auto-generates UUID
         Document document = new Document();
         document.setProject(project);
+        document.setCollection(collection);
         document.setUploadedBy(currentUser);
         document.setDocType(docType);
         document.setFileUrl("pending");

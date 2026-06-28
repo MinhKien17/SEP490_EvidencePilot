@@ -62,15 +62,8 @@ public class SourceController {
     public DocumentResponse findById(
             @Parameter(description = "Source document UUID") @PathVariable UUID id) {
         User currentUser = currentUserService.requireCurrentUser();
-        Document doc = documentRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Source not found: " + id));
-        if (!doc.isActive()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Source not found: " + id);
-        }
-        if (doc.getProject() != null) {
-            currentUserService.requireProjectAccess(currentUser, doc.getProject());
-        }
+        Document doc = requireSourceDocument(id);
+        requireSourceAccess(currentUser, doc);
         return DocumentResponse.from(doc);
     }
 
@@ -90,7 +83,7 @@ public class SourceController {
                         "Project not found: " + projectId));
         currentUserService.requireProjectAccess(currentUser, project);
         return documentRepository.findByProjectId(projectId).stream()
-                .filter(Document::isActive)
+                .filter(this::isActiveSource)
                 .map(DocumentResponse::from)
                 .toList();
     }
@@ -106,15 +99,8 @@ public class SourceController {
     public List<DocumentChunkResponse> chunks(
             @Parameter(description = "Source document UUID") @PathVariable UUID id) {
         User currentUser = currentUserService.requireCurrentUser();
-        Document doc = documentRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Source not found: " + id));
-        if (!doc.isActive()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Source not found: " + id);
-        }
-        if (doc.getProject() != null) {
-            currentUserService.requireProjectAccess(currentUser, doc.getProject());
-        }
+        Document doc = requireSourceDocument(id);
+        requireSourceAccess(currentUser, doc);
         return documentChunkRepository.findByDocumentId(id).stream()
                 .map(chunk -> new DocumentChunkResponse(
                         chunk.getId(), chunk.getDocument().getId(),
@@ -133,15 +119,8 @@ public class SourceController {
     public DocumentTextResponse text(
             @Parameter(description = "Source document UUID") @PathVariable UUID id) {
         User currentUser = currentUserService.requireCurrentUser();
-        Document doc = documentRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Source not found: " + id));
-        if (!doc.isActive()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Source not found: " + id);
-        }
-        if (doc.getProject() != null) {
-            currentUserService.requireProjectAccess(currentUser, doc.getProject());
-        }
+        Document doc = requireSourceDocument(id);
+        requireSourceAccess(currentUser, doc);
         DocumentText dt = documentTextRepository.findByDocumentId(id);
         if (dt == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Extracted text not found");
@@ -162,11 +141,14 @@ public class SourceController {
     public ResponseEntity<Void> delete(
             @Parameter(description = "Source document UUID") @PathVariable UUID id) {
         User currentUser = currentUserService.requireCurrentUser();
-        Document doc = documentRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Source not found: " + id));
+        Document doc = requireSourceDocument(id);
         if (doc.getProject() != null) {
             currentUserService.requireProjectWriteAccess(currentUser, doc.getProject());
+        } else if (doc.getCollection() != null) {
+            currentUserService.requireCollectionAccess(currentUser, doc.getCollection());
+        } else {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Source not associated with project or collection");
         }
         doc.setActive(false);
         documentRepository.save(doc);
@@ -187,7 +169,8 @@ public class SourceController {
     public ResponseEntity<DocumentResponse> upload(
             @Parameter(description = "File to upload") @RequestParam("file") MultipartFile file,
             @Parameter(description = "UUID of the uploader user") @RequestParam("uploadedBy") UUID uploadedById,
-            @Parameter(description = "Project UUID (optional for project-scoped sources)") @RequestParam(value = "projectId", required = false) UUID projectId) {
+            @Parameter(description = "Project UUID (optional for project-scoped sources)") @RequestParam(value = "projectId", required = false) UUID projectId,
+            @Parameter(description = "Collection UUID (optional for collection-scoped sources)") @RequestParam(value = "collectionId", required = false) UUID collectionId) {
 
         User currentUser = currentUserService.requireCurrentUser();
         currentUserService.requireUserIdOrAdmin(currentUser, uploadedById);
@@ -196,7 +179,33 @@ public class SourceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "User not found: " + uploadedById));
 
-        DocumentResponse response = documentService.uploadDocument(projectId, file, DocumentType.EVIDENCE_SOURCE);
+        DocumentResponse response = documentService.uploadDocument(
+                projectId, collectionId, file, DocumentType.SOURCE);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    private Document requireSourceDocument(UUID id) {
+        Document doc = documentRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Source not found: " + id));
+        if (!isActiveSource(doc)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Source not found: " + id);
+        }
+        return doc;
+    }
+
+    private boolean isActiveSource(Document doc) {
+        return doc.isActive() && doc.getDocType() == DocumentType.SOURCE;
+    }
+
+    private void requireSourceAccess(User currentUser, Document doc) {
+        if (doc.getProject() != null) {
+            currentUserService.requireProjectAccess(currentUser, doc.getProject());
+        } else if (doc.getCollection() != null) {
+            currentUserService.requireCollectionAccess(currentUser, doc.getCollection());
+        } else {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Source not associated with project or collection");
+        }
     }
 }

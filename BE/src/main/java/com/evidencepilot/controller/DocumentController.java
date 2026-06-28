@@ -73,7 +73,7 @@ public class DocumentController {
     public DocumentResponse uploadDocument(
             @Parameter(description = "File to upload") @RequestParam("file") MultipartFile file,
             @Parameter(description = "Project UUID (optional)") @RequestParam(value = "projectId", required = false) UUID projectId) {
-        return documentService.uploadDocument(projectId, file, DocumentType.EVIDENCE_SOURCE);
+        return documentService.uploadDocument(projectId, file, DocumentType.SOURCE);
     }
 
     @Operation(summary = "Get document chunks",

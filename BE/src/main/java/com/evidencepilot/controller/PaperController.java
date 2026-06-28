@@ -62,11 +62,11 @@ public class PaperController {
         List<Document> docs;
         if (currentUserService.isAdmin(currentUser)) {
             docs = documentRepository.findAll().stream()
-                    .filter(Document::isActive)
+                    .filter(this::isActivePaper)
                     .toList();
         } else {
             docs = documentRepository.findAll().stream()
-                    .filter(d -> d.isActive() && d.getProject() != null
+                    .filter(d -> isActivePaper(d) && d.getProject() != null
                             && d.getProject().getStudent() != null
                             && d.getProject().getStudent().getId().equals(currentUser.getId()))
                     .toList();
@@ -86,12 +86,7 @@ public class PaperController {
     public DocumentResponse findById(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
         User currentUser = currentUserService.requireCurrentUser();
-        Document doc = documentRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Paper not found: " + id));
-        if (!doc.isActive()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Paper not found: " + id);
-        }
+        Document doc = requirePaperDocument(id);
         if (doc.getProject() != null) {
             currentUserService.requireProjectWriteAccess(currentUser, doc.getProject());
         }
@@ -115,7 +110,7 @@ public class PaperController {
                         "Project not found: " + projectId));
         currentUserService.requireProjectWriteAccess(currentUser, project);
         return documentRepository.findByProjectId(projectId).stream()
-                .filter(Document::isActive)
+                .filter(this::isActivePaper)
                 .map(DocumentResponse::from)
                 .toList();
     }
@@ -132,12 +127,7 @@ public class PaperController {
     public List<PaperSectionResponse> sections(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
         User currentUser = currentUserService.requireCurrentUser();
-        Document doc = documentRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Paper not found: " + id));
-        if (!doc.isActive()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Paper not found: " + id);
-        }
+        Document doc = requirePaperDocument(id);
         currentUserService.requireProjectAccess(currentUser, doc.getProject());
         return paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(id).stream()
                 .map(s -> new PaperSectionResponse(
@@ -163,12 +153,7 @@ public class PaperController {
             @Parameter(description = "Target output style (optional)") @RequestParam(required = false) String targetStyle) {
 
         User currentUser = currentUserService.requireCurrentUser();
-        Document doc = documentRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Paper not found: " + id));
-        if (!doc.isActive()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Paper not found: " + id);
-        }
+        Document doc = requirePaperDocument(id);
         currentUserService.requireProjectAccess(currentUser, doc.getProject());
         return paperProcessingService.review(doc, targetStyle);
     }
@@ -185,9 +170,7 @@ public class PaperController {
     public ResponseEntity<Void> delete(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
         User currentUser = currentUserService.requireCurrentUser();
-        Document doc = documentRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Paper not found: " + id));
+        Document doc = requirePaperDocument(id);
         currentUserService.requireProjectAccess(currentUser, doc.getProject());
         doc.setActive(false);
         documentRepository.save(doc);
@@ -216,7 +199,7 @@ public class PaperController {
                         "Project not found: " + projectId));
         currentUserService.requireProjectAccess(currentUser, project);
 
-        DocumentResponse response = documentService.uploadDocument(projectId, file, DocumentType.STUDENT_SUBMISSION);
+        DocumentResponse response = documentService.uploadDocument(projectId, file, DocumentType.PAPER);
 
         Document saved = documentRepository.findById(response.id())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
@@ -224,5 +207,19 @@ public class PaperController {
         paperProcessingService.detectAndPersistSections(saved);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    private Document requirePaperDocument(UUID id) {
+        Document doc = documentRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Paper not found: " + id));
+        if (!isActivePaper(doc)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Paper not found: " + id);
+        }
+        return doc;
+    }
+
+    private boolean isActivePaper(Document doc) {
+        return doc.isActive() && doc.getDocType() == DocumentType.PAPER;
     }
 }

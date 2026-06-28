@@ -31,6 +31,9 @@ public interface DocumentService {
             ProcessingStatus processingStatus,
             Boolean active);
     DocumentResponse uploadDocument(UUID projectId, MultipartFile file, DocumentType docType);
+
+    DocumentResponse uploadDocument(UUID projectId, UUID collectionId, MultipartFile file, DocumentType docType);
+
     List<DocumentChunkResponse> getDocumentChunks(UUID documentId);
     DocumentTextResponse getDocumentText(UUID documentId);
     void deleteDocument(UUID id);
