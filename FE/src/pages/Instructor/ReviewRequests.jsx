@@ -1,228 +1,205 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
 import api from '../../api.js';
 
 export default function ReviewRequests() {
-  const navigate = useNavigate();
-  const { logout } = useAuth();
   const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  // States cho modal kiểm chứng chi tiết (Audit / Review)
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  
+  // Trạng thái phục vụ tác vụ ghi log comment (Feedback Content)
   const [selectedRequest, setSelectedRequest] = useState(null);
-  const [auditDetails, setAuditDetails] = useState(null);
-  const [loadingAudit, setLoadingAudit] = useState(false);
-  const [feedbackComment, setFeedbackComment] = useState('');
+  const [feedbackContent, setFeedbackContent] = useState("");
   const [submittingFeedback, setSubmittingFeedback] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
 
-  // 1. Tải danh sách các feedback requests và lấy tên dự án thực tế
-  const fetchRequests = async () => {
+  // Lấy toàn bộ danh sách feedback requests gán cho Instructor hiện tại
+  const fetchReviewRequests = async () => {
+    setLoading(true);
+    setErrorMessage("");
     try {
-      setLoading(true);
-      setError('');
-      const res = await api.get('/api/feedback-requests');
-      // Lọc các yêu cầu đang chờ duyệt (status: PENDING)
-      const pendingRequests = (res.data || []).filter(req => req.status === 'PENDING');
-
-      // Với mỗi yêu cầu, gọi API export để lấy tên dự án thực tế
-      const requestsWithDetails = await Promise.all(
-        pendingRequests.map(async (req) => {
-          try {
-            const exportRes = await api.get(`/api/projects/${req.projectId}/traceability-export`);
-            return {
-              ...req,
-              projectTitle: exportRes.data.projectTitle || `Dự án ID: ${req.projectId}`,
-              projectStatus: exportRes.data.projectStatus
-            };
-          } catch (err) {
-            console.error(`Failed to fetch project title for ${req.projectId}`, err);
-            return {
-              ...req,
-              projectTitle: `Dự án ID: ${req.projectId}`
-            };
-          }
-        })
-      );
-
-      setRequests(requestsWithDetails);
-    } catch (err) {
-      console.error('Failed to fetch feedback requests:', err);
-      setError('Không thể kết nối đến máy chủ Backend để lấy danh sách yêu cầu.');
+      // Gọi endpoint /api/feedback-requests
+      const response = await api.get('/api/feedback-requests');
+      setRequests(response.data);
+    } catch (error) {
+      console.error("Error reading feedback loops:", error);
+      setErrorMessage("Could not load validation assignments assigned to your token profile account.");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchRequests();
-  }, []);
-
-  // 2. Mở Modal đánh giá dự án
-  const handleOpenAudit = async (req) => {
-    setSelectedRequest(req);
-    setFeedbackComment('');
-    setAuditDetails(null);
-    setLoadingAudit(true);
+  // Cập nhật trạng thái vòng lặp chấm điểm (`PATCH /api/feedback-requests/{id}/status`)
+  const handleTransitionStatus = async (requestId, targetStatus) => {
+    setErrorMessage("");
     try {
-      const exportRes = await api.get(`/api/projects/${req.projectId}/traceability-export`);
-      setAuditDetails(exportRes.data);
-    } catch (err) {
-      console.error('Failed to fetch traceability details for audit:', err);
-      showToast('Không thể tải thông tin kiểm chứng của dự án này.');
-    } finally {
-      setLoadingAudit(false);
+      // Sử dụng cấu trúc @RequestParam cụ thể truyền qua URL query string
+      const response = await api.patch(`/api/feedback-requests/${requestId}/status?status=${targetStatus}`);
+      
+      // Đồng bộ trạng thái trực tiếp trên UI table list mà không cần reload trang
+      setRequests(prev => prev.map(req => req.id === requestId ? { ...req, status: response.data.status } : req));
+      if (selectedRequest?.id === requestId) {
+        setSelectedRequest(prev => ({ ...prev, status: response.data.status }));
+      }
+    } catch (error) {
+      setErrorMessage("State transition rejected by backend pipeline engine rules.");
     }
   };
 
-  // 3. Thực hiện lưu feedback và chuyển đổi trạng thái duyệt dự án
-  const handleReviewAction = async (actionType) => {
-    if (!selectedRequest) return;
+  // Lưu ý ghi nhận xét và đẩy thông báo hệ thống (`POST /api/feedback-requests/{id}/feedback`)
+  const handleSubmitComment = async (e) => {
+    e.preventDefault();
+    if (!feedbackContent.trim() || !selectedRequest) return;
 
-    // Nếu chuyển trả về hoặc từ chối, yêu cầu giảng viên phải ghi nhận xét
-    if ((actionType === 'RETURNED' || actionType === 'REJECTED') && !feedbackComment.trim()) {
-      alert('Vui lòng nhập nhận xét/lý do trả lại hoặc từ chối dự án này.');
-      return;
-    }
-
+    setSubmittingFeedback(true);
+    setErrorMessage("");
     try {
-      setSubmittingFeedback(true);
-
-      // Bước A: Gửi feedback comment nếu có nội dung nhận xét
-      if (feedbackComment.trim()) {
-        await api.post(`/api/feedback-requests/${selectedRequest.id}/feedback`, {
-          content: feedbackComment.trim()
-        });
-      }
-
-      // Bước B: Gọi API chuyển đổi trạng thái của yêu cầu
-      let endpoint = '';
-      let actionLabel = '';
-      if (actionType === 'APPROVED') {
-        endpoint = `/api/feedback-requests/${selectedRequest.id}/reviewed`;
-        actionLabel = 'phê duyệt thành công';
-      } else if (actionType === 'REJECTED') {
-        endpoint = `/api/feedback-requests/${selectedRequest.id}/rejected`;
-        actionLabel = 'từ chối';
-      } else if (actionType === 'RETURNED') {
-        endpoint = `/api/feedback-requests/${selectedRequest.id}/return-to-active`;
-        actionLabel = 'trả lại để chỉnh sửa';
-      }
-
-      await api.post(endpoint);
-      showToast(`Yêu cầu của dự án đã được ${actionLabel}!`);
-
-      // Đóng modal và tải lại danh sách
+      // Khớp chính xác InstructorFeedbackRequest DTO record: request.content()
+      await api.post(`/api/feedback-requests/${selectedRequest.id}/feedback`, {
+        content: feedbackContent.trim()
+      });
+      
+      alert("Instructor diagnostic feedback dispatched successfully!");
+      setFeedbackContent("");
       setSelectedRequest(null);
-      setAuditDetails(null);
-      await fetchRequests();
-    } catch (err) {
-      console.error(`Failed to execute review action ${actionType}:`, err);
-      alert('Thao tác phê duyệt thất bại. Vui lòng kiểm tra lại quyền truy cập.');
+    } catch (error) {
+      setErrorMessage("Failed to attach textual comment payload onto verification node structure.");
     } finally {
       setSubmittingFeedback(false);
     }
   };
 
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(''), 3000);
-  };
+  useEffect(() => {
+    fetchReviewRequests();
+  }, []);
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 antialiased">
-      {/* Header */}
-      <header className="bg-indigo-900 text-white border-b border-indigo-950 sticky top-0 z-30 shadow-md">
-        <div className="w-full px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3 cursor-pointer" onClick={() => navigate('/instructor/dashboard')}>
-            <div className="w-7 h-7 bg-white text-indigo-900 rounded-md text-xs flex items-center justify-center font-black shadow-sm">EP</div>
-            <span className="font-bold text-xl tracking-wider">Evidence Pilot</span>
+    <div className="min-h-screen bg-[#f8fafc] p-8 text-[#0f172a]">
+      <div className="max-w-7xl mx-auto">
+        
+        {/* Module Header */}
+        <div className="mb-8 border-b border-gray-200 pb-6">
+          <h1 className="text-3xl font-black text-[#1e3a8a] tracking-tight">Student Review Queue</h1>
+          <p className="text-xs text-gray-400 mt-1">Audit AI evidence assertions, evaluate project models, and emit authoritative grading verdicts.</p>
+        </div>
+
+        {errorMessage && (
+          <div className="p-4 mb-6 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-xs font-bold">
+            ⚠️ {errorMessage}
           </div>
-          <div className="flex items-center space-x-6">
-            <div className="flex items-center space-x-2 bg-white/10 px-3 py-1.5 rounded border border-white/20">
-              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
-              <span className="text-xs font-semibold text-indigo-100 tracking-wide uppercase">Giảng Viên</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-semibold">
-                {requests.length} pending
-              </span>
-              <button
-                onClick={() => navigate('/instructor/dashboard')}
-                className="px-4 py-2 bg-gray-50 text-gray-600 rounded-md hover:bg-gray-100 transition font-medium text-sm"
-              >
-                Dashboard
-              </button>
-              <button
-                onClick={() => { logout(); navigate('/'); }}
-                className="px-4 py-2 bg-red-50 text-red-600 rounded-md hover:bg-red-100 transition font-medium text-sm"
-              >
-                Sign Out
-              </button>
-            </div>
+        )}
+
+        {/* Requests Management Table Component Layout */}
+        <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-50 text-gray-400 text-[10px] font-bold uppercase border-b border-gray-100">
+                  <th className="px-6 py-4">Project Title Context</th>
+                  <th className="px-6 py-4">Submission Status</th>
+                  <th className="px-6 py-4">Resolution Decisions</th>
+                  <th className="px-6 py-4 text-right">Audit Panel</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-xs text-gray-700">
+                {loading ? (
+                  <tr><td colSpan="4" className="px-6 py-8 text-center text-gray-400 font-medium">Interrogating pending assignment queues...</td></tr>
+                ) : requests.length === 0 ? (
+                  <tr><td colSpan="4" className="px-6 py-8 text-center text-gray-400 font-medium">No pending grading requests assigned to your current instructor view bounds.</td></tr>
+                ) : (
+                  requests.map((req) => (
+                    <tr key={req.id} className="hover:bg-gray-50/40 transition">
+                      <td className="px-6 py-4">
+                        <span className="font-bold text-gray-900 block text-xs">{req.projectTitle || "Project Evaluation Node"}</span>
+                        <span className="text-[10px] text-gray-400 font-mono block mt-0.5">Request ID: {req.id}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-0.5 inline-block text-[9px] font-black rounded-md uppercase border ${
+                          req.status === 'PENDING' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                          req.status === 'REVIEWED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                          'bg-rose-50 text-rose-700 border-rose-200'
+                        }`}>
+                          {req.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => handleTransitionStatus(req.id, "REVIEWED")}
+                            className="px-2 py-1 bg-emerald-600 text-white font-bold text-[10px] rounded hover:bg-emerald-700 transition"
+                          >
+                            Approve
+                          </button>
+                          <button 
+                            onClick={() => handleTransitionStatus(req.id, "RETURNED")}
+                            className="px-2 py-1 bg-amber-500 text-white font-bold text-[10px] rounded hover:bg-amber-600 transition"
+                          >
+                            Return Fix
+                          </button>
+                          <button 
+                            onClick={() => handleTransitionStatus(req.id, "REJECTED")}
+                            className="px-2 py-1 bg-rose-600 text-white font-bold text-[10px] rounded hover:bg-rose-700 transition"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button 
+                          onClick={() => setSelectedRequest(req)}
+                          className="text-xs font-black text-[#1e3a8a] hover:underline"
+                        >
+                          Write Diagnostics
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
-      </header>
-      
-      <div className="overflow-hidden rounded-lg border border-gray-200">
-        <table className="w-full text-left border-collapse bg-white">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="p-4 font-semibold text-gray-600 text-sm uppercase tracking-wider">Project</th>
-              <th className="p-4 font-semibold text-gray-600 text-sm uppercase tracking-wider">Student</th>
-              <th className="p-4 font-semibold text-gray-600 text-sm uppercase tracking-wider">Submitted Date</th>
-              <th className="p-4 font-semibold text-gray-600 text-sm uppercase tracking-wider text-center">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {requests.length === 0 ? (
-              <tr>
-                <td colSpan="4" className="p-8 text-center text-gray-500">
-                  No pending requests to review.
-                </td>
-              </tr>
-            ) : (
-              requests.map((req) => (
-                <tr key={req.id} className="hover:bg-blue-50/50 transition duration-150">
-                  <td className="p-4">
-                    {/* Map đúng cấu trúc object lồng nhau từ Entity Java của BE */}
-                    <p className="font-bold text-gray-800">{req.project?.name || 'N/A'}</p>
-                  </td>
-                  <td className="p-4">
-                    <span className="font-medium text-gray-700">
-                      {req.student ? `${req.student.firstName} ${req.student.lastName}`.trim() : 'Unknown Student'}
-                    </span>
-                  </td>
-                  <td className="p-4 text-gray-600">
-                    {req.requestedAt ? new Date(req.requestedAt).toLocaleDateString('en-US') : 'N/A'}
-                    <span className="block text-xs text-gray-400">
-                      {req.requestedAt ? new Date(req.requestedAt).toLocaleTimeString('en-US') : ''}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex justify-center gap-2">
-                      <button 
-                        onClick={() => handleReview(req.id, 'APPROVED')}
-                        className="px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-md hover:bg-green-600 transition shadow-sm"
-                      >
-                        Approve
-                      </button>
-                      <button 
-                        onClick={() => handleReview(req.id, 'REJECTED')}
-                        className="px-4 py-2 bg-red-500 text-white text-sm font-medium rounded-md hover:bg-red-600 transition shadow-sm"
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+
+        {/* Modal Editor: Viết nhận xét đính kèm đồ án */}
+        {selectedRequest && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <form onSubmit={handleSubmitComment} className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl border border-gray-100 space-y-4">
+              <div className="border-b border-gray-100 pb-2">
+                <h3 className="text-sm font-black text-gray-900 uppercase tracking-wide">Append Instructor Evaluation Trail</h3>
+                <p className="text-[10px] text-gray-400 font-mono mt-0.5">Target Node UUID: {selectedRequest.id}</p>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <p className="text-gray-600 font-medium">
+                  You are evaluating the project module, current pipeline state is marked as <span className="font-bold text-blue-700">[{selectedRequest.status}]</span>.
+                </p>
+                <div>
+                  <label className="text-gray-400 font-bold block mb-1">Diagnostic Review Comments *</label>
+                  <textarea 
+                    rows="4" required value={feedbackContent} onChange={(e) => setFeedbackContent(e.target.value)}
+                    placeholder="Type detailed compliance flaws, grade breakdowns, or guidance markers here..."
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] text-gray-800"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 text-xs font-bold pt-2">
+                <button 
+                  type="button" onClick={() => setSelectedRequest(null)}
+                  className="flex-1 py-2.5 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition"
+                >
+                  Dismiss Panel
+                </button>
+                <button 
+                  type="submit" disabled={submittingFeedback}
+                  className="flex-1 py-2.5 bg-[#1e3a8a] text-white rounded-xl hover:bg-blue-800 transition shadow-sm disabled:opacity-50"
+                >
+                  {submittingFeedback ? "Dispatching..." : "Publish Feedback"}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
       </div>
-    </div >
+    </div>
   );
 }

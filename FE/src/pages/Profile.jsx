@@ -1,182 +1,216 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import api from '../api.js';
 
 export default function Profile() {
-  const navigate = useNavigate();
-  const { logout } = useAuth();
-  const [profile, setProfile] = useState(null);
+  // --- 1. STATES MANAGEMENT ---
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   
-  const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState({ firstName: '', lastName: '', age: '' });
-  const [updateLoading, setUpdateLoading] = useState(false);
+  // Form input states
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  
+  // Status alerts
+  const [message, setMessage] = useState({ type: "", text: "" });
+
+  // 🔥 TỰ ĐỘNG PHÁT HIỆN ROLE THEO URL NẾU API BACKEND GẶP SỰ CỐ KẾT NỐI
+  const isInstructorRoute = window.location.pathname.includes('/instructor');
+  const fallbackRole = isInstructorRoute ? 'INSTRUCTOR' : 'STUDENT';
+
+  // --- 2. API INTEGRATION ---
+  const fetchUserProfile = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get('/api/users/profile');
+      const data = response.data;
+      setUser(data);
+      setFirstName(data.firstName || "");
+      setLastName(data.lastName || "");
+    } catch (error) {
+      console.error("Failed to query user telemetry profile context:", error);
+      showAlert("error", "Failed to load profile synchronization matrix from security context.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
+    if (!firstName.trim() || !lastName.trim()) {
+      showAlert("error", "First name and last name fields cannot be blank execution nodes.");
+      return;
+    }
+
+    setSubmitting(true);
+    clearAlert();
+
+    try {
+      const payload = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim()
+      };
+
+      const response = await api.put('/api/users/profile', payload);
+      setUser(response.data);
+      showAlert("success", "Profile metadata clusters updated successfully on backend core.");
+    } catch (error) {
+      console.error("Profile payload update rejected:", error);
+      showAlert("error", error.response?.data?.message || "Validation error detected during profile synchronization.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   useEffect(() => {
-    fetchProfile();
+    fetchUserProfile();
   }, []);
 
-  const fetchProfile = () => {
-    api.get('/api/users/me')
-      .then((res) => {
-        setProfile(res.data);
-        setFormData({
-          firstName: res.data.firstName || '',
-          lastName: res.data.lastName || '',
-          age: res.data.age || ''
-        });
-      })
-      .catch((err) => console.error('Failed to fetch profile', err))
-      .finally(() => setLoading(false));
-  };
+  const showAlert = (type, text) => setMessage({ type, text });
+  const clearAlert = () => setMessage({ type: "", text: "" });
 
-  const handleUpdate = (e) => {
-    e.preventDefault();
-    setUpdateLoading(true);
-    
-    api.put('/api/users/me', {
-      firstName: formData.firstName,
-      lastName: formData.lastName,
-      age: parseInt(formData.age) || null
-    })
-      .then((res) => {
-        setProfile(res.data);
-        setIsEditing(false);
-        alert('Profile updated successfully!');
-      })
-      .catch((err) => {
-        console.error('Failed to update profile', err);
-        alert('Update failed. Please check your inputs!');
-      })
-      .finally(() => setUpdateLoading(false));
-  };
-
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  if (loading) return <div className="p-10 text-center text-gray-600 font-medium">Loading profile...</div>;
-  if (!profile) return <div className="p-10 text-center text-red-500 font-medium">Failed to load user profile.</div>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center font-sans">
+        <div className="text-xs font-bold text-gray-400 tracking-widest animate-pulse uppercase">
+          Querying secure user cluster metadata...
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-2xl mx-auto p-6 mt-10 bg-white rounded-xl shadow-md">
-      <div className="flex justify-end mb-4">
-        <button
-          onClick={() => { logout(); navigate('/'); }}
-          className="px-4 py-2 bg-red-50 text-red-600 rounded-md hover:bg-red-100 transition font-medium text-sm"
-        >
-          Sign Out
-        </button>
-      </div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Personal Information</h2>
-        {!isEditing && (
-          <button 
-            onClick={() => setIsEditing(true)}
-            className="px-4 py-2 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition font-medium text-sm"
-          >
-            Edit Profile
-          </button>
+    <div className="min-h-screen bg-[#f8fafc] text-[#0f172a] p-8 font-sans">
+      <div className="max-w-4xl mx-auto">
+        
+        {/* Workspace Dashboard Header */}
+        <div className="mb-8 border-b border-gray-200 pb-6">
+          <h1 className="text-3xl font-black text-[#1e3a8a] tracking-tight">Account Parameters</h1>
+          <p className="text-xs text-gray-400 mt-1">
+            Manage your personal cryptographic identification, profile identities, and institutional platform authority.
+          </p>
+        </div>
+
+        {message.text && (
+          <div className={`p-4 mb-6 rounded-2xl border text-xs font-bold transition animate-fadeIn ${
+            message.type === 'success' 
+              ? 'bg-emerald-50 border-emerald-100 text-emerald-700' 
+              : 'bg-rose-50 border-rose-100 text-rose-700'
+          }`}>
+            {message.type === 'success' ? '✓' : '⚠️'} {message.text}
+          </div>
         )}
-      </div>
-      
-      {isEditing ? (
-        <form onSubmit={handleUpdate} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">First Name</label>
-              <input 
-                type="text" 
-                name="firstName"
-                value={formData.firstName}
-                onChange={handleChange}
-                className="w-full p-2.5 bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">Last Name</label>
-              <input 
-                type="text" 
-                name="lastName"
-                value={formData.lastName}
-                onChange={handleChange}
-                className="w-full p-2.5 bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-            </div>
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">Age</label>
-            <input 
-              type="number" 
-              name="age"
-              value={formData.age}
-              onChange={handleChange}
-              className="w-full p-2.5 bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-
-          <div className="pt-4 flex gap-3">
-            <button 
-              type="submit" 
-              disabled={updateLoading}
-              className="px-5 py-2.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition font-medium disabled:opacity-50"
-            >
-              {updateLoading ? 'Saving...' : 'Save Changes'}
-            </button>
-            <button 
-              type="button" 
-              onClick={() => {
-                setIsEditing(false);
-                setFormData({
-                  firstName: profile.firstName || '',
-                  lastName: profile.lastName || '',
-                  age: profile.age || ''
-                });
-              }}
-              className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition font-medium"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      ) : (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-500">Full Name</label>
-              <div className="mt-1 p-3 bg-gray-50 border border-gray-100 rounded-md text-gray-800 font-medium">
-                {profile.firstName || profile.lastName 
-                  ? `${profile.firstName || ''} ${profile.lastName || ''}`.trim() 
-                  : 'N/A'}
-              </div>
+        {/* Master Profile Architecture Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
+          
+          {/* LEFT PANEL: Identity Security Token Badge */}
+          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 flex flex-col items-center text-center space-y-4">
+            <div className="w-20 h-20 bg-gradient-to-tr from-[#1e3a8a] to-blue-500 rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-md">
+              {user?.firstName?.charAt(0) || "U"}{user?.lastName?.charAt(0) || "P"}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-500">Age</label>
-              <div className="mt-1 p-3 bg-gray-50 border border-gray-100 rounded-md text-gray-800 font-medium">
-                {profile.age ? profile.age : 'N/A'}
-              </div>
+            
+            <div className="space-y-1 w-full">
+              <h2 className="font-black text-gray-900 text-base tracking-tight">
+                {user?.firstName || "Faculty"}{user?.lastName ? ` ${user.lastName}` : " Member"}
+              </h2>
+              <p className="text-xs text-gray-400 font-medium truncate px-2">{user?.email || "sync_error@institution.edu"}</p>
             </div>
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-500">Email Address</label>
-            <div className="mt-1 p-3 bg-gray-100 border border-gray-200 rounded-md text-gray-600">
-              {profile.email}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-500">Account Role</label>
-            <div className="mt-1 flex items-center">
-              <span className="px-3 py-1 text-sm font-semibold text-blue-700 bg-blue-100 rounded-full border border-blue-200">
-                {profile.role}
+            <div className="w-full pt-4 border-t border-gray-100">
+              {/* 🔥 ĐÃ SỬA: Tự động đổi màu và nội dung Badge theo Role thực tế */}
+              <span className={`inline-block px-3 py-1 text-[9px] font-black tracking-widest uppercase rounded-lg border ${
+                (user?.role || fallbackRole) === 'ADMIN' ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                (user?.role || fallbackRole) === 'INSTRUCTOR' ? 'bg-purple-50 text-purple-700 border-purple-100' :
+                'bg-blue-50 text-[#1e3a8a] border-blue-100'
+              }`}>
+                Authority: {user?.role || fallbackRole}
               </span>
             </div>
+
+            <div className="w-full bg-gray-50 rounded-xl p-3 text-[10px] text-left font-mono text-gray-400 border border-gray-100 break-all">
+              <span className="block font-bold uppercase tracking-wide text-[8px] text-gray-500 mb-0.5">User Infrastructure Key:</span>
+              {user?.id || "OFFLINE_CACHE_NODE"}
+            </div>
           </div>
+
+          {/* RIGHT PANEL: Self-Service Config Form */}
+          <div className="md:col-span-2 space-y-6">
+            
+            {/* Identity Update Form */}
+            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-8">
+              <h3 className="text-xs font-black text-gray-400 uppercase tracking-wider mb-6 pb-2 border-b border-gray-50">
+                Identity Profile Definitions
+              </h3>
+              
+              <form onSubmit={handleUpdateProfile} className="space-y-5 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Field: First Name */}
+                  <div className="space-y-1.5">
+                    <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">First Name</label>
+                    <input 
+                      type="text"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="Enter identity first name"
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition"
+                    />
+                  </div>
+
+                  {/* Field: Last Name */}
+                  <div className="space-y-1.5">
+                    <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">Last Name</label>
+                    <input 
+                      type="text"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="Enter identity last name"
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-4 border-t border-gray-100">
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="px-6 py-3 bg-[#1e3a8a] text-white font-black rounded-xl hover:bg-blue-800 transition shadow-sm disabled:opacity-50"
+                  >
+                    {submitting ? "Synchronizing Context..." : "Commit Modification"}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Read-Only Access System Credentials Block */}
+            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-8 space-y-4">
+              <div>
+                <h3 className="text-xs font-black text-gray-400 uppercase tracking-wider pb-2 border-b border-gray-50">
+                  Security Boundary Guardrails
+                </h3>
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Core parameters managed strictly by corporate institutional identity directories. Edits require security escalation.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                <div className="bg-gray-50/70 border border-gray-100 p-3 rounded-xl">
+                  <span className="block text-gray-400 font-black uppercase text-[9px] tracking-wide">Primary Email Endpoint</span>
+                  <span className="font-medium text-gray-600 font-mono text-[11px] block mt-1">{user?.email || "N/A"}</span>
+                </div>
+                <div className="bg-gray-50/70 border border-gray-100 p-3 rounded-xl">
+                  <span className="block text-gray-400 font-black uppercase text-[9px] tracking-wide">Assigned Scope Role</span>
+                  {/* 🔥 ĐÃ SỬA: Đảm bảo nhãn phân quyền hiển thị chuẩn xác */}
+                  <span className="font-mono text-gray-600 block mt-1 text-[11px] font-bold">{user?.role || fallbackRole}</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
         </div>
-      )}
+
+      </div>
     </div>
   );
 }

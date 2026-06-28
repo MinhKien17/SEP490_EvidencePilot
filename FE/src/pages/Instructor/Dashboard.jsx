@@ -1,151 +1,323 @@
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom'; // Import Link để chuyển hẳn sang trang khác
+import api from '../../api.js';
 
-export default function Dashboard() {
-  const navigate = useNavigate();
-  const { logout } = useAuth();
+export default function InstructorDashboard() {
+  // --- 1. STATES MANAGEMENT (GIỮ NGUYÊN) ---
+  const [projects, setProjects] = useState([]);
+  const [totalElements, setTotalElements] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const today = new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  const [page, setPage] = useState(0);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [projectPapers, setProjectPapers] = useState([]);
+  const [loadingPapers, setLoadingPapers] = useState(false);
+  
+  const [activePaperSections, setActivePaperSections] = useState([]);
+  const [aiReviewResult, setAiReviewResult] = useState(null);
+  const [inspectingPaperId, setInspectingPaperId] = useState(null);
+
+  // --- 2. API CALLS (GIỮ NGUYÊN) ---
+  const fetchInstructorProjects = async () => {
+    setLoading(true);
+    setErrorMessage("");
+    try {
+      let url = `/api/projects?page=${page}&size=8&sort=createdAt,desc`;
+      if (searchTerm) url += `&q=${encodeURIComponent(searchTerm)}`;
+      if (statusFilter) url += `&status=${statusFilter}`;
+
+      const response = await api.get(url);
+      setProjects(response.data.content || []);
+      setTotalElements(response.data.totalElements || 0);
+    } catch (error) {
+      console.error("Error loading workspace monitor:", error);
+      setErrorMessage("Could not synchronize dynamic student projects cluster state.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleInspectProject = async (project) => {
+    setSelectedProject(project);
+    setProjectPapers([]);
+    setActivePaperSections([]);
+    setAiReviewResult(null);
+    setInspectingPaperId(null);
+    setLoadingPapers(true);
+
+    try {
+      const response = await api.get(`/api/papers/api/projects/${project.id}/papers`);
+      setProjectPapers(response.data || []);
+    } catch (error) {
+      setErrorMessage("Failed to trace structural documents linked to this node.");
+    } finally {
+      setLoadingPapers(false);
+    }
+  };
+
+  const handleInspectPaperDetails = async (paperId) => {
+    setInspectingPaperId(paperId);
+    setActivePaperSections([]);
+    setAiReviewResult(null);
+    
+    try {
+      const sectionsRes = await api.get(`/api/papers/${paperId}/sections`);
+      setActivePaperSections(sectionsRes.data || []);
+
+      const reviewRes = await api.post(`/api/papers/${paperId}/reviews?targetStyle=STANDARD`);
+      setAiReviewResult(reviewRes.data);
+    } catch (error) {
+      console.error("Failed to compile paper diagnostics:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchInstructorProjects();
+  }, [page, statusFilter]);
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    setPage(0);
+    fetchInstructorProjects();
+  };
 
   return (
-    <div className="min-h-screen bg-[#fcfcfc] font-sans text-[#333333]">
-      
-      {/* 1. Header (Màu Xanh Navy đậm y hệt trang Home) */}
-      <header className="bg-[#1e3a8a] text-white border-b border-[#152e75] sticky top-0 z-10 shadow-sm">
-        <div className="w-full px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <span className="font-bold text-xl tracking-wider">Evidence Pilot</span>
-          </div>
-          <div className="flex items-center space-x-6">
-            <div className="flex items-center space-x-2 bg-white/10 px-3 py-1.5 rounded border border-white/20">
-              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
-              <span className="text-xs font-semibold text-blue-50 tracking-wide uppercase">Instructor Mode</span>
+    <div className="min-h-screen bg-[#f8fafc] text-[#0f172a] p-8 font-sans">
+      <div className="max-w-7xl mx-auto">
+        
+        {/* Workspace Title */}
+        <div className="mb-8 border-b border-gray-200 pb-6">
+          <h1 className="text-3xl font-black text-[#1e3a8a] tracking-tight">Instructor Control Dashboard</h1>
+          <p className="text-xs text-gray-400 mt-1">
+            Real-time control node over active student research tracks, paper integrity telemetry, and AI compliance pipelines.
+          </p>
+        </div>
+
+        {/* =========================================================================
+            🔥 THÊM MỚI: 3 Ô WORKSPACE TILES ĐIỀU HƯỚNG THEO ẢNH MẪU CỦA ÔNG
+            ========================================================================= */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 text-xs">
+          {/* Ô 1: PROFILE */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between min-h-[140px]">
+            <div className="space-y-1.5">
+              <h3 className="text-sm font-black text-[#1e3a8a] flex items-center gap-1.5">👤 My Profile</h3>
+              <p className="text-gray-400 font-medium leading-relaxed">View your personal account details, manage academic credentials, and configure preferences.</p>
             </div>
-            <button 
-              onClick={() => { logout(); navigate('/'); }}
-              className="text-sm font-medium text-blue-200 hover:text-white transition"
-            >
-              Sign Out
+            <div className="pt-2">
+              <Link to="/instructor/profile" className="text-blue-600 font-bold hover:underline">Go to Profile →</Link>
+            </div>
+          </div>
+
+          {/* Ô 2: REVIEW REQUESTS */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between min-h-[140px]">
+            <div className="space-y-1.5">
+              <h3 className="text-sm font-black text-[#1e3a8a] flex items-center gap-1.5">📋 Review Requests</h3>
+              <p className="text-gray-400 font-medium leading-relaxed">Evaluate data verification claims submitted by students, audit uploaded files, and provide feedback.</p>
+            </div>
+            <div className="pt-2">
+              <Link to="/instructor/requests" className="text-blue-600 font-bold hover:underline">Review Submissions →</Link>
+            </div>
+          </div>
+
+          {/* Ô 3: MANAGE COLLECTIONS */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between min-h-[140px]">
+            <div className="space-y-1.5">
+              <h3 className="text-sm font-black text-[#1e3a8a] flex items-center gap-1.5">📚 Manage Datasets</h3>
+              <p className="text-gray-400 font-medium leading-relaxed">Upload raw reference documents, create semantic knowledge baselines, and organize materials.</p>
+            </div>
+            <div className="pt-2">
+              <Link to="/instructor/collections" className="text-blue-600 font-bold hover:underline">Manage Datasets →</Link>
+            </div>
+          </div>
+        </div>
+        {/* ========================================================================= */}
+
+        {errorMessage && (
+          <div className="p-4 mb-6 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700 text-xs font-bold">
+            ⚠️ {errorMessage}
+          </div>
+        )}
+
+        {/* Search and Filters Architecture Control */}
+        <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
+          <form onSubmit={handleSearchSubmit} className="w-full md:w-1/2 flex gap-2">
+            <input 
+              type="text" 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by project title or student details..." 
+              className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
+            />
+            <button type="submit" className="px-4 py-2 bg-[#1e3a8a] text-white font-bold text-xs rounded-xl hover:bg-blue-800 transition">
+              Query
             </button>
-          </div>
-        </div>
-      </header>
+          </form>
 
-      {/* 2. Main Layout (Nền xám nhạt giống phần Features) */}
-      <main className="max-w-6xl mx-auto px-6 py-10">
-        
-        {/* Welcome Banner */}
-        <div className="mb-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-8 rounded border border-gray-200 shadow-sm">
-          <div>
-            <h1 className="text-3xl font-bold text-[#1e3a8a] mb-2">Welcome back, Professor! 👋</h1>
-            <p className="text-gray-600 text-sm">Manage your datasets, evaluate student submissions, and track research evidence.</p>
-          </div>
-          <div className="bg-[#f0f4f8] px-4 py-2.5 rounded border border-gray-200 text-right md:self-center self-start">
-            <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Current Session</p>
-            <p className="text-sm font-bold text-[#1e3a8a] mt-0.5">{today}</p>
+          <div className="flex gap-2 w-full md:w-auto justify-end text-xs items-center">
+            <span className="text-gray-400 font-bold uppercase tracking-wide text-[10px]">Pipeline State:</span>
+            <select 
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
+              className="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg font-medium text-gray-700 focus:outline-none"
+            >
+              <option value="">ALL PROJECTS</option>
+              <option value="ACTIVE">ACTIVE</option>
+              <option value="IN_REVIEW">IN_REVIEW</option>
+              <option value="COMPLETED">COMPLETED</option>
+            </select>
           </div>
         </div>
 
-        {/* Quick Statistics Overview */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-12">
-          <div className="bg-white p-5 rounded border border-gray-200 shadow-sm flex items-center space-x-4">
-            <div className="p-3 bg-blue-50 text-[#1e3a8a] rounded">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.58 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.58 4 8 4s8-1.79 8-4M4 7c0-2.21 3.58-4 8-4s8 1.79 8 4m0 5c0 2.21-3.58 4-8 4s-8-1.79-8-4" /></svg>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">System Datasets</p>
-              <p className="text-xl font-bold text-[#333333] mt-0.5">Active</p>
-            </div>
-          </div>
-          <div className="bg-white p-5 rounded border border-gray-200 shadow-sm flex items-center space-x-4">
-            <div className="p-3 bg-amber-50 text-amber-600 rounded">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pending Claims</p>
-              <p className="text-xl font-bold text-[#333333] mt-0.5">Awaiting Review</p>
-            </div>
-          </div>
-          <div className="bg-white p-5 rounded border border-gray-200 shadow-sm flex items-center space-x-4">
-            <div className="p-3 bg-green-50 text-green-600 rounded">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-            </div>
-            <div>
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Account Status</p>
-              <p className="text-xl font-bold text-[#333333] mt-0.5">Verified</p>
-            </div>
-          </div>
-        </div>
-
-        {/* 3. Main Workspaces (Thiết kế Card giống hệt section "Why use Evidence Pilot?") */}
-        <h2 className="text-2xl font-bold text-center text-[#1e3a8a] mb-8">Main Workspaces</h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* Layout Grid: Left List / Right Live Inspector Panel */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
           
-          {/* Profile Card */}
-          <Link 
-            to="/profile" 
-            className="group bg-white p-6 rounded border border-gray-200 shadow-sm hover:shadow-md transition-all text-left flex flex-col justify-between"
-          >
-            <div>
-              <div className="text-xl font-semibold text-[#1e3a8a] mb-2 flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                My Profile
+          {/* LEFT: Paged Student Projects */}
+          <div className="lg:col-span-2 space-y-4">
+            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="p-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+                <span className="text-xs font-black text-gray-500 uppercase tracking-wider">Monitored Repositories ({totalElements})</span>
               </div>
-              <p className="text-sm text-gray-600 leading-relaxed">
-                View your personal account details, manage academic credentials, and configure notification preferences.
-              </p>
+              
+              <div className="divide-y divide-gray-100">
+                {loading ? (
+                  <div className="p-8 text-center text-gray-400 text-xs font-semibold">Fetching telemetry stream...</div>
+                ) : projects.length === 0 ? (
+                  <div className="p-8 text-center text-gray-400 text-xs font-semibold">No active project structures found.</div>
+                ) : (
+                  projects.map((project) => (
+                    <div 
+                      key={project.id} 
+                      onClick={() => handleInspectProject(project)}
+                      className={`p-4 transition cursor-pointer flex justify-between items-center ${
+                        selectedProject?.id === project.id ? 'bg-blue-50/50 border-l-4 border-[#1e3a8a]' : 'hover:bg-gray-50/40'
+                      }`}
+                    >
+                      <div className="space-y-1 pr-4">
+                        <h3 className="font-bold text-gray-900 text-sm tracking-tight">{project.title}</h3>
+                        <p className="text-[11px] text-gray-400 font-mono truncate max-w-md">UUID: {project.id}</p>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className={`px-2 py-0.5 text-[9px] font-black rounded border ${
+                          project.status === 'IN_REVIEW' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-blue-50 text-[#1e3a8a] border-blue-200'
+                        }`}>
+                          {project.status}
+                        </span>
+                        <span className="text-xs text-gray-400">➔</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
-            <div className="mt-6 pt-4 border-t border-gray-100 text-sm font-semibold text-[#2563eb] group-hover:text-[#1d4ed8] transition flex items-center">
-              Go to Profile <span className="ml-1 transform group-hover:translate-x-1 transition-transform">→</span>
-            </div>
-          </Link>
 
-          {/* Review Requests Card */}
-          <Link 
-            to="/instructor/requests" 
-            className="group bg-white p-6 rounded border border-gray-200 shadow-sm hover:shadow-md transition-all text-left flex flex-col justify-between"
-          >
-            <div>
-              <div className="text-xl font-semibold text-[#1e3a8a] mb-2 flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-4 7h4m-4 4h4m-1-8h.01" /></svg>
-                Review Requests
-              </div>
-              <p className="text-sm text-gray-600 leading-relaxed">
-                Evaluate data verification claims submitted by students, audit uploaded files, and provide structured feedback.
-              </p>
+            {/* Pagination Controls */}
+            <div className="flex justify-between items-center text-xs px-2">
+              <button 
+                disabled={page === 0} 
+                onClick={() => setPage(p => p - 1)}
+                className="px-3 py-1 bg-white border border-gray-200 text-gray-600 rounded-lg disabled:opacity-40 font-bold"
+              >
+                Previous
+              </button>
+              <span className="text-gray-400 font-mono">Page Context Matrix Index: {page + 1}</span>
+              <button
+                disabled={(page + 1) * 8 >= totalElements} 
+                onClick={() => setPage(p => p + 1)}
+                className="px-3 py-1 bg-white border border-gray-200 text-gray-600 rounded-lg disabled:opacity-40 font-bold"
+              >
+                Next
+              </button>
             </div>
-            <div className="mt-6 pt-4 border-t border-gray-100 text-sm font-semibold text-[#2563eb] group-hover:text-[#1d4ed8] transition flex items-center">
-              Review Submissions <span className="ml-1 transform group-hover:translate-x-1 transition-transform">→</span>
-            </div>
-          </Link>
+          </div>
 
-          {/* Manage Dataset Card */}
-          <Link 
-            to="/instructor/datasets" 
-            className="group bg-white p-6 rounded border border-gray-200 shadow-sm hover:shadow-md transition-all text-left flex flex-col justify-between"
-          >
-            <div>
-              <div className="text-xl font-semibold text-[#1e3a8a] mb-2 flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>
-                Manage Datasets
+          {/* RIGHT: Document Deep Structural Inspector Node */}
+          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 space-y-6 min-h-[450px]">
+            {!selectedProject ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-8 text-gray-400 my-auto">
+                <span className="text-3xl block mb-2">🔬</span>
+                <p className="text-xs font-semibold">Select a student workspace repository timeline on the left map layout to trigger deep paper inspection.</p>
               </div>
-              <p className="text-sm text-gray-600 leading-relaxed">
-                Upload raw reference documents, create semantic knowledge baselines, and organize core RAG source materials.
-              </p>
-            </div>
-            <div className="mt-6 pt-4 border-t border-gray-100 text-sm font-semibold text-[#2563eb] group-hover:text-[#1d4ed8] transition flex items-center">
-              Manage Datasets <span className="ml-1 transform group-hover:translate-x-1 transition-transform">→</span>
-            </div>
-          </Link>
+            ) : (
+              <div className="space-y-6 animate-fadeIn">
+                <div className="border-b border-gray-100 pb-3">
+                  <span className="text-[9px] font-black text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded uppercase">Live Inspect Node</span>
+                  <h2 className="text-sm font-black text-gray-900 mt-2 tracking-tight line-clamp-2">{selectedProject.title}</h2>
+                </div>
+
+                {/* Section List of Associated Documents */}
+                <div className="space-y-2">
+                  <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Submitted Manuscripts (Paper Controller Mapping)</h4>
+                  {loadingPapers ? (
+                    <p className="text-xs text-gray-400 italic">Interrogating paper records...</p>
+                  ) : projectPapers.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic">No paper documents uploaded to this workspace yet.</p>
+                  ) : (
+                    projectPapers.map(paper => (
+                      <div 
+                        key={paper.id}
+                        onClick={() => handleInspectPaperDetails(paper.id)}
+                        className={`p-3 rounded-xl border transition cursor-pointer text-xs ${
+                          inspectingPaperId === paper.id ? 'border-[#1e3a8a] bg-blue-50/20' : 'border-gray-200 bg-gray-50/50 hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <span className="font-bold text-gray-800 truncate pr-2">📄 {paper.originalFilename}</span>
+                          <span className="text-[10px] font-mono text-gray-400 uppercase shrink-0">{paper.processingStatus}</span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 font-mono mt-1">Size: {(paper.fileSizeBytes / 1024).toFixed(1)} KB</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Sub Display Render: Sections & AI Verification Result */}
+                {inspectingPaperId && (
+                  <div className="border-t border-gray-100 pt-4 space-y-4 animate-fadeIn">
+                    
+                    {/* Render Paper Structural Tree */}
+                    <div className="space-y-1.5">
+                      <h5 className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Detected Sections Tree</h5>
+                      <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 max-h-36 overflow-y-auto space-y-1 text-[11px] font-medium text-gray-700">
+                        {activePaperSections.length === 0 ? (
+                          <p className="text-gray-400 italic">No segment blocks registered.</p>
+                        ) : (
+                          activePaperSections.map((sec, idx) => (
+                            <div key={sec.id} className="truncate border-b border-gray-100 pb-1 last:border-0">
+                              <span className="text-[#1e3a8a] font-mono font-bold mr-1">#{idx + 1}</span> {sec.sectionTitle}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* AI Machine Recommendations Block */}
+                    <div className="space-y-1.5">
+                      <h5 className="text-[10px] font-black text-gray-400 uppercase tracking-wider">AI Guardrails Core Diagnostics</h5>
+                      <div className="bg-slate-900 text-slate-100 p-3 rounded-xl font-mono text-[10px] space-y-2 max-h-48 overflow-y-auto shadow-inner">
+                        {aiReviewResult ? (
+                          <pre className="whitespace-pre-wrap text-[10px] leading-relaxed">
+                            {JSON.stringify(aiReviewResult, null, 2)}
+                          </pre>
+                        ) : (
+                          <p className="text-slate-400 italic">Compiling real-time audit suggestions model from backend...</p>
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+
+              </div>
+            )}
+          </div>
 
         </div>
-      </main>
+
+      </div>
     </div>
   );
 }
