@@ -38,6 +38,7 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
     private final DocumentObjectStorage documentObjectStorage;
     private final AiModelClient aiModelClient;
     private final OllamaGateway ollamaGateway;
+    private final SparseVectorGenerator sparseVectorGenerator;
     private final QdrantService qdrantService;
 
     @Override
@@ -77,8 +78,8 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
             chunk.setActive(true);
             chunk = documentChunkRepository.save(chunk);
 
-            List<Float> denseEmbedding = ollamaGateway.getEmbedding(text);
-            SparseVector sparseEmbedding = ollamaGateway.getSparseEmbedding(text);
+            List<Float> denseEmbedding = ollamaGateway.getDenseEmbedding(text);
+            SparseVector sparseEmbedding = sparseVectorGenerator.generate(text);
             payloadChunks.add(new ExtractionResultPayload.ChunkPayload(
                     chunk.getId(),
                     chunk.getChunkIndex(),

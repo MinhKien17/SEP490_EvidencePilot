@@ -16,7 +16,7 @@ import java.util.UUID;
 @Service
 public class QdrantGatewayImpl implements QdrantGateway {
 
-    private static final float SCORE_THRESHOLD = 0.65f;
+    private static final float SCORE_THRESHOLD = 0.0f;
 
     private final RestClient restClient;
 
@@ -41,12 +41,12 @@ public class QdrantGatewayImpl implements QdrantGateway {
                 .retrieve()
                 .body(QdrantSearchResponse.class);
 
-        if (response == null || response.points() == null || response.points().isEmpty()) {
+        if (response == null || response.result() == null || response.result().points() == null || response.result().points().isEmpty()) {
             log.warn("Qdrant search returned 0 chunks for document {}", documentId);
             return List.of();
         }
 
-        List<String> texts = response.points().stream()
+        List<String> texts = response.result().points().stream()
                 .filter(point -> point.score() > SCORE_THRESHOLD)
                 .map(QdrantSearchResponse.ScoredPoint::getText)
                 .filter(t -> !t.isBlank())

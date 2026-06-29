@@ -7,9 +7,9 @@ spring:
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
 
   datasource:
-    url: jdbc:mysql://${DB_HOST:db}:${DB_PORT:3306}/${DB_NAME:evidence_pilot}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:evidence_pilot}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:}
+    password: ${DB_PASSWORD:changemedbpassword}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       # Wait up to 30 s for a single connection attempt before giving up on that attempt

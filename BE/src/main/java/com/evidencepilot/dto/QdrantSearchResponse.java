@@ -5,7 +5,10 @@ import java.util.List;
 import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record QdrantSearchResponse(List<ScoredPoint> points) {
+public record QdrantSearchResponse(Result result) {
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Result(List<ScoredPoint> points) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record ScoredPoint(float score, Map<String, Object> payload) {

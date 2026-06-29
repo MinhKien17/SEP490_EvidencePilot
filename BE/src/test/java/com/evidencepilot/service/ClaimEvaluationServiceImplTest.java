@@ -3,6 +3,7 @@ package com.evidencepilot.service;
 import com.evidencepilot.dto.SparseVector;
 import com.evidencepilot.dto.request.ClaimRequest;
 import com.evidencepilot.service.impl.ClaimEvaluationServiceImpl;
+import com.evidencepilot.service.impl.SparseVectorGenerator;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -20,16 +21,17 @@ class ClaimEvaluationServiceImplTest {
     void evaluateRequiresDocumentAccessBeforeVectorSearch() {
         QdrantGateway qdrantGateway = mock(QdrantGateway.class);
         OllamaGateway ollamaGateway = mock(OllamaGateway.class);
+        SparseVectorGenerator sparseVectorGenerator = mock(SparseVectorGenerator.class);
         DocumentService documentService = mock(DocumentService.class);
         UUID documentId = UUID.randomUUID();
 
-        when(ollamaGateway.getEmbedding("claim")).thenReturn(List.of(0.1f));
-        when(ollamaGateway.getSparseEmbedding("claim"))
+        when(ollamaGateway.getDenseEmbedding("claim")).thenReturn(List.of(0.1f));
+        when(sparseVectorGenerator.generate("claim"))
                 .thenReturn(new SparseVector(List.of(1L), List.of(0.2f)));
         when(qdrantGateway.searchDocumentContext(eq(documentId), any(), any(), eq(20)))
                 .thenReturn(List.of());
 
-        new ClaimEvaluationServiceImpl(qdrantGateway, ollamaGateway, documentService)
+        new ClaimEvaluationServiceImpl(qdrantGateway, ollamaGateway, sparseVectorGenerator, documentService)
                 .evaluate(documentId, new ClaimRequest("claim"));
 
         var inOrder = inOrder(documentService, qdrantGateway);

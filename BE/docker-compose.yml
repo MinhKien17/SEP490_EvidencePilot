@@ -4,7 +4,7 @@ services:
     container_name: evidence_pilot_db
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${DB_PORT_HOST:-3306}:3306"
+      - "127.0.0.1:${DB_PORT_HOST:-3307}:3306"
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}

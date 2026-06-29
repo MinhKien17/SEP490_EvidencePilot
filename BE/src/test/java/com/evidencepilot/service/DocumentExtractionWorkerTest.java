@@ -3,6 +3,7 @@ package com.evidencepilot.service;
 import com.evidencepilot.dto.SparseVector;
 import com.evidencepilot.dto.ExtractionResultPayload;
 import com.evidencepilot.service.impl.DocumentExtractionWorkerImpl;
+import com.evidencepilot.service.impl.SparseVectorGenerator;
 import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
@@ -49,6 +50,9 @@ class DocumentExtractionWorkerTest {
     private OllamaGateway ollamaGateway;
 
     @Mock
+    private SparseVectorGenerator sparseVectorGenerator;
+
+    @Mock
     private QdrantService qdrantService;
 
     @Test
@@ -60,8 +64,8 @@ class DocumentExtractionWorkerTest {
         when(documentObjectStorage.read("sources/raw/" + documentId + ".pdf")).thenReturn(raw);
         when(aiModelClient.extractDocument("source.pdf", "application/pdf", raw))
                 .thenReturn(new AiModelClient.ExtractedDocument("source.pdf", "liteparse", "First paragraph.\n\nSecond paragraph."));
-        when(ollamaGateway.getEmbedding(any())).thenReturn(List.of(0.25f, -0.5f));
-        when(ollamaGateway.getSparseEmbedding(any())).thenReturn(new SparseVector(List.of(0L, 1L), List.of(0.25f, -0.5f)));
+        when(ollamaGateway.getDenseEmbedding(any())).thenReturn(List.of(0.25f, -0.5f));
+        when(sparseVectorGenerator.generate(any())).thenReturn(new SparseVector(List.of(0L, 1L), List.of(0.25f, -0.5f)));
         when(documentChunkRepository.save(any(DocumentChunk.class))).thenAnswer(invocation -> {
             DocumentChunk chunk = invocation.getArgument(0);
             chunk.setId(UUID.randomUUID());
@@ -75,6 +79,7 @@ class DocumentExtractionWorkerTest {
                 documentObjectStorage,
                 aiModelClient,
                 ollamaGateway,
+                sparseVectorGenerator,
                 qdrantService).process(documentId);
 
         ArgumentCaptor<DocumentText> textCaptor = ArgumentCaptor.forClass(DocumentText.class);
@@ -113,6 +118,7 @@ class DocumentExtractionWorkerTest {
                 documentObjectStorage,
                 aiModelClient,
                 ollamaGateway,
+                sparseVectorGenerator,
                 qdrantService);
 
         assertThatThrownBy(() -> worker.process(documentId))
