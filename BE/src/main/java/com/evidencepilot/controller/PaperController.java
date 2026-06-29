@@ -30,7 +30,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/papers")
+@RequestMapping("/api")
 @RequiredArgsConstructor
 @Tag(name = "Papers", description = "Student paper submissions, sections, and AI review")
 public class PaperController {
@@ -45,7 +45,7 @@ public class PaperController {
             @ApiResponse(responseCode = "200", description = "Paper list returned"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT")
     })
-    @GetMapping
+    @GetMapping("/papers")
     public List<DocumentResponse> findAll() {
         return documentService.getAllPapersForCurrentUser();
     }
@@ -58,7 +58,7 @@ public class PaperController {
             @ApiResponse(responseCode = "403", description = "Access denied"),
             @ApiResponse(responseCode = "404", description = "Paper not found")
     })
-    @GetMapping("/{id}")
+    @GetMapping("/papers/{id}")
     public DocumentResponse findById(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
         DocumentResponse doc = documentService.getDocumentById(id);
@@ -76,7 +76,7 @@ public class PaperController {
             @ApiResponse(responseCode = "403", description = "Access denied"),
             @ApiResponse(responseCode = "404", description = "Project not found")
     })
-    @GetMapping("/api/projects/{projectId}/papers")
+    @GetMapping("/projects/{projectId}/papers")
     public List<DocumentResponse> findByProject(
             @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
         return documentService.getDocumentsByProject(projectId).stream()
@@ -92,7 +92,7 @@ public class PaperController {
             @ApiResponse(responseCode = "403", description = "Access denied"),
             @ApiResponse(responseCode = "404", description = "Paper not found")
     })
-    @GetMapping("/{id}/sections")
+    @GetMapping("/papers/{id}/sections")
     public List<PaperSectionResponse> sections(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
         return paperProcessingService.getPaperSections(id);
@@ -107,7 +107,7 @@ public class PaperController {
             @ApiResponse(responseCode = "403", description = "Access denied"),
             @ApiResponse(responseCode = "404", description = "Paper not found")
     })
-    @PostMapping("/{id}/reviews")
+    @PostMapping("/papers/{id}/reviews")
     public Map<String, Object> review(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id,
             @Parameter(description = "Target output style (optional)") @RequestParam(required = false) String targetStyle) {
@@ -122,7 +122,7 @@ public class PaperController {
             @ApiResponse(responseCode = "403", description = "Access denied"),
             @ApiResponse(responseCode = "404", description = "Paper not found")
     })
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/papers/{id}")
     public ResponseEntity<Void> delete(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
         documentService.deleteDocument(id);
@@ -139,7 +139,7 @@ public class PaperController {
             @ApiResponse(responseCode = "403", description = "Access denied"),
             @ApiResponse(responseCode = "404", description = "Project not found")
     })
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "/papers", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Transactional
     public ResponseEntity<DocumentResponse> upload(
             @Parameter(description = "File to upload") @RequestParam("file") MultipartFile file,
