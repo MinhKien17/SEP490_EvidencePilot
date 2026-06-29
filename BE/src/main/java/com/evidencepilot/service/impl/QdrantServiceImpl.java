@@ -32,10 +32,10 @@ public class QdrantServiceImpl implements QdrantService {
                 ? document.getProject().getId().toString()
                 : "0";
 
+        int upserted = 0;
         for (ExtractionResultPayload.ChunkPayload chunk : payload.chunks()) {
             if (chunk.denseEmbedding() == null || chunk.denseEmbedding().isEmpty()) {
-                log.debug("Skipping chunk {} with empty embedding", chunk.chunkId());
-                continue;
+                throw new IllegalStateException("Chunk " + chunk.chunkId() + " has empty dense embedding");
             }
             qdrantClient.upsertVector(
                     chunk.chunkId().toString(),
@@ -50,8 +50,9 @@ public class QdrantServiceImpl implements QdrantService {
                             entry("text", chunk.text())
                     )
             );
+            upserted++;
         }
         log.info("Upserted {} vectors to Qdrant for document {}",
-                payload.chunks().size(), payload.documentId());
+                upserted, payload.documentId());
     }
 }
