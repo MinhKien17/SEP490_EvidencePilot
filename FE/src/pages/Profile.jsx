@@ -126,7 +126,7 @@
 //                 {user?.firstName || ""} {user?.lastName || (currentRole === 'ADMIN' ? 'Admin Node' : 'Member')}
 //               </h2>
 //               <p className="text-xs text-gray-400 font-medium truncate px-2">
-//                 {currentRole === 'ADMIN' ? '👑 Root SysAdmin Node' : currentRole === 'INSTRUCTOR' ? '👨‍🏫 Faculty Member' : '🎓 Student Sandbox'}
+//                 {currentRole === 'ADMIN' ? '👑 Administrator' : currentRole === 'INSTRUCTOR' ? '👨‍🏫 Faculty Member' : '🎓 Student Sandbox'}
 //               </p>
 //             </div>
 
@@ -289,7 +289,7 @@ export default function Profile() {
       }
 
       setUser(updatedUser);
-      setMessage({ type: "success", text: "Profile parameters synchronized successfully inside mockData.js." });
+      setMessage({ type: "success", text: "Profile updated successfully" });
       setSubmitting(false);
     }, 400);
   };
@@ -347,7 +347,7 @@ export default function Profile() {
                 {user?.firstName} {user?.lastName}
               </h2>
               <p className="text-xs text-gray-400 font-medium truncate px-2">
-                {fallbackRole === 'ADMIN' ? '👑 Root SysAdmin Node' : '👨‍🏫 Faculty Member'}
+                {fallbackRole === 'ADMIN' ? '👑 Administrator' : '👨‍🏫 Faculty Member'}
               </p>
             </div>
 
@@ -397,7 +397,7 @@ export default function Profile() {
                       fallbackRole === 'ADMIN' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-purple-600 hover:bg-purple-700'
                     }`}
                   >
-                    {submitting ? "Synchronizing..." : "Commit Modification"}
+                    {submitting ? "Synchronizing..." : "Update"}
                   </button>
                 </div>
               </form>
