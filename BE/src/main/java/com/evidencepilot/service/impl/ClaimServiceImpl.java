@@ -183,7 +183,7 @@ public class ClaimServiceImpl implements ClaimService {
 
     @Override
     public List<AiSuggestionResponse> getSuggestionsForClaim(UUID claimId) {
-        findActiveClaim(claimId);
+        requireClaimAccess(claimId);
         return aiSuggestionRepository.findByClaimId(claimId).stream()
                 .map(claimMapper::toAiSuggestionResponse)
                 .toList();
@@ -193,7 +193,7 @@ public class ClaimServiceImpl implements ClaimService {
     @Transactional
     public AiSuggestionResponse createSuggestion(UUID claimId, UUID documentChunkId,
             Float score, String explanation) {
-        Claim claim = findActiveClaim(claimId);
+        Claim claim = requireClaimWriteAccess(claimId);
 
         AiSuggestion suggestion = new AiSuggestion();
         suggestion.setClaim(claim);
@@ -210,8 +210,7 @@ public class ClaimServiceImpl implements ClaimService {
     @Override
     @Transactional
     public void acceptSuggestion(UUID suggestionId) {
-        AiSuggestion suggestion = aiSuggestionRepository.findById(suggestionId)
-                .orElseThrow(() -> new ResourceNotFoundException(suggestionId, "AiSuggestion"));
+        AiSuggestion suggestion = requireSuggestionWriteAccess(suggestionId);
         suggestion.setStatus(SuggestionStatus.ACCEPTED);
         aiSuggestionRepository.save(suggestion);
     }
@@ -219,8 +218,7 @@ public class ClaimServiceImpl implements ClaimService {
     @Override
     @Transactional
     public void rejectSuggestion(UUID suggestionId) {
-        AiSuggestion suggestion = aiSuggestionRepository.findById(suggestionId)
-                .orElseThrow(() -> new ResourceNotFoundException(suggestionId, "AiSuggestion"));
+        AiSuggestion suggestion = requireSuggestionWriteAccess(suggestionId);
         suggestion.setStatus(SuggestionStatus.REJECTED);
         aiSuggestionRepository.save(suggestion);
     }
@@ -243,7 +241,7 @@ public class ClaimServiceImpl implements ClaimService {
 
     @Override
     public List<ClaimEvidenceMappingResponse> getMappingsForClaim(UUID claimId) {
-        findActiveClaim(claimId);
+        requireClaimAccess(claimId);
         return claimEvidenceMappingRepository.findByClaimId(claimId).stream()
                 .map(claimMapper::toClaimEvidenceMappingResponse)
                 .toList();
@@ -251,10 +249,32 @@ public class ClaimServiceImpl implements ClaimService {
 
     @Override
     public List<EvidenceEdgeResponse> getEdgesForClaim(UUID claimId) {
-        findActiveClaim(claimId);
+        requireClaimAccess(claimId);
         return evidenceEdgeRepository.findByClaimId(claimId).stream()
                 .map(claimMapper::toEvidenceEdgeResponse)
                 .toList();
+    }
+
+    private Claim requireClaimAccess(UUID claimId) {
+        Claim claim = findActiveClaim(claimId);
+        User currentUser = currentUserService.requireCurrentUser();
+        currentUserService.requireClaimAccess(currentUser, claim);
+        return claim;
+    }
+
+    private Claim requireClaimWriteAccess(UUID claimId) {
+        Claim claim = findActiveClaim(claimId);
+        User currentUser = currentUserService.requireCurrentUser();
+        currentUserService.requireProjectWriteAccess(currentUser, claim.getProject());
+        return claim;
+    }
+
+    private AiSuggestion requireSuggestionWriteAccess(UUID suggestionId) {
+        AiSuggestion suggestion = aiSuggestionRepository.findById(suggestionId)
+                .orElseThrow(() -> new ResourceNotFoundException(suggestionId, "AiSuggestion"));
+        User currentUser = currentUserService.requireCurrentUser();
+        currentUserService.requireProjectWriteAccess(currentUser, suggestion.getClaim().getProject());
+        return suggestion;
     }
 
     private Claim findActiveClaim(UUID id) {
