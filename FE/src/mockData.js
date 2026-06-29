@@ -11,6 +11,13 @@ export const initialMockData = {
     role: "INSTRUCTOR" // Can be switched to 'STUDENT' or 'ADMIN' for UI testing
   },
 
+  adminProfile: {
+  id: "usr_admin_root",
+  firstName: "Root",
+  lastName: "Administrator",
+  email: "admin.root@fpt.edu.vn",
+  role: "ADMIN"
+  },
   // ==========================================
   // 2. INFRASTRUCTURE PROJECT REPOSITORIES
   // ==========================================
@@ -123,7 +130,7 @@ export const initialMockData = {
     {
       id: "log_01",
       timestamp: "2026-06-29 09:45:12",
-      username: "alex.instructor@institution.edu",
+      username: "vana@fpt.edu.vn",
       role: "INSTRUCTOR",
       action: "Created new evidence collection template [col_881]",
       status: "SUCCESS"
@@ -131,7 +138,7 @@ export const initialMockData = {
     {
       id: "log_02",
       timestamp: "2026-06-29 08:30:00",
-      username: "admin.root@institution.edu",
+      username: "admin.root@fpt.edu.vn",
       role: "ADMIN",
       action: "Modified security perimeter boundary rules",
       status: "SUCCESS"

@@ -1,5 +1,6 @@
 // import { useState, useEffect } from 'react';
-// import api from '../../api.js'; // Đường dẫn chuẩn từ pages/Admin/ đi ra src/api.js
+// import { Link } from 'react-router-dom'; // 🔥 ĐÃ ĐỒNG BỘ: Import Link để điều hướng mượt mà
+// import api from '../../api.js';
 
 // export default function AdminDashboard() {
 //   const [logs, setLogs] = useState([]);
@@ -34,12 +35,26 @@
 //             <h1 className="text-3xl font-extrabold text-[#1e3a8a] tracking-tight">Technical Platform & Security</h1>
 //             <p className="text-gray-500 text-sm mt-1">Monitor server resources, audit logs, and platform permissions maintenance.</p>
 //           </div>
-//           <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1 rounded-xl text-xs font-bold uppercase">
-//             System Operational
-//           </span>
+          
+//           {/* 🔥 ĐÃ ĐỒNG BỘ: Khối điều hướng Profile chuẩn mật bộ mã cũ */}
+//           <div className="flex items-center space-x-4">
+//             <Link 
+//               to="/admin/profile" 
+//               className="flex items-center space-x-2 bg-white hover:bg-gray-50 border border-gray-200 px-4 py-2 rounded-xl text-xs font-black transition shadow-sm text-gray-700"
+//             >
+//               <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-rose-600 to-orange-500 flex items-center justify-center text-[10px] text-white font-black">
+//                 RA
+//               </div>
+//               <span>System Profile</span>
+//             </Link>
+
+//             <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1 rounded-xl text-xs font-bold uppercase">
+//               System Operational
+//             </span>
+//           </div>
 //         </div>
 
-//         {/* Infrastructure & Resources Cards (HealthController Swagger) */}
+//         {/* Infrastructure & Resources Cards */}
 //         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
 //           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
 //             <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Storage Capacity Monitoring</span>
@@ -47,7 +62,7 @@
 //               {systemHealth.storageUsed} GB / {systemHealth.storageTotal} GB
 //             </div>
 //             <div className="w-full bg-gray-100 h-2 rounded-full mt-3 overflow-hidden">
-//               <div className="bg-[#1e3a8a] h-full transition-all duration-300" style={{ width: `${(systemHealth.storageUsed / systemHealth.storageTotal) * 100}%` }}></div>
+//               <div className="bg-[#1e3a8a] h-full transition-all duration-300" style={{ width: `${systemHealth.storageTotal > 0 ? (systemHealth.storageUsed / systemHealth.storageTotal) * 100 : 0}%` }}></div>
 //             </div>
 //           </div>
 
@@ -62,7 +77,7 @@
 //           </div>
 //         </div>
 
-//         {/* System Activity Log Table (UserController / SystemNotificationController Swagger) */}
+//         {/* System Activity Log Table */}
 //         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
 //           <div className="px-6 py-4 bg-gray-50/70 border-b border-gray-100">
 //             <h2 className="font-bold text-gray-900 text-base">System Audit Logs (User Traceability)</h2>
@@ -85,10 +100,19 @@
 //                   </tr>
 //                 ) : (
 //                   logs.map((log) => (
-//                     <tr key={log.id} className="hover:bg-gray-50/50 transition">
+//                     <tr key={log.id || log.timestamp} className="hover:bg-gray-50/50 transition">
 //                       <td className="px-6 py-4 text-gray-500 font-mono text-xs">{log.timestamp}</td>
 //                       <td className="px-6 py-4 font-semibold text-gray-900">{log.username}</td>
-//                       <td className="px-6 py-4"><span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium">{log.role}</span></td>
+//                       <td className="px-6 py-4">
+//                         {/* 🔥 ĐÃ ĐỒNG BỘ: Đổi màu Badge linh hoạt theo Role log thật của Swagger */}
+//                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+//                           log.role === 'ADMIN' ? 'bg-rose-50 text-rose-700' : 
+//                           log.role === 'INSTRUCTOR' ? 'bg-purple-50 text-purple-700' : 
+//                           'bg-blue-50 text-[#1e3a8a]'
+//                         }`}>
+//                           {log.role}
+//                         </span>
+//                       </td>
 //                       <td className="px-6 py-4 text-gray-600">{log.action}</td>
 //                       <td className="px-6 py-4">
 //                         <span className={`px-2 py-0.5 rounded text-xs font-bold ${log.status === 'SUCCESS' ? 'text-emerald-700 bg-emerald-50' : 'text-rose-700 bg-rose-50'}`}>{log.status}</span>
@@ -105,7 +129,9 @@
 //     </div>
 //   );
 // }
+
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom'; // 🔥 BỔ SUNG: Import Link để điều hướng trang công nghệ mượt mà
 import { initialMockData } from '../../mockData.js'; // Nhập mock dữ liệu chung
 
 export default function AdminDashboard() {
@@ -137,9 +163,24 @@ export default function AdminDashboard() {
             <h1 className="text-3xl font-extrabold text-[#1e3a8a] tracking-tight">Technical Platform & Security</h1>
             <p className="text-gray-500 text-sm mt-1">Monitor server resources, audit logs, and platform permissions maintenance.</p>
           </div>
-          <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1 rounded-xl text-xs font-bold uppercase">
-            System Operational (MOCK)
-          </span>
+          
+          {/* 🔥 KHỐI ĐIỀU HƯỚNG PROFILE ĐƯỢC CẬP NHẬT Ở ĐÂY */}
+          <div className="flex items-center space-x-4">
+            <Link 
+              to="/admin/profile" 
+              className="flex items-center space-x-2 bg-white hover:bg-gray-50 border border-gray-200 px-4 py-2 rounded-xl text-xs font-black transition shadow-sm text-gray-700"
+            >
+              {/* Icon Avatar Mini giả lập quyền Root Admin màu Đỏ */}
+              <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-rose-600 to-orange-500 flex items-center justify-center text-[10px] text-white font-black">
+                RA
+              </div>
+              <span>System Profile</span>
+            </Link>
+
+            <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1 rounded-xl text-xs font-bold uppercase">
+              System Operational (MOCK)
+            </span>
+          </div>
         </div>
 
         {/* Infrastructure & Resources Cards */}

@@ -37,10 +37,19 @@
 
 //             {/* =========================================================================
 //                 🔥 CẬP NHẬT: THÊM ROUTE PROFILE DÀNH RIÊNG CHO INSTRUCTOR
-//                 ========================================================================= */}
+//                ========================================================================= */}
 //             <Route path="/instructor/profile" element={
 //               <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}>
 //                 <Profile /> 
+//               </ProtectedRoute>
+//             } />
+
+//             {/* =========================================================================
+//                 🔥 CẬP NHẬT: THÊM ROUTE PROFILE DÀNH RIÊNG CHO ADMIN 
+//                ========================================================================= */}
+//             <Route path="/admin/profile" element={
+//               <ProtectedRoute allowedRoles={['ADMIN']}>
+//                 <Profile />
 //               </ProtectedRoute>
 //             } />
 
@@ -80,6 +89,7 @@
 // }
 
 // export default App;
+
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
@@ -119,6 +129,7 @@ function App() {
                 🔓 INSTRUCTOR & ADMIN CHẠY THẲNG (Đã gỡ ProtectedRoute)
                ========================================================================= */}
             <Route path="/instructor/profile" element={<Profile />} />
+            <Route path="/admin/profile" element={<Profile />} />
             <Route path="/instructor/dashboard" element={<InstructorDashboard />} />
             <Route path="/instructor/requests" element={<ReviewRequests />} />
             <Route path="/instructor/collections" element={<CollectionList />} />
