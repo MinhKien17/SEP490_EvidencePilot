@@ -125,6 +125,9 @@ public class FeedbackServiceImpl implements FeedbackService {
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status: " + status);
         }
+        if (newStatus == FeedbackStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status: " + status);
+        }
         FeedbackRequest feedbackRequest = transition(feedbackRequestId, newStatus, ProjectStatus.ACTIVE, currentUser);
         systemNotificationService.createNotification(
                 feedbackRequest.getStudent(),
