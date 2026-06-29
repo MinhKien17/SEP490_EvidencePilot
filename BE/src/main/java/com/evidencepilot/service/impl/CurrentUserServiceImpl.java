@@ -3,7 +3,9 @@ package com.evidencepilot.service.impl;
 import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
+import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.CurrentUserService;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +21,7 @@ import java.util.UUID;
 public class CurrentUserServiceImpl implements CurrentUserService {
 
     private final UserRepository userRepository;
+    private final FeedbackRequestRepository feedbackRequestRepository;
 
     @Override
     public User requireCurrentUser() {
@@ -76,14 +79,17 @@ public class CurrentUserServiceImpl implements CurrentUserService {
         if (isAdmin(currentUser))
             return;
         if (isInstructor(currentUser)) {
-            if (!project.getStudent().getId().equals(currentUser.getId())) {
-                throw new ResponseStatusException(
-                        org.springframework.http.HttpStatus.FORBIDDEN,
-                        "Instructor access denied to project");
+            if (project.getStatus() == ProjectStatus.IN_REVIEW && project.getId() != null
+                    && feedbackRequestRepository.existsByProjectIdAndInstructorId(
+                            project.getId(), currentUser.getId())) {
+                return;
             }
-            return;
+            throw new ResponseStatusException(
+                    org.springframework.http.HttpStatus.FORBIDDEN,
+                    "Instructor access denied to project");
         }
-        if (!project.getStudent().getId().equals(currentUser.getId())) {
+        User student = project.getStudent();
+        if (student == null || !student.getId().equals(currentUser.getId())) {
             throw new ResponseStatusException(
                     org.springframework.http.HttpStatus.FORBIDDEN,
                     "Student access denied to project");
@@ -99,7 +105,8 @@ public class CurrentUserServiceImpl implements CurrentUserService {
                     org.springframework.http.HttpStatus.FORBIDDEN,
                     "Instructors cannot modify student projects");
         }
-        if (!project.getStudent().getId().equals(currentUser.getId())) {
+        User student = project.getStudent();
+        if (student == null || !student.getId().equals(currentUser.getId())) {
             throw new ResponseStatusException(
                     org.springframework.http.HttpStatus.FORBIDDEN,
                     "Write access denied to project");
