@@ -98,13 +98,13 @@
 //         </div>
 
 //         {/* =========================================================================
-//             🔥 THÊM MỚI: 3 Ô WORKSPACE TILES ĐIỀU HƯỚNG THEO ẢNH MẪU CỦA ÔNG
+//             🔥 THÊM MỚI: 3 Ô WORKSPACE TILES ĐIỀU HƯỚNG 
 //             ========================================================================= */}
 //         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 text-xs">
 //           {/* Ô 1: PROFILE */}
 //           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between min-h-[140px]">
 //             <div className="space-y-1.5">
-//               <h3 className="text-sm font-black text-[#1e3a8a] flex items-center gap-1.5">👤 My Profile</h3>
+//               <h3 className="text-sm font-black text-[#1e3a8a] flex items-center gap-1.5">👤 Instructor Profile</h3>
 //               <p className="text-gray-400 font-medium leading-relaxed">View your personal account details, manage academic credentials, and configure preferences.</p>
 //             </div>
 //             <div className="pt-2">
@@ -418,7 +418,7 @@ export default function InstructorDashboard() {
           {/* Ô 1: PROFILE */}
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between min-h-[140px]">
             <div className="space-y-1.5">
-              <h3 className="text-sm font-black text-[#1e3a8a] flex items-center gap-1.5">👤 My Profile</h3>
+              <h3 className="text-sm font-black text-[#1e3a8a] flex items-center gap-1.5">👤 Instructor Profile</h3>
               <p className="text-gray-400 font-medium leading-relaxed">View your personal account details, manage academic credentials, and configure preferences.</p>
             </div>
             <div className="pt-2">

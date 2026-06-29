@@ -45,7 +45,7 @@
 //               <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-rose-600 to-orange-500 flex items-center justify-center text-[10px] text-white font-black">
 //                 RA
 //               </div>
-//               <span>System Profile</span>
+//               <span>Admin Profile</span>
 //             </Link>
 
 //             <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1 rounded-xl text-xs font-bold uppercase">
@@ -174,7 +174,7 @@ export default function AdminDashboard() {
               <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-rose-600 to-orange-500 flex items-center justify-center text-[10px] text-white font-black">
                 RA
               </div>
-              <span>System Profile</span>
+              <span>Admin Profile</span>
             </Link>
 
             <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1 rounded-xl text-xs font-bold uppercase">
