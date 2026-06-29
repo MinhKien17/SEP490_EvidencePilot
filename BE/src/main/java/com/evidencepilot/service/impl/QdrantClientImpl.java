@@ -128,13 +128,14 @@ public class QdrantClientImpl implements QdrantClient {
         );
 
         Map<String, Object> body = Map.of(
-                "vector", queryVector,
+                "query", queryVector,
+                "using", "dense",
                 "filter", filter,
                 "limit", safeTopK,
                 "with_payload", false
         );
 
-        String url = baseUrl + "/collections/" + COLLECTION + "/points/search";
+        String url = baseUrl + "/collections/" + COLLECTION + "/points/query";
 
         try {
             Map<String, Object> response = restClient.post()
@@ -147,11 +148,10 @@ public class QdrantClientImpl implements QdrantClient {
                     .body(new ParameterizedTypeReference<>() {});
 
             if (response == null) {
-                return null;
+                return List.of();
             }
 
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> results = (List<Map<String, Object>>) response.get("result");
+            List<Map<String, Object>> results = resultPoints(response.get("result"));
             if (results == null || results.isEmpty()) {
                 log.debug("Qdrant search returned no results for scopeType={}, scopeId={}",
                         normalizedScopeType, normalizedScopeId);
@@ -179,6 +179,20 @@ public class QdrantClientImpl implements QdrantClient {
     }
 
     // ── Collection bootstrap ───────────────────────────────────────────────────
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> resultPoints(Object result) {
+        if (result instanceof List<?> list) {
+            return (List<Map<String, Object>>) list;
+        }
+        if (result instanceof Map<?, ?> map) {
+            Object points = map.get("points");
+            if (points instanceof List<?> list) {
+                return (List<Map<String, Object>>) list;
+            }
+        }
+        return List.of();
+    }
 
     private void ensureCollection(int vectorSize) {
         if (collectionEnsured) {

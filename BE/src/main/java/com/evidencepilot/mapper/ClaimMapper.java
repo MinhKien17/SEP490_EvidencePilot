@@ -22,6 +22,10 @@ public interface ClaimMapper {
 
     @Mapping(target = "claimId", source = "claim.id")
     @Mapping(target = "documentChunkId", source = "documentChunk.id")
+    @Mapping(target = "documentId", source = "documentChunk.document.id")
+    @Mapping(target = "sourceFilename", source = "documentChunk.document.originalFilename")
+    @Mapping(target = "chunkIndex", source = "documentChunk.chunkIndex")
+    @Mapping(target = "excerpt", source = "documentChunk.text")
     @Mapping(target = "status", source = "status")
     AiSuggestionResponse toAiSuggestionResponse(AiSuggestion entity);
 
