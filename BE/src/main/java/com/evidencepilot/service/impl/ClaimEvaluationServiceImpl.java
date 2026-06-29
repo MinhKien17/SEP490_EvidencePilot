@@ -4,6 +4,7 @@ import com.evidencepilot.dto.SparseVector;
 import com.evidencepilot.dto.request.ClaimRequest;
 import com.evidencepilot.dto.response.ClaimEvaluationResponse;
 import com.evidencepilot.service.ClaimEvaluationService;
+import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.OllamaGateway;
 import com.evidencepilot.service.QdrantGateway;
 import lombok.RequiredArgsConstructor;
@@ -22,8 +23,10 @@ public class ClaimEvaluationServiceImpl implements ClaimEvaluationService {
 
     private final QdrantGateway qdrantGateway;
     private final OllamaGateway ollamaGateway;
+    private final DocumentService documentService;
 
     public ClaimEvaluationResponse evaluate(UUID documentId, ClaimRequest request) {
+        documentService.getDocumentById(documentId);
         log.info("Evaluating claim for document {}: {}", documentId, request.claimText());
 
         List<Float> denseVector = ollamaGateway.getEmbedding(request.claimText());
