@@ -28,7 +28,7 @@ class ClaimEvaluationServiceImplTest {
         when(ollamaGateway.getDenseEmbedding("claim")).thenReturn(List.of(0.1f));
         when(sparseVectorGenerator.generate("claim"))
                 .thenReturn(new SparseVector(List.of(1L), List.of(0.2f)));
-        when(qdrantGateway.searchDocumentContext(eq(documentId), any(), any(), eq(20)))
+        when(qdrantGateway.searchDocumentContext(eq(documentId), any(), any(), eq(10)))
                 .thenReturn(List.of());
 
         new ClaimEvaluationServiceImpl(qdrantGateway, ollamaGateway, sparseVectorGenerator, documentService)
@@ -36,6 +36,6 @@ class ClaimEvaluationServiceImplTest {
 
         var inOrder = inOrder(documentService, qdrantGateway);
         inOrder.verify(documentService).getDocumentById(documentId);
-        inOrder.verify(qdrantGateway).searchDocumentContext(eq(documentId), any(), any(), eq(20));
+        inOrder.verify(qdrantGateway).searchDocumentContext(eq(documentId), any(), any(), eq(10));
     }
 }

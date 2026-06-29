@@ -1,5 +1,6 @@
 package com.evidencepilot.service.impl;
 
+import com.evidencepilot.service.AiModelClient;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 
@@ -41,6 +42,36 @@ class OllamaGatewayImplTest {
 
             long elapsedMillis = Duration.ofNanos(System.nanoTime() - started).toMillis();
             assertThat(elapsedMillis).isLessThan(Duration.ofSeconds(2).toMillis());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void generateTimeoutThrowsHandledAiApiException() throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/ai/generate", exchange -> {
+            try {
+                Thread.sleep(Duration.ofSeconds(2).toMillis());
+                byte[] body = "{\"response\":\"ok\"}".getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                exchange.close();
+            }
+        });
+        server.start();
+
+        try {
+            String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+            OllamaGatewayImpl gateway = new OllamaGatewayImpl(baseUrl, "model", "model", 1);
+
+            assertThatThrownBy(() -> gateway.generateEvaluation("slow prompt"))
+                    .isInstanceOf(AiModelClient.AiApiException.class)
+                    .hasMessageContaining("/ai/generate");
         } finally {
             server.stop(0);
         }
