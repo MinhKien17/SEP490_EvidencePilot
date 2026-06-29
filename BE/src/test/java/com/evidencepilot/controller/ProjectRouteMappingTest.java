@@ -25,6 +25,7 @@ class ProjectRouteMappingTest {
     void projectListRoutesDoNotExposeDoubledResourcePrefixes() {
         Set<String> paths = Arrays.stream(new Class<?>[] {
                 ProjectController.class,
+                PaperController.class,
                 DocumentController.class,
                 SourceController.class,
                 ClaimController.class,
@@ -35,11 +36,13 @@ class ProjectRouteMappingTest {
                 .collect(Collectors.toSet());
 
         assertThat(paths).contains(
+                "/api/projects/{projectId}/papers",
                 "/api/projects/{projectId}/documents",
                 "/api/projects/{projectId}/sources",
                 "/api/projects/{projectId}/claims",
                 "/api/projects/{projectId}/collections");
         assertThat(paths).doesNotContain(
+                "/api/papers/api/projects/{projectId}/papers",
                 "/api/documents/api/projects/{projectId}/documents",
                 "/api/sources/api/projects/{projectId}/sources",
                 "/api/claims/api/projects/{projectId}/claims",
@@ -53,6 +56,14 @@ class ProjectRouteMappingTest {
         assertThat(method.getReturnType()).isEqualTo(List.class);
         ParameterizedType returnType = (ParameterizedType) method.getGenericReturnType();
         assertThat(returnType.getActualTypeArguments()[0]).isEqualTo(ProjectMemberResponse.class);
+    }
+
+    @Test
+    void userSelfServiceRouteMatchesSecurityConfig() {
+        Set<String> paths = controllerPaths(UserController.class);
+
+        assertThat(paths).contains("/api/users/me");
+        assertThat(paths).doesNotContain("/api/users/profile");
     }
 
     private static Set<String> controllerPaths(Class<?> controller) {
