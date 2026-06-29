@@ -7,6 +7,7 @@ import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Collection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.CollectionService;
@@ -39,15 +40,17 @@ public class CollectionServiceImpl implements CollectionService {
     @Transactional
     public CollectionResponse createCollection(CollectionRequest request) {
         User currentUser = currentUserService.requireCurrentUser();
+        currentUserService.requireRole(currentUser, UserRole.INSTRUCTOR);
 
         Project project = null;
         if (request.projectId() != null) {
             project = projectRepository.findById(request.projectId())
                     .orElseThrow(() -> new ResourceNotFoundException(request.projectId(), "Project"));
+            currentUserService.requireProjectAccess(currentUser, project);
         }
 
         Collection collection = new Collection();
-collection.setTitle(request.name());
+        collection.setTitle(request.name());
         collection.setDescription(request.description());
         collection.setProject(project);
         collection.setInstructor(currentUser);
@@ -60,13 +63,19 @@ collection.setTitle(request.name());
 
     @Override
     public CollectionResponse getCollectionById(UUID id) {
+        User currentUser = currentUserService.requireCurrentUser();
         Collection collection = collectionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(id, "Collection"));
+        currentUserService.requireCollectionAccess(currentUser, collection);
         return toResponse(collection);
     }
 
     @Override
     public List<CollectionResponse> getCollectionsByProjectId(UUID projectId) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
+        currentUserService.requireProjectAccess(currentUser, project);
         return collectionRepository.findByProjectId(projectId).stream()
                 .map(this::toResponse)
                 .toList();
@@ -96,8 +105,10 @@ collection.setTitle(request.name());
     @Override
     @Transactional
     public void deleteCollection(UUID id) {
+        User currentUser = currentUserService.requireCurrentUser();
         Collection collection = collectionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(id, "Collection"));
+        currentUserService.requireCollectionAccess(currentUser, collection);
         collection.setActive(false);
         collectionRepository.save(collection);
     }
