@@ -32,6 +32,10 @@ public class Document {
     private Collection collection;
 
     @ManyToOne
+    @JoinColumn(name = "source_category_id", columnDefinition = "BINARY(16)", referencedColumnName = "id")
+    private SourceCategory sourceCategory;
+
+    @ManyToOne
     @JoinColumn(name = "uploaded_by", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     private User uploadedBy;
 

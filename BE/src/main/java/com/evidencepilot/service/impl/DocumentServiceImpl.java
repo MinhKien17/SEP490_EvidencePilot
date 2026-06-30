@@ -16,6 +16,7 @@ import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.DocumentTextRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.repository.SourceCategoryRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.SourceExtractionService;
@@ -30,8 +31,10 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -53,6 +56,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final DocumentTextRepository documentTextRepository;
     private final ProjectRepository projectRepository;
     private final CollectionRepository collectionRepository;
+    private final SourceCategoryRepository sourceCategoryRepository;
     private final CurrentUserService currentUserService;
     private final SourceExtractionService sourceExtractionService;
     private final DocumentMapper documentMapper;
@@ -157,6 +161,22 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
+    public List<DocumentResponse> getSourcesByCollection(UUID collectionId, UUID sourceCategoryId) {
+        var currentUser = currentUserService.requireCurrentUser();
+        com.evidencepilot.model.Collection collection = collectionRepository.findById(collectionId)
+                .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
+        currentUserService.requireCollectionAccess(currentUser, collection);
+        return documentRepository.findByCollectionId(collectionId).stream()
+                .filter(Document::isActive)
+                .filter(document -> document.getDocType() == DocumentType.SOURCE)
+                .filter(document -> sourceCategoryId == null
+                        || (document.getSourceCategory() != null
+                        && sourceCategoryId.equals(document.getSourceCategory().getId())))
+                .map(DocumentResponse::from)
+                .toList();
+    }
+
+    @Override
     @Transactional
     public DocumentResponse uploadDocument(UUID projectId, MultipartFile file, DocumentType docType) {
         return uploadDocument(projectId, null, file, docType);
@@ -165,6 +185,17 @@ public class DocumentServiceImpl implements DocumentService {
     @Override
     @Transactional
     public DocumentResponse uploadDocument(UUID projectId, UUID collectionId, MultipartFile file, DocumentType docType) {
+        return uploadDocument(projectId, collectionId, null, file, docType);
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse uploadDocument(
+            UUID projectId,
+            UUID collectionId,
+            UUID sourceCategoryId,
+            MultipartFile file,
+            DocumentType docType) {
         var currentUser = currentUserService.requireCurrentUser();
 
         Project project = null;
@@ -181,12 +212,20 @@ public class DocumentServiceImpl implements DocumentService {
             currentUserService.requireCollectionAccess(currentUser, collection);
         }
 
+        var sourceCategory = sourceCategoryId == null ? null
+                : sourceCategoryRepository.findByIdAndActiveTrue(sourceCategoryId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Source category not found"));
+        if (sourceCategory != null && docType != DocumentType.SOURCE) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source category applies only to sources");
+        }
+
         String originalName = file.getOriginalFilename();
 
         // 1. Save Document first — Hibernate auto-generates UUID
         Document document = new Document();
         document.setProject(project);
         document.setCollection(collection);
+        document.setSourceCategory(sourceCategory);
         document.setUploadedBy(currentUser);
         document.setDocType(docType);
         document.setFileUrl("pending");

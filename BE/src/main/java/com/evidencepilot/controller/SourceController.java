@@ -101,10 +101,22 @@ public class SourceController {
     public ResponseEntity<DocumentResponse> upload(
             @Parameter(description = "File to upload") @RequestParam("file") MultipartFile file,
             @Parameter(description = "Project UUID (optional for project-scoped sources)") @RequestParam(value = "projectId", required = false) UUID projectId,
-            @Parameter(description = "Collection UUID (optional for collection-scoped sources)") @RequestParam(value = "collectionId", required = false) UUID collectionId) {
+            @Parameter(description = "Collection UUID (optional for collection-scoped sources)") @RequestParam(value = "collectionId", required = false) UUID collectionId,
+            @Parameter(description = "Source category UUID (optional)") @RequestParam(value = "sourceCategoryId", required = false) String sourceCategoryId) {
 
         DocumentResponse response = documentService.uploadDocument(
-                projectId, collectionId, file, DocumentType.SOURCE);
+                projectId, collectionId, parseOptionalUuid(sourceCategoryId), file, DocumentType.SOURCE);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    private UUID parseOptionalUuid(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid sourceCategoryId");
+        }
     }
 }
