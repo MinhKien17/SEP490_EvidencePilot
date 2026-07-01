@@ -72,7 +72,6 @@ CREATE TABLE documents (
     collection_id BINARY(16),
     source_category_id BINARY(16),
     uploaded_by BINARY(16) NOT NULL,
-    original_document_id BINARY(16),
     doc_type VARCHAR(50) NOT NULL CHECK (doc_type IN ('PAPER', 'SOURCE')),
     file_url VARCHAR(500) NOT NULL,
     original_filename VARCHAR(255),
@@ -93,8 +92,7 @@ CREATE TABLE documents (
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE SET NULL,
     FOREIGN KEY (source_category_id) REFERENCES source_categories(id) ON DELETE SET NULL,
-    FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (original_document_id) REFERENCES documents(id) ON DELETE SET NULL
+    FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- ==========================================

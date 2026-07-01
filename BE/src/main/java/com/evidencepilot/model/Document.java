@@ -39,10 +39,6 @@ public class Document {
     @JoinColumn(name = "uploaded_by", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     private User uploadedBy;
 
-    @ManyToOne
-    @JoinColumn(name = "original_document_id", columnDefinition = "BINARY(16)", referencedColumnName = "id")
-    private Document originalDocument;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "doc_type")
     private DocumentType docType;
