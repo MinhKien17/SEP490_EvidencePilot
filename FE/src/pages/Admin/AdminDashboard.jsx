@@ -140,10 +140,12 @@ export default function AdminDashboard() {
   const [accounts, setAccounts] = useState([]);
   const [activeTab, setActiveTab] = useState('STUDENT'); // Bộ lọc chuyển đổi giữa STUDENT và INSTRUCTOR
 
+  // 🌟 LẤY THÔNG TIN ĐỘNG CỦA ADMIN TỪ MOCK DATA ĐỂ ĐỒNG BỘ PROFILE HEADER
+  const adminName = `${initialMockData.adminProfile?.firstName || 'Admin'} ${initialMockData.adminProfile?.lastName || 'Root'}`;
+
   useEffect(() => {
     const timer = setTimeout(() => {
-      // --- 🌟 ĐỒNG BỘ DỮ LIỆU ĐỘNG TỪ LOCALSTORAGE (HOẶC MOCKDATA GỐC) ---
-      // Nếu bên Instructor có lưu dữ liệu mới vào localStorage, Admin sẽ lấy ra dùng để đồng bộ số liệu
+      // --- ĐỒNG BỘ DỮ LIỆU ĐỘNG TỪ LOCALSTORAGE (HOẶC MOCKDATA GỐC) ---
       const localCollections = localStorage.getItem('collections') 
         ? JSON.parse(localStorage.getItem('collections')) 
         : (initialMockData.collections || []);
@@ -226,7 +228,8 @@ export default function AdminDashboard() {
               <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-rose-600 to-orange-500 flex items-center justify-center text-[10px] text-white font-black">
                 AD
               </div>
-              <span>Admin Profile</span>
+              {/* 🌟 ĐÃ THAY ĐỔI: Thay thế text cứng bằng biến adminName động */}
+              <span>{adminName}</span>
             </Link>
 
             <span className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1 rounded-xl text-xs font-bold uppercase">
@@ -235,7 +238,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* 🌟 THÔNG TIN SỐ LIỆU ĐÃ BỎ KHO LƯU TRỮ TRỮ - CHỈ CÒN GRID 3 CỘT ĐỀU NHAU */}
+        {/* THÔNG TIN SỐ LIỆU ĐÃ BỎ KHO LƯU TRỮ TRỮ - CHỈ CÒN GRID 3 CỘT ĐỀU NHAU */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           {/* Ô số liệu 1: Category Tabs */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between min-h-[110px]">
