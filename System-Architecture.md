@@ -389,17 +389,17 @@ Commit counts show repository participation, not man-hours or final contribution
 
 ## Contribution And Effort Tracking
 
-The repository contains commit history but does not contain confirmed weekly man-hours or advisor sign-off. The table below uses 540 estimated team hours across 6 weekday-only weeks, distributed by agreed contribution percentage.
+The repository contains commit history but does not contain confirmed weekly man-hours or advisor sign-off. The table below uses 720 estimated team hours across 8 weekday-only weeks, distributed by agreed contribution percentage.
 
-| Member | Main role | Week 1 hours | Week 2 hours | Week 3 hours | Week 4 hours | Week 5 hours | Week 6 hours | Total hours | Contribution % | Evidence link/note | GVHD confirmed |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| Adzzse / noik0vshack | Project implementation | 22 | 23 | 21 | 24 | 22 | 23 | 135 | 25% | Estimated by agreed contribution split | Pending |
-| MinhKien17 / Doan Minh Kien | Project implementation | 31 | 33 | 30 | 32 | 31 | 32 | 189 | 35% | Estimated by agreed contribution split | Pending |
-| SE171707_QuangHai / hainqse171707  | Project implementation | 13 | 14 | 13 | 14 | 13 | 14 | 81 | 15% | Estimated by agreed contribution split | Pending |
-| kelvinn0104 / Nguyen Minh Duc | Project implementation | 24 | 21 | 23 | 22 | 24 | 21 | 135 | 25% | Estimated by agreed contribution split | Pending |
+| Member | Main role | Week 1 hours | Week 2 hours | Week 3 hours | Week 4 hours | Week 5 hours | Week 6 hours | Week 7 hours | Week 8 hours | Total hours | Contribution % | Evidence link/note | GVHD confirmed |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| Do Hoang Anh | Backend | 22 | 23 | 21 | 24 | 22 | 23 | 22 | 23 | 180 | 25% |  | Pending |
+| Doan Minh Kien | Backend/Leader | 31 | 33 | 30 | 32 | 31 | 32 | 32 | 31 | 252 | 35% |  | Pending |
+| Nguyen Quang Hai  | Frontend | 13 | 14 | 13 | 14 | 13 | 14 | 14 | 13 | 108 | 15% |  | Pending |
+| Nguyen Minh Duc | Frontend | 24 | 21 | 23 | 22 | 24 | 21 | 22 | 23 | 180 | 25% |  | Pending |
 
 Advisor confirmation summary:
 
 | Confirmed by | Date | Scope confirmed | Signature/note |
 | --- | --- | --- | --- |
-| GVHD | TBD | Week 1 to Week 6 estimated man-hours and contribution percentages | Pending confirmation |
+| GVHD | TBD | Week 1 to Week 8 estimated man-hours and contribution percentages | Pending confirmation |
