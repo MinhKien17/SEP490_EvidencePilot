@@ -339,7 +339,7 @@ SVG with relation: [logical-erd-relation.svg](https://www.plantuml.com/plantuml/
 | AI integration | External AI worker/model API configured by `AI_MODEL_BASE_URL`; used for extraction, embeddings, claim evaluation, and paper review. |
 | API documentation | Springdoc OpenAPI / Swagger UI at `/swagger-ui.html` and OpenAPI JSON at `/v3/api-docs`. |
 | Build and test | Maven 3.9 builder image, Spring Boot Maven plugin, Spring Boot Test, H2 test database, Dockerfile multi-stage build. |
-| Mobile | N\A |
+| Mobile | N/A |
 
 ## Third-Party Services, DevOps Tools, And Environments
 
@@ -389,17 +389,17 @@ Commit counts show repository participation, not man-hours or final contribution
 
 ## Contribution And Effort Tracking
 
-The repository contains commit history but does not contain confirmed weekly man-hours or advisor sign-off. Fill the following ledger from team timesheets, task board history, meeting minutes, or advisor-confirmed records.
+The repository contains commit history but does not contain confirmed weekly man-hours or advisor sign-off. The table below uses 540 estimated team hours across 6 weekday-only weeks, distributed by agreed contribution percentage.
 
 | Member | Main role | Week 1 hours | Week 2 hours | Week 3 hours | Week 4 hours | Week 5 hours | Week 6 hours | Total hours | Contribution % | Evidence link/note | GVHD confirmed |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| Adzzse / noik0vshack |  |  |  |  |  |  |  |  |  |  |  |
-| MinhKien17 / Doan Minh Kien |  |  |  |  |  |  |  |  |  |  |  |
-| SE171707_QuangHai / hainqse171707  |  |  |  |  |  |  |  |  |  |  |  |
-| kelvinn0104 / Nguyen Minh Duc |  |  |  |  |  |  |  |  |  |  |  |
+| Adzzse / noik0vshack | Project implementation | 22 | 23 | 21 | 24 | 22 | 23 | 135 | 25% | Estimated by agreed contribution split | Pending |
+| MinhKien17 / Doan Minh Kien | Project implementation | 31 | 33 | 30 | 32 | 31 | 32 | 189 | 35% | Estimated by agreed contribution split | Pending |
+| SE171707_QuangHai / hainqse171707  | Project implementation | 13 | 14 | 13 | 14 | 13 | 14 | 81 | 15% | Estimated by agreed contribution split | Pending |
+| kelvinn0104 / Nguyen Minh Duc | Project implementation | 24 | 21 | 23 | 22 | 24 | 21 | 135 | 25% | Estimated by agreed contribution split | Pending |
 
 Advisor confirmation summary:
 
 | Confirmed by | Date | Scope confirmed | Signature/note |
 | --- | --- | --- | --- |
-| GVHD | TBD | Week 1 to Week 6 man-hours and contribution percentages | TBD |
+| GVHD | TBD | Week 1 to Week 6 estimated man-hours and contribution percentages | Pending confirmation |
