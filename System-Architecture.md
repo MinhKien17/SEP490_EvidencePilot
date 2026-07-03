@@ -1,5 +1,39 @@
 # EvidencePilot System Architecture and Data Model
 
+## Conceptual Diagram
+demo
+```mermaid
+flowchart LR
+    Student["Student"]
+    Instructor["Instructor"]
+    Admin["Admin"]
+
+    Project["Project workspace"]
+    Paper["Student paper"]
+    Source["Evidence source"]
+    Claim["Claim"]
+    Evidence["Evidence mapping"]
+    Feedback["Instructor feedback"]
+    Export["Traceability export"]
+
+    Student -->|"creates and manages"| Project
+    Student -->|"uploads"| Paper
+    Student -->|"uploads or selects"| Source
+    Student -->|"writes"| Claim
+    Claim -->|"matched against"| Source
+    Source -->|"supports"| Evidence
+    Evidence -->|"links to"| Claim
+    Project --> Paper
+    Project --> Source
+    Project --> Claim
+    Project --> Evidence
+    Instructor -->|"reviews"| Project
+    Instructor -->|"returns"| Feedback
+    Feedback --> Project
+    Admin -->|"manages users and catalogs"| Project
+    Project -->|"produces"| Export
+```
+
 ## System Overview
 
 ```mermaid
