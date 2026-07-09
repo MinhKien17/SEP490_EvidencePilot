@@ -63,16 +63,21 @@ public class FeedbackServiceImpl implements FeedbackService {
                         "Project not found: " + projectId));
         currentUserService.requireProjectWriteAccess(currentUser, project);
 
-        User instructor = userRepository.findById(request.instructorId())
+        UUID instructorId = request != null ? request.instructorId() : null;
+        User instructor = instructorId == null ? project.getInstructor() : userRepository.findById(instructorId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Instructor not found: " + request.instructorId()));
-        if (instructor.getRole() != UserRole.INSTRUCTOR) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Assigned user is not an instructor.");
+                        "Instructor not found: " + instructorId));
+        if (instructor == null || instructor.getRole() != UserRole.INSTRUCTOR) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project has no instructor.");
+        }
+        User student = project.getStudent();
+        if (student == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project has no student.");
         }
 
         FeedbackRequest feedbackRequest = new FeedbackRequest();
         feedbackRequest.setProject(project);
-        feedbackRequest.setStudent(project.getStudent());
+        feedbackRequest.setStudent(student);
         feedbackRequest.setInstructor(instructor);
         feedbackRequest.setStatus(FeedbackStatus.PENDING);
         feedbackRequest.setRequestedAt(LocalDateTime.now());

@@ -50,14 +50,38 @@ class CurrentUserServiceImplTest {
     }
 
     @Test
-    void requireProjectWriteAccessStillRejectsInstructor() {
+    void requireProjectWriteAccessAllowsInstructorMember() {
         User instructor = user(UserRole.INSTRUCTOR);
-        Project project = projectOwnedBy(user(UserRole.STUDENT));
+        Project project = projectWithMembers(member(instructor, ProjectRole.INSTRUCTOR));
 
         CurrentUserServiceImpl service =
                 new CurrentUserServiceImpl(userRepository, feedbackRequestRepository);
 
-        assertThatThrownBy(() -> service.requireProjectWriteAccess(instructor, project))
+        assertThatCode(() -> service.requireProjectWriteAccess(instructor, project))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void requireProjectWriteAccessAllowsStudentEditor() {
+        User student = user(UserRole.STUDENT);
+        Project project = projectWithMembers(member(student, ProjectRole.EDITOR));
+
+        CurrentUserServiceImpl service =
+                new CurrentUserServiceImpl(userRepository, feedbackRequestRepository);
+
+        assertThatCode(() -> service.requireProjectWriteAccess(student, project))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void requireProjectManageAccessRejectsStudentEditor() {
+        User student = user(UserRole.STUDENT);
+        Project project = projectWithMembers(member(student, ProjectRole.EDITOR));
+
+        CurrentUserServiceImpl service =
+                new CurrentUserServiceImpl(userRepository, feedbackRequestRepository);
+
+        assertThatThrownBy(() -> service.requireProjectManageAccess(student, project))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
                         .isEqualTo(HttpStatus.FORBIDDEN));
@@ -72,16 +96,23 @@ class CurrentUserServiceImplTest {
     }
 
     private Project projectOwnedBy(User owner) {
+        return projectWithMembers(member(owner, ProjectRole.OWNER));
+    }
+
+    private Project projectWithMembers(ProjectMember... members) {
         Project project = new Project();
         project.setId(UUID.randomUUID());
         project.setStatus(ProjectStatus.ACTIVE);
         project.setActive(true);
-
-        ProjectMember member = new ProjectMember();
-        member.setProject(project);
-        member.setUser(owner);
-        member.setRole(ProjectRole.OWNER);
-        project.setProjectMembers(List.of(member));
+        project.setProjectMembers(List.of(members));
+        project.getProjectMembers().forEach(member -> member.setProject(project));
         return project;
+    }
+
+    private ProjectMember member(User user, ProjectRole role) {
+        ProjectMember member = new ProjectMember();
+        member.setUser(user);
+        member.setRole(role);
+        return member;
     }
 }

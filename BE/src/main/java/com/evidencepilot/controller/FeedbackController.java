@@ -51,7 +51,7 @@ public class FeedbackController {
                     + "Sets the project status to IN_REVIEW. The current user is extracted from the JWT.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Feedback request created"),
-            @ApiResponse(responseCode = "400", description = "Assigned user is not an instructor"),
+            @ApiResponse(responseCode = "400", description = "Project has no instructor or student"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
             @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
             @ApiResponse(responseCode = "404", description = "Project or instructor not found")
@@ -59,7 +59,7 @@ public class FeedbackController {
     @PostMapping("/projects/{projectId}/reviews")
     public ResponseEntity<FeedbackRequestResponseDto> submitForReview(
             @Parameter(description = "Project UUID") @PathVariable UUID projectId,
-            @Valid @RequestBody SubmitReviewRequest request) {
+            @Valid @RequestBody(required = false) SubmitReviewRequest request) {
         FeedbackRequestResponseDto response = feedbackService.submitForReview(projectId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
