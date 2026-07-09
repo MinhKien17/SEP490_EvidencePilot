@@ -103,6 +103,20 @@ class ProjectServiceImplFlowTest {
                 .isInstanceOf(ResponseStatusException.class);
     }
 
+    @Test
+    void getProjectMembersRequiresProjectAccess() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        Project project = projectWithInstructor(instructor);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(projectMemberRepository.findByProjectId(project.getId())).thenReturn(List.of());
+
+        service().getProjectMembers(project.getId());
+
+        verify(currentUserService).requireProjectAccess(instructor, project);
+    }
+
     private ProjectServiceImpl service() {
         return new ProjectServiceImpl(
                 projectRepository,

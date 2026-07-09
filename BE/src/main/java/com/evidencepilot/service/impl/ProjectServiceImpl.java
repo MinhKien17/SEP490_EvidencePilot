@@ -137,7 +137,9 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     public List<ProjectMember> getProjectMembers(UUID projectId) {
-        findActiveProject(projectId);
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = findActiveProject(projectId);
+        currentUserService.requireProjectAccess(currentUser, project);
         return projectMemberRepository.findByProjectId(projectId);
     }
 
