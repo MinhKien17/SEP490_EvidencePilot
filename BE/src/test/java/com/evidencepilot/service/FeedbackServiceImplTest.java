@@ -9,7 +9,9 @@ import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.FeedbackStatus;
 import com.evidencepilot.model.enums.ProjectRole;
+import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
@@ -136,6 +138,39 @@ class FeedbackServiceImplTest {
                 new InstructorFeedbackRequest(otherSection.getId(), "L1", "Wrong project.")))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Section does not belong to feedback project.");
+    }
+
+    @Test
+    void submitForReviewRejectsProjectAlreadyInReview() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        project.setStatus(ProjectStatus.IN_REVIEW);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(student);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+
+        assertThatThrownBy(() -> service().submitForReview(project.getId(), null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Project is already in review.");
+    }
+
+    @Test
+    void commentRejectsClosedFeedbackRequest() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+        request.setStatus(FeedbackStatus.REVIEWED);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(feedbackRequestRepository.findById(request.getId())).thenReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> service().comment(
+                request.getId(),
+                new InstructorFeedbackRequest(UUID.randomUUID(), "L1", "Too late.")))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Feedback request is closed.");
     }
 
     private FeedbackServiceImpl service() {

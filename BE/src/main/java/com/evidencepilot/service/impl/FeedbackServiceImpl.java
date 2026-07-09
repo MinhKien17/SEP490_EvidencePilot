@@ -106,6 +106,9 @@ public class FeedbackServiceImpl implements FeedbackService {
     public InstructorFeedbackResponseDto comment(UUID feedbackRequestId, InstructorFeedbackRequest request) {
         User currentUser = currentUserService.requireCurrentUser();
         FeedbackRequest feedbackRequest = requireFeedbackAccess(feedbackRequestId, currentUser, true);
+        if (feedbackRequest.getStatus() != FeedbackStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Feedback request closed.");
+        }
         PaperSection section = requireSectionInProject(request.sectionId(), feedbackRequest.getProject());
 
         InstructorFeedback feedback = new InstructorFeedback();
