@@ -65,6 +65,9 @@ public class FeedbackServiceImpl implements FeedbackService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Project not found: " + projectId));
         currentUserService.requireProjectWriteAccess(currentUser, project);
+        if (project.getStatus() == ProjectStatus.IN_REVIEW) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is already in review.");
+        }
 
         UUID instructorId = request != null ? request.instructorId() : null;
         User instructor = instructorId == null ? project.getInstructor() : userRepository.findById(instructorId)
