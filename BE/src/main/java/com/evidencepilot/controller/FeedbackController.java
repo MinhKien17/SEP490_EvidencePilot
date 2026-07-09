@@ -65,7 +65,7 @@ public class FeedbackController {
     }
 
     @Operation(summary = "Submit instructor feedback",
-            description = "Creates or updates instructor feedback for a feedback request. "
+            description = "Creates instructor feedback for one paper section in a feedback request. "
                     + "The current user is extracted from the JWT.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Feedback saved"),

@@ -7,7 +7,9 @@ import java.util.UUID;
 public record InstructorFeedbackResponseDto(
     UUID id,
     UUID requestId,
+    UUID sectionId,
     UUID instructorId,
+    String lineReference,
     String content,
     LocalDateTime createdAt
 ) {
@@ -15,7 +17,9 @@ public record InstructorFeedbackResponseDto(
         return new InstructorFeedbackResponseDto(
             feedback.getId(),
             feedback.getRequest() != null ? feedback.getRequest().getId() : null,
+            feedback.getSection() != null ? feedback.getSection().getId() : null,
             feedback.getInstructor() != null ? feedback.getInstructor().getId() : null,
+            feedback.getLineReference(),
             feedback.getContent(),
             feedback.getCreatedAt()
         );

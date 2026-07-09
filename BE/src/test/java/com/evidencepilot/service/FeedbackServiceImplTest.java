@@ -2,6 +2,10 @@ package com.evidencepilot.service;
 
 import com.evidencepilot.dto.response.FeedbackRequestResponseDto;
 import com.evidencepilot.model.FeedbackRequest;
+import com.evidencepilot.dto.request.InstructorFeedbackRequest;
+import com.evidencepilot.model.Document;
+import com.evidencepilot.model.InstructorFeedback;
+import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.User;
@@ -9,6 +13,7 @@ import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
+import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.impl.FeedbackServiceImpl;
@@ -17,13 +22,16 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -35,6 +43,9 @@ class FeedbackServiceImplTest {
 
     @Mock
     private InstructorFeedbackRepository instructorFeedbackRepository;
+
+    @Mock
+    private PaperSectionRepository paperSectionRepository;
 
     @Mock
     private ProjectRepository projectRepository;
@@ -73,10 +84,65 @@ class FeedbackServiceImplTest {
         assertThat(response.studentId()).isEqualTo(student.getId());
     }
 
+    @Test
+    void commentCreatesSeparateFeedbackForEachPaperSectionInSameRequest() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+        PaperSection intro = section(project, "Introduction");
+        PaperSection method = section(project, "Method");
+
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(feedbackRequestRepository.findById(request.getId())).thenReturn(Optional.of(request));
+        when(paperSectionRepository.findById(intro.getId())).thenReturn(Optional.of(intro));
+        when(paperSectionRepository.findById(method.getId())).thenReturn(Optional.of(method));
+        when(instructorFeedbackRepository.save(any(InstructorFeedback.class))).thenAnswer(invocation -> {
+            InstructorFeedback feedback = invocation.getArgument(0);
+            feedback.setId(UUID.randomUUID());
+            return feedback;
+        });
+
+        service().comment(request.getId(), new InstructorFeedbackRequest(intro.getId(), "L1", "Tighten intro."));
+        service().comment(request.getId(), new InstructorFeedbackRequest(method.getId(), "L2", "Clarify method."));
+
+        ArgumentCaptor<InstructorFeedback> captor = ArgumentCaptor.forClass(InstructorFeedback.class);
+        verify(instructorFeedbackRepository, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues())
+                .extracting(feedback -> feedback.getSection().getId())
+                .containsExactly(intro.getId(), method.getId());
+        assertThat(captor.getAllValues())
+                .extracting(InstructorFeedback::getLineReference)
+                .containsExactly("L1", "L2");
+        assertThat(captor.getAllValues())
+                .allSatisfy(feedback -> assertThat(feedback.getRequest()).isEqualTo(request));
+    }
+
+    @Test
+    void commentRejectsSectionOutsideFeedbackProject() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        Project otherProject = project(instructor, student);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+        PaperSection otherSection = section(otherProject, "Other");
+
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(feedbackRequestRepository.findById(request.getId())).thenReturn(Optional.of(request));
+        when(paperSectionRepository.findById(otherSection.getId())).thenReturn(Optional.of(otherSection));
+
+        assertThatThrownBy(() -> service().comment(
+                request.getId(),
+                new InstructorFeedbackRequest(otherSection.getId(), "L1", "Wrong project.")))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Section does not belong to feedback project.");
+    }
+
     private FeedbackServiceImpl service() {
         return new FeedbackServiceImpl(
                 feedbackRequestRepository,
                 instructorFeedbackRepository,
+                paperSectionRepository,
                 projectRepository,
                 userRepository,
                 currentUserService,
@@ -109,5 +175,28 @@ class FeedbackServiceImplTest {
 
         project.setProjectMembers(List.of(instructorMember, studentMember));
         return project;
+    }
+
+    private FeedbackRequest feedbackRequest(Project project, User instructor, User student) {
+        FeedbackRequest request = new FeedbackRequest();
+        request.setId(UUID.randomUUID());
+        request.setProject(project);
+        request.setInstructor(instructor);
+        request.setStudent(student);
+        return request;
+    }
+
+    private PaperSection section(Project project, String title) {
+        Document document = new Document();
+        document.setId(UUID.randomUUID());
+        document.setProject(project);
+
+        PaperSection section = new PaperSection();
+        section.setId(UUID.randomUUID());
+        section.setDocument(document);
+        section.setSectionTitle(title);
+        section.setSectionOrder(1);
+        section.setContentTex(title);
+        return section;
     }
 }
