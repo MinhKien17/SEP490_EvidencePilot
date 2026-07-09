@@ -156,6 +156,21 @@ class FeedbackServiceImplTest {
     }
 
     @Test
+    void submitForReviewRejectsCompletedProject() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        project.setStatus(ProjectStatus.COMPLETED);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(student);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+
+        assertThatThrownBy(() -> service().submitForReview(project.getId(), null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Only ACTIVE projects can be submitted for review.");
+    }
+
+    @Test
     void commentRejectsClosedFeedbackRequest() {
         User instructor = user(UserRole.INSTRUCTOR);
         User student = user(UserRole.STUDENT);
@@ -197,6 +212,7 @@ class FeedbackServiceImplTest {
         project.setId(UUID.randomUUID());
         project.setTitle("Capstone");
         project.setActive(true);
+        project.setStatus(ProjectStatus.ACTIVE);
 
         ProjectMember instructorMember = new ProjectMember();
         instructorMember.setProject(project);

@@ -14,6 +14,7 @@ import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.ClaimRepository;
@@ -141,7 +142,7 @@ public class ClaimServiceImpl implements ClaimService {
                 .orElseThrow(() -> new ResourceNotFoundException(request.sectionId(), "PaperSection"));
         Project project = section.getDocument().getProject();
 
-        currentUserService.requireProjectWriteAccess(currentUser, project);
+        requireProjectContentWriteAccess(currentUser, project);
 
         Claim claim = new Claim();
         claim.setProject(project);
@@ -160,7 +161,7 @@ public class ClaimServiceImpl implements ClaimService {
     public ClaimResponse updateClaim(UUID id, String content, Float aiConfidenceScore) {
         Claim claim = findActiveClaim(id);
         User currentUser = currentUserService.requireCurrentUser();
-        currentUserService.requireProjectWriteAccess(currentUser, claim.getProject());
+        requireProjectContentWriteAccess(currentUser, claim.getProject());
 
         claim.setContent(content);
         if (aiConfidenceScore != null) {
@@ -176,7 +177,7 @@ public class ClaimServiceImpl implements ClaimService {
     public void deleteClaim(UUID id) {
         Claim claim = findActiveClaim(id);
         User currentUser = currentUserService.requireCurrentUser();
-        currentUserService.requireProjectWriteAccess(currentUser, claim.getProject());
+        requireProjectContentWriteAccess(currentUser, claim.getProject());
         claim.setActive(false);
         claimRepository.save(claim);
     }
@@ -265,7 +266,7 @@ public class ClaimServiceImpl implements ClaimService {
     private Claim requireClaimWriteAccess(UUID claimId) {
         Claim claim = findActiveClaim(claimId);
         User currentUser = currentUserService.requireCurrentUser();
-        currentUserService.requireProjectWriteAccess(currentUser, claim.getProject());
+        requireProjectContentWriteAccess(currentUser, claim.getProject());
         return claim;
     }
 
@@ -273,8 +274,15 @@ public class ClaimServiceImpl implements ClaimService {
         AiSuggestion suggestion = aiSuggestionRepository.findById(suggestionId)
                 .orElseThrow(() -> new ResourceNotFoundException(suggestionId, "AiSuggestion"));
         User currentUser = currentUserService.requireCurrentUser();
-        currentUserService.requireProjectWriteAccess(currentUser, suggestion.getClaim().getProject());
+        requireProjectContentWriteAccess(currentUser, suggestion.getClaim().getProject());
         return suggestion;
+    }
+
+    private void requireProjectContentWriteAccess(User currentUser, Project project) {
+        currentUserService.requireProjectWriteAccess(currentUser, project);
+        if (project.getStatus() == ProjectStatus.COMPLETED || project.getStatus() == ProjectStatus.ARCHIVED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
+        }
     }
 
     private Claim findActiveClaim(UUID id) {

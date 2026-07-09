@@ -68,6 +68,10 @@ public class FeedbackServiceImpl implements FeedbackService {
         if (project.getStatus() == ProjectStatus.IN_REVIEW) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is already in review.");
         }
+        if (project.getStatus() != ProjectStatus.ACTIVE) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "Only ACTIVE projects can be submitted for review.");
+        }
 
         UUID instructorId = request != null ? request.instructorId() : null;
         User instructor = instructorId == null ? project.getInstructor() : userRepository.findById(instructorId)
@@ -108,6 +112,10 @@ public class FeedbackServiceImpl implements FeedbackService {
         FeedbackRequest feedbackRequest = requireFeedbackAccess(feedbackRequestId, currentUser, true);
         if (feedbackRequest.getStatus() != FeedbackStatus.PENDING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Feedback request closed.");
+        }
+        if (feedbackRequest.getProject().getStatus() == ProjectStatus.COMPLETED
+                || feedbackRequest.getProject().getStatus() == ProjectStatus.ARCHIVED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
         }
         PaperSection section = requireSectionInProject(request.sectionId(), feedbackRequest.getProject());
 

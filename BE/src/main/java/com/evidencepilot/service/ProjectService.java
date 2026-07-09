@@ -23,6 +23,8 @@ public interface ProjectService {
     ProjectResponse getProjectById(UUID id);
     ProjectResponse createProject(ProjectCreateRequest request);
     ProjectResponse updateProject(UUID id, ProjectUpdateRequest request);
+    ProjectResponse completeProject(UUID id);
+    ProjectResponse archiveProject(UUID id);
     void deleteProject(UUID id);
     List<ProjectMember> getProjectMembers(UUID projectId);
     List<ProjectMemberResponse> getProjectMemberResponses(UUID projectId);

@@ -11,6 +11,7 @@ import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
+import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
@@ -203,6 +204,7 @@ public class DocumentServiceImpl implements DocumentService {
             project = projectRepository.findById(projectId)
                     .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
             currentUserService.requireProjectAccess(currentUser, project);
+            requireMutable(project);
         }
 
         com.evidencepilot.model.Collection collection = null;
@@ -210,6 +212,9 @@ public class DocumentServiceImpl implements DocumentService {
             collection = collectionRepository.findById(collectionId)
                     .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
             currentUserService.requireCollectionAccess(currentUser, collection);
+            if (collection.getProject() != null) {
+                requireMutable(collection.getProject());
+            }
         }
 
         var sourceCategory = sourceCategoryId == null ? null
@@ -254,6 +259,9 @@ public class DocumentServiceImpl implements DocumentService {
 
         // 3. Publish document ID to extraction queue
         sourceExtractionService.triggerExtraction(document.getId());
+        if (project != null) {
+            refreshProjectStatus(project);
+        }
 
         return DocumentResponse.from(document);
     }
@@ -286,8 +294,18 @@ public class DocumentServiceImpl implements DocumentService {
         var currentUser = currentUserService.requireCurrentUser();
         Document doc = findDocument(id);
         requireDocumentAccess(currentUser, doc);
+        Project project = doc.getProject();
+        if (project == null && doc.getCollection() != null) {
+            project = doc.getCollection().getProject();
+        }
+        if (project != null) {
+            requireMutable(project);
+        }
         doc.setActive(false);
         documentRepository.save(doc);
+        if (doc.getProject() != null) {
+            refreshProjectStatus(doc.getProject());
+        }
     }
 
     private Document findDocument(UUID id) {
@@ -312,6 +330,29 @@ public class DocumentServiceImpl implements DocumentService {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
         currentUserService.requireProjectAccess(currentUser, project);
+    }
+
+    private void requireMutable(Project project) {
+        if (project.getStatus() == ProjectStatus.COMPLETED || project.getStatus() == ProjectStatus.ARCHIVED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
+        }
+    }
+
+    private void refreshProjectStatus(Project project) {
+        if (project.getStatus() != ProjectStatus.DRAFT && project.getStatus() != ProjectStatus.ACTIVE) {
+            return;
+        }
+        boolean hasPaper = !documentRepository
+                .findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.PAPER)
+                .isEmpty();
+        boolean hasSource = !documentRepository
+                .findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.SOURCE)
+                .isEmpty();
+        ProjectStatus status = hasPaper && hasSource ? ProjectStatus.ACTIVE : ProjectStatus.DRAFT;
+        if (project.getStatus() != status) {
+            project.setStatus(status);
+            projectRepository.save(project);
+        }
     }
 
     private Specification<Document> documentSpec(

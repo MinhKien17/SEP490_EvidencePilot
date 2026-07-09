@@ -5,6 +5,7 @@ import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.ClaimRepository;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -126,6 +128,20 @@ class ClaimServiceImplAccessTest {
         verify(currentUserService).requireProjectWriteAccess(user, claim.getProject());
     }
 
+    @Test
+    void updateClaimRejectsCompletedProject() {
+        User user = user();
+        Claim claim = claim();
+        claim.getProject().setStatus(ProjectStatus.COMPLETED);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
+
+        assertThatThrownBy(() -> service().updateClaim(claim.getId(), "Updated", null))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("Project is read-only.");
+    }
+
     private ClaimServiceImpl service() {
         return new ClaimServiceImpl(
                 claimRepository,
@@ -148,6 +164,7 @@ class ClaimServiceImplAccessTest {
     private Claim claim() {
         Project project = new Project();
         project.setId(UUID.randomUUID());
+        project.setStatus(ProjectStatus.ACTIVE);
         Claim claim = new Claim();
         claim.setId(UUID.randomUUID());
         claim.setProject(project);

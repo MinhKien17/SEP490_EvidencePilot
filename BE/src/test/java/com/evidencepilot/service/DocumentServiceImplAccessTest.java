@@ -6,6 +6,7 @@ import com.evidencepilot.model.Project;
 import com.evidencepilot.model.SourceCategory;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
@@ -29,6 +30,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -128,6 +130,91 @@ class DocumentServiceImplAccessTest {
         service().uploadDocument(project.getId(), file, DocumentType.PAPER);
 
         verify(currentUserService).requireProjectAccess(user, project);
+    }
+
+    @Test
+    void uploadDocumentActivatesDraftProjectWhenPaperAndSourcePresent() throws Exception {
+        User user = user();
+        Project project = project();
+        project.setStatus(ProjectStatus.DRAFT);
+        Document paper = document(project);
+        Document source = document(project);
+        source.setDocType(DocumentType.SOURCE);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "paper.pdf", "application/pdf", "content".getBytes());
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(documentRepository.save(any(Document.class))).thenAnswer(invocation -> {
+            Document document = invocation.getArgument(0);
+            document.setId(UUID.randomUUID());
+            return document;
+        });
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.PAPER))
+                .thenReturn(List.of(paper));
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.SOURCE))
+                .thenReturn(List.of(source));
+        when(minioClient.putObject(any(PutObjectArgs.class))).thenReturn(null);
+
+        service().uploadDocument(project.getId(), file, DocumentType.PAPER);
+
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.ACTIVE);
+        verify(projectRepository).save(project);
+    }
+
+    @Test
+    void deleteDocumentDowngradesActiveProjectWhenRequiredTypeMissing() {
+        User user = user();
+        Project project = project();
+        project.setStatus(ProjectStatus.ACTIVE);
+        Document source = document(project);
+        source.setDocType(DocumentType.SOURCE);
+        Document paper = document(project);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.PAPER))
+                .thenReturn(List.of(paper));
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.SOURCE))
+                .thenReturn(List.of());
+
+        service().deleteDocument(source.getId());
+
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.DRAFT);
+        verify(projectRepository).save(project);
+    }
+
+    @Test
+    void uploadDocumentRejectsCompletedProject() {
+        User user = user();
+        Project project = project();
+        project.setStatus(ProjectStatus.COMPLETED);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "paper.pdf", "application/pdf", "content".getBytes());
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+
+        assertThatThrownBy(() -> service().uploadDocument(project.getId(), file, DocumentType.PAPER))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Project is read-only.");
+        verify(documentRepository, never()).save(any(Document.class));
+    }
+
+    @Test
+    void deleteDocumentRejectsArchivedProject() {
+        User user = user();
+        Project project = project();
+        project.setStatus(ProjectStatus.ARCHIVED);
+        Document document = document(project);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+
+        assertThatThrownBy(() -> service().deleteDocument(document.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Project is read-only.");
+        verify(documentRepository, never()).save(any(Document.class));
     }
 
     @Test

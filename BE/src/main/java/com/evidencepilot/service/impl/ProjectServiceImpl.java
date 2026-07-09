@@ -116,12 +116,41 @@ public class ProjectServiceImpl implements ProjectService {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(id);
         currentUserService.requireProjectManageAccess(currentUser, project);
+        requireMutable(project);
 
         project.setTitle(request.title());
         project.setDescription(request.description());
         project.setTargetStandard(request.targetStandard());
         project.setUpdatedAt(LocalDateTime.now());
 
+        return ProjectResponse.from(projectRepository.save(project));
+    }
+
+    @Override
+    @Transactional
+    public ProjectResponse completeProject(UUID id) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = findActiveProject(id);
+        currentUserService.requireProjectManageAccess(currentUser, project);
+        if (project.getStatus() != ProjectStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only ACTIVE projects can be completed.");
+        }
+        project.setStatus(ProjectStatus.COMPLETED);
+        project.setUpdatedAt(LocalDateTime.now());
+        return ProjectResponse.from(projectRepository.save(project));
+    }
+
+    @Override
+    @Transactional
+    public ProjectResponse archiveProject(UUID id) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = findActiveProject(id);
+        currentUserService.requireProjectManageAccess(currentUser, project);
+        if (project.getStatus() != ProjectStatus.COMPLETED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only COMPLETED projects can be archived.");
+        }
+        project.setStatus(ProjectStatus.ARCHIVED);
+        project.setUpdatedAt(LocalDateTime.now());
         return ProjectResponse.from(projectRepository.save(project));
     }
 
@@ -207,6 +236,12 @@ public class ProjectServiceImpl implements ProjectService {
             throw new ResourceNotFoundException(id, "Project");
         }
         return project;
+    }
+
+    private void requireMutable(Project project) {
+        if (project.getStatus() == ProjectStatus.COMPLETED || project.getStatus() == ProjectStatus.ARCHIVED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
+        }
     }
 
     private Specification<Project> projectSpec(
