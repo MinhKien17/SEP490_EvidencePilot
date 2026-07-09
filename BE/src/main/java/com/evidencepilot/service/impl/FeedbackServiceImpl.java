@@ -8,12 +8,14 @@ import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.FeedbackRequest;
 import com.evidencepilot.model.FeedbackStatus;
 import com.evidencepilot.model.InstructorFeedback;
+import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
+import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.CurrentUserService;
@@ -35,6 +37,7 @@ public class FeedbackServiceImpl implements FeedbackService {
 
     private final FeedbackRequestRepository feedbackRequestRepository;
     private final InstructorFeedbackRepository instructorFeedbackRepository;
+    private final PaperSectionRepository paperSectionRepository;
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
@@ -62,17 +65,25 @@ public class FeedbackServiceImpl implements FeedbackService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Project not found: " + projectId));
         currentUserService.requireProjectWriteAccess(currentUser, project);
+        if (project.getStatus() == ProjectStatus.IN_REVIEW) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is already in review.");
+        }
 
-        User instructor = userRepository.findById(request.instructorId())
+        UUID instructorId = request != null ? request.instructorId() : null;
+        User instructor = instructorId == null ? project.getInstructor() : userRepository.findById(instructorId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Instructor not found: " + request.instructorId()));
-        if (instructor.getRole() != UserRole.INSTRUCTOR) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Assigned user is not an instructor.");
+                        "Instructor not found: " + instructorId));
+        if (instructor == null || instructor.getRole() != UserRole.INSTRUCTOR) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project has no instructor.");
+        }
+        User student = project.getStudent();
+        if (student == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project has no student.");
         }
 
         FeedbackRequest feedbackRequest = new FeedbackRequest();
         feedbackRequest.setProject(project);
-        feedbackRequest.setStudent(project.getStudent());
+        feedbackRequest.setStudent(student);
         feedbackRequest.setInstructor(instructor);
         feedbackRequest.setStatus(FeedbackStatus.PENDING);
         feedbackRequest.setRequestedAt(LocalDateTime.now());
@@ -95,13 +106,18 @@ public class FeedbackServiceImpl implements FeedbackService {
     public InstructorFeedbackResponseDto comment(UUID feedbackRequestId, InstructorFeedbackRequest request) {
         User currentUser = currentUserService.requireCurrentUser();
         FeedbackRequest feedbackRequest = requireFeedbackAccess(feedbackRequestId, currentUser, true);
+        if (feedbackRequest.getStatus() != FeedbackStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Feedback request closed.");
+        }
+        PaperSection section = requireSectionInProject(request.sectionId(), feedbackRequest.getProject());
 
-        InstructorFeedback feedback = instructorFeedbackRepository.findByRequestId(feedbackRequestId)
-                .orElseGet(InstructorFeedback::new);
+        InstructorFeedback feedback = new InstructorFeedback();
         feedback.setRequest(feedbackRequest);
+        feedback.setSection(section);
         feedback.setInstructor(currentUserService.isAdmin(currentUser)
                 ? feedbackRequest.getInstructor()
                 : currentUser);
+        feedback.setLineReference(request.lineReference());
         feedback.setContent(request.content());
         feedback.setCreatedAt(LocalDateTime.now());
         InstructorFeedback saved = instructorFeedbackRepository.save(feedback);
@@ -162,5 +178,16 @@ public class FeedbackServiceImpl implements FeedbackService {
             return feedbackRequest;
         }
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Feedback access denied.");
+    }
+
+    private PaperSection requireSectionInProject(UUID sectionId, Project project) {
+        PaperSection section = paperSectionRepository.findById(sectionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Paper section not found: " + sectionId));
+        Project sectionProject = section.getDocument() != null ? section.getDocument().getProject() : null;
+        if (sectionProject == null || !project.getId().equals(sectionProject.getId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Section does not belong to feedback project.");
+        }
+        return section;
     }
 }

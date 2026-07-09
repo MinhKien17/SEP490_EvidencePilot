@@ -241,11 +241,14 @@ CREATE TABLE feedback_requests (
 
 CREATE TABLE instructor_feedbacks (
     id BINARY(16) NOT NULL PRIMARY KEY,
-    request_id BINARY(16) NOT NULL UNIQUE,
+    request_id BINARY(16) NOT NULL,
+    section_id BINARY(16) NOT NULL,
     instructor_id BINARY(16) NOT NULL,
+    line_reference VARCHAR(100),
     content TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (request_id) REFERENCES feedback_requests(id) ON DELETE CASCADE,
+    FOREIGN KEY (section_id) REFERENCES paper_sections(id) ON DELETE CASCADE,
     FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE CASCADE
 );
 

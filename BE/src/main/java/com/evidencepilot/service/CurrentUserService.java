@@ -27,6 +27,8 @@ public interface CurrentUserService {
 
     void requireProjectWriteAccess(User currentUser, Project project);
 
+    void requireProjectManageAccess(User currentUser, Project project);
+
     void requireCollectionAccess(User currentUser, com.evidencepilot.model.Collection collection);
 
     void requireClaimAccess(User currentUser, Claim claim);

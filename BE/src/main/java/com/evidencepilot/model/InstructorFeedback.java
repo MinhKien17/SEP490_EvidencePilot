@@ -21,15 +21,23 @@ public class InstructorFeedback {
     @JdbcTypeCode(java.sql.Types.BINARY)
     private UUID id;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "request_id", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "request_id", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     @com.fasterxml.jackson.annotation.JsonIgnore
     private FeedbackRequest request;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "section_id", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private PaperSection section;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "instructor_id", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     @com.fasterxml.jackson.annotation.JsonIgnore
     private User instructor;
+
+    @Column(name = "line_reference")
+    private String lineReference;
 
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
