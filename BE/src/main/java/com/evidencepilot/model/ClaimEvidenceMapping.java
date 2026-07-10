@@ -40,6 +40,9 @@ public class ClaimEvidenceMapping {
     @Enumerated(EnumType.STRING)
     private MappingStatus status;
 
+    @Column(name = "instructor_rejected", nullable = false)
+    private boolean instructorRejected = false;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

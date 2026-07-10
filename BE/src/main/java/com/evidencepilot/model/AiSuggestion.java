@@ -32,6 +32,9 @@ public class AiSuggestion {
     @Enumerated(EnumType.STRING)
     private SuggestionStatus status;
 
+    @Column(name = "instructor_rejected", nullable = false)
+    private boolean instructorRejected = false;
+
     private Float score;
     private String explanation;
 

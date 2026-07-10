@@ -15,7 +15,7 @@ import com.evidencepilot.service.CollectionService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.dto.request.PagingRequest;
 import jakarta.persistence.criteria.Predicate;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;

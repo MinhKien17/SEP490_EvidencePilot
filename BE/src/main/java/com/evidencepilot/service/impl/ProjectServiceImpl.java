@@ -21,7 +21,7 @@ import com.evidencepilot.service.ProjectService;
 import com.evidencepilot.service.SystemNotificationService;
 import com.evidencepilot.dto.request.PagingRequest;
 import jakarta.persistence.criteria.Predicate;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.data.jpa.domain.Specification;
@@ -93,7 +93,7 @@ public class ProjectServiceImpl implements ProjectService {
         project.setTitle(request.title());
         project.setDescription(request.description());
         project.setTargetStandard(request.targetStandard());
-        project.setStatus(ProjectStatus.DRAFT);
+        project.setStatus(ProjectStatus.ASSIGNED);
         project.setCreatedAt(LocalDateTime.now());
 
         Project saved = projectRepository.save(project);

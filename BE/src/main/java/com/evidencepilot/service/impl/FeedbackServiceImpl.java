@@ -21,7 +21,7 @@ import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.FeedbackService;
 import com.evidencepilot.service.SystemNotificationService;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -92,7 +92,7 @@ public class FeedbackServiceImpl implements FeedbackService {
         feedbackRequest.setStatus(FeedbackStatus.PENDING);
         feedbackRequest.setRequestedAt(LocalDateTime.now());
 
-        project.setStatus(ProjectStatus.IN_REVIEW);
+        project.setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
         projectRepository.save(project);
 
         FeedbackRequest saved = feedbackRequestRepository.save(feedbackRequest);
@@ -152,7 +152,7 @@ public class FeedbackServiceImpl implements FeedbackService {
         if (newStatus == FeedbackStatus.PENDING) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status: " + status);
         }
-        FeedbackRequest feedbackRequest = transition(feedbackRequestId, newStatus, ProjectStatus.ACTIVE, currentUser);
+        FeedbackRequest feedbackRequest = transition(feedbackRequestId, newStatus, ProjectStatus.RETURNED, currentUser);
         systemNotificationService.createNotification(
                 feedbackRequest.getStudent(),
                 currentUser,

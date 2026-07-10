@@ -59,7 +59,7 @@ class ProjectServiceImplPagingTest {
         Project project = new Project();
         project.setId(UUID.randomUUID());
         project.setTitle("Evidence Search");
-        project.setStatus(ProjectStatus.DRAFT);
+        project.setStatus(ProjectStatus.ASSIGNED);
         project.setActive(true);
         project.setCreatedAt(LocalDateTime.now());
 
@@ -83,7 +83,7 @@ class ProjectServiceImplPagingTest {
                 2,
                 "title,asc",
                 "search",
-                ProjectStatus.DRAFT,
+                ProjectStatus.ASSIGNED,
                 true);
 
         assertThat(response.content()).hasSize(1);

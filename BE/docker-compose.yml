@@ -172,6 +172,8 @@ services:
       MAIL_SMTP_AUTH: ${MAIL_SMTP_AUTH:-true}
       MAIL_SMTP_STARTTLS_ENABLE: ${MAIL_SMTP_STARTTLS_ENABLE:-true}
 
+      JWT_SECRET: ${JWT_SECRET:-changemetoalongrandomsecretkeythatis32bytes}
+
       SERVER_PORT: 8080
     networks:
       - evidence-network

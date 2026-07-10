@@ -1,5 +1,5 @@
 package com.evidencepilot.model.enums;
 
 public enum ProjectStatus {
-    DRAFT, ACTIVE, IN_REVIEW, COMPLETED, ARCHIVED
+    ASSIGNED, IN_PROGRESS, SUBMITTED_FOR_REVIEW, RETURNED, APPROVED
 }

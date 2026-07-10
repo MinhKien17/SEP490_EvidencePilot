@@ -20,7 +20,7 @@ public class QdrantGatewayImpl implements QdrantGateway {
 
     private final RestClient restClient;
 
-    public QdrantGatewayImpl(@Value("${qdrant.url:http://localhost:6333}") String qdrantUrl) {
+    public QdrantGatewayImpl(@Value("${qdrant.url}") String qdrantUrl) {
         this.restClient = RestClient.builder().baseUrl(qdrantUrl).build();
     }
 

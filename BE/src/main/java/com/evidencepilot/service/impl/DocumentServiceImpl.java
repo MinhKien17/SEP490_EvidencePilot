@@ -20,7 +20,6 @@ import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.SourceCategoryRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
-import com.evidencepilot.service.SourceExtractionService;
 import com.evidencepilot.dto.request.PagingRequest;
 import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
@@ -28,8 +27,8 @@ import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import jakarta.annotation.PostConstruct;
 import jakarta.persistence.criteria.Predicate;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
@@ -59,7 +58,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final CollectionRepository collectionRepository;
     private final SourceCategoryRepository sourceCategoryRepository;
     private final CurrentUserService currentUserService;
-    private final SourceExtractionService sourceExtractionService;
+    private final DocumentPersistenceService documentPersistenceService;
     private final DocumentMapper documentMapper;
     private final MinioClient minioClient;
 
@@ -162,29 +161,11 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
-    public List<DocumentResponse> getSourcesByCollection(UUID collectionId, UUID sourceCategoryId) {
-        var currentUser = currentUserService.requireCurrentUser();
-        com.evidencepilot.model.Collection collection = collectionRepository.findById(collectionId)
-                .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
-        currentUserService.requireCollectionAccess(currentUser, collection);
-        return documentRepository.findByCollectionId(collectionId).stream()
-                .filter(Document::isActive)
-                .filter(document -> document.getDocType() == DocumentType.SOURCE)
-                .filter(document -> sourceCategoryId == null
-                        || (document.getSourceCategory() != null
-                        && sourceCategoryId.equals(document.getSourceCategory().getId())))
-                .map(DocumentResponse::from)
-                .toList();
-    }
-
-    @Override
-    @Transactional
     public DocumentResponse uploadDocument(UUID projectId, MultipartFile file, DocumentType docType) {
         return uploadDocument(projectId, null, file, docType);
     }
 
     @Override
-    @Transactional
     public DocumentResponse uploadDocument(UUID projectId, UUID collectionId, MultipartFile file, DocumentType docType) {
         return uploadDocument(projectId, collectionId, null, file, docType);
     }
@@ -226,25 +207,13 @@ public class DocumentServiceImpl implements DocumentService {
 
         String originalName = file.getOriginalFilename();
 
-        // 1. Save Document first — Hibernate auto-generates UUID
-        Document document = new Document();
-        document.setProject(project);
-        document.setCollection(collection);
-        document.setSourceCategory(sourceCategory);
-        document.setUploadedBy(currentUser);
-        document.setDocType(docType);
-        document.setFileUrl("pending");
-        document.setOriginalFilename(originalName);
-        document.setContentType(file.getContentType());
-        document.setFileSizeBytes(file.getSize());
-        document.setProcessingStatus(ProcessingStatus.UPLOADED);
-        document.setActive(true);
-        document.setCreatedAt(LocalDateTime.now());
-        document = documentRepository.save(document);
+        // Step A: Save pending document (transactional)
+        Document document = documentPersistenceService.savePendingDocument(
+                project, collection, currentUser, docType, originalName,
+                file.getContentType(), file.getSize());
 
-        // 2. Upload to MinIO using the auto-generated UUID
+        // Step B: Upload to MinIO (non-transactional — holds no DB connection)
         String objectKey = "sources/raw/" + document.getId().toString() + fileExtension(originalName);
-        document.setFileUrl(objectKey);
 
         try (var in = file.getInputStream()) {
             minioClient.putObject(PutObjectArgs.builder()
@@ -257,11 +226,8 @@ public class DocumentServiceImpl implements DocumentService {
             throw new RuntimeException("Failed to upload file to MinIO", e);
         }
 
-        // 3. Publish document ID to extraction queue
-        sourceExtractionService.triggerExtraction(document.getId());
-        if (project != null) {
-            refreshProjectStatus(project);
-        }
+        // Step C: Mark document as uploaded (transactional, publishes event after commit)
+        document = documentPersistenceService.markDocumentAsUploaded(document.getId(), objectKey);
 
         return DocumentResponse.from(document);
     }

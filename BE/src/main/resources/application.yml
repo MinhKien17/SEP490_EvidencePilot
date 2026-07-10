@@ -9,7 +9,7 @@ spring:
   datasource:
     url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:evidence_pilot}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:changemedbpassword}
+    password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       # Wait up to 30 s for a single connection attempt before giving up on that attempt
@@ -57,7 +57,7 @@ spring:
     host: ${RABBITMQ_HOST:rabbitmq}
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USERNAME:rabbitmqadmin}
-    password: ${RABBITMQ_PASSWORD:RabbitMqAdminPass123!}
+    password: ${RABBITMQ_PASSWORD}
     listener:
       simple:
         prefetch: ${RABBITMQ_LISTENER_PREFETCH:1}
@@ -79,11 +79,11 @@ spring:
             enable: ${MAIL_SMTP_STARTTLS_ENABLE:true}
 
 server:
-  port: ${SERVER_PORT:8080}
+  port: ${PORT:8080}
   forward-headers-strategy: framework
 
 jwt:
-  secret: ${JWT_SECRET:EvidencePilot-Super-Secret-Key-2025!!}
+  secret: ${JWT_SECRET}
   expiration-ms: ${JWT_EXPIRATION_MS:86400000}
 
 logging:
@@ -122,6 +122,6 @@ springdoc:
 # ── MinIO configuration ─────────────────────────────────────────────────────
 minio:
   url: ${MINIO_URL:http://minio:9000}
-  access-key: ${MINIO_ACCESS_KEY:minioadmin}
-  secret-key: ${MINIO_SECRET_KEY:MinioAdminSecurePass123!}
+  access-key: ${MINIO_ACCESS_KEY}
+  secret-key: ${MINIO_SECRET_KEY}
   bucket-name: ${MINIO_BUCKET_NAME:evidence-pilot-bucket}
