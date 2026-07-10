@@ -78,7 +78,7 @@ CREATE TABLE documents (
     content_type VARCHAR(255),
     file_size_bytes BIGINT,
     file_hash_sha256 VARCHAR(64),
-    processing_status VARCHAR(50) NOT NULL CHECK (processing_status IN ('UPLOADED', 'QUEUED', 'PROCESSING', 'READY', 'COMPLETED', 'FAILED')),
+    processing_status VARCHAR(50) NOT NULL CHECK (processing_status IN ('PENDING_UPLOAD', 'UPLOADED', 'QUEUED', 'PROCESSING', 'READY', 'COMPLETED', 'FAILED')),
     processing_error TEXT,
     chunk_count INT DEFAULT 0,
     processed_at DATETIME,
