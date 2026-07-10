@@ -116,7 +116,7 @@ public class CurrentUserServiceImpl implements CurrentUserService {
     public void requireProjectManageAccess(User currentUser, Project project) {
         if (isAdmin(currentUser))
             return;
-        if (!hasProjectRole(currentUser, project, Set.of(ProjectRole.INSTRUCTOR))) {
+        if (!hasProjectRole(currentUser, project, Set.of(ProjectRole.INSTRUCTOR, ProjectRole.OWNER))) {
             throw new ResponseStatusException(
                     org.springframework.http.HttpStatus.FORBIDDEN,
                     "Project management access denied");

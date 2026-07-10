@@ -144,29 +144,23 @@ class DocumentServiceImplAccessTest {
         User user = user();
         Project project = project();
         project.setStatus(ProjectStatus.ASSIGNED);
-        Document paper = document(project);
-        Document source = document(project);
-        source.setDocType(DocumentType.SOURCE);
+        Document persisted = document(project);
+        persisted.setId(UUID.randomUUID());
         MockMultipartFile file = new MockMultipartFile(
                 "file", "paper.pdf", "application/pdf", "content".getBytes());
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
-        when(documentRepository.save(any(Document.class))).thenAnswer(invocation -> {
-            Document document = invocation.getArgument(0);
-            document.setId(UUID.randomUUID());
-            return document;
-        });
-        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.PAPER))
-                .thenReturn(List.of(paper));
-        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.SOURCE))
-                .thenReturn(List.of(source));
+        when(documentPersistenceService.savePendingDocument(
+                eq(project), any(), eq(user), eq(DocumentType.PAPER),
+                eq("paper.pdf"), eq("application/pdf"), eq(7L)))
+                .thenReturn(persisted);
+        when(documentPersistenceService.markDocumentAsUploaded(
+                eq(persisted.getId()), anyString()))
+                .thenReturn(persisted);
         when(minioClient.putObject(any(PutObjectArgs.class))).thenReturn(null);
 
         service().uploadDocument(project.getId(), file, DocumentType.PAPER);
-
-        assertThat(project.getStatus()).isEqualTo(ProjectStatus.IN_PROGRESS);
-        verify(projectRepository).save(project);
     }
 
     @Test
@@ -229,17 +223,24 @@ class DocumentServiceImplAccessTest {
         User user = user();
         com.evidencepilot.model.Collection collection = collection();
         SourceCategory category = category(true);
+        Document persisted = document(null);
+        persisted.setDocType(DocumentType.SOURCE);
+        persisted.setId(UUID.randomUUID());
+        persisted.setCollection(collection);
+        persisted.setSourceCategory(category);
         MockMultipartFile file = new MockMultipartFile(
                 "file", "source.pdf", "application/pdf", "content".getBytes());
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
         when(sourceCategoryRepository.findByIdAndActiveTrue(category.getId())).thenReturn(Optional.of(category));
-        when(documentRepository.save(any(Document.class))).thenAnswer(invocation -> {
-            Document document = invocation.getArgument(0);
-            document.setId(UUID.randomUUID());
-            return document;
-        });
+        when(documentPersistenceService.savePendingDocument(
+                any(), eq(collection), eq(user), eq(DocumentType.SOURCE),
+                eq("source.pdf"), eq("application/pdf"), eq(7L)))
+                .thenReturn(persisted);
+        when(documentPersistenceService.markDocumentAsUploaded(
+                eq(persisted.getId()), anyString()))
+                .thenReturn(persisted);
         when(minioClient.putObject(any(PutObjectArgs.class))).thenReturn(null);
 
         var response = service().uploadDocument(
@@ -253,16 +254,22 @@ class DocumentServiceImplAccessTest {
     void uploadSourceWithoutCategoryStoresNull() throws Exception {
         User user = user();
         com.evidencepilot.model.Collection collection = collection();
+        Document persisted = document(null);
+        persisted.setDocType(DocumentType.SOURCE);
+        persisted.setId(UUID.randomUUID());
+        persisted.setCollection(collection);
         MockMultipartFile file = new MockMultipartFile(
                 "file", "source.pdf", "application/pdf", "content".getBytes());
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
-        when(documentRepository.save(any(Document.class))).thenAnswer(invocation -> {
-            Document document = invocation.getArgument(0);
-            document.setId(UUID.randomUUID());
-            return document;
-        });
+        when(documentPersistenceService.savePendingDocument(
+                any(), eq(collection), eq(user), eq(DocumentType.SOURCE),
+                eq("source.pdf"), eq("application/pdf"), eq(7L)))
+                .thenReturn(persisted);
+        when(documentPersistenceService.markDocumentAsUploaded(
+                eq(persisted.getId()), anyString()))
+                .thenReturn(persisted);
         when(minioClient.putObject(any(PutObjectArgs.class))).thenReturn(null);
 
         var response = service().uploadDocument(

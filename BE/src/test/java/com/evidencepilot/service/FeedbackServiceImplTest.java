@@ -185,7 +185,7 @@ class FeedbackServiceImplTest {
                 request.getId(),
                 new InstructorFeedbackRequest(UUID.randomUUID(), "L1", "Too late.")))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Feedback request is closed.");
+                .hasMessageContaining("Feedback request closed.");
     }
 
     private FeedbackServiceImpl service() {
