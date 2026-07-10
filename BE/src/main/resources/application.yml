@@ -41,7 +41,7 @@ spring:
   # ── Spring Boot SQL initializer ───────────────────────────────────────────
   sql:
     init:
-      mode: always
+      mode: never
       schema-locations: classpath:schema.sql
 
   # ── File upload limits ────────────────────────────────────────────────────
