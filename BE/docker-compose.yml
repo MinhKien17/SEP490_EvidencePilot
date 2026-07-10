@@ -64,8 +64,8 @@ services:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: MinioAdminSecurePass123!
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     volumes:
       - minio_data:/data
     healthcheck:
@@ -83,10 +83,12 @@ services:
       minio:
         condition: service_healthy
     entrypoint: >
-      /bin/sh -c " until (/usr/bin/mc alias set myminio http://minio:9000 minioadmin MinioAdminSecurePass123!) do echo 'Waiting for MinIO...'; sleep 2; done; /usr/bin/mc mb --ignore-existing myminio/evidence-pilot-bucket; /usr/bin/mc anonymous set public myminio/evidence-pilot-bucket; echo 'Bucket created and configured'; "
+      /bin/sh -c " until (/usr/bin/mc alias set myminio $${MINIO_URL} $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}) do echo 'Waiting for MinIO...'; sleep 2; done; /usr/bin/mc mb --ignore-existing myminio/$${MINIO_BUCKET_NAME}; /usr/bin/mc anonymous set none myminio/$${MINIO_BUCKET_NAME}; echo 'Bucket created and configured'; "
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: MinioAdminSecurePass123!
+      MINIO_URL: ${MINIO_URL}
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME}
     networks:
       - evidence-network
 
@@ -98,8 +100,9 @@ services:
       - "127.0.0.1:5672:5672"
       - "127.0.0.1:15672:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: rabbitmqadmin
-      RABBITMQ_DEFAULT_PASS: RabbitMqAdminPass123!
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VIRTUAL_HOST}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
@@ -140,28 +143,36 @@ services:
       DB_PASSWORD: ${MYSQL_PASSWORD}
 
       # ── Qdrant (internal Docker network) ─────────────────────────────────────
-      QDRANT_URL: http://vector-db:6333
+      QDRANT_URL: ${QDRANT_URL}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
 
-      # ── MinIO (hardcoded, no .env vars provided) ─────────────────────────────
-      MINIO_URL: http://minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: MinioAdminSecurePass123!
-      MINIO_BUCKET_NAME: evidence-pilot-bucket
+      # ── MinIO ────────────────────────────────────────────────────────────────
+      MINIO_URL: ${MINIO_URL}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME}
 
-      # ── RabbitMQ (hardcoded, no .env vars provided) ──────────────────────────
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
-      RABBITMQ_USERNAME: rabbitmqadmin
-      RABBITMQ_PASSWORD: RabbitMqAdminPass123!
+      # ── RabbitMQ ─────────────────────────────────────────────────────────────
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_VIRTUAL_HOST: ${RABBITMQ_VIRTUAL_HOST}
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
 
       # ── AI Model (from .env) ─────────────────────────────────────────────────
       AI_MODEL_BASE_URL: ${AI_MODEL_BASE_URL}
-      AI_MODEL_API_KEY: ""
-      AI_MODEL_READ_TIMEOUT_SECONDS: "600"
+      AI_MODEL_API_KEY: ${AI_MODEL_API_KEY:-}
+      AI_MODEL_READ_TIMEOUT_SECONDS: ${AI_MODEL_READ_TIMEOUT_SECONDS}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL}
+      OLLAMA_GENERATION_MODEL: ${OLLAMA_GENERATION_MODEL}
 
       # ── Admin seed (from .env) ──────────────────────────────────────────────
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      STUDENT_EMAIL: ${STUDENT_EMAIL}
+      STUDENT_PASSWORD: ${STUDENT_PASSWORD}
+      INSTRUCTOR_EMAIL: ${INSTRUCTOR_EMAIL}
+      INSTRUCTOR_PASSWORD: ${INSTRUCTOR_PASSWORD}
 
       EMAIL_VERIFICATION_URL: ${EMAIL_VERIFICATION_URL:-}
       EMAIL_VERIFICATION_TOKEN_TTL_HOURS: ${EMAIL_VERIFICATION_TOKEN_TTL_HOURS:-24}
@@ -172,7 +183,8 @@ services:
       MAIL_SMTP_AUTH: ${MAIL_SMTP_AUTH:-true}
       MAIL_SMTP_STARTTLS_ENABLE: ${MAIL_SMTP_STARTTLS_ENABLE:-true}
 
-      JWT_SECRET: ${JWT_SECRET:-changemetoalongrandomsecretkeythatis32bytes}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-86400000}
 
       SERVER_PORT: 8080
     networks:

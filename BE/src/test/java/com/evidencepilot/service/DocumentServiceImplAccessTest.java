@@ -22,6 +22,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
@@ -323,7 +324,7 @@ class DocumentServiceImplAccessTest {
     }
 
     private DocumentServiceImpl service() {
-        return new DocumentServiceImpl(
+        var service = new DocumentServiceImpl(
                 documentRepository,
                 documentChunkRepository,
                 documentTextRepository,
@@ -334,6 +335,8 @@ class DocumentServiceImplAccessTest {
                 documentPersistenceService,
                 documentMapper,
                 minioClient);
+        ReflectionTestUtils.setField(service, "bucketName", "test-bucket");
+        return service;
     }
 
     private User user() {
