@@ -12,6 +12,7 @@ import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.DocumentTextRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.repository.SourceCategoryRepository;
 import com.evidencepilot.service.impl.DocumentPersistenceService;
 import com.evidencepilot.service.impl.DocumentServiceImpl;
 import io.minio.MinioClient;
@@ -32,6 +33,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -141,7 +143,7 @@ class DocumentServiceImplAccessTest {
     void uploadDocumentActivatesDraftProjectWhenPaperAndSourcePresent() throws Exception {
         User user = user();
         Project project = project();
-        project.setStatus(ProjectStatus.DRAFT);
+        project.setStatus(ProjectStatus.ASSIGNED);
         Document paper = document(project);
         Document source = document(project);
         source.setDocType(DocumentType.SOURCE);
@@ -163,7 +165,7 @@ class DocumentServiceImplAccessTest {
 
         service().uploadDocument(project.getId(), file, DocumentType.PAPER);
 
-        assertThat(project.getStatus()).isEqualTo(ProjectStatus.ACTIVE);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.IN_PROGRESS);
         verify(projectRepository).save(project);
     }
 
@@ -171,7 +173,7 @@ class DocumentServiceImplAccessTest {
     void deleteDocumentDowngradesActiveProjectWhenRequiredTypeMissing() {
         User user = user();
         Project project = project();
-        project.setStatus(ProjectStatus.ACTIVE);
+        project.setStatus(ProjectStatus.IN_PROGRESS);
         Document source = document(project);
         source.setDocType(DocumentType.SOURCE);
         Document paper = document(project);
@@ -185,7 +187,7 @@ class DocumentServiceImplAccessTest {
 
         service().deleteDocument(source.getId());
 
-        assertThat(project.getStatus()).isEqualTo(ProjectStatus.DRAFT);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.ASSIGNED);
         verify(projectRepository).save(project);
     }
 
@@ -193,7 +195,7 @@ class DocumentServiceImplAccessTest {
     void uploadDocumentRejectsCompletedProject() {
         User user = user();
         Project project = project();
-        project.setStatus(ProjectStatus.COMPLETED);
+        project.setStatus(ProjectStatus.APPROVED);
         MockMultipartFile file = new MockMultipartFile(
                 "file", "paper.pdf", "application/pdf", "content".getBytes());
 
@@ -210,7 +212,7 @@ class DocumentServiceImplAccessTest {
     void deleteDocumentRejectsArchivedProject() {
         User user = user();
         Project project = project();
-        project.setStatus(ProjectStatus.ARCHIVED);
+        project.setStatus(ProjectStatus.APPROVED);
         Document document = document(project);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);

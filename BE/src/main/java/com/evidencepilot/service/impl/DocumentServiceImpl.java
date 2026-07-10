@@ -141,6 +141,21 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
+    public List<DocumentResponse> getSourcesByCollection(UUID collectionId, UUID sourceCategoryId) {
+        var currentUser = currentUserService.requireCurrentUser();
+        var collection = collectionRepository.findById(collectionId)
+                .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
+        currentUserService.requireCollectionAccess(currentUser, collection);
+        return documentRepository.findByCollectionId(collectionId).stream()
+                .filter(doc -> doc.getDocType() == DocumentType.SOURCE)
+                .filter(doc -> sourceCategoryId == null
+                        || (doc.getSourceCategory() != null
+                                && doc.getSourceCategory().getId().equals(sourceCategoryId)))
+                .map(DocumentResponse::from)
+                .toList();
+    }
+
+    @Override
     public PagedResponse<DocumentResponse> getSourcesByProject(
             UUID projectId,
             int page,
@@ -299,13 +314,13 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     private void requireMutable(Project project) {
-        if (project.getStatus() == ProjectStatus.COMPLETED || project.getStatus() == ProjectStatus.ARCHIVED) {
+        if (project.getStatus() == ProjectStatus.APPROVED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
         }
     }
 
     private void refreshProjectStatus(Project project) {
-        if (project.getStatus() != ProjectStatus.DRAFT && project.getStatus() != ProjectStatus.ACTIVE) {
+        if (project.getStatus() != ProjectStatus.ASSIGNED && project.getStatus() != ProjectStatus.IN_PROGRESS) {
             return;
         }
         boolean hasPaper = !documentRepository
@@ -314,7 +329,7 @@ public class DocumentServiceImpl implements DocumentService {
         boolean hasSource = !documentRepository
                 .findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.SOURCE)
                 .isEmpty();
-        ProjectStatus status = hasPaper && hasSource ? ProjectStatus.ACTIVE : ProjectStatus.DRAFT;
+        ProjectStatus status = hasPaper && hasSource ? ProjectStatus.IN_PROGRESS : ProjectStatus.ASSIGNED;
         if (project.getStatus() != status) {
             project.setStatus(status);
             projectRepository.save(project);

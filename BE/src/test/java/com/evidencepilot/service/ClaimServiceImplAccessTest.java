@@ -132,7 +132,7 @@ class ClaimServiceImplAccessTest {
     void updateClaimRejectsCompletedProject() {
         User user = user();
         Claim claim = claim();
-        claim.getProject().setStatus(ProjectStatus.COMPLETED);
+        claim.getProject().setStatus(ProjectStatus.APPROVED);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
@@ -164,7 +164,7 @@ class ClaimServiceImplAccessTest {
     private Claim claim() {
         Project project = new Project();
         project.setId(UUID.randomUUID());
-        project.setStatus(ProjectStatus.ACTIVE);
+        project.setStatus(ProjectStatus.IN_PROGRESS);
         Claim claim = new Claim();
         claim.setId(UUID.randomUUID());
         claim.setProject(project);

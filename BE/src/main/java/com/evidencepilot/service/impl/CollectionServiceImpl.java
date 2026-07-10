@@ -121,7 +121,7 @@ public class CollectionServiceImpl implements CollectionService {
     }
 
     private void requireMutable(Project project) {
-        if (project.getStatus() == ProjectStatus.COMPLETED || project.getStatus() == ProjectStatus.ARCHIVED) {
+        if (project.getStatus() == ProjectStatus.APPROVED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
         }
     }

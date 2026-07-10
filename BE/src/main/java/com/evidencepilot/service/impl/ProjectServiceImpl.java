@@ -132,10 +132,10 @@ public class ProjectServiceImpl implements ProjectService {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(id);
         currentUserService.requireProjectManageAccess(currentUser, project);
-        if (project.getStatus() != ProjectStatus.ACTIVE) {
+        if (project.getStatus() != ProjectStatus.IN_PROGRESS) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only ACTIVE projects can be completed.");
         }
-        project.setStatus(ProjectStatus.COMPLETED);
+        project.setStatus(ProjectStatus.APPROVED);
         project.setUpdatedAt(LocalDateTime.now());
         return ProjectResponse.from(projectRepository.save(project));
     }
@@ -146,10 +146,10 @@ public class ProjectServiceImpl implements ProjectService {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(id);
         currentUserService.requireProjectManageAccess(currentUser, project);
-        if (project.getStatus() != ProjectStatus.COMPLETED) {
+        if (project.getStatus() != ProjectStatus.APPROVED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only COMPLETED projects can be archived.");
         }
-        project.setStatus(ProjectStatus.ARCHIVED);
+        project.setStatus(ProjectStatus.APPROVED);
         project.setUpdatedAt(LocalDateTime.now());
         return ProjectResponse.from(projectRepository.save(project));
     }
@@ -239,7 +239,7 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     private void requireMutable(Project project) {
-        if (project.getStatus() == ProjectStatus.COMPLETED || project.getStatus() == ProjectStatus.ARCHIVED) {
+        if (project.getStatus() == ProjectStatus.APPROVED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
         }
     }

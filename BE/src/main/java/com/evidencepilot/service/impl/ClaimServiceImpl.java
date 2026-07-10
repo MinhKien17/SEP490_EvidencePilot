@@ -280,7 +280,7 @@ public class ClaimServiceImpl implements ClaimService {
 
     private void requireProjectContentWriteAccess(User currentUser, Project project) {
         currentUserService.requireProjectWriteAccess(currentUser, project);
-        if (project.getStatus() == ProjectStatus.COMPLETED || project.getStatus() == ProjectStatus.ARCHIVED) {
+        if (project.getStatus() == ProjectStatus.APPROVED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
         }
     }

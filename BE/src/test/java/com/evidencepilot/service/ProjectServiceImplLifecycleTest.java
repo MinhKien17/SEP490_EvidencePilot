@@ -47,7 +47,7 @@ class ProjectServiceImplLifecycleTest {
     @Test
     void completeActiveProjectMarksCompleted() {
         User user = user();
-        Project project = project(ProjectStatus.ACTIVE);
+        Project project = project(ProjectStatus.IN_PROGRESS);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
@@ -56,13 +56,13 @@ class ProjectServiceImplLifecycleTest {
         var response = service().completeProject(project.getId());
 
         verify(currentUserService).requireProjectManageAccess(user, project);
-        assertThat(response.status()).isEqualTo(ProjectStatus.COMPLETED);
+        assertThat(response.status()).isEqualTo(ProjectStatus.APPROVED);
     }
 
     @Test
     void completeRejectsDraftProject() {
         User user = user();
-        Project project = project(ProjectStatus.DRAFT);
+        Project project = project(ProjectStatus.ASSIGNED);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
@@ -75,7 +75,7 @@ class ProjectServiceImplLifecycleTest {
     @Test
     void archiveCompletedProjectMarksArchived() {
         User user = user();
-        Project project = project(ProjectStatus.COMPLETED);
+        Project project = project(ProjectStatus.APPROVED);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
@@ -84,13 +84,13 @@ class ProjectServiceImplLifecycleTest {
         var response = service().archiveProject(project.getId());
 
         verify(currentUserService).requireProjectManageAccess(user, project);
-        assertThat(response.status()).isEqualTo(ProjectStatus.ARCHIVED);
+        assertThat(response.status()).isEqualTo(ProjectStatus.APPROVED);
     }
 
     @Test
     void archiveRejectsActiveProject() {
         User user = user();
-        Project project = project(ProjectStatus.ACTIVE);
+        Project project = project(ProjectStatus.IN_PROGRESS);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
@@ -103,7 +103,7 @@ class ProjectServiceImplLifecycleTest {
     @Test
     void updateProjectRejectsCompletedProject() {
         User user = user();
-        Project project = project(ProjectStatus.COMPLETED);
+        Project project = project(ProjectStatus.APPROVED);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));

@@ -145,7 +145,7 @@ class FeedbackServiceImplTest {
         User instructor = user(UserRole.INSTRUCTOR);
         User student = user(UserRole.STUDENT);
         Project project = project(instructor, student);
-        project.setStatus(ProjectStatus.IN_REVIEW);
+        project.setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
 
         when(currentUserService.requireCurrentUser()).thenReturn(student);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
@@ -160,7 +160,7 @@ class FeedbackServiceImplTest {
         User instructor = user(UserRole.INSTRUCTOR);
         User student = user(UserRole.STUDENT);
         Project project = project(instructor, student);
-        project.setStatus(ProjectStatus.COMPLETED);
+        project.setStatus(ProjectStatus.APPROVED);
 
         when(currentUserService.requireCurrentUser()).thenReturn(student);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
@@ -212,7 +212,7 @@ class FeedbackServiceImplTest {
         project.setId(UUID.randomUUID());
         project.setTitle("Capstone");
         project.setActive(true);
-        project.setStatus(ProjectStatus.ACTIVE);
+        project.setStatus(ProjectStatus.IN_PROGRESS);
 
         ProjectMember instructorMember = new ProjectMember();
         instructorMember.setProject(project);
