@@ -1,175 +1,147 @@
-Here is the comprehensive, strictly factual audit report.
+Here is the complete audit.
 
 ---
 
-# EVIDENCEPILOT BACKEND AUDIT REPORT
+## Audit: Evidence Pilot Integration Layer
 
-## PILLAR 1: SCHEMA & STATE MACHINE
+### 1. DOI Requirement — **FAIL**
 
-### 1.1 Database Init
+**`Document.java` — missing `doi` field.**  
+The entity at `src/main/java/com/evidencepilot/model/Document.java` (107 lines) has no `doi` field. The system stores papers and sources that may have DOIs assigned by a publisher, and the Python extraction worker likely needs to persist it after metadata extraction.
 
-**File:** `schema.sql:1`
+**Required fix — Add field to entity:**
 
-```sql
---DROP DATABASE IF EXISTS evidence_pilot;
-```
+Add after line 75 (`private boolean active = true;`):
 
-The destructive `DROP DATABASE IF EXISTS evidence_pilot` is **present but commented out**. The next line `CREATE DATABASE IF NOT EXISTS evidence_pilot` is active. This means schema migrations are cumulative — the schema only creates tables that don't exist yet and does **not** destroy existing data. Any column added to `schema.sql` after initial deployment would **not** be applied to running databases unless a Flyway migration or manual `ALTER TABLE` is executed.
-
-### 1.2 Bipartite Scoring Tables — Missing `instructor_rejected` Column
-
-**`ai_suggestions` table** (`schema.sql:121-130`) — Status check constraint:
-```sql
-status VARCHAR(50) NOT NULL CHECK (status IN ('PENDING', 'ACCEPTED', 'REJECTED', 'INVALIDATED'))
-```
-
-**`claim_evidence_mappings` table** (`schema.sql:132-143`) — Status check constraint:
-```sql
-status VARCHAR(50) NOT NULL CHECK (status IN ('ACTIVE', 'INACTIVE'))
-```
-
-**JPA entity `AiSuggestion.java`**: No `instructorRejected` field exists. The entity only has:
-```
-id, claim, documentChunk, status (SuggestionStatus enum), score, explanation, claimVersion, createdAt
-```
-
-**JPA entity `ClaimEvidenceMapping.java`**: No `instructorRejected` field exists. The entity only has:
-```
-id, claim, documentChunk, suggestion, createdBy, status (MappingStatus enum), createdAt
-```
-
-**Verdict:** Neither the `schema.sql` tables nor the JPA entities contain a boolean `instructor_rejected` column/field. This feature has **not been implemented**.
-
-### 1.3 State Machine — Still Using Old Student-Led Workflow
-
-**`ProjectStatus.java`:**
 ```java
-public enum ProjectStatus {
-    DRAFT, ACTIVE, IN_REVIEW, COMPLETED, ARCHIVED
-}
+    @Column(name = "doi")
+    private String doi;
 ```
 
-This is the **old student-led workflow**. The new Instructor-led flow would require values like `ASSIGNED`, `IN_PROGRESS`, `SUBMITTED_FOR_REVIEW`, `RETURNED`, `APPROVED`.
+**Required fix — Flyway migration `src/main/resources/db/migration/V2__add_document_doi.sql`:**
 
-The current transition logic (haphazardly distributed across service code):
+Add a new directory `src/main/resources/db/migration/` with this single file:
 
-| Transition | Trigger | Location |
-|---|---|---|
-| (new) → `DRAFT` | `createProject()` | `ProjectServiceImpl.java:92` |
-| `DRAFT`/`ACTIVE` → `IN_REVIEW` | `submitForReview()` | `FeedbackServiceImpl.java:80` |
-| `IN_REVIEW` → `ACTIVE` | `updateStatus()` → `transition()` | `FeedbackServiceImpl.java:131` |
+```sql
+ALTER TABLE documents
+    ADD COLUMN doi VARCHAR(255) NULL AFTER active;
+```
 
-There is **no formal state machine** (no Spring Statemachine, no enum-based transition matrix). Transitions are hardcoded inline. The `RETURNED` and `REVIEWED` values exist in the `FeedbackStatus` enum but are **only applied to the `feedback_requests` table**, not to the `projects.status` column — the `transition()` method always sets the project back to `ACTIVE` regardless of which `FeedbackStatus` is applied.
+This is a safe additive migration — it will not break existing rows because `doi` is nullable. With `flyway.baseline-on-migrate: true` and `baseline-version: 1` in `application.yml`, Flyway treats the existing schema as version 1 and applies V2 on first deploy.
 
 ---
 
-## PILLAR 2: SECURITY & RBAC CONTROLS
+### 2. Publishing Pipeline — **FAIL (two issues)**
 
-### 2.1 Write-Lock Implementation
+#### 2a. `uploadDocument` never transitions project status
 
-**`CurrentUserServiceImpl.requireProjectWriteAccess()`** (lines 100-113):
+**`DocumentServiceImpl.java:188-248`** — The `uploadDocument` method calls `refreshProjectStatus` **nowhere**.  
+**`DocumentServiceImpl.java:287-288`** — `refreshProjectStatus` is only called inside `deleteDocument`.
+
+During upload, once both a `PAPER` and a `SOURCE` exist for the project, the project should transition from `ASSIGNED` → `IN_PROGRESS`. Without this call the status remains stuck at `ASSIGNED` forever.
+
+**Required fix — Add `refreshProjectStatus` after the MinIO upload succeeds:**
+
+In `DocumentServiceImpl.java`, after line 245 (`document = documentPersistenceService.markDocumentAsUploaded(...);`), add:
+
 ```java
-public void requireProjectWriteAccess(User currentUser, Project project) {
-    if (isAdmin(currentUser))
-        return;
-    if (isInstructor(currentUser)) {
-        throw new ResponseStatusException(
-                HttpStatus.FORBIDDEN,
-                "Instructors cannot modify student projects");
+        if (project != null) {
+            refreshProjectStatus(project);
+        }
+```
+
+This ensures the project status is reevaluated after every document upload, and matches the existing behaviour on delete.
+
+#### 2b. RabbitMQ payload is too thin for the Python worker
+
+**`SourceExtractionServiceImpl.java:36`** — The message published is:
+
+```java
+rabbitTemplate.convertAndSend(RabbitMQConfig.EXTRACTION_QUEUE, documentId.toString());
+```
+
+The payload is a bare UUID string. A cloud Python worker cannot run the extraction without:
+- The **S3 object key** (to download the file from Cloudflare R2)
+- The **user ID** (for audit/logging)
+
+The document entity is loaded at line 30-31 but only its `id` is used.
+
+**Required fix — Create a rich DTO and publish JSON:**
+
+Create `src/main/java/com/evidencepilot/dto/ExtractionRequest.java`:
+
+```java
+package com.evidencepilot.dto;
+
+import java.util.UUID;
+
+public record ExtractionRequest(
+    UUID documentId,
+    String s3ObjectKey,
+    UUID userId
+) {}
+```
+
+Then update `SourceExtractionServiceImpl.triggerExtraction()` to use it:
+
+```java
+    @Override
+    @Transactional
+    public void triggerExtraction(UUID documentId) {
+        Document doc = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException(documentId, "Document"));
+
+        doc.setProcessingStatus(ProcessingStatus.PROCESSING);
+        documentRepository.save(doc);
+
+        ExtractionRequest payload = new ExtractionRequest(
+                doc.getId(),
+                doc.getFileUrl(),
+                doc.getUploadedBy().getId()
+        );
+
+        rabbitTemplate.convertAndSend(RabbitMQConfig.EXTRACTION_QUEUE, payload);
+        log.info("Published extraction request for document {} to extraction.queue", documentId);
     }
-    User student = project.getStudent();
-    if (student == null || !student.getId().equals(currentUser.getId())) {
-        throw new ResponseStatusException(
-                HttpStatus.FORBIDDEN,
-                "Write access denied to project");
-    }
-}
 ```
 
-### 2.2 Critical Gap: No Status-Based Write Block
+Because `Jackson2JsonMessageConverter` is already registered as a bean (`RabbitMQConfig.java:61-63`), the record will be serialised to JSON automatically. The Python worker will receive a structured JSON payload:
 
-The method checks **only** role (`ADMIN` → allow, `INSTRUCTOR` → always deny, `STUDENT` → if owner) and **ownership**. It does **not** examine the project's `status` field.
-
-**Consequence:** A `STUDENT` user can execute `POST/PUT/DELETE` against a project even when that project is in the `IN_REVIEW` state. There is no `if (project.getStatus() == IN_REVIEW) throw FORBIDDEN` logic anywhere in the service layer.
-
-Callers that rely on `requireProjectWriteAccess`:
-- `ProjectServiceImpl.updateProject()` — lines 108-119
-- `ProjectServiceImpl.deleteProject()` — lines 123-130
-- `ProjectServiceImpl.addMember()` — lines 146-168
-- `ProjectServiceImpl.removeMember()` — lines 170-184
-- `ClaimServiceImpl.createClaim()` — lines 136-155
-- `ClaimServiceImpl.updateClaim()` — lines 159-172
-- `ClaimServiceImpl.deleteClaim()` — lines 175-187
-- `ClaimServiceImpl.createSuggestion()` — lines 193-206
-- `ClaimServiceImpl.acceptSuggestion()` / `rejectSuggestion()` / `updateSuggestionStatus()`
-- `FeedbackServiceImpl.submitForReview()` — line 66
-
-**Specific lines governing the missing block:** `CurrentUserServiceImpl.java:100-113` — no status predicate exists in the method body.
+```json
+{"documentId":"...","s3ObjectKey":"sources/raw/...","userId":"..."}
+```
 
 ---
 
-## PILLAR 3: INGESTION GATEWAY & DISTRIBUTED TRANSACTIONS
+### 3. Cloud Readiness — **FAIL (two hardcoded `localhost` fallbacks)**
 
-### 3.1 OpenAlex Integration
+| Line | Property | Fallback | Risk |
+|------|----------|----------|------|
+| `application.yml:10` | `DB_HOST` | `localhost` | If `DB_HOST` is unset in Railway, the app connects to `localhost:3306` instead of the managed MySQL — silent routing to nowhere |
+| `application.yml:124` | `MINIO_URL` | `http://minio:9000` | If `MINIO_URL` is unset, the app tries the Docker-internal MinIO hostname, which does not exist on Railway — file uploads fail |
 
-**Result: ZERO references.** A case-insensitive search across all `.java`, `.yml`, `.yaml`, `.xml`, `.properties` files for `openalex`, `open_alex`, or `OpenAlex` returned no matches. There is no controller, service, HTTP client, or configuration for querying the OpenAlex API. The system ingests documents exclusively via multipart file upload (PDF/DOCX). There is no DOI-based paper fetch mechanism.
+**Required fixes:**
 
-### 3.2 Transaction Boundary — MinIO Upload Inside `@Transactional`
+- **Line 10**: Remove both fallbacks:
+  ```yaml
+    url: jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: ${DB_USERNAME}
+  ```
+- **Line 124**: Remove the fallback:
+  ```yaml
+    url: ${MINIO_URL}
+  ```
 
-**File:** `DocumentServiceImpl.java:166` (the `uploadDocument()` overload with `collectionId`):
-```java
-@Override
-@Transactional  // <-- SINGLE transaction wraps DB + MinIO + MQ
-public DocumentResponse uploadDocument(UUID projectId, UUID collectionId, MultipartFile file, DocumentType docType) {
-    // ...
-    documentRepository.save(document);          // DB write inside TX
-    minioClient.putObject(...);                 // MinIO HTTP call inside TX
-    sourceExtractionService.triggerExtraction(  // MQ publish inside TX
-            document.getId());
-    return DocumentResponse.from(document);
-}
-```
-
-The MinIO object storage call (`minioClient.putObject`) executes **inside** the `@Transactional` block. If the MinIO call fails (network timeout, S3 error, bucket full), the entire transaction rolls back, which is correct — the database state remains consistent. However, if the MinIO call **succeeds** but the subsequent MQ publish or the transaction commit fails, the file is orphaned in MinIO with no corresponding database record. The MinIO upload is **not** safely decoupled from the database transaction.
-
-For comparison, the correct pattern would be: commit the DB transaction first, then upload to MinIO in a separate non-transactional method, or implement a compensating action (garbage collection for orphaned MinIO objects).
-
-### 3.3 Race Condition — MQ Publish Before Transaction Commit
-
-**Execution sequence in the upload path:**
-
-```
-uploadDocument (@Transactional)
-  ├── 1. documentRepository.save(document)       // writes to DB (uncommitted)
-  ├── 2. minioClient.putObject(...)               // uploads to MinIO
-  ├── 3. sourceExtractionService.triggerExtraction(  // REQUIRED propagation → JOINs same TX
-  │       ├── a. documentRepository.findById(id)     // same persistence context → sees entity
-  │       ├── b. documentRepository.save(doc)        // sets status to PROCESSING
-  │       └── c. rabbitTemplate.convertAndSend(...)  // MESSAGE PUBLISHED (TX still uncommitted)
-  └── 4. OUTER TRANSACTION COMMITS
-
-DocumentExtractionListener (separate thread, new TX)
-  └── documentRepository.findById(id)              // UNCOMMITTED → may return empty or stale
-```
-
-The race condition exists because `RabbitTemplate.convertAndSend()` is invoked at step 3c while the outer transaction is still **uncommitted**. The listener on a different thread cannot see the uncommitted document data under `READ_COMMITTED` isolation. By the time the listener's DB read executes, the outer transaction may or may not have committed — there is **no guarantee**.
-
-**The `fileUrl` assignment vs publish sequence is safe:** The `fileUrl` is set on the entity (`document.setFileUrl(objectKey)`) before `triggerExtraction()` is called, and both run in the same transaction. So when the transaction commits, the `fileUrl` is persisted atomically with everything else. The race is between the MQ message delivery and the outer transaction commit — the listener may attempt to read the document before it's visible.
-
-### 3.4 Note on Transaction Manager Heterogeneity
-
-`DocumentServiceImpl` uses `jakarta.transaction.Transactional` (Java EE / Jakarta namespace). Other services (e.g., `FeedbackServiceImpl`, `ProjectServiceImpl`) use `org.springframework.transaction.annotation.Transactional`. While both ultimately drive the same Spring `PlatformTransactionManager`, this inconsistency should be normalized.
+These three values (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `MINIO_URL`) **must** be provided as Railway environment variables or the application will not start — which is the correct cloud posture (fail fast, not silently route to localhost).
 
 ---
 
-## SUMMARY OF DEFICIENCIES
+### Summary
 
-| # | Severity | Component | Issue |
-|---|----------|-----------|-------|
-| 1 | **HIGH** | `ProjectStatus` enum | Still uses old student-led states (`DRAFT, ACTIVE, IN_REVIEW, COMPLETED, ARCHIVED`). Instructor-led flow not implemented. |
-| 2 | **HIGH** | `CurrentUserServiceImpl.requireProjectWriteAccess()` | Lines 100-113 — No status-based write-lock. Students can mutate projects in `IN_REVIEW` state. |
-| 3 | **HIGH** | `schema.sql` / JPA entities | `ai_suggestions` and `claim_evidence_mappings` missing `instructor_rejected` boolean column in both DDL and entities. |
-| 4 | **MEDIUM** | `DocumentServiceImpl.uploadDocument()` | MinIO upload executes inside `@Transactional`. A failed commit after successful MinIO upload orphans the file. |
-| 5 | **MEDIUM** | `DocumentServiceImpl` → `triggerExtraction()` → `DocumentExtractionListener` | MQ message published before transaction commits. Listener may read stale/unavailable data. |
-| 6 | **LOW** | Transaction annotation mix | `DocumentServiceImpl` uses `jakarta.transaction.Transactional`; other services use `org.springframework.transaction.annotation.Transactional`. |
-| 7 | **INFO** | OpenAlex integration | **Not implemented** — no code exists for DOI/URL-based paper fetching. |
+| # | Severity | Location | Issue |
+|---|----------|----------|-------|
+| 1 | HIGH | `Document.java` | Missing `doi` field |
+| 2 | HIGH | `DocumentServiceImpl.java:188-248` | `uploadDocument` never calls `refreshProjectStatus` — project status stuck at `ASSIGNED` |
+| 3 | HIGH | `SourceExtractionServiceImpl.java:36` | RabbitMQ payload is bare UUID — Python worker cannot function |
+| 4 | MEDIUM | `application.yml:10` | `DB_HOST:localhost` fallback masks missing env var in cloud |
+| 5 | MEDIUM | `application.yml:124` | `MINIO_URL:http://minio:9000` fallback points to Docker-internal hostname |
