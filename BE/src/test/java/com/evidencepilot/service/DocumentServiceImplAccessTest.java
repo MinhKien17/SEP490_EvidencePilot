@@ -10,6 +10,7 @@ import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.DocumentTextRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.service.impl.DocumentPersistenceService;
 import com.evidencepilot.service.impl.DocumentServiceImpl;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
@@ -24,6 +25,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -49,7 +52,7 @@ class DocumentServiceImplAccessTest {
     private CurrentUserService currentUserService;
 
     @Mock
-    private SourceExtractionService sourceExtractionService;
+    private DocumentPersistenceService documentPersistenceService;
 
     @Mock
     private DocumentMapper documentMapper;
@@ -105,16 +108,20 @@ class DocumentServiceImplAccessTest {
     void uploadDocumentRequiresProjectAccess() throws Exception {
         User user = user();
         Project project = project();
+        Document persisted = document(project);
+        persisted.setId(UUID.randomUUID());
         MockMultipartFile file = new MockMultipartFile(
                 "file", "paper.pdf", "application/pdf", "content".getBytes());
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
-        when(documentRepository.save(any(Document.class))).thenAnswer(invocation -> {
-            Document document = invocation.getArgument(0);
-            document.setId(UUID.randomUUID());
-            return document;
-        });
+        when(documentPersistenceService.savePendingDocument(
+                eq(project), any(), eq(user), eq(DocumentType.PAPER),
+                eq("paper.pdf"), eq("application/pdf"), eq(7L)))
+                .thenReturn(persisted);
+        when(documentPersistenceService.markDocumentAsUploaded(
+                eq(persisted.getId()), anyString()))
+                .thenReturn(persisted);
         when(minioClient.putObject(any(PutObjectArgs.class))).thenReturn(null);
 
         service().uploadDocument(project.getId(), file, DocumentType.PAPER);
@@ -130,7 +137,7 @@ class DocumentServiceImplAccessTest {
                 projectRepository,
                 collectionRepository,
                 currentUserService,
-                sourceExtractionService,
+                documentPersistenceService,
                 documentMapper,
                 minioClient);
     }

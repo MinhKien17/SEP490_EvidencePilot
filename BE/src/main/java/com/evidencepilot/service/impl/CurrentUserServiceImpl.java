@@ -79,7 +79,7 @@ public class CurrentUserServiceImpl implements CurrentUserService {
         if (isAdmin(currentUser))
             return;
         if (isInstructor(currentUser)) {
-            if (project.getStatus() == ProjectStatus.IN_REVIEW && project.getId() != null
+            if (project.getStatus() == ProjectStatus.SUBMITTED_FOR_REVIEW && project.getId() != null
                     && feedbackRequestRepository.existsByProjectIdAndInstructorId(
                             project.getId(), currentUser.getId())) {
                 return;
@@ -110,6 +110,12 @@ public class CurrentUserServiceImpl implements CurrentUserService {
             throw new ResponseStatusException(
                     org.springframework.http.HttpStatus.FORBIDDEN,
                     "Write access denied to project");
+        }
+        if (project.getStatus() == ProjectStatus.SUBMITTED_FOR_REVIEW ||
+            project.getStatus() == ProjectStatus.APPROVED) {
+            throw new ResponseStatusException(
+                    org.springframework.http.HttpStatus.FORBIDDEN,
+                    "Write access denied: project is locked");
         }
     }
 

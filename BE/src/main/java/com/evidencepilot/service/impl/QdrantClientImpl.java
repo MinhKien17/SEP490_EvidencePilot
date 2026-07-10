@@ -37,7 +37,7 @@ public class QdrantClientImpl implements QdrantClient {
 
     private volatile boolean collectionEnsured = false;
 
-    public QdrantClientImpl(@Value("${qdrant.url:http://localhost:6333}") String qdrantUrl) {
+    public QdrantClientImpl(@Value("${qdrant.url}") String qdrantUrl) {
         this.baseUrl = trimTrailingSlash(qdrantUrl);
 
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();

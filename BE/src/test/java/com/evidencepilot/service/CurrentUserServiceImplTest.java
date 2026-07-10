@@ -37,7 +37,7 @@ class CurrentUserServiceImplTest {
     void requireProjectAccessAllowsAssignedInstructorDuringReview() {
         User instructor = user(UserRole.INSTRUCTOR);
         Project project = projectOwnedBy(user(UserRole.STUDENT));
-        project.setStatus(ProjectStatus.IN_REVIEW);
+        project.setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
 
         when(feedbackRequestRepository.existsByProjectIdAndInstructorId(
                 project.getId(), instructor.getId())).thenReturn(true);
@@ -74,7 +74,7 @@ class CurrentUserServiceImplTest {
     private Project projectOwnedBy(User owner) {
         Project project = new Project();
         project.setId(UUID.randomUUID());
-        project.setStatus(ProjectStatus.ACTIVE);
+        project.setStatus(ProjectStatus.ASSIGNED);
         project.setActive(true);
 
         ProjectMember member = new ProjectMember();

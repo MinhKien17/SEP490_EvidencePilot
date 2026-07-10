@@ -34,6 +34,9 @@ ai:
   model:
     base-url: http://localhost:9999
 
+qdrant:
+  url: http://localhost:6333
+
 logging:
   level:
     org.hibernate.SQL: WARN
