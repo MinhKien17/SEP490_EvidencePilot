@@ -7,11 +7,9 @@ import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.UserRepository;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -20,23 +18,19 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
-@Transactional
-@Disabled("Temporarily disabled pending post-AI pipeline refactor")
 class DocumentControllerTest {
 
     @Autowired
@@ -57,12 +51,6 @@ class DocumentControllerTest {
     @MockBean
     private MinioClient minioClient;
 
-    @Captor
-    private ArgumentCaptor<String> routingKeyCaptor;
-
-    @Captor
-    private ArgumentCaptor<String> messageCaptor;
-
     private String bearerToken;
 
     @BeforeEach
@@ -79,12 +67,18 @@ class DocumentControllerTest {
         bearerToken = "Bearer " + jwtUtils.generateToken(user);
     }
 
+    @AfterEach
+    void cleanUp() {
+        documentRepository.deleteAll();
+        userRepository.deleteAll();
+    }
+
     @Test
-    void uploadDocument_shouldReturn202AndPublishToRabbit() throws Exception {
+    void uploadDocument_shouldReturn202AndPublishExtractionJob() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file", "test-doc.pdf", "application/pdf", "fake-pdf-content".getBytes());
 
-        mockMvc.perform(multipart("/api/documents/upload")
+        mockMvc.perform(multipart("/api/documents")
                         .file(file)
                         .header("Authorization", bearerToken))
                 .andExpect(status().isAccepted())
@@ -102,15 +96,16 @@ class DocumentControllerTest {
         assertNotNull(saved.getId());
         assertEquals("test-doc.pdf", saved.getOriginalFilename());
 
-        verify(rabbitTemplate).convertAndSend(
-                routingKeyCaptor.capture(),
-                messageCaptor.capture()
-        );
+        verify(rabbitTemplate).convertAndSend("extraction.queue", saved.getId().toString());
+    }
 
-        assertEquals("extraction.queue", routingKeyCaptor.getValue(),
-                "Message should be published to extraction.queue");
+    @Test
+    void uploadDocument_withoutFile_shouldReturn400() throws Exception {
+        mockMvc.perform(multipart("/api/documents")
+                        .header("Authorization", bearerToken))
+                .andExpect(status().isBadRequest());
 
-        assertEquals(saved.getId().toString(), messageCaptor.getValue(),
-                "Message body should be the new document UUID as string");
+        assertEquals(0, documentRepository.count());
+        verifyNoInteractions(minioClient, rabbitTemplate);
     }
 }
