@@ -36,6 +36,7 @@ ai:
 
 qdrant:
   url: http://localhost:6333
+  api-key: 
 
 logging:
   level:

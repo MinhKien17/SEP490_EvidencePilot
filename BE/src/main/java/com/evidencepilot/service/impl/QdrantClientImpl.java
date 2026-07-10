@@ -37,18 +37,25 @@ public class QdrantClientImpl implements QdrantClient {
 
     private volatile boolean collectionEnsured = false;
 
-    public QdrantClientImpl(@Value("${qdrant.url}") String qdrantUrl) {
+    public QdrantClientImpl(
+            @Value("${qdrant.url}") String qdrantUrl,
+            @Value("${qdrant.api-key}") String qdrantApiKey) {
         this.baseUrl = trimTrailingSlash(qdrantUrl);
 
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofSeconds(5));
         factory.setReadTimeout(Duration.ofSeconds(10));
 
-        this.restClient = RestClient.builder()
+        var builder = RestClient.builder()
                 .requestFactory(factory)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
-                .build();
+                .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE);
+
+        if (qdrantApiKey != null && !qdrantApiKey.isBlank()) {
+            builder.defaultHeader("api-key", qdrantApiKey);
+        }
+
+        this.restClient = builder.build();
 
         log.info("QdrantClient initialized – base URL: {}", this.baseUrl);
     }

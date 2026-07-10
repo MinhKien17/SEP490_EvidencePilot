@@ -20,8 +20,14 @@ public class QdrantGatewayImpl implements QdrantGateway {
 
     private final RestClient restClient;
 
-    public QdrantGatewayImpl(@Value("${qdrant.url}") String qdrantUrl) {
-        this.restClient = RestClient.builder().baseUrl(qdrantUrl).build();
+    public QdrantGatewayImpl(
+            @Value("${qdrant.url}") String qdrantUrl,
+            @Value("${qdrant.api-key}") String qdrantApiKey) {
+        var builder = RestClient.builder().baseUrl(qdrantUrl);
+        if (qdrantApiKey != null && !qdrantApiKey.isBlank()) {
+            builder.defaultHeader("api-key", qdrantApiKey);
+        }
+        this.restClient = builder.build();
     }
 
     @Override

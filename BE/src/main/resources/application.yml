@@ -38,12 +38,10 @@ spring:
           json_format_mapper: jackson
 
   # ── Spring Boot SQL initializer ───────────────────────────────────────────
-  # Disabled here because MySQL Docker already runs schema.sql via
-  # /docker-entrypoint-initdb.d/.  Enable with mode=always only if you want
-  # Spring Boot to re-run schema.sql against a non-Docker datasource.
   sql:
     init:
-      mode: never
+      mode: always
+      schema-locations: classpath:schema.sql
 
   # ── File upload limits ────────────────────────────────────────────────────
   servlet:
@@ -54,9 +52,10 @@ spring:
 
   # ── RabbitMQ configuration ────────────────────────────────────────────────
   rabbitmq:
-    host: ${RABBITMQ_HOST:rabbitmq}
+    host: ${RABBITMQ_HOST}
     port: ${RABBITMQ_PORT:5672}
-    username: ${RABBITMQ_USERNAME:rabbitmqadmin}
+    virtual-host: ${RABBITMQ_VIRTUAL_HOST}
+    username: ${RABBITMQ_USERNAME}
     password: ${RABBITMQ_PASSWORD}
     listener:
       simple:
@@ -111,7 +110,8 @@ ai:
 
 # ── Qdrant vector database ────────────────────────────────────────────────
 qdrant:
-  url: ${QDRANT_URL:http://vector-db:6333}
+  url: ${QDRANT_URL}
+  api-key: ${QDRANT_API_KEY}
 
 springdoc:
   swagger-ui:

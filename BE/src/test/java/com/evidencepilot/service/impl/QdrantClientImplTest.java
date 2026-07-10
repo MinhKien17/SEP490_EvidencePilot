@@ -37,7 +37,8 @@ class QdrantClientImplTest {
         server.start();
         try {
             QdrantClientImpl client = new QdrantClientImpl(
-                    "http://localhost:" + server.getAddress().getPort());
+                    "http://localhost:" + server.getAddress().getPort(),
+                    "");
 
             List<QdrantSearchResult> results = client.findClosestChunks(
                     List.of(0.25f, -0.5f), "PROJECT", "project-1", 5);
