@@ -2,7 +2,9 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.request.CollectionRequest;
 import com.evidencepilot.dto.response.CollectionResponse;
+import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.service.CollectionService;
+import com.evidencepilot.service.DocumentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -17,8 +19,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.UUID;
@@ -30,6 +34,7 @@ import java.util.UUID;
 public class CollectionController {
 
     private final CollectionService collectionService;
+    private final DocumentService documentService;
 
     @Operation(summary = "Create a collection",
             description = "Creates a new evidence collection owned by the current instructor user. "
@@ -58,6 +63,13 @@ public class CollectionController {
         return collectionService.getCollectionById(id);
     }
 
+    @GetMapping("/{id}/sources")
+    public List<DocumentResponse> getCollectionSources(
+            @Parameter(description = "Collection UUID") @PathVariable UUID id,
+            @RequestParam(value = "sourceCategoryId", required = false) String sourceCategoryId) {
+        return documentService.getSourcesByCollection(id, parseOptionalUuid(sourceCategoryId));
+    }
+
     @Operation(summary = "Soft-delete a collection",
             description = "Sets the collection's active flag to false.")
     @ApiResponses({
@@ -70,5 +82,16 @@ public class CollectionController {
     public void deleteCollection(
             @Parameter(description = "Collection UUID") @PathVariable UUID id) {
         collectionService.deleteCollection(id);
+    }
+
+    private UUID parseOptionalUuid(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid sourceCategoryId");
+        }
     }
 }

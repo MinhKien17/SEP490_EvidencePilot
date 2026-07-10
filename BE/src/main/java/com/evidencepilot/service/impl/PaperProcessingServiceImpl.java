@@ -5,13 +5,14 @@ import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.ProjectMapper;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.PaperSection;
+import com.evidencepilot.model.User;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.service.AiModelClient;
+import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.PaperProcessingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -34,9 +35,11 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     private final PaperSectionRepository paperSectionRepository;
     private final DocumentRepository documentRepository;
     private final ProjectMapper projectMapper;
+    private final CurrentUserService currentUserService;
 
     @Override
     public List<PaperSectionResponse> getPaperSections(UUID documentId) {
+        requireDocumentAccess(documentId);
         return paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(documentId).stream()
                 .map(projectMapper::toPaperSectionResponse)
                 .toList();
@@ -61,8 +64,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
 
     @Override
     public Map<String, Object> review(UUID documentId, String targetStyle) {
-        Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new ResourceNotFoundException(documentId, "Document"));
+        Document document = requireDocumentAccess(documentId);
         String style = targetStyle != null ? targetStyle : "default";
         String text = document.getDocumentText() != null
                 ? document.getDocumentText().getExtractedText() : "";
@@ -123,5 +125,17 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         }
 
         return sections;
+    }
+
+    private Document requireDocumentAccess(UUID documentId) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException(documentId, "Document"));
+        if (document.getProject() != null) {
+            currentUserService.requireProjectAccess(currentUser, document.getProject());
+            return document;
+        }
+        currentUserService.requireUserIdOrAdmin(currentUser, document.getUploadedBy().getId());
+        return document;
     }
 }

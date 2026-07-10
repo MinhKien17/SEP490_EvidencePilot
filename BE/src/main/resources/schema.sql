@@ -58,12 +58,20 @@ CREATE TABLE collections (
     FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE source_categories (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE documents (
     id BINARY(16) NOT NULL PRIMARY KEY,
     project_id BINARY(16),
     collection_id BINARY(16),
+    source_category_id BINARY(16),
     uploaded_by BINARY(16) NOT NULL,
-    original_document_id BINARY(16),
     doc_type VARCHAR(50) NOT NULL CHECK (doc_type IN ('PAPER', 'SOURCE')),
     file_url VARCHAR(500) NOT NULL,
     original_filename VARCHAR(255),
@@ -79,11 +87,12 @@ CREATE TABLE documents (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_documents_project_id (project_id),
     INDEX idx_documents_collection_id (collection_id),
+    INDEX idx_documents_source_category_id (source_category_id),
     INDEX idx_documents_file_hash_sha256 (file_hash_sha256),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE SET NULL,
-    FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (original_document_id) REFERENCES documents(id) ON DELETE SET NULL
+    FOREIGN KEY (source_category_id) REFERENCES source_categories(id) ON DELETE SET NULL,
+    FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- ==========================================
@@ -234,11 +243,14 @@ CREATE TABLE feedback_requests (
 
 CREATE TABLE instructor_feedbacks (
     id BINARY(16) NOT NULL PRIMARY KEY,
-    request_id BINARY(16) NOT NULL UNIQUE,
+    request_id BINARY(16) NOT NULL,
+    section_id BINARY(16) NOT NULL,
     instructor_id BINARY(16) NOT NULL,
+    line_reference VARCHAR(100),
     content TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (request_id) REFERENCES feedback_requests(id) ON DELETE CASCADE,
+    FOREIGN KEY (section_id) REFERENCES paper_sections(id) ON DELETE CASCADE,
     FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE CASCADE
 );
 

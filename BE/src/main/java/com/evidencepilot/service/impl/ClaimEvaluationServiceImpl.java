@@ -20,7 +20,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ClaimEvaluationServiceImpl implements ClaimEvaluationService {
 
-    private static final int TOP_K = 20;
+    private static final int TOP_K = 10;
     private static final int MAX_PROMPT_LENGTH = 12000;
 
     private final QdrantGateway qdrantGateway;

@@ -11,11 +11,13 @@ import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
+import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.DocumentTextRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.repository.SourceCategoryRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.dto.request.PagingRequest;
@@ -29,8 +31,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -52,6 +56,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final DocumentTextRepository documentTextRepository;
     private final ProjectRepository projectRepository;
     private final CollectionRepository collectionRepository;
+    private final SourceCategoryRepository sourceCategoryRepository;
     private final CurrentUserService currentUserService;
     private final DocumentPersistenceService documentPersistenceService;
     private final DocumentMapper documentMapper;
@@ -162,6 +167,17 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     public DocumentResponse uploadDocument(UUID projectId, UUID collectionId, MultipartFile file, DocumentType docType) {
+        return uploadDocument(projectId, collectionId, null, file, docType);
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse uploadDocument(
+            UUID projectId,
+            UUID collectionId,
+            UUID sourceCategoryId,
+            MultipartFile file,
+            DocumentType docType) {
         var currentUser = currentUserService.requireCurrentUser();
 
         Project project = null;
@@ -169,6 +185,7 @@ public class DocumentServiceImpl implements DocumentService {
             project = projectRepository.findById(projectId)
                     .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
             currentUserService.requireProjectAccess(currentUser, project);
+            requireMutable(project);
         }
 
         com.evidencepilot.model.Collection collection = null;
@@ -176,6 +193,16 @@ public class DocumentServiceImpl implements DocumentService {
             collection = collectionRepository.findById(collectionId)
                     .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
             currentUserService.requireCollectionAccess(currentUser, collection);
+            if (collection.getProject() != null) {
+                requireMutable(collection.getProject());
+            }
+        }
+
+        var sourceCategory = sourceCategoryId == null ? null
+                : sourceCategoryRepository.findByIdAndActiveTrue(sourceCategoryId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Source category not found"));
+        if (sourceCategory != null && docType != DocumentType.SOURCE) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source category applies only to sources");
         }
 
         String originalName = file.getOriginalFilename();
@@ -233,8 +260,18 @@ public class DocumentServiceImpl implements DocumentService {
         var currentUser = currentUserService.requireCurrentUser();
         Document doc = findDocument(id);
         requireDocumentAccess(currentUser, doc);
+        Project project = doc.getProject();
+        if (project == null && doc.getCollection() != null) {
+            project = doc.getCollection().getProject();
+        }
+        if (project != null) {
+            requireMutable(project);
+        }
         doc.setActive(false);
         documentRepository.save(doc);
+        if (doc.getProject() != null) {
+            refreshProjectStatus(doc.getProject());
+        }
     }
 
     private Document findDocument(UUID id) {
@@ -259,6 +296,29 @@ public class DocumentServiceImpl implements DocumentService {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
         currentUserService.requireProjectAccess(currentUser, project);
+    }
+
+    private void requireMutable(Project project) {
+        if (project.getStatus() == ProjectStatus.COMPLETED || project.getStatus() == ProjectStatus.ARCHIVED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
+        }
+    }
+
+    private void refreshProjectStatus(Project project) {
+        if (project.getStatus() != ProjectStatus.DRAFT && project.getStatus() != ProjectStatus.ACTIVE) {
+            return;
+        }
+        boolean hasPaper = !documentRepository
+                .findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.PAPER)
+                .isEmpty();
+        boolean hasSource = !documentRepository
+                .findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.SOURCE)
+                .isEmpty();
+        ProjectStatus status = hasPaper && hasSource ? ProjectStatus.ACTIVE : ProjectStatus.DRAFT;
+        if (project.getStatus() != status) {
+            project.setStatus(status);
+            projectRepository.save(project);
+        }
     }
 
     private Specification<Document> documentSpec(

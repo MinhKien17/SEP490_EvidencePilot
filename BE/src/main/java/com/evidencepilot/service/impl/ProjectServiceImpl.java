@@ -12,6 +12,7 @@ import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.ProjectMemberRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
@@ -22,8 +23,10 @@ import com.evidencepilot.dto.request.PagingRequest;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -84,6 +87,7 @@ public class ProjectServiceImpl implements ProjectService {
     @Transactional
     public ProjectResponse createProject(ProjectCreateRequest request) {
         User currentUser = currentUserService.requireCurrentUser();
+        currentUserService.requireRole(currentUser, UserRole.INSTRUCTOR);
 
         Project project = new Project();
         project.setTitle(request.title());
@@ -97,7 +101,9 @@ public class ProjectServiceImpl implements ProjectService {
         ProjectMember owner = new ProjectMember();
         owner.setProject(saved);
         owner.setUser(currentUser);
-        owner.setRole(ProjectRole.OWNER);
+        owner.setRole(currentUser.getRole() == UserRole.INSTRUCTOR
+                ? ProjectRole.INSTRUCTOR
+                : ProjectRole.OWNER);
         owner.setJoinedAt(LocalDateTime.now());
         projectMemberRepository.save(owner);
 
@@ -109,7 +115,8 @@ public class ProjectServiceImpl implements ProjectService {
     public ProjectResponse updateProject(UUID id, ProjectUpdateRequest request) {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(id);
-        currentUserService.requireProjectWriteAccess(currentUser, project);
+        currentUserService.requireProjectManageAccess(currentUser, project);
+        requireMutable(project);
 
         project.setTitle(request.title());
         project.setDescription(request.description());
@@ -121,17 +128,47 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional
+    public ProjectResponse completeProject(UUID id) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = findActiveProject(id);
+        currentUserService.requireProjectManageAccess(currentUser, project);
+        if (project.getStatus() != ProjectStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only ACTIVE projects can be completed.");
+        }
+        project.setStatus(ProjectStatus.COMPLETED);
+        project.setUpdatedAt(LocalDateTime.now());
+        return ProjectResponse.from(projectRepository.save(project));
+    }
+
+    @Override
+    @Transactional
+    public ProjectResponse archiveProject(UUID id) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = findActiveProject(id);
+        currentUserService.requireProjectManageAccess(currentUser, project);
+        if (project.getStatus() != ProjectStatus.COMPLETED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only COMPLETED projects can be archived.");
+        }
+        project.setStatus(ProjectStatus.ARCHIVED);
+        project.setUpdatedAt(LocalDateTime.now());
+        return ProjectResponse.from(projectRepository.save(project));
+    }
+
+    @Override
+    @Transactional
     public void deleteProject(UUID id) {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(id);
-        currentUserService.requireProjectWriteAccess(currentUser, project);
+        currentUserService.requireProjectManageAccess(currentUser, project);
         project.setActive(false);
         projectRepository.save(project);
     }
 
     @Override
     public List<ProjectMember> getProjectMembers(UUID projectId) {
-        findActiveProject(projectId);
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = findActiveProject(projectId);
+        currentUserService.requireProjectAccess(currentUser, project);
         return projectMemberRepository.findByProjectId(projectId);
     }
 
@@ -147,15 +184,25 @@ public class ProjectServiceImpl implements ProjectService {
     public void addMember(UUID projectId, UUID userId, ProjectRole role) {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(projectId);
-        currentUserService.requireProjectWriteAccess(currentUser, project);
+        currentUserService.requireProjectManageAccess(currentUser, project);
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(userId, "User"));
+        if (user.getRole() != UserRole.STUDENT) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only students can be added to projects.");
+        }
+        if (!projectMemberRepository.findByProjectIdAndUserId(projectId, userId).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "User is already a project member.");
+        }
+        ProjectRole memberRole = role != null ? role : ProjectRole.EDITOR;
+        if (memberRole != ProjectRole.EDITOR) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Students must be EDITOR.");
+        }
 
         ProjectMember member = new ProjectMember();
         member.setProject(project);
         member.setUser(user);
-        member.setRole(role);
+        member.setRole(memberRole);
         member.setJoinedAt(LocalDateTime.now());
         projectMemberRepository.save(member);
         systemNotificationService.createNotification(
@@ -171,7 +218,7 @@ public class ProjectServiceImpl implements ProjectService {
     public void removeMember(UUID projectId, UUID userId) {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(projectId);
-        currentUserService.requireProjectWriteAccess(currentUser, project);
+        currentUserService.requireProjectManageAccess(currentUser, project);
         List<ProjectMember> members = projectMemberRepository.findByProjectIdAndUserId(projectId, userId);
         members.forEach(member -> systemNotificationService.createNotification(
                 member.getUser(),
@@ -189,6 +236,12 @@ public class ProjectServiceImpl implements ProjectService {
             throw new ResourceNotFoundException(id, "Project");
         }
         return project;
+    }
+
+    private void requireMutable(Project project) {
+        if (project.getStatus() == ProjectStatus.COMPLETED || project.getStatus() == ProjectStatus.ARCHIVED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
+        }
     }
 
     private Specification<Project> projectSpec(

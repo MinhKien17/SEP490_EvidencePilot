@@ -32,12 +32,12 @@ public class Document {
     private Collection collection;
 
     @ManyToOne
-    @JoinColumn(name = "uploaded_by", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
-    private User uploadedBy;
+    @JoinColumn(name = "source_category_id", columnDefinition = "BINARY(16)", referencedColumnName = "id")
+    private SourceCategory sourceCategory;
 
     @ManyToOne
-    @JoinColumn(name = "original_document_id", columnDefinition = "BINARY(16)", referencedColumnName = "id")
-    private Document originalDocument;
+    @JoinColumn(name = "uploaded_by", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
+    private User uploadedBy;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "doc_type")

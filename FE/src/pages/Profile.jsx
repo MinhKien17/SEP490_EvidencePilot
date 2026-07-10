@@ -126,7 +126,7 @@
 //                 {user?.firstName || ""} {user?.lastName || (currentRole === 'ADMIN' ? 'Admin Node' : 'Member')}
 //               </h2>
 //               <p className="text-xs text-gray-400 font-medium truncate px-2">
-//                 {currentRole === 'ADMIN' ? '👑 Root SysAdmin Node' : currentRole === 'INSTRUCTOR' ? '👨‍🏫 Faculty Member' : '🎓 Student Sandbox'}
+//                 {currentRole === 'ADMIN' ? '👑 Administrator' : currentRole === 'INSTRUCTOR' ? '👨‍🏫 Faculty Member' : '🎓 Student Sandbox'}
 //               </p>
 //             </div>
 
@@ -226,9 +226,12 @@
 // }
 
 import { useState, useEffect } from 'react';
-import { initialMockData } from '../mockData.js'; // Đọc trực tiếp từ file mock data chung
+import { useNavigate } from 'react-router-dom';
+import { initialMockData } from '../mockData.js'; 
 
 export default function Profile() {
+  const navigate = useNavigate();
+
   // --- 1. STATES MANAGEMENT ---
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -236,9 +239,9 @@ export default function Profile() {
   
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState(""); 
   const [message, setMessage] = useState({ type: "", text: "" });
 
-  // Tự động quét URL để xác định phân hệ đang truy cập
   const pathname = window.location.pathname;
   const fallbackRole = pathname.includes('/admin') ? 'ADMIN' : 'INSTRUCTOR';
 
@@ -246,7 +249,6 @@ export default function Profile() {
   const fetchUserProfile = () => {
     setLoading(true);
     try {
-      // Nếu là admin route -> lấy adminProfile, nếu không -> lấy userProfile (Instructor)
       const data = fallbackRole === 'ADMIN' 
         ? initialMockData.adminProfile 
         : initialMockData.userProfile;
@@ -255,6 +257,7 @@ export default function Profile() {
         setUser(data);
         setFirstName(data.firstName || "");
         setLastName(data.lastName || "");
+        setEmail(data.email || ""); 
       }
     } catch (error) {
       console.error("Lỗi truy xuất dữ liệu profile:", error);
@@ -266,8 +269,8 @@ export default function Profile() {
   // --- 3. CẬP NHẬT NGƯỢC LẠI VÀO MOCK DATA CHUNG ---
   const handleUpdateProfile = (e) => {
     e.preventDefault();
-    if (!firstName.trim() || !lastName.trim()) {
-      setMessage({ type: "error", text: "First name and last name fields cannot be blank." });
+    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
+      setMessage({ type: "error", text: "First name, last name, and email fields cannot be blank." });
       return;
     }
 
@@ -278,10 +281,10 @@ export default function Profile() {
       const updatedUser = {
         ...user,
         firstName: firstName.trim(),
-        lastName: lastName.trim()
+        lastName: lastName.trim(),
+        email: email.trim() 
       };
 
-      // Lưu đè lại vào đúng object đích trong file mockData.js
       if (fallbackRole === 'ADMIN') {
         initialMockData.adminProfile = updatedUser;
       } else {
@@ -289,7 +292,7 @@ export default function Profile() {
       }
 
       setUser(updatedUser);
-      setMessage({ type: "success", text: "Profile parameters synchronized successfully inside mockData.js." });
+      setMessage({ type: "success", text: "Profile updated successfully" });
       setSubmitting(false);
     }, 400);
   };
@@ -309,8 +312,8 @@ export default function Profile() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-[#0f172a] p-8 font-sans">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-[#f8fafc] text-[#0f172a] p-8 font-sans flex flex-col justify-between">
+      <div className="max-w-4xl w-full mx-auto flex-1">
         
         {/* Dynamic Header */}
         <div className="mb-8 border-b border-gray-200 pb-6">
@@ -347,7 +350,7 @@ export default function Profile() {
                 {user?.firstName} {user?.lastName}
               </h2>
               <p className="text-xs text-gray-400 font-medium truncate px-2">
-                {fallbackRole === 'ADMIN' ? '👑 Root SysAdmin Node' : '👨‍🏫 Faculty Member'}
+                {fallbackRole === 'ADMIN' ? '👑 Administrator' : '👨‍🏫 Faculty Member'}
               </p>
             </div>
 
@@ -378,38 +381,42 @@ export default function Profile() {
                     <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">First Name</label>
                     <input 
                       type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition"
                     />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">Last Name</label>
                     <input 
                       type="text" value={lastName} onChange={(e) => setLastName(e.target.value)}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]"
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition"
                     />
                   </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">Email</label>
+                  <input 
+                    type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition"
+                  />
                 </div>
 
                 <div className="flex justify-end pt-4 border-t border-gray-100">
                   <button
                     type="submit" disabled={submitting}
-                    className={`px-6 py-3 text-white font-black rounded-xl transition shadow-sm disabled:opacity-50 ${
+                    className={`px-6 py-2.5 text-white font-black rounded-xl transition shadow-sm disabled:opacity-50 ${
                       fallbackRole === 'ADMIN' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-purple-600 hover:bg-purple-700'
                     }`}
                   >
-                    {submitting ? "Synchronizing..." : "Commit Modification"}
+                    {submitting ? "Synchronizing..." : "Update"}
                   </button>
                 </div>
               </form>
             </div>
 
-            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-8 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                <div className="bg-gray-50/70 border border-gray-100 p-3 rounded-xl">
-                  <span className="block text-gray-400 font-black uppercase text-[9px] tracking-wide">Primary Email Endpoint</span>
-                  <span className="font-medium text-gray-600 font-mono text-[11px] block mt-1">{user?.email}</span>
-                </div>
-                <div className="bg-gray-50/70 border border-gray-100 p-3 rounded-xl">
+            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-5">
+              <div className="text-xs">
+                <div className="bg-gray-50/70 border border-gray-100 p-3 rounded-xl inline-block min-w-[200px]">
                   <span className="block text-gray-400 font-black uppercase text-[9px] tracking-wide">Assigned Scope Role</span>
                   <span className="font-mono text-gray-600 block mt-1 text-[11px] font-bold">{fallbackRole}</span>
                 </div>
@@ -419,6 +426,18 @@ export default function Profile() {
 
         </div>
       </div>
+
+      {/* 🌟 NÚT BACK NẰM RIÊNG BIỆT HẲN RA NGOÀI, DƯỚI CÙNG GÓC TRÁI MÀN HÌNH */}
+      <div className="max-w-4xl w-full mx-auto pt-6 text-left">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="px-6 py-2.5 bg-white border border-gray-200 text-gray-600 font-bold text-xs rounded-xl hover:bg-gray-100 transition shadow-sm"
+        >
+          ←Back
+        </button>
+      </div>
+
     </div>
   );
 }

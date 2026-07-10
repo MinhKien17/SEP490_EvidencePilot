@@ -1,4 +1,3 @@
-[API-Flows-And-Routes.md](https://github.com/user-attachments/files/29200525/API-Flows-And-Routes.md)
 # EvidencePilot BE API Flows and Routes
 
 This document maps the current Spring Boot backend API surface to the feature flows implemented in code.
@@ -7,11 +6,11 @@ Scope and assumptions:
 
 - Base URL is whatever hosts this service, usually `http://localhost:8080`.
 - All application API routes are under `/api` except Swagger/OpenAPI routes.
-- Public routes are `POST /api/auth/register`, `POST /api/auth/login`, `/v3/api-docs/**`, and `/swagger-ui/**`.
+- Public routes are `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/verify-email`, `GET /api/health`, `/v3/api-docs/**`, `/swagger-ui/**`, and `/ws/**`.
 - All other routes require `Authorization: Bearer <jwt>`.
 - Role and ownership checks are split between `SecurityConfig`, `@PreAuthorize`, and `CurrentUserService`.
 - MySQL is the relational source of truth. Qdrant is the vector search index for extracted source chunks.
-- External AI calls go through `AiModelClient` to the configured AI API base URLs.
+- External AI calls go through `AiModelClient` to the single configured `AI_MODEL_BASE_URL`.
 
 ## High-Level Backend Flow
 
@@ -49,10 +48,13 @@ Global web security:
 | `OPTIONS /**` | Public |
 | `/api/auth/login` | Public |
 | `/api/auth/register` | Public |
+| `/api/auth/verify-email` | Public |
+| `/api/health` | Public |
 | `/error` | Public |
 | `/v3/api-docs/**`, `/swagger-ui/**`, `/swagger-ui.html` | Public |
+| `/ws`, `/ws/**` | Public |
 | `/api/auth/update-password` | Authenticated |
-| `/api/users/me` | Authenticated |
+| `/api/users/profile` | Authenticated |
 | `/api/users/**` | `ADMIN` |
 | Everything else | Authenticated |
 
@@ -67,11 +69,11 @@ Ownership rules used by `CurrentUserService`:
 
 | Resource | Access rule |
 | --- | --- |
-| User profile | Current authenticated user can access `/api/users/me`; admin can manage `/api/users/**`. |
+| User profile | Current authenticated user can access `/api/users/profile`; admin can manage `/api/users/**`. |
 | Project | Admin can access any. Student can access owned projects. Instructor can read projects in `IN_REVIEW` when assigned by a feedback request. |
 | Project writes | Admin can write. Student owner can write unless the project is `IN_REVIEW`. Instructor cannot write student project content. |
-| Dataset | Admin can access any. Instructor can access owned datasets. |
-| Source | Access follows project, dataset, or uploader ownership. |
+| Collection | Access follows collection ownership rules. |
+| Source/document | Access follows project, collection, or uploader ownership. |
 | Claim | Access follows the claim's project. |
 | Paper | Access follows the paper's project. |
 | Feedback request | Admin can access any. Instructor can act on assigned requests. Student can see own requests in list flow. |
@@ -82,95 +84,110 @@ Ownership rules used by `CurrentUserService`:
 
 | Method | Route | Body / params | Main result |
 | --- | --- | --- | --- |
-| `POST` | `/api/auth/register` | JSON: `email`, `password`, `role` | Creates user with BCrypt password hash. |
+| `POST` | `/api/auth/register` | JSON registration payload | Creates a student account and sends an email verification link. |
+| `GET` | `/api/auth/verify-email` | Query `token` | Activates a newly registered account. |
 | `POST` | `/api/auth/login` | JSON: `email`, `password` | Returns JWT, email, and role. |
-| `POST` | `/api/auth/update-password` | JSON: `oldPassword`, `newPassword` | Verifies old password and stores new BCrypt hash. |
 
 ### Users
 
 | Method | Route | Body / params | Main result |
 | --- | --- | --- | --- |
-| `GET` | `/api/users/me` | Bearer token | Returns current user's profile. |
-| `PUT` | `/api/users/me` | JSON: `firstName`, `lastName`, `age` | Updates current user's non-sensitive profile fields. |
-| `GET` | `/api/users` | Admin token | Lists all users. |
 | `GET` | `/api/users/{id}` | Admin token | Returns one user. |
-| `PUT` | `/api/users/{id}` | Admin token, `User` JSON | Replaces user fields; hashes password if changed. |
-| `DELETE` | `/api/users/{id}` | Admin token | Deletes user. |
+| `GET` | `/api/users/profile` | Bearer token | Returns current user's profile. |
+| `PUT` | `/api/users/profile` | JSON profile fields | Updates current user's first/last name fields. |
 
 ### Projects
 
 | Method | Route | Body / params | Main result |
 | --- | --- | --- | --- |
-| `GET` | `/api/projects` | Student token | Lists active projects owned by the student. |
-| `GET` | `/api/projects/{id}` | Student token | Returns one active owned project. |
-| `POST` | `/api/projects` | JSON: `title`, `description` | Creates project for authenticated student. |
-| `PUT` | `/api/projects/{id}` | JSON: `title`, `description` | Updates owned active project. |
-| `DELETE` | `/api/projects/{id}` | Student token | Soft-deletes project and sets status `DELETED`. |
-| `GET` | `/api/projects/{projectId}/sources` | Bearer token | Lists active sources for a project after project access checks. |
-| `GET` | `/api/projects/{projectId}/sources/{sourceId}` | Bearer token | Returns one active source inside a project. |
-| `GET` | `/api/projects/{projectId}/traceability-export` | Bearer token | Builds export payload with claims, sources, matches, feedback, and graph evidence. |
+| `GET` | `/api/projects` | Query `page`, `size`, `sort`, `q`, `status`, `active` | Lists projects accessible to the current user. |
+| `GET` | `/api/projects/{id}` | Bearer token | Returns one accessible project. |
+| `POST` | `/api/projects` | JSON project payload | Creates a project and assigns the current user as owner. |
+| `PUT` | `/api/projects/{id}` | JSON project payload | Updates project metadata after write access checks. |
+| `DELETE` | `/api/projects/{id}` | Bearer token | Soft-deletes a project. |
+| `GET` | `/api/projects/{id}/members` | Bearer token | Lists project members. |
+| `POST` | `/api/projects/{id}/members` | Query `userId`, `role` | Adds a project member. |
+| `DELETE` | `/api/projects/{id}/members/{userId}` | Bearer token | Removes a project member. |
+| `GET` | `/api/projects/{projectId}/documents` | Query paging/filter params | Lists project documents. |
+| `GET` | `/api/projects/{projectId}/sources` | Query paging/filter params | Lists project source documents. |
+| `GET` | `/api/projects/{projectId}/claims` | Query `page`, `size`, `sort`, `q`, `active` | Lists project claims. |
+| `GET` | `/api/projects/{projectId}/collections` | Query `page`, `size`, `sort`, `q`, `active` | Lists project collections. |
+| `GET` | `/api/projects/{projectId}/papers` | Bearer token | Lists active paper documents in a project. |
+| `GET` | `/api/projects/{projectId}/traceability` | Bearer token | Builds traceability payload with claims, sources, matches, feedback, and graph evidence. |
 
-### Datasets
-
-| Method | Route | Body / params | Main result |
-| --- | --- | --- | --- |
-| `GET` | `/api/datasets` | Bearer token | Admin gets all active datasets; instructor gets owned datasets; student gets empty list. |
-| `GET` | `/api/datasets/{id}` | Bearer token | Returns one active dataset after access check. |
-| `GET` | `/api/datasets/by-instructor/{instructorId}` | Bearer token | Lists active datasets for an instructor when caller is that instructor or admin. |
-| `POST` | `/api/datasets` | `Dataset` JSON | Creates dataset for current instructor; admin may assign owner in payload. |
-| `PUT` | `/api/datasets/{id}` | `Dataset` JSON | Updates active dataset; non-admin cannot transfer ownership. |
-| `DELETE` | `/api/datasets/{id}` | Bearer token | Soft-deletes dataset. |
-| `POST` | `/api/datasets/{id}/sources` | Multipart `file` | Stores source, extracts text, chunks, embeds, and indexes under `DATASET` scope. |
-| `GET` | `/api/datasets/{id}/sources` | Bearer token | Lists active sources in dataset. |
-| `GET` | `/api/datasets/{id}/chunks` | Bearer token | Lists extracted chunks for all dataset sources. |
-| `GET` | `/api/datasets/{id}/similar?query=...&topK=5` | Query text | Embeds query, searches Qdrant inside dataset scope, returns matching chunks. |
-| `GET` | `/api/datasets/{id}/graph` | Bearer token | Returns graph nodes for sources/chunks and `contains` edges. |
-
-### Sources
+### Documents and Sources
 
 | Method | Route | Body / params | Main result |
 | --- | --- | --- | --- |
-| `GET` | `/api/sources/{id}` | Bearer token | Returns active source metadata after source access check. |
-| `GET` | `/api/sources/by-dataset/{datasetId}` | Bearer token | Lists active sources for a dataset. |
+| `GET` | `/api/documents/{id}` | Bearer token | Returns document metadata after access checks. |
+| `POST` | `/api/documents` | Multipart `file`, optional `projectId` | Stores a source document and queues extraction. |
+| `GET` | `/api/documents/{id}/chunks` | Bearer token | Lists extracted chunks for a document. |
+| `GET` | `/api/documents/{id}/text` | Bearer token | Returns extracted document text. |
+| `DELETE` | `/api/documents/{id}` | Bearer token | Soft-deletes a document. |
+| `GET` | `/api/sources/{id}` | Bearer token | Returns active source metadata. |
 | `GET` | `/api/sources/{id}/chunks` | Bearer token | Lists extracted chunks for a source. |
+| `GET` | `/api/sources/{id}/text` | Bearer token | Returns extracted source text. |
+| `POST` | `/api/sources` | Multipart `file`, optional `projectId`, optional `collectionId` | Stores a source and queues extraction. |
 | `DELETE` | `/api/sources/{id}` | Bearer token | Soft-deletes source after write/access check. |
-| `POST` | `/api/sources/upload` | Multipart `file`, `uploadedBy`, optional `projectId`, optional `datasetId` | Stores source, persists metadata, extracts/chunks/embeds/indexes content. |
+
+### Collections
+
+| Method | Route | Body / params | Main result |
+| --- | --- | --- | --- |
+| `POST` | `/api/collections` | JSON collection payload | Creates an instructor-owned evidence collection. |
+| `GET` | `/api/collections/{id}` | Bearer token | Returns one collection. |
+| `DELETE` | `/api/collections/{id}` | Bearer token | Soft-deletes a collection. |
 
 ### Papers
 
 | Method | Route | Body / params | Main result |
 | --- | --- | --- | --- |
 | `GET` | `/api/papers` | Bearer token | Admin gets all active papers; non-admin gets papers from own projects. |
-| `GET` | `/api/papers/{id}` | Bearer token | Returns one active paper after project write access check. |
-| `GET` | `/api/papers/by-project/{projectId}` | Bearer token | Lists active papers in one project. |
+| `GET` | `/api/papers/{id}` | Bearer token | Returns one active paper after project access check. |
 | `GET` | `/api/papers/{id}/sections` | Bearer token | Lists detected paper sections. |
-| `POST` | `/api/papers/{id}/review?targetStyle=...` | Optional target style | Runs local structural paper review. |
+| `POST` | `/api/papers/{id}/reviews?targetStyle=...` | Optional target style | Runs AI paper review. |
 | `DELETE` | `/api/papers/{id}` | Bearer token | Soft-deletes paper. |
-| `POST` | `/api/papers/upload` | Multipart `file`, `projectId` | Extracts paper text, stores file, persists paper, detects sections. |
+| `POST` | `/api/papers` | Multipart `file`, `projectId` | Stores paper, queues extraction, and detects sections. |
 
 ### Claims
 
 | Method | Route | Body / params | Main result |
 | --- | --- | --- | --- |
-| `GET` | `/api/claims` | Bearer token | Admin gets all active claims; non-admin gets claims from own projects. |
-| `GET` | `/api/claims/{id}` | Bearer token | Returns one active claim after project access check. |
-| `GET` | `/api/claims/by-project/{projectId}` | Bearer token | Lists active claims in one project. |
-| `POST` | `/api/claims` | `Claim` JSON with `project.id` and `content` | Creates claim under an accessible project. |
-| `PUT` | `/api/claims/{id}` | `Claim` JSON | Updates claim while preserving original project. |
+| `GET` | `/api/claims` | Query `page`, `size`, `sort`, `q`, `active` | Lists claims visible to the current user. |
+| `GET` | `/api/claims/{id}` | Bearer token | Returns one claim after project access check. |
+| `POST` | `/api/claims` | JSON claim creation payload | Creates a claim under an accessible project section. |
+| `PUT` | `/api/claims/{id}` | JSON: `content`, `aiConfidenceScore` | Updates claim content/confidence. |
 | `DELETE` | `/api/claims/{id}` | Bearer token | Soft-deletes claim. |
-| `GET` | `/api/claims/{id}/matches?topK=5` | Optional `topK` | Embeds claim, searches Qdrant by project, returns ranked source chunks. |
-| `POST` | `/api/claims/{id}/analyze` | Optional `sourceId`, `excerpt`, `title` | Runs claim analysis and persists confidence plus `EvidenceEdge`. |
+| `GET` | `/api/claims/{id}/suggestions` | Bearer token | Lists AI-generated evidence suggestions. |
+| `POST` | `/api/claims/{id}/suggestions` | Query `documentChunkId`, `score`, `explanation` | Creates a pending AI suggestion. |
+| `PATCH` | `/api/claims/suggestions/{suggestionId}/status` | Query `status` | Accepts or rejects a suggestion. |
+| `GET` | `/api/claims/{id}/mappings` | Bearer token | Lists claim-evidence mappings. |
+| `GET` | `/api/claims/{id}/edges` | Bearer token | Lists AI verdict graph edges. |
+
+### Claim Evaluation
+
+| Method | Route | Body / params | Main result |
+| --- | --- | --- | --- |
+| `POST` | `/api/paper/{documentId}/claims/match` | JSON: `claimText` | Evaluates a claim against a paper document. |
+| `POST` | `/api/sources/{documentId}/claims/match` | JSON: `claimText` | Evaluates a claim against a source document. |
 
 ### Feedback
 
 | Method | Route | Body / params | Main result |
 | --- | --- | --- | --- |
 | `GET` | `/api/feedback-requests` | Bearer token | Admin gets all; instructor gets assigned; student gets own requests. |
-| `POST` | `/api/projects/{projectId}/submit-review` | JSON: `instructorId` | Creates feedback request and sets project `IN_REVIEW`. |
-| `POST` | `/api/feedback-requests/{id}/feedback` | JSON: `content` | Creates or replaces instructor feedback for the request. |
-| `POST` | `/api/feedback-requests/{id}/return-to-active` | Bearer token | Sets request `RETURNED` and project `ACTIVE`. |
-| `POST` | `/api/feedback-requests/{id}/reviewed` | Bearer token | Sets request `REVIEWED` and project `ACTIVE`. |
-| `POST` | `/api/feedback-requests/{id}/rejected` | Bearer token | Sets request `REJECTED` and project `ACTIVE`. |
+| `POST` | `/api/projects/{projectId}/reviews` | JSON: `instructorId` | Creates feedback request and sets project `IN_REVIEW`. |
+| `POST` | `/api/feedback-requests/{id}/feedback` | JSON feedback payload | Creates or replaces instructor feedback for the request. |
+| `PATCH` | `/api/feedback-requests/{id}/status` | Query `status` | Sets request to `RETURNED`, `REVIEWED`, or `REJECTED`, and project to `ACTIVE`. |
+
+### Notifications and Health
+
+| Method | Route | Body / params | Main result |
+| --- | --- | --- | --- |
+| `GET` | `/api/notifications` | Bearer token | Lists current user's notifications. |
+| `GET` | `/api/notifications/unread-count` | Bearer token | Returns current user's unread notification count. |
+| `PATCH` | `/api/notifications/{id}/read` | Bearer token | Marks one current-user notification as read. |
+| `GET` | `/api/health` | Public | Returns backend and AI worker health. |
 
 ## Feature Flow Details
 
@@ -210,21 +227,21 @@ Explanation:
 
 ```mermaid
 flowchart TD
-    Token["Bearer token"] --> Me["GET/PUT /api/users/me"]
+    Token["Bearer token"] --> Me["GET/PUT /api/users/profile"]
     Me --> Current["Load current user by SecurityContext email"]
     Current --> UserRepo["UserRepository"]
     UserRepo --> UserDto["Return UserDto without password hash"]
 
-    Admin["Admin token"] --> AdminRoutes["/api/users/**"]
-    AdminRoutes --> AdminOps["List, get, update, delete users"]
+    Admin["Admin token"] --> AdminRoutes["GET /api/users/{id}"]
+    AdminRoutes --> AdminOps["Read user profile by ID"]
 ```
 
 Explanation:
 
-- `/api/users/me` is self-service and only exposes `UserDto`.
-- `PUT /api/users/me` accepts only profile fields: `firstName`, `lastName`, `age`.
+- `/api/users/profile` is self-service and only exposes `UserResponse`.
+- `PUT /api/users/profile` accepts profile update fields; role, email, and password are not changed here.
 - `/api/users/**` is globally restricted to `ADMIN` in `SecurityConfig`.
-- Admin update accepts a `User` entity payload. If the incoming password value differs from the existing hash, it is BCrypt-hashed before save.
+- The current controller only exposes `GET /api/users/{id}` plus the profile self-service routes.
 
 ## 3. Student Project Flow
 
@@ -245,28 +262,23 @@ Explanation:
 - Delete is soft-delete: `active=false`, `status=DELETED`.
 - Project source routes use `SourceQueryServiceImpl` and `CurrentUserService` to allow admins, owning students, and assigned instructors during review.
 
-## 4. Dataset Flow
+## 4. Collection Flow
 
 ```mermaid
 flowchart TD
-    Instructor["Instructor or Admin JWT"] --> DatasetController
-    DatasetController --> Access["requireDatasetAccess / requireRole"]
-    Access --> DatasetRepo["DatasetRepository"]
-    DatasetRepo --> MySQL["datasets table"]
-    DatasetController --> SourceUpload["POST /api/datasets/{id}/sources"]
-    SourceUpload --> Extraction["SourceExtractionService"]
-    Extraction --> Qdrant["Qdrant DATASET scope"]
+    Instructor["Instructor or Admin JWT"] --> CollectionController
+    CollectionController --> CollectionService
+    CollectionService --> MySQL["collections table"]
+    SourceUpload["POST /api/sources with collectionId"] --> DocumentService
+    DocumentService --> Access["requireCollectionAccess"]
+    DocumentService --> Queue["SourceExtractionService.triggerExtraction"]
 ```
 
 Explanation:
 
-- Datasets are instructor-owned reference collections.
-- Admin can access all active datasets.
-- Instructor can access only owned datasets.
-- Students are authenticated but get an empty dataset list from `GET /api/datasets`.
-- Dataset upload creates a `Source` linked to `dataset_id`, extracts text, chunks it, generates embeddings, and indexes vectors with Qdrant payload `scope_type=DATASET` and `scope_id=<datasetId>`.
-- Dataset similarity search embeds the query and searches only that dataset scope.
-- Dataset graph builds source and chunk nodes directly from MySQL; it does not call AI.
+- `DatasetController` is not present in the current backend.
+- Instructor evidence libraries are represented by `CollectionController` and collection-scoped source documents.
+- Source upload accepts optional `collectionId`; access is checked with `CurrentUserService.requireCollectionAccess`.
 
 ## 5. Source Upload, Extraction, Chunking, Embedding, and Indexing Flow
 
@@ -274,127 +286,99 @@ Explanation:
 sequenceDiagram
     participant Client
     participant SourceController
-    participant SourceExtractionService
-    participant AiModelClient
-    participant QdrantClient
+    participant DocumentService
+    participant MinIO
+    participant ExtractionQueue
+    participant Worker
     participant MySQL
-    participant Files
 
-    Client->>SourceController: POST /api/sources/upload multipart file
-    SourceController->>SourceController: Validate uploader/project/dataset access
-    SourceController->>Files: Save file under app.upload.dir/sources
-    SourceController->>MySQL: Save Source metadata
-    SourceController->>SourceExtractionService: extractAndPersist(source, file)
-    SourceExtractionService->>SourceExtractionService: Extract text via text/MinerU/DOCX/PDF fallback
-    SourceExtractionService->>MySQL: Save SourceText
-    SourceExtractionService->>SourceExtractionService: Split text into <= 900 char chunks
-    SourceExtractionService->>AiModelClient: POST /ai/embeddings per chunk
-    SourceExtractionService->>MySQL: Save SourceChunk rows with embedding strings
-    SourceExtractionService->>QdrantClient: Upsert vectors into source_chunks collection
-    SourceExtractionService->>MySQL: Save SourceReference rows if references found
-    SourceController-->>Client: SourceResponseDto
+    Client->>SourceController: POST /api/sources multipart file
+    SourceController->>DocumentService: uploadDocument(projectId, collectionId, file, SOURCE)
+    DocumentService->>DocumentService: Check project/collection/uploader access
+    DocumentService->>MySQL: Save Document metadata
+    DocumentService->>MinIO: Upload raw object under sources/raw/{documentId}
+    DocumentService->>ExtractionQueue: triggerExtraction(documentId)
+    Worker->>MySQL: Save extracted text and chunks
+    Worker->>Worker: Generate dense and sparse vectors
+    Worker->>MySQL: Mark processing status
+    SourceController-->>Client: DocumentResponse
 ```
 
 Explanation:
 
-- `SourceController` can attach a source to a project, a dataset, or both if both IDs are supplied.
-- `DatasetController` also has a dataset-specific source upload route that always links to a dataset.
-- Files are stored under `app.upload.dir`, default `/app/uploads`.
-- Text extraction behavior:
-  - Plain text, Markdown, and `text/*` content types are read as UTF-8.
-  - If `MINERU_COMMAND` is configured, MinerU is attempted first.
-  - DOCX fallback reads `word/document.xml`.
-  - PDF fallback uses a simple text-fragment extraction from PDF bytes.
-- MySQL remains the source of truth. Qdrant sync failures are logged and do not roll back MySQL persistence.
-- References are parsed from headings like `References`, `Bibliography`, or `Works Cited`.
+- `SourceController` can attach a source to a project, a collection, or only the uploader.
+- `DocumentController` also exposes `POST /api/documents`, which uploads a source document with optional `projectId`.
+- Raw files are stored in MinIO bucket `evidence-pilot-bucket`; MySQL remains the metadata and text source of truth.
+- Extraction is asynchronous through `SourceExtractionService.triggerExtraction`.
 
 ## 6. Paper Upload and Paper Review Flow
 
 ```mermaid
 flowchart TD
-    Upload["POST /api/papers/upload"] --> Access["requireProjectAccess"]
-    Access --> Extract["SourceExtractionService.extractText"]
-    Extract --> Store["Store file under app.upload.dir/papers"]
-    Store --> Paper["Save Paper with extractedText and extractionMethod"]
-    Paper --> Sections["PaperProcessingService.detectAndPersistSections"]
-    Sections --> Review["POST /api/papers/{id}/review"]
-    Review --> Rules["Local style rules and weak-section checks"]
-    Rules --> Response["PaperReviewResponse"]
+    Upload["POST /api/papers"] --> Access["requireProjectAccess"]
+    Access --> DocumentService["DocumentService.uploadDocument(..., PAPER)"]
+    DocumentService --> Queue["Queue extraction"]
+    DocumentService --> Sections["PaperProcessingService.detectAndPersistSections"]
+    Sections --> Review["POST /api/papers/{id}/reviews"]
+    Review --> AI["PaperProcessingService.review"]
+    AI --> Response["review response"]
 ```
 
 Explanation:
 
 - Paper upload is project-scoped and requires project access.
-- The paper file is stored separately from source files under `papers`.
-- Extracted text is stored on the `papers` row, not in `source_texts`.
-- `PaperProcessingService` detects sections from headings and persists `paper_sections`.
-- Review is currently local/rule-based:
-  - Detects likely paper style from sections.
-  - Accepts optional `targetStyle`.
-  - Reports missing expected sections.
-  - Reports weak sections with fewer than 18 words.
-  - Adds claim-coverage recommendations for key sections.
+- Paper upload uses the shared `DocumentService` path with `DocumentType.PAPER`.
+- `PaperProcessingService.detectAndPersistSections` runs after upload.
+- Review is exposed as `POST /api/papers/{id}/reviews` and accepts optional `targetStyle`.
 
-## 7. Claim CRUD, Matching, and Analysis Flow
+## 7. Claim CRUD, Suggestions, and Evaluation Flow
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant ClaimController
-    participant ClaimMatchingService
-    participant AiAnalysisService
-    participant AiModelClient
-    participant QdrantClient
+    participant ClaimService
+    participant RagController
+    participant ClaimEvaluationService
+    participant OllamaGateway
+    participant QdrantGateway
     participant MySQL
 
     Client->>ClaimController: POST /api/claims
-    ClaimController->>MySQL: Save Claim under project
+    ClaimController->>ClaimService: createClaim(request)
+    ClaimService->>MySQL: Save Claim under project/section
 
-    Client->>ClaimController: GET /api/claims/{id}/matches
-    ClaimController->>ClaimMatchingService: matchClaim(claim, topK)
-    ClaimMatchingService->>AiModelClient: POST /ai/embeddings
-    ClaimMatchingService->>QdrantClient: Search PROJECT scope by projectId
-    ClaimMatchingService->>MySQL: Load SourceChunk rows by returned IDs
-    ClaimMatchingService-->>Client: ClaimMatchResponse
+    Client->>ClaimController: POST /api/claims/{id}/suggestions
+    ClaimController->>ClaimService: createSuggestion(claim, chunk, score, explanation)
+    ClaimService->>MySQL: Save pending AiSuggestion
 
-    Client->>ClaimController: POST /api/claims/{id}/analyze
-    ClaimController->>AiAnalysisService: analyzeAndPersist
-    AiAnalysisService->>ClaimMatchingService: Auto mode match top 1
-    AiAnalysisService->>AiModelClient: POST /process/claim
-    AiAnalysisService->>MySQL: Update Claim.aiConfidenceScore
-    AiAnalysisService->>MySQL: Save EvidenceEdge
-    ClaimController-->>Client: ClaimResponseDto
+    Client->>ClaimController: PATCH /api/claims/suggestions/{suggestionId}/status
+    ClaimController->>ClaimService: updateSuggestionStatus
+
+    Client->>RagController: POST /api/sources/{documentId}/claims/match
+    RagController->>ClaimEvaluationService: evaluate(documentId, claimText)
+    ClaimEvaluationService->>OllamaGateway: dense embedding and evaluation generation
+    ClaimEvaluationService->>QdrantGateway: searchDocumentContext(documentId, dense, sparse, topK)
+    ClaimEvaluationService-->>Client: ClaimEvaluationResponse
 ```
 
 Explanation:
 
-- Claim CRUD is project-scoped.
-- Claim create requires a `project.id` in the JSON payload and stores the claim under that project.
-- Matching:
-  - Generates an embedding for the claim content.
-  - Searches Qdrant with `scope_type=PROJECT` and `scope_id=<projectId>`.
-  - Loads returned chunk IDs from MySQL.
-  - Returns matches with source ID, filename, chunk ID, page, excerpt, score, suitability, and explanation.
-- Suitability thresholds:
-  - `strong`: score >= `0.75`
-  - `medium`: score >= `0.50`
-  - `weak`: score < `0.50`
-- Analysis has two modes:
-  - Auto mode: no params. It finds the top match first, then calls `/process/claim`.
-  - Manual mode: requires both `sourceId` and `excerpt`; optional `title`. It skips the match phase.
-- Analysis persists:
-  - `claims.ai_confidence_score`
-  - `evidence_edges` row with verdict, confidence, explanation, missing evidence, and linked source chunk.
+- Claim CRUD is project-scoped through `ClaimService`.
+- AI suggestion routes are under `/api/claims/{id}/suggestions` and `/api/claims/suggestions/{suggestionId}/status`.
+- Evidence lookup routes are `/api/claims/{id}/mappings` and `/api/claims/{id}/edges`.
+- Claim evaluation is document-scoped through `RagController` at `/api/paper/{documentId}/claims/match` and `/api/sources/{documentId}/claims/match`.
+- `ClaimEvaluationServiceImpl` gets dense embeddings from `OllamaGateway`, sparse vectors from `SparseVectorGenerator`, searches document context through `QdrantGateway`, then asks Ollama to generate the evaluation.
 
 ## 8. Feedback Review Flow
 
 ```mermaid
 stateDiagram-v2
     [*] --> ACTIVE
-    ACTIVE --> IN_REVIEW: POST /api/projects/{projectId}/submit-review
-    IN_REVIEW --> ACTIVE: POST /api/feedback-requests/{id}/return-to-active
-    IN_REVIEW --> ACTIVE: POST /api/feedback-requests/{id}/reviewed
-    IN_REVIEW --> ACTIVE: POST /api/feedback-requests/{id}/rejected
+    ACTIVE --> IN_REVIEW: POST /api/projects/{projectId}/reviews
+    IN_REVIEW --> ACTIVE: PATCH /api/feedback-requests/{id}/status?status=RETURNED
+    IN_REVIEW --> ACTIVE: PATCH /api/feedback-requests/{id}/status?status=REVIEWED
+    IN_REVIEW --> ACTIVE: PATCH /api/feedback-requests/{id}/status?status=REJECTED
 ```
 
 Explanation:
@@ -407,13 +391,13 @@ Explanation:
 - Backend creates a `feedback_requests` row with status `PENDING`.
 - Backend sets the project status to `IN_REVIEW`.
 - Instructor feedback is one-to-one with a feedback request because `instructor_feedbacks.request_id` is unique.
-- Transition endpoints set feedback status to `RETURNED`, `REVIEWED`, or `REJECTED`, and set the project back to `ACTIVE`.
+- `PATCH /api/feedback-requests/{id}/status` sets feedback status to `RETURNED`, `REVIEWED`, or `REJECTED`, and sets the project back to `ACTIVE`.
 
 ## 9. Traceability Export Flow
 
 ```mermaid
 flowchart TD
-    Export["GET /api/projects/{projectId}/traceability-export"] --> Access["requireProjectAccess"]
+    Export["GET /api/projects/{projectId}/traceability"] --> Access["requireProjectAccess"]
     Access --> References["Load SourceReference rows"]
     Access --> Claims["Load active Claims"]
     Access --> Sources["Load active Sources"]
@@ -461,23 +445,23 @@ Common mappings:
 | System | Config | Used by | Purpose |
 | --- | --- | --- | --- |
 | MySQL | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | JPA repositories | Relational source of truth. |
-| Upload directory | `APP_UPLOAD_DIR` | Source and paper upload controllers | Stores uploaded files. |
-| MinerU | `MINERU_COMMAND`, `MINERU_METHOD`, `MINERU_BACKEND`, `MINERU_TIMEOUT_SECONDS` | `SourceExtractionService` | Optional richer document extraction. |
-| AI API | `AI_MODEL_LOCAL_BASE_URL`, `AI_MODEL_NGROK_BASE_URL`, `AI_MODEL_BASE_URL`, `AI_MODEL_API_KEY` | `AiModelClient` | Embeddings and claim analysis calls. |
-| Qdrant | `QDRANT_URL` | `QdrantClient` | Vector index for source chunks. |
+| MinIO | `minio.url`, `minio.access-key`, `minio.secret-key`, `minio.bucket-name` | `DocumentServiceImpl`, `DocumentObjectStorage` | Raw document object storage. |
+| RabbitMQ | `RabbitMQConfig` | `SourceExtractionServiceImpl`, `DocumentExtractionListener` | Async document extraction queue. |
+| Ollama / AI worker | `ollama.url`, `AI_MODEL_BASE_URL`, model settings | `OllamaGateway`, `AiModelClient` | Extraction, embeddings, and generation. |
+| Qdrant | Qdrant client/gateway configuration | `QdrantService`, `QdrantGateway` | Vector index for source chunks and document-context search. |
 | JWT | `JWT_SECRET`, `JWT_EXPIRATION_MS` | `JwtUtil`, security filter | Stateless auth. |
 
 ## Feature-to-Code Map
 
 | Feature | Controller | Main services | Main persistence |
 | --- | --- | --- | --- |
-| Authentication | `AuthController` | `JwtUtil`, `PasswordEncoder` | `users` |
-| User profile/admin | `UserController` | `PasswordEncoder` | `users` |
-| Projects | `ProjectController` | `ProjectServiceImpl`, `SourceQueryServiceImpl`, `CurrentUserService` | `projects`, `sources` |
-| Datasets | `DatasetController` | `CurrentUserService`, `SourceExtractionService`, `AiModelClient`, `QdrantClient` | `datasets`, `sources`, `source_chunks` |
-| Sources | `SourceController` | `CurrentUserService`, `SourceExtractionService` | `sources`, `source_texts`, `source_chunks`, `source_references` |
-| Papers | `PaperController` | `SourceExtractionService`, `PaperProcessingService` | `papers`, `paper_sections` |
-| Claims | `ClaimController` | `ClaimMatchingService`, `AiAnalysisService`, `CurrentUserService` | `claims`, `evidence_edges`, `source_chunks` |
-| Feedback | `FeedbackController` | `CurrentUserService` | `feedback_requests`, `instructor_feedbacks`, `projects` |
-| Traceability export | `TraceabilityExportController` | `ClaimMatchingService`, `CurrentUserService` | `claims`, `sources`, `source_references`, `feedback_requests`, `evidence_edges` |
-
+| Authentication | `AuthController` | `AuthService`, `JwtUtil`, `PasswordEncoder` | `users` |
+| User profile/admin | `UserController` | `UserService`, `CurrentUserService` | `users` |
+| Projects | `ProjectController` | `ProjectServiceImpl`, `DocumentServiceImpl`, `ClaimServiceImpl`, `CollectionServiceImpl` | `projects`, `project_members`, `documents`, `claims`, `collections` |
+| Documents and sources | `DocumentController`, `SourceController` | `DocumentServiceImpl`, `SourceExtractionServiceImpl`, `DocumentExtractionWorkerImpl` | `documents`, `document_texts`, `document_chunks` |
+| Collections | `CollectionController` | `CollectionServiceImpl`, `CurrentUserService` | `collections` |
+| Papers | `PaperController` | `DocumentServiceImpl`, `PaperProcessingService` | `documents`, `paper_sections` |
+| Claims | `ClaimController`, `RagController` | `ClaimServiceImpl`, `ClaimEvaluationServiceImpl`, `OllamaGateway`, `QdrantGateway` | `claims`, `ai_suggestions`, `claim_evidence_mappings`, `evidence_edges`, `document_chunks` |
+| Feedback | `FeedbackController` | `FeedbackService`, `CurrentUserService` | `feedback_requests`, `instructor_feedbacks`, `projects` |
+| Notifications | `SystemNotificationController` | `SystemNotificationService` | `system_notifications` |
+| Traceability export | `TraceabilityExportController` | `TraceabilityExportService`, `CurrentUserService` | `claims`, `documents`, `feedback_requests`, `evidence_edges` |

@@ -32,9 +32,17 @@ public interface DocumentService {
             String q,
             ProcessingStatus processingStatus,
             Boolean active);
+    List<DocumentResponse> getSourcesByCollection(UUID collectionId, UUID sourceCategoryId);
     DocumentResponse uploadDocument(UUID projectId, MultipartFile file, DocumentType docType);
 
     DocumentResponse uploadDocument(UUID projectId, UUID collectionId, MultipartFile file, DocumentType docType);
+
+    DocumentResponse uploadDocument(
+            UUID projectId,
+            UUID collectionId,
+            UUID sourceCategoryId,
+            MultipartFile file,
+            DocumentType docType);
 
     List<DocumentChunkResponse> getDocumentChunks(UUID documentId);
     DocumentTextResponse getDocumentText(UUID documentId);

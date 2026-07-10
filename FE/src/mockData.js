@@ -12,12 +12,13 @@ export const initialMockData = {
   },
 
   adminProfile: {
-  id: "usr_admin_root",
-  firstName: "Root",
-  lastName: "Administrator",
-  email: "admin.root@fpt.edu.vn",
-  role: "ADMIN"
+    id: "usr_admin_root",
+    firstName: "Root",
+    lastName: "Administrator",
+    email: "admin.root@fpt.edu.vn",
+    role: "ADMIN"
   },
+
   // ==========================================
   // 2. INFRASTRUCTURE PROJECT REPOSITORIES
   // ==========================================
@@ -43,11 +44,12 @@ export const initialMockData = {
   ],
 
   // ==========================================
-  // 3. EVIDENCE LIBRARIES & COLLECTIONS
+  // 3. EVIDENCE LIBRARIES & COLLECTIONS (ĐÃ SỬA: Thêm projectId)
   // ==========================================
   collections: [
     {
       id: "col_881",
+      projectId: "proj_101", // Ánh xạ vào project 1
       title: "Autumn 2026 Software Architecture Core Metrics Template",
       description: "Baseline checking rules layout context and expected proof documentation structures for system metrics calculation algorithms.",
       documentCount: 5,
@@ -55,6 +57,7 @@ export const initialMockData = {
     },
     {
       id: "col_882",
+      projectId: "proj_101", // Ánh xạ vào project 1
       title: "ISO 27001 Security Baseline Verification Library",
       description: "Cryptographic specifications, data protection protocols, and evaluation matrix requirements for production deployment bounds.",
       documentCount: 3,
@@ -62,10 +65,31 @@ export const initialMockData = {
     },
     {
       id: "col_883",
+      projectId: "proj_102", // Ánh xạ vào project 2
       title: "Kubernetes Cluster Deployment Manifest Proofs",
       description: "Required deployment structure evidence, network policies, and persistent volume configuration baselines.",
       documentCount: 0,
       createdAt: "2026-06-25"
+    }
+  ],
+
+  // ==========================================
+  // 🌟 THÊM MỚI: REFERENCE DOCUMENTS (Kho lưu file mẫu PDF)
+  // ==========================================
+  referenceDocuments: [
+    {
+      id: "doc_rf_01",
+      collectionId: "col_881", 
+      name: "architecture_template_v2.pdf",
+      fileUrl: "https://pdfobject.com/pdf/sample.pdf", // Link PDF test online
+      uploadedAt: "2026-06-15"
+    },
+    {
+      id: "doc_rf_02",
+      collectionId: "col_882", 
+      name: "iso_27001_guidelines.pdf",
+      fileUrl: "https://pdfobject.com/pdf/sample.pdf", // Link PDF test online
+      uploadedAt: "2026-06-18"
     }
   ],
 
@@ -117,7 +141,7 @@ export const initialMockData = {
   ],
 
   // ==========================================
-  // 🔥 6. ADMIN DASHBOARD METRICS & HEALTH (FIX TRANG TRẮNG)
+  // 6. ADMIN DASHBOARD METRICS & HEALTH
   // ==========================================
   systemHealth: {
     storageUsed: 42,

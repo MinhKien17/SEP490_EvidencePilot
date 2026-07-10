@@ -11,6 +11,7 @@ import lombok.Getter;
 import lombok.Setter;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.ProjectRole;
+import com.evidencepilot.model.enums.UserRole;
 
 @Entity
 @Table(name = "projects")
@@ -59,8 +60,20 @@ public class Project {
             return null;
         }
         return projectMembers.stream()
-                .filter(member -> member.getRole() == ProjectRole.OWNER)
                 .map(ProjectMember::getUser)
+                .filter(user -> user != null && user.getRole() == UserRole.STUDENT)
+                .findFirst()
+                .orElse(null);
+    }
+
+    public User getInstructor() {
+        if (projectMembers == null) {
+            return null;
+        }
+        return projectMembers.stream()
+                .filter(member -> member.getRole() == ProjectRole.INSTRUCTOR)
+                .map(ProjectMember::getUser)
+                .filter(user -> user != null && user.getRole() == UserRole.INSTRUCTOR)
                 .findFirst()
                 .orElse(null);
     }

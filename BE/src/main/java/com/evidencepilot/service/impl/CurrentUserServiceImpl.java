@@ -2,7 +2,9 @@ package com.evidencepilot.service.impl;
 
 import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.Project;
+import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.FeedbackRequestRepository;
@@ -14,6 +16,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -88,28 +91,50 @@ public class CurrentUserServiceImpl implements CurrentUserService {
                     org.springframework.http.HttpStatus.FORBIDDEN,
                     "Instructor access denied to project");
         }
-        User student = project.getStudent();
-        if (student == null || !student.getId().equals(currentUser.getId())) {
-            throw new ResponseStatusException(
-                    org.springframework.http.HttpStatus.FORBIDDEN,
-                    "Student access denied to project");
+        if (isInstructor(currentUser) && project.getStatus() == ProjectStatus.IN_REVIEW && project.getId() != null
+                && feedbackRequestRepository.existsByProjectIdAndInstructorId(project.getId(), currentUser.getId())) {
+            return;
         }
+        throw new ResponseStatusException(
+                org.springframework.http.HttpStatus.FORBIDDEN,
+                "Project access denied");
     }
 
     @Override
     public void requireProjectWriteAccess(User currentUser, Project project) {
         if (isAdmin(currentUser))
             return;
-        if (isInstructor(currentUser)) {
-            throw new ResponseStatusException(
-                    org.springframework.http.HttpStatus.FORBIDDEN,
-                    "Instructors cannot modify student projects");
-        }
-        User student = project.getStudent();
-        if (student == null || !student.getId().equals(currentUser.getId())) {
+        if (!hasProjectRole(currentUser, project, Set.of(
+                ProjectRole.OWNER, ProjectRole.EDITOR, ProjectRole.INSTRUCTOR))) {
             throw new ResponseStatusException(
                     org.springframework.http.HttpStatus.FORBIDDEN,
                     "Write access denied to project");
+        }
+    }
+
+    @Override
+    public void requireProjectManageAccess(User currentUser, Project project) {
+        if (isAdmin(currentUser))
+            return;
+        if (!hasProjectRole(currentUser, project, Set.of(ProjectRole.INSTRUCTOR))) {
+            throw new ResponseStatusException(
+                    org.springframework.http.HttpStatus.FORBIDDEN,
+                    "Project management access denied");
+        }
+    }
+
+    private boolean isProjectMember(User currentUser, Project project) {
+        if (project.getProjectMembers() == null) {
+            return false;
+        }
+        return project.getProjectMembers().stream()
+                .map(ProjectMember::getUser)
+                .anyMatch(user -> user != null && currentUser.getId().equals(user.getId()));
+    }
+
+    private boolean hasProjectRole(User currentUser, Project project, Set<ProjectRole> roles) {
+        if (project.getProjectMembers() == null) {
+            return false;
         }
         if (project.getStatus() == ProjectStatus.SUBMITTED_FOR_REVIEW ||
             project.getStatus() == ProjectStatus.APPROVED) {

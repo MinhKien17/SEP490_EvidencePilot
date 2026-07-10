@@ -26,6 +26,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -82,7 +83,7 @@ public class ProjectController {
     }
 
     @Operation(summary = "Create a project",
-            description = "Creates a new project and assigns the current user as the OWNER member.")
+            description = "Creates a new project. Instructors become the project instructor member.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Project created"),
             @ApiResponse(responseCode = "400", description = "Validation error"),
@@ -108,6 +109,22 @@ public class ProjectController {
             @Parameter(description = "Project UUID") @PathVariable UUID id,
             @Valid @RequestBody ProjectUpdateRequest request) {
         return projectService.updateProject(id, request);
+    }
+
+    @Operation(summary = "Complete a project",
+            description = "Marks an ACTIVE project as COMPLETED.")
+    @PatchMapping("/{id}/complete")
+    public ProjectResponse completeProject(
+            @Parameter(description = "Project UUID") @PathVariable UUID id) {
+        return projectService.completeProject(id);
+    }
+
+    @Operation(summary = "Archive a project",
+            description = "Marks a COMPLETED project as ARCHIVED.")
+    @PatchMapping("/{id}/archive")
+    public ProjectResponse archiveProject(
+            @Parameter(description = "Project UUID") @PathVariable UUID id) {
+        return projectService.archiveProject(id);
     }
 
     @Operation(summary = "Soft-delete a project",
@@ -197,12 +214,13 @@ public class ProjectController {
     }
 
     @Operation(summary = "Add a member to a project",
-            description = "Adds a user to the project with the specified role. Requires write access.")
+            description = "Adds a student to the project as EDITOR. Requires project management access.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Member added"),
             @ApiResponse(responseCode = "400", description = "Invalid user ID or role"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
             @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "409", description = "User is already a project member"),
             @ApiResponse(responseCode = "404", description = "Project or user not found")
     })
     @PostMapping("/{id}/members")
@@ -210,12 +228,12 @@ public class ProjectController {
     public void addMember(
             @Parameter(description = "Project UUID") @PathVariable UUID id,
             @Parameter(description = "User UUID to add") @RequestParam UUID userId,
-            @Parameter(description = "Role to assign") @RequestParam ProjectRole role) {
+            @Parameter(description = "Role to assign") @RequestParam(required = false) ProjectRole role) {
         projectService.addMember(id, userId, role);
     }
 
     @Operation(summary = "Remove a member from a project",
-            description = "Removes a user from the project. Requires write access.")
+            description = "Removes a user from the project. Requires project management access.")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Member removed"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),

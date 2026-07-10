@@ -14,6 +14,8 @@ public interface DocumentMapper {
 
     @Mapping(target = "projectId", source = "project.id")
     @Mapping(target = "collectionId", source = "collection.id")
+    @Mapping(target = "sourceCategoryId", source = "sourceCategory.id")
+    @Mapping(target = "sourceCategoryName", source = "sourceCategory.name")
     @Mapping(target = "uploadedBy", source = "uploadedBy.id")
     DocumentResponse toDocumentResponse(Document entity);
 
