@@ -14,16 +14,13 @@ import java.util.UUID;
 @Component
 public class JwtUtils {
 
-    private static final String DEFAULT_SECRET_STRING =
-            "EvidencePilot-Super-Secret-Key-2025!!";
-
     private static final long DEFAULT_EXPIRATION_MS = 24L * 60 * 60 * 1000;
 
     private final SecretKey signingKey;
     private final long expirationMs;
 
     public JwtUtils(
-            @Value("${jwt.secret:" + DEFAULT_SECRET_STRING + "}") String secretString,
+            @Value("${jwt.secret}") String secretString,
             @Value("${jwt.expiration-ms:" + DEFAULT_EXPIRATION_MS + "}") long expirationMs) {
         this.signingKey = Keys.hmacShaKeyFor(secretString.getBytes(StandardCharsets.UTF_8));
         this.expirationMs = expirationMs;

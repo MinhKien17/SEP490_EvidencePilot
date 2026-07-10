@@ -28,6 +28,7 @@ import io.minio.PutObjectArgs;
 import jakarta.annotation.PostConstruct;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.jpa.domain.Specification;
@@ -47,9 +48,11 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class DocumentServiceImpl implements DocumentService {
 
-    private static final String BUCKET = "evidence-pilot-bucket";
     private static final Set<String> DOCUMENT_SORT_FIELDS = Set.of(
             "originalFilename", "docType", "processingStatus", "createdAt", "fileSizeBytes");
+
+    @Value("${minio.bucket-name}")
+    private String bucketName;
 
     private final DocumentRepository documentRepository;
     private final DocumentChunkRepository documentChunkRepository;
@@ -66,14 +69,14 @@ public class DocumentServiceImpl implements DocumentService {
     void ensureBucketExists() {
         try {
             boolean found = minioClient.bucketExists(
-                    BucketExistsArgs.builder().bucket(BUCKET).build());
+                    BucketExistsArgs.builder().bucket(bucketName).build());
             if (!found) {
                 minioClient.makeBucket(
-                        MakeBucketArgs.builder().bucket(BUCKET).build());
-                log.info("Created MinIO bucket: {}", BUCKET);
+                        MakeBucketArgs.builder().bucket(bucketName).build());
+                log.info("Created MinIO bucket: {}", bucketName);
             }
         } catch (Exception e) {
-            log.warn("Could not verify/create MinIO bucket '{}': {}", BUCKET, e.getMessage());
+            log.warn("Could not verify/create MinIO bucket '{}': {}", bucketName, e.getMessage());
         }
     }
 
@@ -232,7 +235,7 @@ public class DocumentServiceImpl implements DocumentService {
 
         try (var in = file.getInputStream()) {
             minioClient.putObject(PutObjectArgs.builder()
-                    .bucket(BUCKET)
+                    .bucket(bucketName)
                     .object(objectKey)
                     .stream(in, file.getSize(), -1)
                     .contentType(file.getContentType())

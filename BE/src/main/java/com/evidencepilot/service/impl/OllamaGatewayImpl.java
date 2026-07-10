@@ -22,10 +22,10 @@ public class OllamaGatewayImpl implements OllamaGateway {
     private final String generationModel;
 
     public OllamaGatewayImpl(
-            @Value("${ollama.url:${AI_MODEL_BASE_URL:https://good-lumpish-headstone.ngrok-free.dev}}") String ollamaUrl,
-            @Value("${ollama.embedding.model:nomic-embed-text}") String embeddingModel,
-            @Value("${ollama.generation.model:evidencopilot:latest}") String generationModel,
-            @Value("${ollama.read-timeout-seconds:${ai.model.read-timeout-seconds:300}}") long readTimeoutSeconds) {
+            @Value("${ai.model.base-url}") String ollamaUrl,
+            @Value("${ollama.embedding.model}") String embeddingModel,
+            @Value("${ollama.generation.model}") String generationModel,
+            @Value("${ai.model.read-timeout-seconds}") long readTimeoutSeconds) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(5));
         requestFactory.setReadTimeout(Duration.ofSeconds(Math.max(1, readTimeoutSeconds)));
