@@ -75,6 +75,9 @@ public class Document {
 
     private boolean active = true;
 
+    @Column(name = "doi")
+    private String doi;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

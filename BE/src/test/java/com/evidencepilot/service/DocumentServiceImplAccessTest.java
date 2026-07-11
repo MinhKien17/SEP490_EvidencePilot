@@ -153,6 +153,9 @@ class DocumentServiceImplAccessTest {
         project.setStatus(ProjectStatus.ASSIGNED);
         Document persisted = document(project);
         persisted.setId(UUID.randomUUID());
+        Document sourceDoc = document(project);
+        sourceDoc.setDocType(DocumentType.SOURCE);
+        sourceDoc.setId(UUID.randomUUID());
         MockMultipartFile file = new MockMultipartFile(
                 "file", "paper.pdf", "application/pdf", "content".getBytes());
 
@@ -166,8 +169,17 @@ class DocumentServiceImplAccessTest {
                 eq(persisted.getId()), anyString()))
                 .thenReturn(persisted);
         when(minioClient.putObject(any(PutObjectArgs.class))).thenReturn(null);
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
+                eq(project.getId()), eq(DocumentType.PAPER)))
+                .thenReturn(List.of(persisted));
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
+                eq(project.getId()), eq(DocumentType.SOURCE)))
+                .thenReturn(List.of(sourceDoc));
 
         service().uploadDocument(project.getId(), file, DocumentType.PAPER);
+
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.IN_PROGRESS);
+        verify(projectRepository).save(project);
     }
 
     @Test

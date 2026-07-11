@@ -1,10 +1,13 @@
 package com.evidencepilot.service;
 
+import com.evidencepilot.dto.ExtractionRequest;
 import com.evidencepilot.model.Document;
+import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.service.impl.SourceExtractionServiceImpl;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.multipart.MultipartFile;
@@ -15,6 +18,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class SourceExtractionServiceImplTest {
@@ -24,16 +28,28 @@ class SourceExtractionServiceImplTest {
     private final SourceExtractionServiceImpl service = new SourceExtractionServiceImpl(documents, rabbit);
 
     @Test
-    void triggerExtraction_marksProcessingAndPublishesId() {
+    void triggerExtraction_marksProcessingAndPublishesExtractionRequest() {
         UUID id = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        User user = new User();
+        user.setId(userId);
         Document document = new Document();
+        document.setId(id);
+        document.setFileUrl("sources/raw/test.pdf");
+        document.setUploadedBy(user);
         when(documents.findById(id)).thenReturn(Optional.of(document));
 
         service.triggerExtraction(id);
 
         assertThat(document.getProcessingStatus()).isEqualTo(ProcessingStatus.PROCESSING);
         verify(documents).save(document);
-        verify(rabbit).convertAndSend("extraction.queue", id.toString());
+
+        var captor = ArgumentCaptor.forClass(ExtractionRequest.class);
+        verify(rabbit).convertAndSend(eq("extraction.queue"), captor.capture());
+        ExtractionRequest payload = captor.getValue();
+        assertThat(payload.documentId()).isEqualTo(id);
+        assertThat(payload.s3ObjectKey()).isEqualTo("sources/raw/test.pdf");
+        assertThat(payload.userId()).isEqualTo(userId);
     }
 
     @Test

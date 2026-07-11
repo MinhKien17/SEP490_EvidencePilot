@@ -1,6 +1,7 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.config.infrastructure.RabbitMQConfig;
+import com.evidencepilot.dto.ExtractionRequest;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.enums.ProcessingStatus;
@@ -33,7 +34,9 @@ public class SourceExtractionServiceImpl implements SourceExtractionService {
         doc.setProcessingStatus(ProcessingStatus.PROCESSING);
         documentRepository.save(doc);
 
-        rabbitTemplate.convertAndSend(RabbitMQConfig.EXTRACTION_QUEUE, documentId.toString());
+        ExtractionRequest payload = new ExtractionRequest(
+                doc.getId(), doc.getFileUrl(), doc.getUploadedBy().getId());
+        rabbitTemplate.convertAndSend(RabbitMQConfig.EXTRACTION_QUEUE, payload);
         log.info("Published document {} to extraction.queue", documentId);
     }
 

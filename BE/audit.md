@@ -1,75 +1,47 @@
-Here is the complete audit.
+# Audit: Evidence Pilot Integration Layer
+
+*Last updated: 2026-07-11*
 
 ---
 
-## Audit: Evidence Pilot Integration Layer
+## Previously Flagged Issues
 
-### 1. DOI Requirement — **FAIL**
+### 1. DOI Requirement — **STILL OPEN**
 
-**`Document.java` — missing `doi` field.**  
-The entity at `src/main/java/com/evidencepilot/model/Document.java` (107 lines) has no `doi` field. The system stores papers and sources that may have DOIs assigned by a publisher, and the Python extraction worker likely needs to persist it after metadata extraction.
+**`Document.java` — missing `doi` field.**
+The entity at `src/main/java/com/evidencepilot/model/Document.java` (107 lines) still has no `doi` field.
 
-**Required fix — Add field to entity:**
-
-Add after line 75 (`private boolean active = true;`):
-
+**Fix:** Add after line 76 (`private boolean active = true;`):
 ```java
     @Column(name = "doi")
     private String doi;
 ```
-
-**Required fix — Flyway migration `src/main/resources/db/migration/V2__add_document_doi.sql`:**
-
-Add a new directory `src/main/resources/db/migration/` with this single file:
-
+And create `src/main/resources/db/migration/V2__add_document_doi.sql`:
 ```sql
 ALTER TABLE documents
     ADD COLUMN doi VARCHAR(255) NULL AFTER active;
 ```
 
-This is a safe additive migration — it will not break existing rows because `doi` is nullable. With `flyway.baseline-on-migrate: true` and `baseline-version: 1` in `application.yml`, Flyway treats the existing schema as version 1 and applies V2 on first deploy.
-
 ---
 
-### 2. Publishing Pipeline — **FAIL (two issues)**
+### 2. Publishing Pipeline — **STILL OPEN (two issues)**
 
 #### 2a. `uploadDocument` never transitions project status
 
-**`DocumentServiceImpl.java:188-248`** — The `uploadDocument` method calls `refreshProjectStatus` **nowhere**.  
-**`DocumentServiceImpl.java:287-288`** — `refreshProjectStatus` is only called inside `deleteDocument`.
+**`DocumentServiceImpl.java:192-254`** — `uploadDocument` still never calls `refreshProjectStatus`. The method exists at line 328 and is called in `deleteDocument` (line 294), but not after upload. The `DocumentUploadedEvent` listener only triggers extraction — no project status refresh.
 
-During upload, once both a `PAPER` and a `SOURCE` exist for the project, the project should transition from `ASSIGNED` → `IN_PROGRESS`. Without this call the status remains stuck at `ASSIGNED` forever.
-
-**Required fix — Add `refreshProjectStatus` after the MinIO upload succeeds:**
-
-In `DocumentServiceImpl.java`, after line 245 (`document = documentPersistenceService.markDocumentAsUploaded(...);`), add:
-
+**Fix:** After `markDocumentAsUploaded(...)` (line 248), add:
 ```java
         if (project != null) {
             refreshProjectStatus(project);
         }
 ```
 
-This ensures the project status is reevaluated after every document upload, and matches the existing behaviour on delete.
+#### 2b. RabbitMQ payload is bare UUID string
 
-#### 2b. RabbitMQ payload is too thin for the Python worker
+**`SourceExtractionServiceImpl.java:36`** — Payload is still `documentId.toString()`. The document entity is loaded but only its ID is used. `ExtractionRequest.java` does not exist.
 
-**`SourceExtractionServiceImpl.java:36`** — The message published is:
-
-```java
-rabbitTemplate.convertAndSend(RabbitMQConfig.EXTRACTION_QUEUE, documentId.toString());
-```
-
-The payload is a bare UUID string. A cloud Python worker cannot run the extraction without:
-- The **S3 object key** (to download the file from Cloudflare R2)
-- The **user ID** (for audit/logging)
-
-The document entity is loaded at line 30-31 but only its `id` is used.
-
-**Required fix — Create a rich DTO and publish JSON:**
-
-Create `src/main/java/com/evidencepilot/dto/ExtractionRequest.java`:
-
+**Fix:** Create `src/main/java/com/evidencepilot/dto/ExtractionRequest.java`:
 ```java
 package com.evidencepilot.dto;
 
@@ -82,66 +54,108 @@ public record ExtractionRequest(
 ) {}
 ```
 
-Then update `SourceExtractionServiceImpl.triggerExtraction()` to use it:
-
+Then update `SourceExtractionServiceImpl.triggerExtraction()`:
 ```java
-    @Override
-    @Transactional
-    public void triggerExtraction(UUID documentId) {
-        Document doc = documentRepository.findById(documentId)
-                .orElseThrow(() -> new ResourceNotFoundException(documentId, "Document"));
-
-        doc.setProcessingStatus(ProcessingStatus.PROCESSING);
-        documentRepository.save(doc);
-
-        ExtractionRequest payload = new ExtractionRequest(
-                doc.getId(),
-                doc.getFileUrl(),
-                doc.getUploadedBy().getId()
-        );
-
-        rabbitTemplate.convertAndSend(RabbitMQConfig.EXTRACTION_QUEUE, payload);
-        log.info("Published extraction request for document {} to extraction.queue", documentId);
-    }
-```
-
-Because `Jackson2JsonMessageConverter` is already registered as a bean (`RabbitMQConfig.java:61-63`), the record will be serialised to JSON automatically. The Python worker will receive a structured JSON payload:
-
-```json
-{"documentId":"...","s3ObjectKey":"sources/raw/...","userId":"..."}
+    ExtractionRequest payload = new ExtractionRequest(
+            doc.getId(), doc.getFileUrl(), doc.getUploadedBy().getId());
+    rabbitTemplate.convertAndSend(RabbitMQConfig.EXTRACTION_QUEUE, payload);
 ```
 
 ---
 
-### 3. Cloud Readiness — **FAIL (two hardcoded `localhost` fallbacks)**
+### 3. Cloud Readiness
 
-| Line | Property | Fallback | Risk |
-|------|----------|----------|------|
-| `application.yml:10` | `DB_HOST` | `localhost` | If `DB_HOST` is unset in Railway, the app connects to `localhost:3306` instead of the managed MySQL — silent routing to nowhere |
-| `application.yml:124` | `MINIO_URL` | `http://minio:9000` | If `MINIO_URL` is unset, the app tries the Docker-internal MinIO hostname, which does not exist on Railway — file uploads fail |
+#### 3a. DB_HOST/DB_PORT/DB_NAME/DB_USERNAME fallbacks — **STILL OPEN**
 
-**Required fixes:**
+| Line | Expression | Issue |
+|------|-----------|-------|
+| `application.yml:10` | `${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:evidence_pilot}` | Fallbacks mask missing env vars |
+| `application.yml:11` | `${DB_USERNAME:root}` | Same |
 
-- **Line 10**: Remove both fallbacks:
-  ```yaml
-    url: jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
-    username: ${DB_USERNAME}
-  ```
-- **Line 124**: Remove the fallback:
-  ```yaml
-    url: ${MINIO_URL}
-  ```
+**Fix:** Strip fallbacks — make them required env vars:
+```yaml
+url: jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+username: ${DB_USERNAME}
+```
 
-These three values (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `MINIO_URL`) **must** be provided as Railway environment variables or the application will not start — which is the correct cloud posture (fail fast, not silently route to localhost).
+#### 3b. MINIO_URL fallback — **FIXED**
+
+`application.yml:136` — `${MINIO_URL:http://minio:9000}` → `${MINIO_URL}`. Fallback correctly removed.
 
 ---
 
-### Summary
+## New Findings (since previous audit)
 
-| # | Severity | Location | Issue |
-|---|----------|----------|-------|
-| 1 | HIGH | `Document.java` | Missing `doi` field |
-| 2 | HIGH | `DocumentServiceImpl.java:188-248` | `uploadDocument` never calls `refreshProjectStatus` — project status stuck at `ASSIGNED` |
-| 3 | HIGH | `SourceExtractionServiceImpl.java:36` | RabbitMQ payload is bare UUID — Python worker cannot function |
-| 4 | MEDIUM | `application.yml:10` | `DB_HOST:localhost` fallback masks missing env var in cloud |
-| 5 | MEDIUM | `application.yml:124` | `MINIO_URL:http://minio:9000` fallback points to Docker-internal hostname |
+### N1. `CurrentUserServiceImpl.requireProjectAccess` — **FIXED**
+
+`CurrentUserServiceImpl.java:81-99` — Previously had a duplicate instructor block (lines 84-89 and 94-97 were identical) with no student-member check. Now correctly:
+1. Admin → full access
+2. Instructor → access only if reviewer for `SUBMITTED_FOR_REVIEW` project
+3. Others → checked via `isProjectMember()`
+
+---
+
+### N2. Empty file validation — **FIXED**
+
+`DocumentServiceImpl.java:199-201` — `uploadDocument` now validates:
+```java
+if (file == null || file.isEmpty()) {
+    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File is empty");
+}
+```
+Returns 400 for empty uploads instead of 202.
+
+---
+
+### N3. `.env` completeness — **FIXED**
+
+`BE/.env` — All variables required by `docker-compose.yml` are now present (was missing MinIO, Qdrant, RabbitMQ, Ollama vars). Uses Docker internal service names for URLs (`http://minio:9000`, `http://vector-db:6333`, `rabbitmq`).
+
+---
+
+### N4. MinIO & Qdrant config injection — **PASS (no change needed)**
+
+| File | Lines | Status |
+|------|-------|--------|
+| `MinioConfig.java` | 11-15 | `@Value("${minio.url}")` — proper injection |
+| `QdrantClientImpl.java` | 40-42 | `@Value("${qdrant.url}")`, `@Value("${qdrant.api-key}")` |
+| `QdrantGatewayImpl.java` | 23-25 | Same |
+
+No hardcoded credentials.
+
+---
+
+### N5. `application.yml` — entries lacking defaults (for reference)
+
+14 entries have bare `${VAR}` with no default. By design (fail-fast cloud posture), but `.env` covers all for local Docker:
+
+| Line | Key | Expression |
+|------|-----|-----------|
+| 12 | `datasource.password` | `${DB_PASSWORD}` |
+| 56 | `rabbitmq.host` | `${RABBITMQ_HOST}` |
+| 58 | `rabbitmq.virtual-host` | `${RABBITMQ_VIRTUAL_HOST}` |
+| 59 | `rabbitmq.username` | `${RABBITMQ_USERNAME}` |
+| 60 | `rabbitmq.password` | `${RABBITMQ_PASSWORD}` |
+| 86 | `jwt.secret` | `${JWT_SECRET}` |
+| 112 | `ai.model.base-url` | `${AI_MODEL_BASE_URL}` |
+| 120 | `ollama.embedding.model` | `${OLLAMA_EMBEDDING_MODEL}` |
+| 122 | `ollama.generation.model` | `${OLLAMA_GENERATION_MODEL}` |
+| 126 | `qdrant.url` | `${QDRANT_URL}` |
+| 136-139 | `minio.*` | `${MINIO_URL}`, `${MINIO_ACCESS_KEY}`, `${MINIO_SECRET_KEY}`, `${MINIO_BUCKET_NAME}` |
+
+---
+
+## Summary
+
+| # | Severity | Location | Issue | Status |
+|---|----------|----------|-------|--------|
+| 1 | HIGH | `Document.java` | Missing `doi` field | **OPEN** |
+| 2 | HIGH | `DocumentServiceImpl.java:192-254` | `uploadDocument` never calls `refreshProjectStatus` | **OPEN** |
+| 3 | HIGH | `SourceExtractionServiceImpl.java:36` | RabbitMQ payload is bare UUID | **OPEN** |
+| 4 | MEDIUM | `application.yml:10-11` | DB host/port/name/username fallbacks mask missing vars | **OPEN** |
+| 5 | MEDIUM | `application.yml:136` | MINIO_URL fallback removed | **FIXED** |
+| N1 | MEDIUM | `CurrentUserServiceImpl.java:81-99` | Duplicate instructor block replaced with `isProjectMember` | **FIXED** |
+| N2 | LOW | `DocumentServiceImpl.java:199-201` | Missing empty-file validation | **FIXED** |
+| N3 | LOW | `BE/.env` | Incomplete env vars for docker-compose | **FIXED** |
+| N4 | — | `MinioConfig.java`, Qdrant configs | Proper injection confirmed | **PASS** |
+| N5 | INFO | `application.yml` (14 entries) | Bare placeholders without defaults | **INFO** |
