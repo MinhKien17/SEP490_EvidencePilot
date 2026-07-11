@@ -91,13 +91,11 @@ public class CurrentUserServiceImpl implements CurrentUserService {
                     org.springframework.http.HttpStatus.FORBIDDEN,
                     "Instructor access denied to project");
         }
-        if (isInstructor(currentUser) && project.getStatus() == ProjectStatus.SUBMITTED_FOR_REVIEW && project.getId() != null
-                && feedbackRequestRepository.existsByProjectIdAndInstructorId(project.getId(), currentUser.getId())) {
-            return;
+        if (!isProjectMember(currentUser, project)) {
+            throw new ResponseStatusException(
+                    org.springframework.http.HttpStatus.FORBIDDEN,
+                    "Project access denied");
         }
-        throw new ResponseStatusException(
-                org.springframework.http.HttpStatus.FORBIDDEN,
-                "Project access denied");
     }
 
     @Override

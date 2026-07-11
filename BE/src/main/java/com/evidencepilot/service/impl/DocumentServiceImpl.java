@@ -196,6 +196,9 @@ public class DocumentServiceImpl implements DocumentService {
             UUID sourceCategoryId,
             MultipartFile file,
             DocumentType docType) {
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File is empty");
+        }
         var currentUser = currentUserService.requireCurrentUser();
 
         Project project = null;
