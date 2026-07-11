@@ -11,7 +11,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
@@ -46,33 +45,6 @@ class AiModelClientTest {
         AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test");
 
         assertThat(client.generate("Review this")).isEqualTo("Review text");
-        server.verify();
-    }
-
-    @Test
-    void extractDocumentPostsMultipartFileToExtractEndpoint() {
-        RestClient.Builder builder = RestClient.builder()
-                .defaultHeader("ngrok-skip-browser-warning", "true");
-        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        server.expect(requestTo("http://ai.test/extract"))
-                .andExpect(method(HttpMethod.POST))
-                .andExpect(header("ngrok-skip-browser-warning", "true"))
-                .andRespond(withSuccess(
-                        """
-                        {"filename":"source.pdf","method":"liteparse","markdown":"# Extracted"}
-                        """,
-                        MediaType.APPLICATION_JSON));
-
-        AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test");
-
-        AiModelClient.ExtractedDocument result = client.extractDocument(
-                "source.pdf",
-                "application/pdf",
-                "%PDF".getBytes());
-
-        assertThat(result.filename()).isEqualTo("source.pdf");
-        assertThat(result.method()).isEqualTo("liteparse");
-        assertThat(result.markdown()).isEqualTo("# Extracted");
         server.verify();
     }
 

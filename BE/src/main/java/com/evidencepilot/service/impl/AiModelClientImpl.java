@@ -3,13 +3,7 @@ package com.evidencepilot.service.impl;
 import com.evidencepilot.service.AiModelClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -61,37 +55,6 @@ public class AiModelClientImpl implements AiModelClient {
                 .body(Map.class));
     }
 
-    @SuppressWarnings("unchecked")
-    @Override
-    public ExtractedDocument extractDocument(String filename, String contentType, byte[] content) {
-        ByteArrayResource resource = new ByteArrayResource(content) {
-            @Override
-            public String getFilename() {
-                return filename == null || filename.isBlank() ? "document" : filename;
-            }
-        };
-
-        HttpHeaders partHeaders = new HttpHeaders();
-        partHeaders.setContentType(parseMediaType(contentType));
-        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-        body.add("file", new HttpEntity<>(resource, partHeaders));
-
-        Map<String, Object> response = call("/extract", () -> restClient.post()
-                .uri(baseUrl + "/extract")
-                .contentType(MediaType.MULTIPART_FORM_DATA)
-                .body(body)
-                .retrieve()
-                .body(Map.class));
-
-        if (response == null || response.get("markdown") == null) {
-            throw new AiApiException("/extract", "returned null or empty markdown", null);
-        }
-        return new ExtractedDocument(
-                stringValue(response.get("filename"), filename),
-                stringValue(response.get("method"), "unknown"),
-                stringValue(response.get("markdown"), ""));
-    }
-
     @Override
     public double[] generateEmbedding(String text) {
         Map<String, Object> response = call("/ai/embeddings", () -> restClient.post()
@@ -131,24 +94,6 @@ public class AiModelClientImpl implements AiModelClient {
             normalized = normalized.substring(0, normalized.length() - 1);
         }
         return normalized;
-    }
-
-    private static MediaType parseMediaType(String contentType) {
-        if (contentType == null || contentType.isBlank()) {
-            return MediaType.APPLICATION_OCTET_STREAM;
-        }
-        try {
-            return MediaType.parseMediaType(contentType);
-        } catch (IllegalArgumentException e) {
-            return MediaType.APPLICATION_OCTET_STREAM;
-        }
-    }
-
-    private static String stringValue(Object value, String fallback) {
-        if (value == null) {
-            return fallback;
-        }
-        return String.valueOf(value);
     }
 
     @FunctionalInterface

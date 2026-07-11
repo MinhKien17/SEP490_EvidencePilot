@@ -2,9 +2,12 @@ package com.evidencepilot.service;
 
 import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
+import io.minio.PutObjectArgs;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
+import java.io.ByteArrayInputStream;
 
 @Service
 @RequiredArgsConstructor
@@ -23,6 +26,19 @@ public class DocumentObjectStorage {
             return stream.readAllBytes();
         } catch (Exception e) {
             throw new DocumentStorageException("Failed to read object " + objectKey + " from MinIO", e);
+        }
+    }
+
+    public void write(String objectKey, byte[] content, String contentType) {
+        try (var stream = new ByteArrayInputStream(content)) {
+            minioClient.putObject(PutObjectArgs.builder()
+                    .bucket(bucketName)
+                    .object(objectKey)
+                    .stream(stream, content.length, -1)
+                    .contentType(contentType)
+                    .build());
+        } catch (Exception e) {
+            throw new DocumentStorageException("Failed to write object " + objectKey + " to MinIO", e);
         }
     }
 

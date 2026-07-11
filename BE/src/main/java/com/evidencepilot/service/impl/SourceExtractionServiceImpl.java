@@ -36,7 +36,10 @@ public class SourceExtractionServiceImpl implements SourceExtractionService {
 
         ExtractionRequest payload = new ExtractionRequest(
                 doc.getId(), doc.getFileUrl(), doc.getUploadedBy().getId());
-        rabbitTemplate.convertAndSend(RabbitMQConfig.EXTRACTION_QUEUE, payload);
+        rabbitTemplate.convertAndSend(
+                RabbitMQConfig.EXCHANGE,
+                RabbitMQConfig.ROUTING_KEY_EXTRACTION,
+                payload);
         log.info("Published document {} to extraction.queue", documentId);
     }
 

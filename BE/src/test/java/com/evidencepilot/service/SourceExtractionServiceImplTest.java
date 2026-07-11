@@ -45,7 +45,8 @@ class SourceExtractionServiceImplTest {
         verify(documents).save(document);
 
         var captor = ArgumentCaptor.forClass(ExtractionRequest.class);
-        verify(rabbit).convertAndSend(eq("extraction.queue"), captor.capture());
+        verify(rabbit).convertAndSend(
+                eq("evidence.exchange"), eq("document.extract"), captor.capture());
         ExtractionRequest payload = captor.getValue();
         assertThat(payload.documentId()).isEqualTo(id);
         assertThat(payload.s3ObjectKey()).isEqualTo("sources/raw/test.pdf");

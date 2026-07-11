@@ -11,12 +11,7 @@ public interface AiModelClient {
 
     Map<String, Object> processClaim(UUID claimId, String claimText, UUID sourceId, String excerpt);
 
-    ExtractedDocument extractDocument(String filename, String contentType, byte[] content);
-
     double[] generateEmbedding(String text);
-
-    record ExtractedDocument(String filename, String method, String markdown) {
-    }
 
     final class AiApiException extends RuntimeException {
         private final int statusCode;

@@ -9,7 +9,8 @@ import lombok.Getter;
 import lombok.Setter;
 
 @Entity
-@Table(name = "document_chunks")
+@Table(name = "document_chunks", uniqueConstraints =
+        @UniqueConstraint(name = "uk_document_chunk_index", columnNames = {"document_id", "chunk_index"}))
 @Getter
 @Setter
 public class DocumentChunk {

@@ -63,31 +63,33 @@ public class QdrantClientImpl implements QdrantClient {
     // ── Write ──────────────────────────────────────────────────────────────────
 
     @Override
-    public void upsertVector(
-            String chunkId,
-            List<Float> denseVector,
-            SparseVector sparseVector,
-            String scopeType,
-            String scopeId,
-            Map<String, Object> extraPayload) {
-        ensureCollection(denseVector.size());
-
-        String normalizedScopeType = normalizeScopeType(scopeType);
-        String normalizedScopeId = normalizeScopeId(scopeId);
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("scope_type", normalizedScopeType);
-        payload.put("scope_id", normalizedScopeId);
-        if ("PROJECT".equals(normalizedScopeType)) {
-            payload.put("project_id", normalizedScopeId);
+    public void upsertVectors(List<QdrantClient.VectorPoint> points) {
+        if (points.isEmpty()) {
+            return;
         }
-        if ("COLLECTION".equals(normalizedScopeType)) {
-            payload.put("collection_id", normalizedScopeId);
-        }
-        payload.putAll(extraPayload);
+        ensureCollection(points.getFirst().denseVector().size());
 
-        NamedVectors namedVectors = new NamedVectors(denseVector, sparseVector);
-        UpsertPoint point = new UpsertPoint(chunkId, namedVectors, payload);
-        UpsertBody body = new UpsertBody(List.of(point));
+        List<UpsertPoint> upsertPoints = new ArrayList<>(points.size());
+        for (QdrantClient.VectorPoint vectorPoint : points) {
+            String normalizedScopeType = normalizeScopeType(vectorPoint.scopeType());
+            String normalizedScopeId = normalizeScopeId(vectorPoint.scopeId());
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("scope_type", normalizedScopeType);
+            payload.put("scope_id", normalizedScopeId);
+            if ("PROJECT".equals(normalizedScopeType)) {
+                payload.put("project_id", normalizedScopeId);
+            }
+            if ("COLLECTION".equals(normalizedScopeType)) {
+                payload.put("collection_id", normalizedScopeId);
+            }
+            payload.putAll(vectorPoint.extraPayload());
+            upsertPoints.add(new UpsertPoint(
+                    vectorPoint.chunkId(),
+                    new NamedVectors(vectorPoint.denseVector(), vectorPoint.sparseVector()),
+                    payload));
+        }
+
+        UpsertBody body = new UpsertBody(upsertPoints);
         String url = baseUrl + "/collections/" + COLLECTION + "/points?wait=true";
 
         try {
@@ -99,10 +101,28 @@ public class QdrantClientImpl implements QdrantClient {
                         throw new QdrantException("Failed to sync vector to Qdrant");
                     })
                     .toBodilessEntity();
-            log.debug("Upserted chunkId={} into Qdrant (scopeType={}, scopeId={})",
-                    chunkId, normalizedScopeType, normalizedScopeId);
+            log.debug("Upserted {} points into Qdrant", points.size());
         } catch (RestClientException e) {
             throw new QdrantException("Failed to sync vector to Qdrant", e);
+        }
+    }
+
+    @Override
+    public void deleteVectors(List<String> chunkIds) {
+        if (chunkIds.isEmpty()) {
+            return;
+        }
+        try {
+            restClient.post()
+                    .uri(baseUrl + "/collections/" + COLLECTION + "/points/delete?wait=true")
+                    .body(Map.of("points", chunkIds))
+                    .retrieve()
+                    .onStatus(status -> !status.is2xxSuccessful(), (req, res) -> {
+                        throw new QdrantException("Failed to delete stale Qdrant points");
+                    })
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            throw new QdrantException("Failed to delete stale Qdrant points", e);
         }
     }
 
@@ -225,6 +245,7 @@ public class QdrantClientImpl implements QdrantClient {
                         .toBodilessEntity();
 
                 log.info("Qdrant collection '{}' already exists", COLLECTION);
+                ensurePayloadIndexes();
                 collectionEnsured = true;
                 return;
             } catch (CollectionNotFoundException ignored) {
@@ -253,11 +274,31 @@ public class QdrantClientImpl implements QdrantClient {
 
                 log.info("Created Qdrant collection '{}' with named vectors (dense/sparse)",
                         COLLECTION);
+                ensurePayloadIndexes();
                 collectionEnsured = true;
             } catch (Exception e) {
                 log.warn("Failed to create Qdrant collection '{}'. It may already exist " +
                          "from a concurrent request. Proceeding anyway.", COLLECTION, e);
                 collectionEnsured = true;
+            }
+        }
+    }
+
+    private void ensurePayloadIndexes() {
+        Map<String, String> schemas = Map.of(
+                "scope_type", "keyword",
+                "scope_id", "keyword",
+                "project_id", "uuid",
+                "document_id", "uuid");
+        for (Map.Entry<String, String> entry : schemas.entrySet()) {
+            try {
+                restClient.put()
+                        .uri(baseUrl + "/collections/" + COLLECTION + "/index?wait=true")
+                        .body(Map.of("field_name", entry.getKey(), "field_schema", entry.getValue()))
+                        .retrieve()
+                        .toBodilessEntity();
+            } catch (RestClientException e) {
+                log.debug("Payload index {} already exists or could not be created", entry.getKey());
             }
         }
     }

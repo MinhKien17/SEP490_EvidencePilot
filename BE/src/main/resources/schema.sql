@@ -78,6 +78,8 @@ CREATE TABLE documents (
     content_type VARCHAR(255),
     file_size_bytes BIGINT,
     file_hash_sha256 VARCHAR(64),
+    extraction_hash_sha256 VARCHAR(64),
+    embedding_job_id BINARY(16),
     processing_status VARCHAR(50) NOT NULL CHECK (processing_status IN ('PENDING_UPLOAD', 'UPLOADED', 'QUEUED', 'PROCESSING', 'READY', 'COMPLETED', 'FAILED')),
     processing_error TEXT,
     chunk_count INT DEFAULT 0,
@@ -112,7 +114,7 @@ CREATE TABLE document_chunks (
     chunk_index INT NOT NULL,
     text TEXT NOT NULL,
     active BOOLEAN NOT NULL DEFAULT TRUE,
-    INDEX idx_document_chunks (document_id, chunk_index),
+    UNIQUE INDEX uk_document_chunk_index (document_id, chunk_index),
     FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
 );
 

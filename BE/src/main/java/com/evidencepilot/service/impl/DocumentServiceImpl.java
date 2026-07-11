@@ -299,16 +299,6 @@ public class DocumentServiceImpl implements DocumentService {
         }
     }
 
-    @Override
-    @Transactional
-    public void updateDocumentStatusFromWebhook(UUID documentId, String status) {
-        Document doc = documentRepository.findById(documentId)
-                .orElseThrow(() -> new ResourceNotFoundException(documentId, "Document"));
-        doc.setProcessingStatus(ProcessingStatus.valueOf(status));
-        documentRepository.save(doc);
-        log.info("Webhook updated document {} status to {}", documentId, status);
-    }
-
     private Document findDocument(UUID id) {
         return documentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(id, "Document"));

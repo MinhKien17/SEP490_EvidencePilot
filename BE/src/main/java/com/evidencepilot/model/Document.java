@@ -57,6 +57,13 @@ public class Document {
     @Column(name = "file_hash_sha256")
     private String fileHashSha256;
 
+    @Column(name = "extraction_hash_sha256")
+    private String extractionHashSha256;
+
+    @Column(name = "embedding_job_id", columnDefinition = "BINARY(16)")
+    @JdbcTypeCode(java.sql.Types.BINARY)
+    private UUID embeddingJobId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "processing_status")
     private ProcessingStatus processingStatus;

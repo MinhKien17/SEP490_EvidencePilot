@@ -100,7 +100,8 @@ class DocumentControllerTest {
         assertEquals("test-doc.pdf", saved.getOriginalFilename());
 
         var captor = ArgumentCaptor.forClass(ExtractionRequest.class);
-        verify(rabbitTemplate).convertAndSend(eq("extraction.queue"), captor.capture());
+        verify(rabbitTemplate).convertAndSend(
+                eq("evidence.exchange"), eq("document.extract"), captor.capture());
         ExtractionRequest payload = captor.getValue();
         assertEquals(saved.getId(), payload.documentId());
         assertNotNull(payload.s3ObjectKey());
