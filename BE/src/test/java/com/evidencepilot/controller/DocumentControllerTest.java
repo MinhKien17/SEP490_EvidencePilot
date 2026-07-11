@@ -1,6 +1,7 @@
 package com.evidencepilot.controller;
 
 import com.evidencepilot.config.security.JwtUtils;
+import com.evidencepilot.dto.ExtractionRequest;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.DocumentRepository;
@@ -10,6 +11,7 @@ import io.minio.PutObjectArgs;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -25,6 +27,7 @@ import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -96,7 +99,12 @@ class DocumentControllerTest {
         assertNotNull(saved.getId());
         assertEquals("test-doc.pdf", saved.getOriginalFilename());
 
-        verify(rabbitTemplate).convertAndSend("extraction.queue", saved.getId().toString());
+        var captor = ArgumentCaptor.forClass(ExtractionRequest.class);
+        verify(rabbitTemplate).convertAndSend(eq("extraction.queue"), captor.capture());
+        ExtractionRequest payload = captor.getValue();
+        assertEquals(saved.getId(), payload.documentId());
+        assertNotNull(payload.s3ObjectKey());
+        assertNotNull(payload.userId());
     }
 
     @Test
