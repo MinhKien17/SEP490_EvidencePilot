@@ -2,11 +2,13 @@ package com.evidencepilot.service;
 
 import com.evidencepilot.mapper.DocumentMapper;
 import com.evidencepilot.model.Document;
+import com.evidencepilot.model.DocumentText;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.SourceCategory;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProjectStatus;
+import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
@@ -22,6 +24,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -35,6 +40,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -321,6 +327,73 @@ class DocumentServiceImplAccessTest {
         assertThat(results).hasSize(1);
         assertThat(results.get(0).id()).isEqualTo(matched.getId());
         verify(currentUserService).requireCollectionAccess(user, collection);
+    }
+
+    @Test
+    void getSourceByIdRequiresAccessAndSourceType() {
+        User user = user();
+        Project project = project();
+        Document source = document(project);
+        source.setDocType(DocumentType.SOURCE);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+
+        assertThat(service().getSourceById(source.getId()).id()).isEqualTo(source.getId());
+
+        verify(currentUserService).requireProjectAccess(user, project);
+    }
+
+    @Test
+    void getAllPapersForCurrentUserFiltersInactiveAndSourceDocuments() {
+        User admin = user();
+        Document paper = document(null);
+        Document source = document(null);
+        source.setDocType(DocumentType.SOURCE);
+        Document inactive = document(null);
+        inactive.setActive(false);
+        when(currentUserService.requireCurrentUser()).thenReturn(admin);
+        when(currentUserService.isAdmin(admin)).thenReturn(true);
+        when(documentRepository.findAll()).thenReturn(List.of(paper, source, inactive));
+
+        assertThat(service().getAllPapersForCurrentUser()).singleElement()
+                .extracting("id").isEqualTo(paper.getId());
+    }
+
+    @Test
+    void projectDocumentQueriesRequireAccessAndReturnPagedResults() {
+        User user = user();
+        Project project = project();
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(documentRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(documentRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        assertThat(service().getDocumentsByProject(project.getId())).isEmpty();
+        assertThat(service().getDocumentsByProject(
+                project.getId(), 0, 20, "createdAt,desc", null, null, null, true).content()).isEmpty();
+        assertThat(service().getSourcesByProject(
+                project.getId(), 0, 20, "createdAt,desc", null, ProcessingStatus.READY, true).content()).isEmpty();
+        verify(currentUserService, times(3)).requireProjectAccess(user, project);
+    }
+
+    @Test
+    void getDocumentTextMapsExistingTextAndRejectsMissingText() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        DocumentText text = new DocumentText();
+        text.setId(UUID.randomUUID());
+        text.setDocument(document);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(documentTextRepository.findByDocumentId(document.getId())).thenReturn(text, null);
+
+        service().getDocumentText(document.getId());
+        verify(documentMapper).toDocumentTextResponse(text);
+
+        assertThatThrownBy(() -> service().getDocumentText(document.getId()))
+                .hasMessageContaining("Document text not found");
     }
 
     private DocumentServiceImpl service() {

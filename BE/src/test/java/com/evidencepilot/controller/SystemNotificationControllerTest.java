@@ -52,6 +52,17 @@ class SystemNotificationControllerTest {
     }
 
     @Test
+    void unreadCountReturnsCurrentUsersCount() throws Exception {
+        when(systemNotificationService.countCurrentUserUnreadNotifications()).thenReturn(3L);
+
+        mockMvc.perform(get("/api/notifications/unread-count"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.count", is(3)));
+
+        verify(systemNotificationService).countCurrentUserUnreadNotifications();
+    }
+
+    @Test
     void markReadReturnsNotFoundWhenNotificationIsNotOwnedByCurrentUser() throws Exception {
         UUID notificationId = UUID.randomUUID();
         when(systemNotificationService.markCurrentUserNotificationRead(notificationId))

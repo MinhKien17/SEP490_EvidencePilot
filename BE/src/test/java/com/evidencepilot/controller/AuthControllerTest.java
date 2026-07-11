@@ -6,7 +6,6 @@ import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.EmailVerificationService;
 import io.minio.MinioClient;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,7 +35,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
 @Transactional
-@Disabled("Temporarily disabled pending post-AI pipeline refactor")
 class AuthControllerTest {
 
     @Autowired

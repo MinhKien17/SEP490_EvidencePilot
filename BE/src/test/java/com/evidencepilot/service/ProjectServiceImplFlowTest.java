@@ -117,6 +117,42 @@ class ProjectServiceImplFlowTest {
         verify(currentUserService).requireProjectAccess(instructor, project);
     }
 
+    @Test
+    void getProjectMemberResponsesMapsMembers() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        Project project = projectWithInstructor(instructor);
+        ProjectMember member = project.getProjectMembers().get(0);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(projectMemberRepository.findByProjectId(project.getId())).thenReturn(List.of(member));
+
+        service().getProjectMemberResponses(project.getId());
+
+        verify(projectMapper).toProjectMemberResponse(member);
+    }
+
+    @Test
+    void removeMemberNotifiesAndDeletesMatches() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = projectWithInstructor(instructor);
+        ProjectMember member = new ProjectMember();
+        member.setProject(project);
+        member.setUser(student);
+        member.setRole(ProjectRole.EDITOR);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(projectMemberRepository.findByProjectIdAndUserId(project.getId(), student.getId()))
+                .thenReturn(List.of(member));
+
+        service().removeMember(project.getId(), student.getId());
+
+        verify(systemNotificationService).createNotification(
+                student, instructor, "PROJECT_MEMBER_REMOVED", project.getId(),
+                instructor.getEmail() + " removed you from project \"" + project.getTitle() + "\".");
+        verify(projectMemberRepository).deleteAll(List.of(member));
+    }
+
     private ProjectServiceImpl service() {
         return new ProjectServiceImpl(
                 projectRepository,

@@ -1,10 +1,14 @@
 package com.evidencepilot.service;
 
+import com.evidencepilot.dto.request.ClaimCreationRequest;
 import com.evidencepilot.mapper.ClaimMapper;
 import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Claim;
+import com.evidencepilot.model.Document;
+import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
@@ -18,12 +22,18 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -142,6 +152,100 @@ class ClaimServiceImplAccessTest {
                 .hasMessageContaining("Project is read-only.");
     }
 
+    @Test
+    void getAllClaimsFiltersInactiveForAdmin() {
+        User admin = user();
+        Claim active = claim();
+        Claim inactive = claim();
+        inactive.setActive(false);
+        when(currentUserService.requireCurrentUser()).thenReturn(admin);
+        when(currentUserService.isAdmin(admin)).thenReturn(true);
+        when(claimRepository.findAll()).thenReturn(List.of(active, inactive));
+
+        assertThat(service().getAllClaims()).hasSize(1);
+        verify(claimMapper).toClaimResponse(active);
+    }
+
+    @Test
+    void getClaimByIdRequiresClaimAccess() {
+        User user = user();
+        Claim claim = claim();
+        when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+
+        service().getClaimById(claim.getId());
+
+        verify(currentUserService).requireClaimAccess(user, claim);
+    }
+
+    @Test
+    void projectClaimQueriesRequireProjectAccess() {
+        User user = user();
+        Project project = claim().getProject();
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(claimRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        assertThat(service().getClaimsByProject(project.getId())).isEmpty();
+        assertThat(service().getClaimsByProject(
+                project.getId(), 0, 20, "createdAt,desc", null, true).content()).isEmpty();
+        verify(currentUserService, org.mockito.Mockito.times(2)).requireProjectAccess(user, project);
+    }
+
+    @Test
+    void createClaimPersistsSectionProjectAndVersion() {
+        User user = user();
+        Project project = claim().getProject();
+        Document document = new Document();
+        document.setProject(project);
+        PaperSection section = new PaperSection();
+        section.setId(UUID.randomUUID());
+        section.setDocument(document);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
+        when(claimRepository.save(any(Claim.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service().createClaim(new ClaimCreationRequest(section.getId(), "content", 0.5f));
+
+        verify(claimRepository).save(argThat(saved -> saved.getProject() == project
+                && saved.getSection() == section && saved.getClaimVersion() == 1 && saved.isActive()));
+    }
+
+    @Test
+    void updateAndDeleteClaimMutateActiveClaim() {
+        User user = user();
+        Claim claim = claim();
+        claim.setClaimVersion(1);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
+
+        service().updateClaim(claim.getId(), "updated", 0.9f);
+        assertThat(claim.getContent()).isEqualTo("updated");
+        assertThat(claim.getClaimVersion()).isEqualTo(2);
+
+        service().deleteClaim(claim.getId());
+        assertThat(claim.isActive()).isFalse();
+    }
+
+    @Test
+    void acceptAndRejectSuggestionSetExpectedStatus() {
+        User user = user();
+        Claim claim = claim();
+        AiSuggestion accepted = suggestion(claim);
+        AiSuggestion rejected = suggestion(claim);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(aiSuggestionRepository.findById(accepted.getId())).thenReturn(Optional.of(accepted));
+        when(aiSuggestionRepository.findById(rejected.getId())).thenReturn(Optional.of(rejected));
+
+        service().acceptSuggestion(accepted.getId());
+        service().rejectSuggestion(rejected.getId());
+
+        assertThat(accepted.getStatus()).isEqualTo(SuggestionStatus.ACCEPTED);
+        assertThat(rejected.getStatus()).isEqualTo(SuggestionStatus.REJECTED);
+    }
+
     private ClaimServiceImpl service() {
         return new ClaimServiceImpl(
                 claimRepository,
@@ -170,5 +274,13 @@ class ClaimServiceImplAccessTest {
         claim.setProject(project);
         claim.setActive(true);
         return claim;
+    }
+
+    private AiSuggestion suggestion(Claim claim) {
+        AiSuggestion suggestion = new AiSuggestion();
+        suggestion.setId(UUID.randomUUID());
+        suggestion.setClaim(claim);
+        suggestion.setStatus(SuggestionStatus.PENDING);
+        return suggestion;
     }
 }

@@ -4,7 +4,6 @@ import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.impl.AiModelClientImpl;
 import com.evidencepilot.client.ai.config.AiClientConfig;
 import com.sun.net.httpserver.HttpServer;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.web.client.RestClient;
@@ -17,7 +16,6 @@ import java.time.Duration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@Disabled("Temporarily disabled pending post-AI pipeline refactor")
 class AiClientConfigTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()

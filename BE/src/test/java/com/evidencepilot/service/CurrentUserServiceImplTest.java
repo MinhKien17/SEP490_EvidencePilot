@@ -2,6 +2,7 @@ package com.evidencepilot.service;
 
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectMember;
+import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
@@ -14,15 +15,19 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class CurrentUserServiceImplTest {
@@ -85,6 +90,77 @@ class CurrentUserServiceImplTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
                         .isEqualTo(HttpStatus.FORBIDDEN));
+    }
+
+    @Test
+    void requireCurrentUserReturnsUserPrincipalOrLoadsByEmail() {
+        CurrentUserServiceImpl service = service();
+        User principal = user(UserRole.STUDENT);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principal, null));
+        assertThat(service.requireCurrentUser()).isSameAs(principal);
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("student@test.com", null));
+        when(userRepository.findByEmail("student@test.com")).thenReturn(Optional.of(principal));
+        assertThat(service.requireCurrentUser()).isSameAs(principal);
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void requireCurrentUserRejectsMissingAuthentication() {
+        SecurityContextHolder.clearContext();
+        assertThatThrownBy(() -> service().requireCurrentUser())
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(HttpStatus.UNAUTHORIZED));
+    }
+
+    @Test
+    void roleAndUserOwnershipChecksAllowAdminAndOwner() {
+        CurrentUserServiceImpl service = service();
+        User admin = user(UserRole.ADMIN);
+        User student = user(UserRole.STUDENT);
+
+        assertThat(service.isAdmin(admin)).isTrue();
+        assertThat(service.isInstructor(user(UserRole.INSTRUCTOR))).isTrue();
+        assertThat(service.ownsUserIdOrAdmin(student, student.getId())).isTrue();
+        assertThatCode(() -> service.requireRole(admin, UserRole.INSTRUCTOR)).doesNotThrowAnyException();
+        assertThatCode(() -> service.requireUserIdOrAdmin(admin, UUID.randomUUID())).doesNotThrowAnyException();
+    }
+
+    @Test
+    void requireCollectionAccessAllowsOwnerInstructorAndRejectsStudent() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        com.evidencepilot.model.Collection collection = new com.evidencepilot.model.Collection();
+        collection.setInstructor(instructor);
+
+        assertThatCode(() -> service().requireCollectionAccess(instructor, collection)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> service().requireCollectionAccess(user(UserRole.STUDENT), collection))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Students");
+    }
+
+    @Test
+    void requireClaimAccessDelegatesToProjectAccess() {
+        User admin = user(UserRole.ADMIN);
+        Project project = projectOwnedBy(user(UserRole.STUDENT));
+        Claim claim = new Claim();
+        claim.setProject(project);
+
+        assertThatCode(() -> service().requireClaimAccess(admin, claim)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void requireProjectAccessAllowsStudentMember() {
+        User student = user(UserRole.STUDENT);
+        Project project = projectOwnedBy(student);
+
+        assertThatCode(() -> service().requireProjectAccess(student, project)).doesNotThrowAnyException();
+    }
+
+    private CurrentUserServiceImpl service() {
+        return new CurrentUserServiceImpl(userRepository, feedbackRequestRepository);
     }
 
     private User user(UserRole role) {

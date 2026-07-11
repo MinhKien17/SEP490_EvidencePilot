@@ -115,6 +115,46 @@ class ProjectServiceImplLifecycleTest {
                 .hasMessageContaining("Project is read-only.");
     }
 
+    @Test
+    void getProjectByIdRequiresAccess() {
+        User user = user();
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+
+        service().getProjectById(project.getId());
+
+        verify(currentUserService).requireProjectAccess(user, project);
+    }
+
+    @Test
+    void updateProjectChangesMutableMetadata() {
+        User user = user();
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(projectRepository.save(project)).thenReturn(project);
+
+        service().updateProject(project.getId(), new ProjectUpdateRequest("New", "Description", "ISO"));
+
+        assertThat(project.getTitle()).isEqualTo("New");
+        assertThat(project.getDescription()).isEqualTo("Description");
+        verify(currentUserService).requireProjectManageAccess(user, project);
+    }
+
+    @Test
+    void deleteProjectSoftDeletesAfterManageCheck() {
+        User user = user();
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+
+        service().deleteProject(project.getId());
+
+        assertThat(project.isActive()).isFalse();
+        verify(projectRepository).save(project);
+    }
+
     private ProjectServiceImpl service() {
         return new ProjectServiceImpl(
                 projectRepository,

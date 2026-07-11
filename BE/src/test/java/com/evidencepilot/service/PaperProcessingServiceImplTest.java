@@ -19,6 +19,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -73,6 +74,35 @@ class PaperProcessingServiceImplTest {
         service().review(document.getId(), null);
 
         verify(currentUserService).requireProjectAccess(user, project);
+    }
+
+    @Test
+    void detectAndPersistSectionsReturnsEmptyWithoutExtractedText() {
+        Document document = document(project());
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+
+        org.assertj.core.api.Assertions.assertThat(service().detectAndPersistSections(document.getId())).isEmpty();
+    }
+
+    @Test
+    void detectAndPersistSectionsCreatesFullTextSection() {
+        Document document = document(project());
+        DocumentText text = new DocumentText();
+        text.setDocument(document);
+        text.setExtractedText("lowercase content without a heading");
+        document.setDocumentText(text);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.saveAll(org.mockito.ArgumentMatchers.anyList()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service().detectAndPersistSections(document.getId());
+
+        verify(paperSectionRepository).saveAll(argThat(sections -> {
+            var iterator = sections.iterator();
+            return iterator.hasNext()
+                    && iterator.next().getSectionTitle().equals("Full Text")
+                    && !iterator.hasNext();
+        }));
     }
 
     private PaperProcessingServiceImpl service() {

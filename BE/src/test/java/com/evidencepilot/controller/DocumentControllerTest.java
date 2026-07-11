@@ -108,4 +108,18 @@ class DocumentControllerTest {
         assertEquals(0, documentRepository.count());
         verifyNoInteractions(minioClient, rabbitTemplate);
     }
+
+    @Test
+    void uploadDocument_withEmptyFile_shouldReturn400WithoutPersistingOrPublishing() throws Exception {
+        MockMultipartFile emptyFile = new MockMultipartFile(
+                "file", "empty.pdf", MediaType.APPLICATION_PDF_VALUE, new byte[0]);
+
+        mockMvc.perform(multipart("/api/documents")
+                        .file(emptyFile)
+                        .header("Authorization", bearerToken))
+                .andExpect(status().isBadRequest());
+
+        assertEquals(0, documentRepository.count());
+        verifyNoInteractions(minioClient, rabbitTemplate);
+    }
 }

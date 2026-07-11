@@ -188,6 +188,45 @@ class FeedbackServiceImplTest {
                 .hasMessageContaining("Feedback request closed.");
     }
 
+    @Test
+    void findAllForCurrentUserUsesRoleScopedRepository() {
+        User student = user(UserRole.STUDENT);
+        when(currentUserService.requireCurrentUser()).thenReturn(student);
+        when(feedbackRequestRepository.findByStudentId(student.getId())).thenReturn(List.of());
+
+        assertThat(service().findAllForCurrentUser()).isEmpty();
+
+        verify(feedbackRequestRepository).findByStudentId(student.getId());
+    }
+
+    @Test
+    void updateStatusTransitionsRequestAndNotifiesStudent() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+        request.setStatus(FeedbackStatus.PENDING);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(feedbackRequestRepository.findById(request.getId())).thenReturn(Optional.of(request));
+        when(feedbackRequestRepository.save(request)).thenReturn(request);
+
+        service().updateStatus(request.getId(), "REVIEWED");
+
+        assertThat(request.getStatus()).isEqualTo(FeedbackStatus.REVIEWED);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.RETURNED);
+        verify(systemNotificationService).createNotification(
+                student, instructor, "REVIEW_STATUS_CHANGED", request.getId(),
+                "Review status for project \"Capstone\" changed to REVIEWED.");
+    }
+
+    @Test
+    void updateStatusRejectsUnknownAndPendingValues() {
+        assertThatThrownBy(() -> service().updateStatus(UUID.randomUUID(), "unknown"))
+                .hasMessageContaining("Invalid status");
+        assertThatThrownBy(() -> service().updateStatus(UUID.randomUUID(), "PENDING"))
+                .hasMessageContaining("Invalid status");
+    }
+
     private FeedbackServiceImpl service() {
         return new FeedbackServiceImpl(
                 feedbackRequestRepository,

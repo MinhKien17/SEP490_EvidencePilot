@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -37,6 +38,27 @@ class SystemNotificationServiceImplTest {
 
     @InjectMocks
     private SystemNotificationServiceImpl service;
+
+    @Test
+    void getCurrentUserNotificationsReturnsRepositoryOrder() {
+        User user = user(UUID.randomUUID());
+        SystemNotification notification = notification(UUID.randomUUID(), user, false);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(systemNotificationRepository.findByUserIdOrderByCreatedAtDesc(user.getId()))
+                .thenReturn(List.of(notification));
+
+        assertThat(service.getCurrentUserNotifications()).singleElement()
+                .extracting(SystemNotificationResponse::id).isEqualTo(notification.getId());
+    }
+
+    @Test
+    void countCurrentUserUnreadNotificationsUsesCurrentUserId() {
+        User user = user(UUID.randomUUID());
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(systemNotificationRepository.countByUserIdAndReadFalse(user.getId())).thenReturn(4L);
+
+        assertThat(service.countCurrentUserUnreadNotifications()).isEqualTo(4L);
+    }
 
     @Test
     void createNotificationPersistsAndPushesToUserQueue() {
@@ -127,5 +149,17 @@ class SystemNotificationServiceImplTest {
         user.setId(id);
         user.setEmail(id + "@example.com");
         return user;
+    }
+
+    private SystemNotification notification(UUID id, User user, boolean read) {
+        SystemNotification notification = new SystemNotification();
+        notification.setId(id);
+        notification.setUser(user);
+        notification.setActionType("TEST");
+        notification.setEntityId(UUID.randomUUID());
+        notification.setMessage("message");
+        notification.setCreatedAt(LocalDateTime.now());
+        notification.setRead(read);
+        return notification;
     }
 }
