@@ -51,13 +51,12 @@ flowchart LR
 
     subgraph Data Layer
         MySQL[("MySQL")]
-        MinIO[("MinIO\nraw document storage")]
+        MinIO[("MinIO\nraw files + processed Markdown")]
         Qdrant[("Qdrant\nvector index")]
     end
 
     subgraph Asynchronous Extraction Pipeline
         Rabbit["RabbitMQ\nextraction queue"]
-        DLQ["RabbitMQ\nDead-Letter Queue (DLQ)"]
         Worker["Document extraction worker"]
     end
 
@@ -78,11 +77,10 @@ flowchart LR
     %% Asynchronous Messaging (Dashed Lines)
     Services -.->|"publish"| Rabbit
     Rabbit -.->|"consume"| Worker
-    Worker -.->|"reject / fail"| DLQ
-
     %% Worker Operations
-    Worker -->|"save extracted chunks / updates"| MySQL
-    Worker -->|"request extraction/embeddings"| AI
+    Worker -->|"save text, chunks, status"| MySQL
+    Worker -->|"presigned URL; extraction/embeddings"| AI
+    Worker -->|"processed Markdown checkpoint"| MinIO
     Worker -->|"upsert chunk vectors"| Qdrant
 
     %% Direct Service Operations
@@ -90,7 +88,7 @@ flowchart LR
     Services -->|"vector search"| Qdrant
 ```
 
-business data kept in MySQL, uploaded files in MinIO, and searchable vectors in Qdrant. RabbitMQ decouples document upload from extraction, chunking, and embedding work. The AI model API returns extracted content and embeddings to the backend worker; the backend then writes chunk vectors into Qdrant.
+Business data is kept in MySQL, raw files and processed Markdown in MinIO, and searchable vectors in Qdrant. RabbitMQ decouples upload from the Java extraction worker. Python remains a stateless HTTP model service: Java sends a presigned MinIO URL for extraction, performs chunking, requests batch embeddings, persists the results, upserts Qdrant, and sets `READY` last.
 
 ## Processing Flow
 
@@ -105,16 +103,16 @@ flowchart TD
         PushQueue -->|Ack Success| SaveQueued["Update DB: status = QUEUED"]
         PushQueue -->|Failure or Timeout| FailState["Update DB: status = FAILED"]
         
-        SaveQueued --> AIParsing["Worker: Send raw file to AI API for Markdown Extraction"]
+        SaveQueued --> AIParsing["Worker: Send presigned raw-file URL to AI API"]
         
-        AIParsing -->|Returns Markdown| Chunks["Worker: Chunk Markdown & Persist (MySQL)"]
+        AIParsing -->|Returns Markdown| Checkpoint["Store processed Markdown (MinIO)"]
         AIParsing -->|Failure or Timeout| FailState
+        Checkpoint --> Chunks["Worker: Chunk Markdown"]
+        Chunks --> GenEmbed["Worker: Send chunk batches to AI API"]
         
-        Chunks --> GenEmbed["Worker: Send chunks to AI API for Embeddings"]
-        
-        GenEmbed -->|Returns Vectors| Vector["Worker: Upsert vectors (Qdrant)"]
+        GenEmbed -->|Returns Vectors| Persist["Persist text and chunks (MySQL)"]
         GenEmbed -->|Failure or Timeout| FailState
-        
+        Persist --> Vector["Worker: Upsert vectors (Qdrant)"]
         Vector --> Ready["Update DB: status = READY"]
     end
 ```
@@ -181,12 +179,14 @@ flowchart TD
     PushQueue -->|Ack Success| SaveQueued["DB status = QUEUED"]
     PushQueue -->|Failure| FailInit["DB status = FAILED"]
     SaveQueued --> ConsumeJob["Worker consumes job"]
-    ConsumeJob --> AIParsing["Worker requests AI Markdown Parsing"]
-    AIParsing -->|Success| Chunking["Chunk Markdown & Persist to MySQL"]
+    ConsumeJob --> AIParsing["Send presigned URL for Markdown extraction"]
+    AIParsing -->|Success| Checkpoint["Store processed Markdown in MinIO"]
     AIParsing -->|Failure| WorkerFail["DB status = FAILED"]
-    Chunking --> GenEmbed["Request AI Vector Embeddings"]
-    GenEmbed -->|Success| VectorDB["Upsert to Qdrant"]
+    Checkpoint --> Chunking["Chunk Markdown in Java"]
+    Chunking --> GenEmbed["Request batch embeddings"]
+    GenEmbed -->|Success| Persist["Persist text and chunks in MySQL"]
     GenEmbed -->|Failure| WorkerFail
+    Persist --> VectorDB["Upsert to Qdrant"]
     VectorDB --> Ready["DB status = READY"]
 ```
 

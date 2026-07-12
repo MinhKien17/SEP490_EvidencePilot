@@ -747,7 +747,7 @@ export default function Workspace() {
               <input
                 type="file"
                 className="hidden"
-                accept=".pdf,.doc,.docx"
+                accept=".pdf,.docx"
                 onChange={(e) => {
                   if (e.target.files && e.target.files.length > 0) {
                     handleUploadPaper(e.target.files[0]);
@@ -797,7 +797,7 @@ export default function Workspace() {
               <input
                 type="file"
                 className="hidden"
-                accept=".pdf,.doc,.docx"
+                accept=".pdf,.docx"
                 onChange={(e) => {
                   if (e.target.files && e.target.files.length > 0) {
                     handleUploadSource(e.target.files[0]);
@@ -997,7 +997,7 @@ export default function Workspace() {
                   <input
                     type="file"
                     className="hidden"
-                    accept=".pdf,.doc,.docx"
+                    accept=".pdf,.docx"
                     disabled={isUploading}
                     onChange={async (e) => {
                       if (e.target.files && e.target.files.length > 0) {

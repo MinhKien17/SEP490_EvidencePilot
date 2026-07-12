@@ -20,18 +20,18 @@ class ClaimEvaluationServiceImplTest {
     @Test
     void evaluateRequiresDocumentAccessBeforeVectorSearch() {
         QdrantGateway qdrantGateway = mock(QdrantGateway.class);
-        OllamaGateway ollamaGateway = mock(OllamaGateway.class);
+        AiModelClient aiModelClient = mock(AiModelClient.class);
         SparseVectorGenerator sparseVectorGenerator = mock(SparseVectorGenerator.class);
         DocumentService documentService = mock(DocumentService.class);
         UUID documentId = UUID.randomUUID();
 
-        when(ollamaGateway.getDenseEmbedding("claim")).thenReturn(List.of(0.1f));
+        when(aiModelClient.generateEmbedding("claim")).thenReturn(List.of(0.1f));
         when(sparseVectorGenerator.generate("claim"))
                 .thenReturn(new SparseVector(List.of(1L), List.of(0.2f)));
         when(qdrantGateway.searchDocumentContext(eq(documentId), any(), any(), eq(10)))
                 .thenReturn(List.of());
 
-        new ClaimEvaluationServiceImpl(qdrantGateway, ollamaGateway, sparseVectorGenerator, documentService)
+        new ClaimEvaluationServiceImpl(qdrantGateway, aiModelClient, sparseVectorGenerator, documentService)
                 .evaluate(documentId, new ClaimRequest("claim"));
 
         var inOrder = inOrder(documentService, qdrantGateway);

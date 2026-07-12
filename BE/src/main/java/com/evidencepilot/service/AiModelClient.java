@@ -1,5 +1,6 @@
 package com.evidencepilot.service;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -9,11 +10,15 @@ public interface AiModelClient {
 
     String generate(String prompt);
 
-    Map<String, Object> processClaim(UUID claimId, String claimText, UUID sourceId, String excerpt);
+    ExtractedDocument extractDocument(
+            UUID documentId,
+            String filename,
+            String contentType,
+            String downloadUrl);
 
-    ExtractedDocument extractDocument(String filename, String contentType, byte[] content);
+    List<Float> generateEmbedding(String text);
 
-    double[] generateEmbedding(String text);
+    List<List<Float>> generateEmbeddings(List<String> texts);
 
     record ExtractedDocument(String filename, String method, String markdown) {
     }

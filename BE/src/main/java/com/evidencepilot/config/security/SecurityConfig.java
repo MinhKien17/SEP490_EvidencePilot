@@ -52,8 +52,7 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/ws",
-                                "/ws/**",
-                                "/api/v1/webhooks/**")
+                                "/ws/**")
                         .permitAll()
                         .requestMatchers("/api/auth/update-password").authenticated()
                         .requestMatchers("/api/users/profile").authenticated()

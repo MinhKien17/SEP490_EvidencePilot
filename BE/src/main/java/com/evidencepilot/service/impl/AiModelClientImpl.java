@@ -3,16 +3,11 @@ package com.evidencepilot.service.impl;
 import com.evidencepilot.service.AiModelClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -51,35 +46,20 @@ public class AiModelClientImpl implements AiModelClient {
         return String.valueOf(response.get("response"));
     }
 
-    @Override
-    public Map<String, Object> processClaim(UUID claimId, String claimText, UUID sourceId, String excerpt) {
-        return call("/process/claim", () -> restClient.post()
-                .uri(baseUrl + "/process/claim")
-                .body(Map.of("claim_id", claimId.toString(), "claim", claimText,
-                        "source_id", sourceId.toString(), "excerpt", excerpt))
-                .retrieve()
-                .body(Map.class));
-    }
-
     @SuppressWarnings("unchecked")
     @Override
-    public ExtractedDocument extractDocument(String filename, String contentType, byte[] content) {
-        ByteArrayResource resource = new ByteArrayResource(content) {
-            @Override
-            public String getFilename() {
-                return filename == null || filename.isBlank() ? "document" : filename;
-            }
-        };
-
-        HttpHeaders partHeaders = new HttpHeaders();
-        partHeaders.setContentType(parseMediaType(contentType));
-        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-        body.add("file", new HttpEntity<>(resource, partHeaders));
-
+    public ExtractedDocument extractDocument(
+            UUID documentId,
+            String filename,
+            String contentType,
+            String downloadUrl) {
         Map<String, Object> response = call("/extract", () -> restClient.post()
                 .uri(baseUrl + "/extract")
-                .contentType(MediaType.MULTIPART_FORM_DATA)
-                .body(body)
+                .body(Map.of(
+                        "document_id", documentId.toString(),
+                        "filename", stringValue(filename, "document"),
+                        "content_type", stringValue(contentType, "application/octet-stream"),
+                        "download_url", downloadUrl))
                 .retrieve()
                 .body(Map.class));
 
@@ -93,7 +73,7 @@ public class AiModelClientImpl implements AiModelClient {
     }
 
     @Override
-    public double[] generateEmbedding(String text) {
+    public List<Float> generateEmbedding(String text) {
         Map<String, Object> response = call("/ai/embeddings", () -> restClient.post()
                 .uri(baseUrl + "/ai/embeddings")
                 .body(Map.of("text", text))
@@ -102,13 +82,23 @@ public class AiModelClientImpl implements AiModelClient {
         if (response == null || !response.containsKey("embedding")) {
             throw new AiApiException("/ai/embeddings", "returned null or empty embedding", null);
         }
-        @SuppressWarnings("unchecked")
-        var list = (java.util.List<Number>) response.get("embedding");
-        double[] result = new double[list.size()];
-        for (int i = 0; i < list.size(); i++) {
-            result[i] = list.get(i).doubleValue();
+        return floatVector(response.get("embedding"), "/ai/embeddings");
+    }
+
+    @Override
+    public List<List<Float>> generateEmbeddings(List<String> texts) {
+        Map<String, Object> response = call("/ai/embeddings/batch", () -> restClient.post()
+                .uri(baseUrl + "/ai/embeddings/batch")
+                .body(Map.of("texts", texts))
+                .retrieve()
+                .body(Map.class));
+        if (response == null || !(response.get("embeddings") instanceof List<?> raw)
+                || raw.size() != texts.size()) {
+            throw new AiApiException("/ai/embeddings/batch", "returned an invalid embedding count", null);
         }
-        return result;
+        return raw.stream()
+                .map(vector -> floatVector(vector, "/ai/embeddings/batch"))
+                .toList();
     }
 
     private <T> T call(String endpoint, AiCall<T> call) {
@@ -133,14 +123,16 @@ public class AiModelClientImpl implements AiModelClient {
         return normalized;
     }
 
-    private static MediaType parseMediaType(String contentType) {
-        if (contentType == null || contentType.isBlank()) {
-            return MediaType.APPLICATION_OCTET_STREAM;
+    private static List<Float> floatVector(Object raw, String endpoint) {
+        if (!(raw instanceof List<?> list) || list.isEmpty()) {
+            throw new AiApiException(endpoint, "returned an empty embedding", null);
         }
         try {
-            return MediaType.parseMediaType(contentType);
-        } catch (IllegalArgumentException e) {
-            return MediaType.APPLICATION_OCTET_STREAM;
+            return list.stream()
+                    .map(value -> ((Number) value).floatValue())
+                    .toList();
+        } catch (ClassCastException e) {
+            throw new AiApiException(endpoint, "returned a non-numeric embedding", e);
         }
     }
 

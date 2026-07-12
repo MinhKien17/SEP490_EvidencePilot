@@ -9,12 +9,11 @@ import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.service.SourceExtractionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Slf4j
@@ -26,50 +25,26 @@ public class SourceExtractionServiceImpl implements SourceExtractionService {
     private final RabbitTemplate rabbitTemplate;
 
     @Override
-    @Transactional
     public void triggerExtraction(UUID documentId) {
-        Document doc = documentRepository.findById(documentId)
+        Document document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException(documentId, "Document"));
+        document.setProcessingStatus(ProcessingStatus.QUEUED);
+        document.setProcessingError(null);
+        document.setProcessedAt(null);
+        documentRepository.save(document);
 
-        doc.setProcessingStatus(ProcessingStatus.PROCESSING);
-        documentRepository.save(doc);
-
-        ExtractionRequest payload = new ExtractionRequest(
-                doc.getId(), doc.getFileUrl(), doc.getUploadedBy().getId());
-        rabbitTemplate.convertAndSend(RabbitMQConfig.EXTRACTION_QUEUE, payload);
-        log.info("Published document {} to extraction.queue", documentId);
-    }
-
-    @Override
-    public ExtractedText extractText(MultipartFile file) {
-        String filename = file.getOriginalFilename();
-        String contentType = file.getContentType();
-        String method = "unknown";
-        String text;
-
+        // ponytail: direct publish may leave QUEUED after a process crash;
+        // add an outbox only when delivery must be guaranteed.
+        ExtractionRequest request = new ExtractionRequest(document.getId());
         try {
-            if ("application/pdf".equals(contentType) || (filename != null && filename.toLowerCase().endsWith(".pdf"))) {
-                text = extractPdfText(file);
-                method = "pdfbox";
-            } else {
-                text = new String(file.getBytes());
-                method = "raw";
-            }
-        } catch (IOException e) {
-            log.warn("Text extraction failed for file {}: {}", filename, e.getMessage());
-            text = "";
-            method = "failed";
+            rabbitTemplate.convertAndSend(RabbitMQConfig.EXTRACTION_QUEUE, request);
+            log.info("Published document {} to extraction.queue", documentId);
+        } catch (AmqpException e) {
+            document.setProcessingStatus(ProcessingStatus.FAILED);
+            document.setProcessingError("Failed to queue extraction");
+            document.setProcessedAt(LocalDateTime.now());
+            documentRepository.save(document);
+            log.error("Failed to publish document {} to extraction.queue", documentId, e);
         }
-
-        return new ExtractedText(text, method);
-    }
-
-    private String extractPdfText(MultipartFile file) throws IOException {
-        byte[] bytes = file.getBytes();
-        String raw = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
-        if (!raw.isBlank() && raw.contains(" ")) {
-            return raw;
-        }
-        return "PDF content could not be extracted (pdfbox not available).";
     }
 }

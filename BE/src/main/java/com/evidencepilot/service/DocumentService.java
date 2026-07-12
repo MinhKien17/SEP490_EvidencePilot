@@ -47,5 +47,4 @@ public interface DocumentService {
     List<DocumentChunkResponse> getDocumentChunks(UUID documentId);
     DocumentTextResponse getDocumentText(UUID documentId);
     void deleteDocument(UUID id);
-    void updateDocumentStatusFromWebhook(UUID documentId, String status);
 }
