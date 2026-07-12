@@ -7,7 +7,7 @@ import io.minio.PutObjectArgs;
 import io.minio.StatObjectArgs;
 import io.minio.errors.ErrorResponseException;
 import io.minio.http.Method;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -16,10 +16,17 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
 @Service
-@RequiredArgsConstructor
 public class DocumentObjectStorage {
 
     private final MinioClient minioClient;
+    private final MinioClient minioPresignClient;
+
+    public DocumentObjectStorage(
+            @Qualifier("minioClient") MinioClient minioClient,
+            @Qualifier("minioPresignClient") MinioClient minioPresignClient) {
+        this.minioClient = minioClient;
+        this.minioPresignClient = minioPresignClient;
+    }
 
     @Value("${minio.bucket-name:evidence-pilot-bucket}")
     private String bucketName;
@@ -72,7 +79,7 @@ public class DocumentObjectStorage {
 
     public String presignedGetUrl(String objectKey, int expiryMinutes) {
         try {
-            return minioClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
+            return minioPresignClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
                     .method(Method.GET)
                     .bucket(bucketName)
                     .object(objectKey)

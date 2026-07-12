@@ -135,6 +135,8 @@ springdoc:
 # ── MinIO configuration ─────────────────────────────────────────────────────
 minio:
   url: ${MINIO_URL}
+  public-url: ${MINIO_PUBLIC_URL:${MINIO_URL}}
+  region: ${MINIO_REGION:us-east-1}
   access-key: ${MINIO_ACCESS_KEY}
   secret-key: ${MINIO_SECRET_KEY}
   bucket-name: ${MINIO_BUCKET_NAME}
