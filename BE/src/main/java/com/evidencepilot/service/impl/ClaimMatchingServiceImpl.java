@@ -13,7 +13,7 @@ import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.service.ClaimMatchingService;
-import com.evidencepilot.service.OllamaGateway;
+import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.QdrantClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,7 +36,7 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
     private final DocumentChunkRepository documentChunkRepository;
     private final AiSuggestionRepository aiSuggestionRepository;
     private final ClaimMapper claimMapper;
-    private final OllamaGateway ollamaGateway;
+    private final AiModelClient aiModelClient;
     private final QdrantClient qdrantClient;
 
     @Override
@@ -45,7 +45,7 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
         Claim claim = claimRepository.findById(claimId)
                 .orElseThrow(() -> new ResourceNotFoundException(claimId, "Claim"));
 
-        List<Float> embedding = ollamaGateway.getDenseEmbedding(claim.getContent());
+        List<Float> embedding = aiModelClient.generateEmbedding(claim.getContent());
         List<QdrantSearchResult> matches = qdrantClient.findClosestChunks(
                 embedding, "PROJECT", projectId.toString(), TOP_K);
         if (matches == null || matches.isEmpty()) {

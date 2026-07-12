@@ -46,7 +46,7 @@ class ClaimMatchingServiceImplTest {
     private ClaimMapper claimMapper;
 
     @Mock
-    private OllamaGateway ollamaGateway;
+    private AiModelClient aiModelClient;
 
     @Mock
     private QdrantClient qdrantClient;
@@ -67,7 +67,7 @@ class ClaimMatchingServiceImplTest {
         List<Float> embedding = List.of(0.25f, -0.5f);
 
         when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
-        when(ollamaGateway.getDenseEmbedding(claim.getContent())).thenReturn(embedding);
+        when(aiModelClient.generateEmbedding(claim.getContent())).thenReturn(embedding);
         when(qdrantClient.findClosestChunks(embedding, "PROJECT", projectId.toString(), 20))
                 .thenReturn(List.of(
                         new QdrantSearchResult(sourceChunk.getId().toString(), new BigDecimal("0.82")),
@@ -98,7 +98,7 @@ class ClaimMatchingServiceImplTest {
                 documentChunkRepository,
                 aiSuggestionRepository,
                 claimMapper,
-                ollamaGateway,
+                aiModelClient,
                 qdrantClient);
 
         List<AiSuggestionResponse> responses = service.matchClaim(claim.getId(), projectId);

@@ -29,4 +29,16 @@ class HealthControllerTest {
 
         verify(aiModelClient).health();
     }
+
+    @Test
+    void healthStaysUpWhenAiIsOffline() throws Exception {
+        AiModelClient aiModelClient = mock(AiModelClient.class);
+        when(aiModelClient.health()).thenThrow(new AiModelClient.AiApiException("/health", 503));
+        MockMvc mockMvc = standaloneSetup(new HealthController(aiModelClient)).build();
+
+        mockMvc.perform(get("/api/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ok"))
+                .andExpect(jsonPath("$.ai.status").value("unavailable"));
+    }
 }

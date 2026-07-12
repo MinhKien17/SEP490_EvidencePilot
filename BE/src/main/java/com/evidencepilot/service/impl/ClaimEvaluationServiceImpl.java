@@ -5,7 +5,7 @@ import com.evidencepilot.dto.request.ClaimRequest;
 import com.evidencepilot.dto.response.ClaimEvaluationResponse;
 import com.evidencepilot.service.ClaimEvaluationService;
 import com.evidencepilot.service.DocumentService;
-import com.evidencepilot.service.OllamaGateway;
+import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.QdrantGateway;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,7 +24,7 @@ public class ClaimEvaluationServiceImpl implements ClaimEvaluationService {
     private static final int MAX_PROMPT_LENGTH = 12000;
 
     private final QdrantGateway qdrantGateway;
-    private final OllamaGateway ollamaGateway;
+    private final AiModelClient aiModelClient;
     private final SparseVectorGenerator sparseVectorGenerator;
     private final DocumentService documentService;
 
@@ -32,7 +32,7 @@ public class ClaimEvaluationServiceImpl implements ClaimEvaluationService {
         documentService.getDocumentById(documentId);
         log.info("Evaluating claim for document {}: {}", documentId, request.claimText());
 
-        List<Float> denseVector = ollamaGateway.getDenseEmbedding(request.claimText());
+        List<Float> denseVector = aiModelClient.generateEmbedding(request.claimText());
         SparseVector sparseVector = sparseVectorGenerator.generate(request.claimText());
         List<String> context = qdrantGateway.searchDocumentContext(documentId, denseVector, sparseVector, TOP_K);
 
@@ -46,7 +46,7 @@ public class ClaimEvaluationServiceImpl implements ClaimEvaluationService {
         }
 
         String prompt = buildEvaluationPrompt(context, request.claimText());
-        String evaluation = ollamaGateway.generateEvaluation(prompt);
+        String evaluation = aiModelClient.generate(prompt);
 
         log.info("Evaluation complete for document {}", documentId);
         return new ClaimEvaluationResponse(request.claimText(), evaluation, context);

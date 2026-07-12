@@ -19,9 +19,12 @@ public class HealthController {
     @Operation(summary = "Check backend and AI worker health")
     @GetMapping("/api/health")
     public Map<String, Object> health() {
-        return Map.of(
-                "status", "ok",
-                "ai", aiModelClient.health()
-        );
+        Map<String, Object> ai;
+        try {
+            ai = aiModelClient.health();
+        } catch (RuntimeException exception) {
+            ai = Map.of("status", "unavailable");
+        }
+        return Map.of("status", "ok", "ai", ai);
     }
 }

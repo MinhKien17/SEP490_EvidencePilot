@@ -11,8 +11,7 @@ import org.springframework.web.client.RestClient;
 import java.time.Duration;
 
 /**
- * Spring configuration that creates a pre-configured {@link RestClient} bean
- * pointing at the teammate's AI model base URL.
+ * Spring configuration for the external Python model service.
  *
  * <p>Configuration keys (all overridable via environment variables):
  * <ul>
@@ -36,7 +35,7 @@ public class AiClientConfig {
     @Value("${ai.model.api-key:}")
     private String apiKey;
 
-    @Value("${ai.model.read-timeout-seconds:600}")
+    @Value("${ai.model.read-timeout-seconds:660}")
     private long readTimeoutSeconds;
 
     @Bean("aiModelBaseUrl")
@@ -45,7 +44,8 @@ public class AiClientConfig {
     }
 
     /**
-     * Named bean {@code aiRestClient} injected into {@link com.evidencepilot.ai.AiModelClient}.
+     * Named bean {@code aiRestClient} injected into
+     * {@link com.evidencepilot.service.AiModelClient}.
      */
     @Bean("aiRestClient")
     public RestClient aiRestClient() {
