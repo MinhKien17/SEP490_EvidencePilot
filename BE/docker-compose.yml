@@ -148,6 +148,8 @@ services:
 
       # ── MinIO ────────────────────────────────────────────────────────────────
       MINIO_URL: ${MINIO_URL}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-${MINIO_URL}}
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       MINIO_BUCKET_NAME: ${MINIO_BUCKET_NAME}
