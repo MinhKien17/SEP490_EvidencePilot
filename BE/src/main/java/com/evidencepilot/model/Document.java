@@ -61,7 +61,7 @@ public class Document {
     @Column(name = "processing_status")
     private ProcessingStatus processingStatus;
 
-    @Column(name = "processing_error")
+    @Column(name = "processing_error", columnDefinition = "TEXT")
     private String processingError;
 
     @Column(name = "chunk_count")

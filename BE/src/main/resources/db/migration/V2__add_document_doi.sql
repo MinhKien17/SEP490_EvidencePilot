@@ -1,1 +1,0 @@
-ALTER TABLE documents ADD COLUMN doi VARCHAR(255) NULL AFTER active;

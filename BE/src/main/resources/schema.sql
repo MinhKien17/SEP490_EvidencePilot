@@ -84,6 +84,7 @@ CREATE TABLE documents (
     processed_at DATETIME,
     published_at DATETIME,
     active BOOLEAN NOT NULL DEFAULT TRUE,
+    doi VARCHAR(255),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_documents_project_id (project_id),
     INDEX idx_documents_collection_id (collection_id),

@@ -26,6 +26,7 @@ public class DocumentChunk {
     @Column(name = "chunk_index", nullable = false)
     private Integer chunkIndex;
 
+    @Column(name = "text", nullable = false, columnDefinition = "TEXT")
     private String text;
 
     private boolean active = true;
