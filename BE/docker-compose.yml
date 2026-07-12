@@ -163,8 +163,6 @@ services:
       AI_MODEL_BASE_URL: ${AI_MODEL_BASE_URL}
       AI_MODEL_API_KEY: ${AI_MODEL_API_KEY:-}
       AI_MODEL_READ_TIMEOUT_SECONDS: ${AI_MODEL_READ_TIMEOUT_SECONDS}
-      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL}
-      OLLAMA_GENERATION_MODEL: ${OLLAMA_GENERATION_MODEL}
 
       # ── Admin seed (from .env) ──────────────────────────────────────────────
       ADMIN_EMAIL: ${ADMIN_EMAIL}

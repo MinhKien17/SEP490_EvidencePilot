@@ -285,31 +285,44 @@ Explanation:
 ```mermaid
 sequenceDiagram
     participant Client
-    participant SourceController
-    participant DocumentService
+    participant JavaAPI
     participant MinIO
-    participant ExtractionQueue
-    participant Worker
+    participant RabbitMQ
+    participant JavaWorker
+    participant PythonAI
     participant MySQL
+    participant Qdrant
 
-    Client->>SourceController: POST /api/sources multipart file
-    SourceController->>DocumentService: uploadDocument(projectId, collectionId, file, SOURCE)
-    DocumentService->>DocumentService: Check project/collection/uploader access
-    DocumentService->>MySQL: Save Document metadata
-    DocumentService->>MinIO: Upload raw object under sources/raw/{documentId}
-    DocumentService->>ExtractionQueue: triggerExtraction(documentId)
-    Worker->>MySQL: Save extracted text and chunks
-    Worker->>Worker: Generate dense and sparse vectors
-    Worker->>MySQL: Mark processing status
-    SourceController-->>Client: DocumentResponse
+    Client->>JavaAPI: Upload PDF or DOCX
+    JavaAPI->>MySQL: Save Document as PENDING_UPLOAD
+    JavaAPI->>MinIO: Store raw document
+    JavaAPI->>MySQL: Set UPLOADED, then commit QUEUED
+    JavaAPI->>RabbitMQ: Publish documentId after QUEUED is committed
+    JavaAPI-->>Client: DocumentResponse
+    RabbitMQ->>JavaWorker: Consume extraction job
+    JavaWorker->>MySQL: Set PROCESSING
+    JavaWorker->>MinIO: Create presigned raw-file URL
+    JavaWorker->>PythonAI: POST /extract with presigned URL
+    PythonAI-->>JavaWorker: Markdown
+    JavaWorker->>MinIO: Store processed Markdown checkpoint
+    JavaWorker->>JavaWorker: Chunk Markdown and create sparse vectors
+    JavaWorker->>PythonAI: POST /ai/embeddings/batch
+    PythonAI-->>JavaWorker: Dense vectors
+    JavaWorker->>MySQL: Save DocumentText and DocumentChunk rows
+    JavaWorker->>Qdrant: Upsert chunk vectors
+    JavaWorker->>MySQL: Set READY last
 ```
 
 Explanation:
 
 - `SourceController` can attach a source to a project, a collection, or only the uploader.
 - `DocumentController` also exposes `POST /api/documents`, which uploads a source document with optional `projectId`.
-- Raw files are stored in MinIO bucket `evidence-pilot-bucket`; MySQL remains the metadata and text source of truth.
-- Extraction is asynchronous through `SourceExtractionService.triggerExtraction`.
+- Raw files and processed Markdown checkpoints are stored in MinIO; MySQL remains the metadata, text, chunk, and status source of truth.
+- Java alone consumes `extraction.queue`. Python is a stateless HTTP service and never consumes RabbitMQ or writes to MinIO, MySQL, or Qdrant.
+- The MinIO endpoint used to sign URLs must be publicly reachable by the Python host; allowlist that hostname with `EXTRACTION_ALLOWED_HOSTS`.
+- A retry reuses processed Markdown when it already exists, avoiding a second MinerU run.
+- `READY` is written only after text/chunk persistence and Qdrant upsert both succeed; otherwise the document is marked `FAILED` and listener retry policy applies.
+- If an existing RabbitMQ broker still has the legacy Python worker's DLX arguments on `extraction.queue`, drain and recreate that queue once before starting this version.
 
 ## 6. Paper Upload and Paper Review Flow
 
@@ -340,7 +353,7 @@ sequenceDiagram
     participant ClaimService
     participant RagController
     participant ClaimEvaluationService
-    participant OllamaGateway
+    participant AiModelClient
     participant QdrantGateway
     participant MySQL
 
@@ -357,7 +370,7 @@ sequenceDiagram
 
     Client->>RagController: POST /api/sources/{documentId}/claims/match
     RagController->>ClaimEvaluationService: evaluate(documentId, claimText)
-    ClaimEvaluationService->>OllamaGateway: dense embedding and evaluation generation
+    ClaimEvaluationService->>AiModelClient: dense embedding and evaluation generation
     ClaimEvaluationService->>QdrantGateway: searchDocumentContext(documentId, dense, sparse, topK)
     ClaimEvaluationService-->>Client: ClaimEvaluationResponse
 ```
@@ -368,7 +381,7 @@ Explanation:
 - AI suggestion routes are under `/api/claims/{id}/suggestions` and `/api/claims/suggestions/{suggestionId}/status`.
 - Evidence lookup routes are `/api/claims/{id}/mappings` and `/api/claims/{id}/edges`.
 - Claim evaluation is document-scoped through `RagController` at `/api/paper/{documentId}/claims/match` and `/api/sources/{documentId}/claims/match`.
-- `ClaimEvaluationServiceImpl` gets dense embeddings from `OllamaGateway`, sparse vectors from `SparseVectorGenerator`, searches document context through `QdrantGateway`, then asks Ollama to generate the evaluation.
+- `ClaimEvaluationServiceImpl` gets dense embeddings and generated evaluations through `AiModelClient`, creates sparse vectors with `SparseVectorGenerator`, and searches document context through `QdrantGateway`.
 
 ## 8. Feedback Review Flow
 
@@ -445,9 +458,9 @@ Common mappings:
 | System | Config | Used by | Purpose |
 | --- | --- | --- | --- |
 | MySQL | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | JPA repositories | Relational source of truth. |
-| MinIO | `minio.url`, `minio.access-key`, `minio.secret-key`, `minio.bucket-name` | `DocumentServiceImpl`, `DocumentObjectStorage` | Raw document object storage. |
+| MinIO | `minio.url`, `minio.access-key`, `minio.secret-key`, `minio.bucket-name` | `DocumentServiceImpl`, `DocumentObjectStorage` | Raw documents and processed Markdown checkpoints. |
 | RabbitMQ | `RabbitMQConfig` | `SourceExtractionServiceImpl`, `DocumentExtractionListener` | Async document extraction queue. |
-| Ollama / AI worker | `ollama.url`, `AI_MODEL_BASE_URL`, model settings | `OllamaGateway`, `AiModelClient` | Extraction, embeddings, and generation. |
+| Python model service | `AI_MODEL_BASE_URL`, `AI_MODEL_API_KEY` | `AiModelClient` | MinerU/LiteParse extraction plus Ollama embeddings and generation. |
 | Qdrant | Qdrant client/gateway configuration | `QdrantService`, `QdrantGateway` | Vector index for source chunks and document-context search. |
 | JWT | `JWT_SECRET`, `JWT_EXPIRATION_MS` | `JwtUtil`, security filter | Stateless auth. |
 
@@ -461,7 +474,7 @@ Common mappings:
 | Documents and sources | `DocumentController`, `SourceController` | `DocumentServiceImpl`, `SourceExtractionServiceImpl`, `DocumentExtractionWorkerImpl` | `documents`, `document_texts`, `document_chunks` |
 | Collections | `CollectionController` | `CollectionServiceImpl`, `CurrentUserService` | `collections` |
 | Papers | `PaperController` | `DocumentServiceImpl`, `PaperProcessingService` | `documents`, `paper_sections` |
-| Claims | `ClaimController`, `RagController` | `ClaimServiceImpl`, `ClaimEvaluationServiceImpl`, `OllamaGateway`, `QdrantGateway` | `claims`, `ai_suggestions`, `claim_evidence_mappings`, `evidence_edges`, `document_chunks` |
+| Claims | `ClaimController`, `RagController` | `ClaimServiceImpl`, `ClaimEvaluationServiceImpl`, `AiModelClient`, `QdrantGateway` | `claims`, `ai_suggestions`, `claim_evidence_mappings`, `evidence_edges`, `document_chunks` |
 | Feedback | `FeedbackController` | `FeedbackService`, `CurrentUserService` | `feedback_requests`, `instructor_feedbacks`, `projects` |
 | Notifications | `SystemNotificationController` | `SystemNotificationService` | `system_notifications` |
 | Traceability export | `TraceabilityExportController` | `TraceabilityExportService`, `CurrentUserService` | `claims`, `documents`, `feedback_requests`, `evidence_edges` |
