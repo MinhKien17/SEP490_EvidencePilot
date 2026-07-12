@@ -103,8 +103,6 @@ class DocumentControllerTest {
         verify(rabbitTemplate).convertAndSend(eq("extraction.queue"), captor.capture());
         ExtractionRequest payload = captor.getValue();
         assertEquals(saved.getId(), payload.documentId());
-        assertNotNull(payload.s3ObjectKey());
-        assertNotNull(payload.userId());
     }
 
     @Test

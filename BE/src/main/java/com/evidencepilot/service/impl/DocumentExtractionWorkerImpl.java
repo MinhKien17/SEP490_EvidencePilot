@@ -1,25 +1,19 @@
 package com.evidencepilot.service.impl;
 
-import com.evidencepilot.dto.SparseVector;
 import com.evidencepilot.dto.ExtractionResultPayload;
+import com.evidencepilot.dto.SparseVector;
 import com.evidencepilot.exception.ResourceNotFoundException;
+import com.evidencepilot.model.Document;
+import com.evidencepilot.model.DocumentChunk;
+import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.DocumentExtractionWorker;
 import com.evidencepilot.service.DocumentObjectStorage;
-import com.evidencepilot.service.OllamaGateway;
 import com.evidencepilot.service.QdrantService;
-import com.evidencepilot.model.Document;
-import com.evidencepilot.model.DocumentChunk;
-import com.evidencepilot.model.DocumentText;
-import com.evidencepilot.model.enums.ProcessingStatus;
-import com.evidencepilot.repository.DocumentChunkRepository;
-import com.evidencepilot.repository.DocumentRepository;
-import com.evidencepilot.repository.DocumentTextRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -31,94 +25,102 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
 
     private static final int CHUNK_SIZE = 1000;
     private static final int CHUNK_OVERLAP = 100;
+    private static final int EMBEDDING_BATCH_SIZE = 32;
+    private static final int EMBEDDING_DIMENSION = 768;
+    private static final int PRESIGNED_URL_MINUTES = 15;
 
     private final DocumentRepository documentRepository;
-    private final DocumentTextRepository documentTextRepository;
-    private final DocumentChunkRepository documentChunkRepository;
     private final DocumentObjectStorage documentObjectStorage;
     private final AiModelClient aiModelClient;
-    private final OllamaGateway ollamaGateway;
     private final SparseVectorGenerator sparseVectorGenerator;
     private final QdrantService qdrantService;
+    private final DocumentPersistenceService documentPersistenceService;
 
     @Override
     public void process(UUID documentId) {
         Document document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException(documentId, "Document"));
-
+        documentPersistenceService.markProcessing(documentId);
         try {
             processDocument(document);
         } catch (RuntimeException e) {
-            markFailed(document, e);
+            documentPersistenceService.markFailed(documentId, e.getMessage());
             throw e;
         }
     }
 
     private void processDocument(Document document) {
-        byte[] raw = documentObjectStorage.read(document.getFileUrl());
-        AiModelClient.ExtractedDocument extracted = aiModelClient.extractDocument(
-                document.getOriginalFilename(),
-                document.getContentType(),
-                raw);
+        String markdownKey = "documents/processed/" + document.getId() + "/document.md";
+        AiModelClient.ExtractedDocument extracted;
+        if (documentObjectStorage.exists(markdownKey)) {
+            extracted = new AiModelClient.ExtractedDocument(
+                    document.getOriginalFilename(),
+                    extractionMethod(document.getOriginalFilename()),
+                    documentObjectStorage.readText(markdownKey));
+        } else {
+            String downloadUrl = documentObjectStorage.presignedGetUrl(
+                    document.getFileUrl(), PRESIGNED_URL_MINUTES);
+            extracted = aiModelClient.extractDocument(
+                    document.getId(),
+                    document.getOriginalFilename(),
+                    document.getContentType(),
+                    downloadUrl);
+            documentObjectStorage.writeText(markdownKey, extracted.markdown());
+        }
 
         List<String> chunks = chunkText(extracted.markdown());
         if (chunks.isEmpty()) {
-            throw new DocumentExtractionWorker.DocumentExtractionException("Extraction produced zero chunks");
+            throw new DocumentExtractionException("Extraction produced zero chunks");
+        }
+        List<List<Float>> dense = embed(chunks);
+        List<SparseVector> sparse = chunks.stream()
+                .map(sparseVectorGenerator::generate)
+                .toList();
+        List<DocumentChunk> savedChunks = documentPersistenceService.saveExtraction(
+                document.getId(), extracted.method(), extracted.markdown(), chunks);
+        if (savedChunks.size() != chunks.size()) {
+            throw new DocumentExtractionException("Failed to persist every document chunk");
         }
 
-        saveExtractedText(document, extracted);
-
         List<ExtractionResultPayload.ChunkPayload> payloadChunks = new ArrayList<>();
-        for (int i = 0; i < chunks.size(); i++) {
-            String text = chunks.get(i);
-            DocumentChunk chunk = new DocumentChunk();
-            chunk.setDocument(document);
-            chunk.setChunkIndex(i);
-            chunk.setText(text);
-            chunk.setActive(true);
-            chunk = documentChunkRepository.save(chunk);
-
-            List<Float> denseEmbedding = ollamaGateway.getDenseEmbedding(text);
-            SparseVector sparseEmbedding = sparseVectorGenerator.generate(text);
+        for (int index = 0; index < savedChunks.size(); index++) {
+            DocumentChunk chunk = savedChunks.get(index);
             payloadChunks.add(new ExtractionResultPayload.ChunkPayload(
                     chunk.getId(),
                     chunk.getChunkIndex(),
                     chunk.getText(),
-                    denseEmbedding,
-                    sparseEmbedding));
+                    dense.get(index),
+                    sparse.get(index)));
         }
 
         qdrantService.upsertVectors(new ExtractionResultPayload(document.getId(), payloadChunks));
-
-        document.setProcessingStatus(ProcessingStatus.READY);
-        document.setChunkCount(payloadChunks.size());
-        document.setProcessedAt(LocalDateTime.now());
-        document.setProcessingError(null);
-        documentRepository.save(document);
-
+        documentPersistenceService.markReady(document.getId(), payloadChunks.size());
         log.info("Completed extraction for document {} with {} chunks", document.getId(), payloadChunks.size());
     }
 
-    private void saveExtractedText(Document document, AiModelClient.ExtractedDocument extracted) {
-        DocumentText text = documentTextRepository.findByDocumentId(document.getId());
-        if (text == null) {
-            text = new DocumentText();
-            text.setDocument(document);
+    private List<List<Float>> embed(List<String> chunks) {
+        List<List<Float>> embeddings = new ArrayList<>();
+        for (int start = 0; start < chunks.size(); start += EMBEDDING_BATCH_SIZE) {
+            int end = Math.min(start + EMBEDDING_BATCH_SIZE, chunks.size());
+            List<List<Float>> batch = aiModelClient.generateEmbeddings(chunks.subList(start, end));
+            if (batch.size() != end - start) {
+                throw new DocumentExtractionException("Embedding count does not match chunk count");
+            }
+            for (List<Float> vector : batch) {
+                if (vector.size() != EMBEDDING_DIMENSION) {
+                    throw new DocumentExtractionException("Embedding dimension must be " + EMBEDDING_DIMENSION);
+                }
+            }
+            embeddings.addAll(batch);
         }
-        text.setExtractedText(extracted.markdown());
-        text.setExtractionMethod(extracted.method());
-        documentTextRepository.save(text);
+        return embeddings;
     }
 
-    private void markFailed(Document document, RuntimeException exception) {
-        document.setProcessingStatus(ProcessingStatus.FAILED);
-        document.setProcessingError(exception.getMessage());
-        document.setProcessedAt(LocalDateTime.now());
-        documentRepository.save(document);
-        log.warn("Failed extraction for document {}: {}", document.getId(), exception.getMessage());
+    private static String extractionMethod(String filename) {
+        return filename != null && filename.toLowerCase().endsWith(".docx") ? "liteparse" : "mineru";
     }
 
-    private static List<String> chunkText(String text) {
+    static List<String> chunkText(String text) {
         if (text == null || text.isBlank()) {
             return List.of();
         }
@@ -136,9 +138,9 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
                 if (fence != null) {
                     end = Math.min(fence[1], text.length());
                 } else {
-                    int para = text.lastIndexOf("\n\n", end);
-                    if (para > start + CHUNK_SIZE / 2) {
-                        end = para + 2;
+                    int paragraph = text.lastIndexOf("\n\n", end);
+                    if (paragraph > start + CHUNK_SIZE / 2) {
+                        end = paragraph + 2;
                     } else {
                         int newline = text.lastIndexOf('\n', end);
                         if (newline > start + CHUNK_SIZE / 2) {
@@ -159,24 +161,21 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
         while (true) {
             int open = text.indexOf("```", searchStart);
             if (open == -1) {
-                break;
+                return ranges;
             }
             int close = text.indexOf("```", open + 3);
             if (close == -1) {
-                break;
+                return ranges;
             }
             ranges.add(new int[] {open, close + 3});
             searchStart = close + 3;
         }
-        return ranges;
     }
 
     private static int[] fenceContaining(List<int[]> fences, int start, int end) {
         for (int[] fence : fences) {
-            if (start >= fence[0] && start < fence[1]) {
-                return fence;
-            }
-            if (start < fence[0] && end > fence[0]) {
+            if ((start >= fence[0] && start < fence[1])
+                    || (start < fence[0] && end > fence[0])) {
                 return fence;
             }
         }
