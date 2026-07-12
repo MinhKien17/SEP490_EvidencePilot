@@ -23,7 +23,7 @@ public class DocumentText {
     @JoinColumn(name = "document_id", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     private Document document;
 
-    @Column(name = "extracted_text", nullable = false)
+    @Column(name = "extracted_text", nullable = false, columnDefinition = "LONGTEXT")
     private String extractedText;
 
     @Column(name = "extraction_method", nullable = false)
