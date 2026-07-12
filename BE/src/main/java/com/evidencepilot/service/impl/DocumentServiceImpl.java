@@ -199,6 +199,7 @@ public class DocumentServiceImpl implements DocumentService {
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File is empty");
         }
+        validateFile(file);
         var currentUser = currentUserService.requireCurrentUser();
 
         Project project = null;
@@ -299,16 +300,6 @@ public class DocumentServiceImpl implements DocumentService {
         }
     }
 
-    @Override
-    @Transactional
-    public void updateDocumentStatusFromWebhook(UUID documentId, String status) {
-        Document doc = documentRepository.findById(documentId)
-                .orElseThrow(() -> new ResourceNotFoundException(documentId, "Document"));
-        doc.setProcessingStatus(ProcessingStatus.valueOf(status));
-        documentRepository.save(doc);
-        log.info("Webhook updated document {} status to {}", documentId, status);
-    }
-
     private Document findDocument(UUID id) {
         return documentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(id, "Document"));
@@ -400,5 +391,24 @@ public class DocumentServiceImpl implements DocumentService {
             return ".bin";
         }
         return extension;
+    }
+
+    static void validateFile(MultipartFile file) {
+        String extension = fileExtension(file.getOriginalFilename());
+        String contentType = file.getContentType() == null
+                ? ""
+                : file.getContentType().toLowerCase(Locale.ROOT);
+        boolean genericType = contentType.isBlank() || contentType.equals("application/octet-stream");
+        boolean supported = switch (extension) {
+            case ".pdf" -> genericType || contentType.equals("application/pdf");
+            case ".docx" -> genericType || contentType.equals(
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+            default -> false;
+        };
+        if (!supported) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "Only PDF and DOCX files are supported");
+        }
     }
 }
