@@ -56,7 +56,7 @@ class GlobalExceptionHandlerTest {
     @Autowired
     private JwtUtils jwtUtils;
 
-    @MockBean
+    @MockBean(name = "minioClient")
     private MinioClient minioClient;
 
     @MockBean

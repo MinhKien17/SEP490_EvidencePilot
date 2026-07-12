@@ -51,7 +51,7 @@ class DocumentControllerTest {
     @MockBean
     private RabbitTemplate rabbitTemplate;
 
-    @MockBean
+    @MockBean(name = "minioClient")
     private MinioClient minioClient;
 
     private String bearerToken;

@@ -49,7 +49,7 @@ class AuthControllerTest {
     @MockBean
     private EmailVerificationService emailVerificationService;
 
-    @MockBean
+    @MockBean(name = "minioClient")
     private MinioClient minioClient;
 
     @MockBean
