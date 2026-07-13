@@ -2,7 +2,6 @@ package com.evidencepilot.service;
 
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 public interface AiModelClient {
 
@@ -10,17 +9,38 @@ public interface AiModelClient {
 
     String generate(String prompt);
 
-    ExtractedDocument extractDocument(
-            UUID documentId,
-            String filename,
-            String contentType,
-            String downloadUrl);
+    ExtractedDocument extractDocument(String filename, String downloadUrl);
 
     List<Float> generateEmbedding(String text);
 
     List<List<Float>> generateEmbeddings(List<String> texts);
 
-    record ExtractedDocument(String filename, String method, String markdown) {
+    record ExtractionBlock(String type, String text, Integer level, String caption) {
+        public boolean valid() {
+            if (type == null || text == null || text.isBlank()
+                    || caption != null && caption.isBlank()) {
+                return false;
+            }
+            boolean knownType = switch (type) {
+                case "heading", "paragraph", "list", "table", "figure_caption",
+                        "equation", "code", "reference" -> true;
+                default -> false;
+            };
+            if (!knownType) {
+                return false;
+            }
+            return "heading".equals(type)
+                    ? level != null && level >= 1 && level <= 6
+                    : level == null;
+        }
+    }
+
+    record ExtractedDocument(String markdown, List<ExtractionBlock> blocks) {
+        public boolean valid() {
+            return markdown != null && !markdown.isBlank()
+                    && blocks != null && !blocks.isEmpty()
+                    && blocks.stream().allMatch(block -> block != null && block.valid());
+        }
     }
 
     final class AiApiException extends RuntimeException {

@@ -1,5 +1,7 @@
 package com.evidencepilot.service.impl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.evidencepilot.dto.ExtractionResultPayload;
 import com.evidencepilot.dto.SparseVector;
 import com.evidencepilot.exception.ResourceNotFoundException;
@@ -24,8 +26,6 @@ import java.util.UUID;
 @Slf4j
 public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
 
-    private static final int CHUNK_SIZE = 1000;
-    private static final int CHUNK_OVERLAP = 100;
     private static final int EMBEDDING_BATCH_SIZE = 32;
     private static final int EMBEDDING_DIMENSION = 768;
 
@@ -38,6 +38,7 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
     private final SparseVectorGenerator sparseVectorGenerator;
     private final QdrantService qdrantService;
     private final DocumentPersistenceService documentPersistenceService;
+    private final ObjectMapper objectMapper;
 
     @Override
     public void process(UUID documentId) {
@@ -53,25 +54,21 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
     }
 
     private void processDocument(Document document) {
-        String markdownKey = "documents/processed/" + document.getId() + "/document.md";
-        AiModelClient.ExtractedDocument extracted;
-        if (documentObjectStorage.exists(markdownKey)) {
-            extracted = new AiModelClient.ExtractedDocument(
-                    document.getOriginalFilename(),
-                    extractionMethod(document.getOriginalFilename()),
-                    documentObjectStorage.readText(markdownKey));
-        } else {
+        String checkpointKey = "documents/processed/" + document.getId() + "/extraction.json";
+        AiModelClient.ExtractedDocument extracted = readCheckpoint(checkpointKey);
+        if (extracted == null) {
             String downloadUrl = baseUrl + "/api/documents/" + document.getId()
                     + "/download?token=" + document.getDownloadToken();
             extracted = aiModelClient.extractDocument(
-                    document.getId(),
                     document.getOriginalFilename(),
-                    document.getContentType(),
                     downloadUrl);
-            documentObjectStorage.writeText(markdownKey, extracted.markdown());
+            if (!extracted.valid()) {
+                throw new DocumentExtractionException("Extraction returned an invalid document");
+            }
+            writeCheckpoint(checkpointKey, extracted);
         }
 
-        List<String> chunks = chunkText(extracted.markdown());
+        List<String> chunks = DocumentChunker.chunk(extracted.blocks());
         if (chunks.isEmpty()) {
             throw new DocumentExtractionException("Extraction produced zero chunks");
         }
@@ -80,7 +77,7 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
                 .map(sparseVectorGenerator::generate)
                 .toList();
         List<DocumentChunk> savedChunks = documentPersistenceService.saveExtraction(
-                document.getId(), extracted.method(), extracted.markdown(), chunks);
+                document.getId(), "mineru", extracted.markdown(), chunks);
         if (savedChunks.size() != chunks.size()) {
             throw new DocumentExtractionException("Failed to persist every document chunk");
         }
@@ -101,6 +98,34 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
         log.info("Completed extraction for document {} with {} chunks", document.getId(), payloadChunks.size());
     }
 
+    private AiModelClient.ExtractedDocument readCheckpoint(String checkpointKey) {
+        if (!documentObjectStorage.exists(checkpointKey)) {
+            return null;
+        }
+        try {
+            AiModelClient.ExtractedDocument extracted = objectMapper.readValue(
+                    documentObjectStorage.readText(checkpointKey),
+                    AiModelClient.ExtractedDocument.class);
+            if (extracted != null && extracted.valid()) {
+                return extracted;
+            }
+        } catch (JsonProcessingException e) {
+            log.warn("Ignoring invalid extraction checkpoint {}", checkpointKey, e);
+        }
+        return null;
+    }
+
+    private void writeCheckpoint(String checkpointKey, AiModelClient.ExtractedDocument extracted) {
+        try {
+            documentObjectStorage.write(
+                    checkpointKey,
+                    objectMapper.writeValueAsBytes(extracted),
+                    "application/json");
+        } catch (JsonProcessingException e) {
+            throw new DocumentExtractionException("Failed to serialize extraction checkpoint: " + e.getMessage());
+        }
+    }
+
     private List<List<Float>> embed(List<String> chunks) {
         List<List<Float>> embeddings = new ArrayList<>();
         for (int start = 0; start < chunks.size(); start += EMBEDDING_BATCH_SIZE) {
@@ -119,69 +144,4 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
         return embeddings;
     }
 
-    private static String extractionMethod(String filename) {
-        return filename != null && filename.toLowerCase().endsWith(".docx") ? "liteparse" : "mineru";
-    }
-
-    static List<String> chunkText(String text) {
-        if (text == null || text.isBlank()) {
-            return List.of();
-        }
-        if (text.length() <= CHUNK_SIZE) {
-            return List.of(text);
-        }
-
-        List<int[]> fences = codeFenceRanges(text);
-        List<String> chunks = new ArrayList<>();
-        int start = 0;
-        while (start < text.length()) {
-            int end = Math.min(start + CHUNK_SIZE, text.length());
-            if (end < text.length()) {
-                int[] fence = fenceContaining(fences, start, end);
-                if (fence != null) {
-                    end = Math.min(fence[1], text.length());
-                } else {
-                    int paragraph = text.lastIndexOf("\n\n", end);
-                    if (paragraph > start + CHUNK_SIZE / 2) {
-                        end = paragraph + 2;
-                    } else {
-                        int newline = text.lastIndexOf('\n', end);
-                        if (newline > start + CHUNK_SIZE / 2) {
-                            end = newline + 1;
-                        }
-                    }
-                }
-            }
-            chunks.add(text.substring(start, end));
-            start = end < text.length() ? Math.max(end - CHUNK_OVERLAP, start + 1) : end;
-        }
-        return chunks;
-    }
-
-    private static List<int[]> codeFenceRanges(String text) {
-        List<int[]> ranges = new ArrayList<>();
-        int searchStart = 0;
-        while (true) {
-            int open = text.indexOf("```", searchStart);
-            if (open == -1) {
-                return ranges;
-            }
-            int close = text.indexOf("```", open + 3);
-            if (close == -1) {
-                return ranges;
-            }
-            ranges.add(new int[] {open, close + 3});
-            searchStart = close + 3;
-        }
-    }
-
-    private static int[] fenceContaining(List<int[]> fences, int start, int end) {
-        for (int[] fence : fences) {
-            if ((start >= fence[0] && start < fence[1])
-                    || (start < fence[0] && end > fence[0])) {
-                return fence;
-            }
-        }
-        return null;
-    }
 }

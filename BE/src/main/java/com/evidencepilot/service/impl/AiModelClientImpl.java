@@ -9,7 +9,6 @@ import org.springframework.web.client.RestClientException;
 
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 @Slf4j
 @Component
@@ -46,30 +45,28 @@ public class AiModelClientImpl implements AiModelClient {
         return String.valueOf(response.get("response"));
     }
 
-    @SuppressWarnings("unchecked")
     @Override
-    public ExtractedDocument extractDocument(
-            UUID documentId,
-            String filename,
-            String contentType,
-            String downloadUrl) {
-        Map<String, Object> response = call("/extract", () -> restClient.post()
+    public ExtractedDocument extractDocument(String filename, String downloadUrl) {
+        ExtractedDocument response = call("/extract", () -> restClient.post()
                 .uri(baseUrl + "/extract")
                 .body(Map.of(
-                        "document_id", documentId.toString(),
                         "filename", stringValue(filename, "document"),
-                        "content_type", stringValue(contentType, "application/octet-stream"),
                         "download_url", downloadUrl))
                 .retrieve()
-                .body(Map.class));
+                .body(ExtractedDocument.class));
 
-        if (response == null || response.get("markdown") == null) {
+        if (response == null || response.markdown() == null || response.markdown().isBlank()) {
             throw new AiApiException("/extract", "returned null or empty markdown", null);
         }
-        return new ExtractedDocument(
-                stringValue(response.get("filename"), filename),
-                stringValue(response.get("method"), "unknown"),
-                stringValue(response.get("markdown"), ""));
+        if (response.blocks() == null || response.blocks().isEmpty()) {
+            throw new AiApiException("/extract", "returned null or empty blocks", null);
+        }
+        for (ExtractionBlock block : response.blocks()) {
+            if (block == null || !block.valid()) {
+                throw new AiApiException("/extract", "returned invalid blocks", null);
+            }
+        }
+        return new ExtractedDocument(response.markdown(), List.copyOf(response.blocks()));
     }
 
     @Override
