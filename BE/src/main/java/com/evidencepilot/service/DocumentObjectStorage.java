@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
@@ -58,6 +59,23 @@ public class DocumentObjectStorage {
         } catch (Exception e) {
             throw new DocumentStorageException("Failed to write object " + objectKey + " to MinIO", e);
         }
+    }
+
+    public void write(String objectKey, InputStream stream, long size, String contentType) {
+        try {
+            minioClient.putObject(PutObjectArgs.builder()
+                    .bucket(bucketName)
+                    .object(objectKey)
+                    .stream(stream, size, -1)
+                    .contentType(contentType)
+                    .build());
+        } catch (Exception e) {
+            throw new DocumentStorageException("Failed to write object " + objectKey + " to MinIO", e);
+        }
+    }
+
+    public void write(String objectKey, byte[] data, String contentType) {
+        write(objectKey, new ByteArrayInputStream(data), data.length, contentType);
     }
 
     public boolean exists(String objectKey) {

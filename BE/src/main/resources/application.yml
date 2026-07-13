@@ -126,6 +126,21 @@ ai:
 qdrant:
   url: ${QDRANT_URL}
   api-key: ${QDRANT_API_KEY:}
+
+# ── OpenAlex API ─────────────────────────────────────────────────────────
+openalex:
+  api-base-url: ${OPENALEX_API_BASE_URL:https://api.openalex.org}
+  api-key: ${OPENALEX_API_KEY:}
+  user-agent: ${OPENALEX_USER_AGENT:evidence-pilot/1.0 (mailto:team@evidencepilot.com)}
+  read-timeout-seconds: ${OPENALEX_READ_TIMEOUT_SECONDS:30}
+
+# ── Ollama model config (passed through to Python worker) ─────────────────
+ollama:
+  embedding:
+    model: ${OLLAMA_EMBEDDING_MODEL:nomic-embed-text}
+  generation:
+    model: ${OLLAMA_GENERATION_MODEL:evidencopilot:latest}
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

@@ -46,7 +46,12 @@ ollama:
 
 qdrant:
   url: http://localhost:6333
-  api-key: 
+  api-key:
+
+openalex:
+  api-base-url: https://api.openalex.org
+  user-agent: evidence-pilot-test/1.0
+  read-timeout-seconds: 5
 
 minio:
   url: http://localhost:9000

@@ -78,6 +78,16 @@ public class Document {
     @Column(name = "doi")
     private String doi;
 
+    private String title;
+
+    @Column(columnDefinition = "TEXT")
+    private String authors;
+
+    @Column(name = "publication_year")
+    private Integer publicationYear;
+
+    private String publisher;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

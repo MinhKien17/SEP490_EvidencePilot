@@ -1,5 +1,6 @@
 package com.evidencepilot.model;
 
+import com.evidencepilot.model.enums.EdgeType;
 import jakarta.persistence.*;
 import java.util.UUID;
 
@@ -31,6 +32,12 @@ public class DocumentReference {
 
     @Column(name = "publication_year")
     private Integer publicationYear;
+
+    private String doi;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "edge_type")
+    private EdgeType edgeType;
 
     @Override
     public boolean equals(Object o) {
