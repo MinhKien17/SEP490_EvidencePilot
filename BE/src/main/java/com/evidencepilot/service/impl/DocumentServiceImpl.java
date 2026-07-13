@@ -408,16 +408,12 @@ public class DocumentServiceImpl implements DocumentService {
                 ? ""
                 : file.getContentType().toLowerCase(Locale.ROOT);
         boolean genericType = contentType.isBlank() || contentType.equals("application/octet-stream");
-        boolean supported = switch (extension) {
-            case ".pdf" -> genericType || contentType.equals("application/pdf");
-            case ".docx" -> genericType || contentType.equals(
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-            default -> false;
-        };
+        boolean supported = extension.equals(".pdf")
+                && (genericType || contentType.equals("application/pdf"));
         if (!supported) {
             throw new ResponseStatusException(
                     HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-                    "Only PDF and DOCX files are supported");
+                    "Only PDF files are supported");
         }
     }
 }

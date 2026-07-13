@@ -7,7 +7,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
-import java.util.UUID;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -61,30 +60,47 @@ class AiModelClientTest {
                 .andExpect(header("ngrok-skip-browser-warning", "true"))
                 .andExpect(content().json("""
                         {
-                          "document_id":"00000000-0000-0000-0000-000000000001",
                           "filename":"source.pdf",
-                          "content_type":"application/pdf",
                           "download_url":"https://storage.test/source.pdf"
                         }
                         """))
                 .andRespond(withSuccess(
                         """
-                        {"filename":"source.pdf","method":"mineru","markdown":"# Extracted"}
+                        {
+                          "markdown":"# Extracted",
+                          "blocks":[
+                            {"type":"heading","text":"Extracted","level":1},
+                            {"type":"paragraph","text":"Body"}
+                          ]
+                        }
                         """,
                         MediaType.APPLICATION_JSON));
 
         AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test");
 
         AiModelClient.ExtractedDocument result = client.extractDocument(
-                UUID.fromString("00000000-0000-0000-0000-000000000001"),
-                "source.pdf",
-                "application/pdf",
-                "https://storage.test/source.pdf");
+                "source.pdf", "https://storage.test/source.pdf");
 
-        assertThat(result.filename()).isEqualTo("source.pdf");
-        assertThat(result.method()).isEqualTo("mineru");
         assertThat(result.markdown()).isEqualTo("# Extracted");
+        assertThat(result.blocks()).extracting(AiModelClient.ExtractionBlock::type)
+                .containsExactly("heading", "paragraph");
         server.verify();
+    }
+
+    @Test
+    void extractDocumentRejectsLegacyMarkdownOnlyResponse() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("http://ai.test/extract"))
+                .andRespond(withSuccess(
+                        "{\"filename\":\"source.pdf\",\"method\":\"mineru\",\"markdown\":\"# Extracted\"}",
+                        MediaType.APPLICATION_JSON));
+
+        AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test");
+
+        assertThatThrownBy(() -> client.extractDocument("source.pdf", "https://storage.test/source.pdf"))
+                .isInstanceOf(AiModelClient.AiApiException.class)
+                .hasMessageContaining("blocks");
     }
 
     @Test

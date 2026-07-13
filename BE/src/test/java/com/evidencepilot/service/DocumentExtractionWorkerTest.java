@@ -1,5 +1,6 @@
 package com.evidencepilot.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.evidencepilot.dto.ExtractionResultPayload;
 import com.evidencepilot.dto.SparseVector;
 import com.evidencepilot.model.Document;
@@ -52,15 +53,14 @@ class DocumentExtractionWorkerTest {
         UUID documentId = UUID.randomUUID();
         Document document = document(documentId);
         String markdown = "First paragraph.\n\nSecond paragraph.";
-        String markdownKey = "documents/processed/" + documentId + "/document.md";
+        String checkpointKey = "documents/processed/" + documentId + "/extraction.json";
         List<Float> vector = Collections.nCopies(768, 0.1f);
         DocumentChunk chunk = chunk(document, markdown);
 
         when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
-        when(documentObjectStorage.exists(markdownKey)).thenReturn(false);
-        when(aiModelClient.extractDocument(
-                eq(documentId), eq("source.pdf"), eq("application/pdf"), anyString()))
-                .thenReturn(new AiModelClient.ExtractedDocument("source.pdf", "mineru", markdown));
+        when(documentObjectStorage.exists(checkpointKey)).thenReturn(false);
+        when(aiModelClient.extractDocument(eq("source.pdf"), anyString()))
+                .thenReturn(extracted(markdown));
         when(aiModelClient.generateEmbeddings(List.of(markdown))).thenReturn(List.of(vector));
         when(sparseVectorGenerator.generate(markdown))
                 .thenReturn(new SparseVector(List.of(1L), List.of(0.5f)));
@@ -70,7 +70,8 @@ class DocumentExtractionWorkerTest {
         worker().process(documentId);
 
         verify(persistence).markProcessing(documentId);
-        verify(documentObjectStorage).writeText(markdownKey, markdown);
+        verify(documentObjectStorage).write(eq(checkpointKey), any(byte[].class), eq("application/json"));
+        verify(documentObjectStorage, never()).exists("documents/processed/" + documentId + "/document.md");
         ArgumentCaptor<ExtractionResultPayload> payload = ArgumentCaptor.forClass(ExtractionResultPayload.class);
         InOrder completion = inOrder(qdrantService, persistence);
         completion.verify(qdrantService).upsertVectors(payload.capture());
@@ -79,16 +80,17 @@ class DocumentExtractionWorkerTest {
     }
 
     @Test
-    void processReusesMarkdownCheckpointOnRetry() {
+    void processReusesExtractionCheckpointOnRetry() throws Exception {
         UUID documentId = UUID.randomUUID();
         Document document = document(documentId);
         String markdown = "cached markdown";
-        String markdownKey = "documents/processed/" + documentId + "/document.md";
+        String checkpointKey = "documents/processed/" + documentId + "/extraction.json";
         DocumentChunk chunk = chunk(document, markdown);
 
         when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
-        when(documentObjectStorage.exists(markdownKey)).thenReturn(true);
-        when(documentObjectStorage.readText(markdownKey)).thenReturn(markdown);
+        when(documentObjectStorage.exists(checkpointKey)).thenReturn(true);
+        when(documentObjectStorage.readText(checkpointKey))
+                .thenReturn(new ObjectMapper().writeValueAsString(extracted(markdown)));
         when(aiModelClient.generateEmbeddings(any())).thenReturn(List.of(Collections.nCopies(768, 0.1f)));
         when(sparseVectorGenerator.generate(markdown))
                 .thenReturn(new SparseVector(List.of(), List.of()));
@@ -97,8 +99,62 @@ class DocumentExtractionWorkerTest {
 
         worker().process(documentId);
 
-        verify(aiModelClient, never()).extractDocument(any(), any(), any(), any());
+        verify(aiModelClient, never()).extractDocument(any(), any());
         verify(persistence).markReady(documentId, 1);
+    }
+
+    @Test
+    void processReextractsWhenCheckpointIsInvalid() {
+        UUID documentId = UUID.randomUUID();
+        Document document = document(documentId);
+        String markdown = "fresh markdown";
+        String checkpointKey = "documents/processed/" + documentId + "/extraction.json";
+        DocumentChunk chunk = chunk(document, markdown);
+
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(documentObjectStorage.exists(checkpointKey)).thenReturn(true);
+        when(documentObjectStorage.readText(checkpointKey)).thenReturn(
+                "{\"filename\":\"source.pdf\",\"method\":\"mineru\",\"markdown\":\"legacy\"}");
+        when(aiModelClient.extractDocument(eq("source.pdf"), anyString()))
+                .thenReturn(extracted(markdown));
+        when(aiModelClient.generateEmbeddings(List.of(markdown)))
+                .thenReturn(List.of(Collections.nCopies(768, 0.1f)));
+        when(sparseVectorGenerator.generate(markdown))
+                .thenReturn(new SparseVector(List.of(), List.of()));
+        when(persistence.saveExtraction(documentId, "mineru", markdown, List.of(markdown)))
+                .thenReturn(List.of(chunk));
+
+        worker().process(documentId);
+
+        verify(aiModelClient).extractDocument(eq("source.pdf"), anyString());
+        verify(documentObjectStorage).write(eq(checkpointKey), any(byte[].class), eq("application/json"));
+    }
+
+    @Test
+    void processReextractsWhenCheckpointContainsNullBlock() {
+        UUID documentId = UUID.randomUUID();
+        Document document = document(documentId);
+        String markdown = "fresh markdown";
+        String checkpointKey = "documents/processed/" + documentId + "/extraction.json";
+        DocumentChunk chunk = chunk(document, markdown);
+
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(documentObjectStorage.exists(checkpointKey)).thenReturn(true);
+        when(documentObjectStorage.readText(checkpointKey)).thenReturn(
+                "{\"markdown\":\"broken\",\"blocks\":[null]}");
+        when(aiModelClient.extractDocument(eq("source.pdf"), anyString()))
+                .thenReturn(extracted(markdown));
+        when(aiModelClient.generateEmbeddings(List.of(markdown)))
+                .thenReturn(List.of(Collections.nCopies(768, 0.1f)));
+        when(sparseVectorGenerator.generate(markdown))
+                .thenReturn(new SparseVector(List.of(), List.of()));
+        when(persistence.saveExtraction(documentId, "mineru", markdown, List.of(markdown)))
+                .thenReturn(List.of(chunk));
+
+        worker().process(documentId);
+
+        verify(aiModelClient).extractDocument(eq("source.pdf"), anyString());
+        verify(documentObjectStorage).write(eq(checkpointKey), any(byte[].class), eq("application/json"));
     }
 
     @Test
@@ -107,7 +163,7 @@ class DocumentExtractionWorkerTest {
         Document document = document(documentId);
         when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
         when(documentObjectStorage.exists(any())).thenReturn(false);
-        when(aiModelClient.extractDocument(eq(documentId), any(), any(), any()))
+        when(aiModelClient.extractDocument(eq("source.pdf"), anyString()))
                 .thenThrow(new AiModelClient.AiApiException("/extract", 503));
 
         assertThatThrownBy(() -> worker().process(documentId))
@@ -124,7 +180,8 @@ class DocumentExtractionWorkerTest {
                 aiModelClient,
                 sparseVectorGenerator,
                 qdrantService,
-                persistence);
+                persistence,
+                new ObjectMapper());
         ReflectionTestUtils.setField(w, "baseUrl", "http://localhost:8080");
         return w;
     }
@@ -147,5 +204,11 @@ class DocumentExtractionWorkerTest {
         chunk.setText(text);
         chunk.setActive(true);
         return chunk;
+    }
+
+    private static AiModelClient.ExtractedDocument extracted(String markdown) {
+        return new AiModelClient.ExtractedDocument(
+                markdown,
+                List.of(new AiModelClient.ExtractionBlock("paragraph", markdown, null, null)));
     }
 }
