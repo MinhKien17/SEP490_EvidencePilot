@@ -80,6 +80,7 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
         document.setProcessingStatus(ProcessingStatus.METADATA_FETCHED);
         document.setActive(true);
         document.setCreatedAt(LocalDateTime.now());
+        document.setDownloadToken(UUID.randomUUID().toString());
         document.setDoi(doi);
         document.setTitle(work.title());
         document.setAuthors(toJson(work.authorNames()));

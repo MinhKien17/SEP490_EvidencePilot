@@ -54,6 +54,7 @@ public class DocumentPersistenceService {
         document.setProcessingStatus(ProcessingStatus.PENDING_UPLOAD);
         document.setActive(true);
         document.setCreatedAt(LocalDateTime.now());
+        document.setDownloadToken(UUID.randomUUID().toString());
         return documentRepository.save(document);
     }
 

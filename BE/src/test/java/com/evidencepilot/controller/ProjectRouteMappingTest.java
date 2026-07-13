@@ -74,6 +74,7 @@ class ProjectRouteMappingTest {
                 "POST /api/documents",
                 "GET /api/documents/{id}/chunks",
                 "GET /api/documents/{id}/text",
+                "GET /api/documents/{id}/download",
                 "DELETE /api/documents/{id}",
                 "GET /api/papers",
                 "GET /api/papers/{id}",

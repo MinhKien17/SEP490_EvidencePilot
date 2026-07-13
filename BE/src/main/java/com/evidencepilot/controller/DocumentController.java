@@ -4,6 +4,8 @@ import com.evidencepilot.dto.response.DocumentChunkResponse;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.DocumentTextResponse;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.Document;
+import com.evidencepilot.service.DocumentObjectStorage;
 import com.evidencepilot.service.DocumentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -11,8 +13,11 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,6 +38,7 @@ import java.util.UUID;
 public class DocumentController {
 
     private final DocumentService documentService;
+    private final DocumentObjectStorage documentObjectStorage;
 
     @Operation(summary = "Get document by ID",
             description = "Returns metadata for a single document by UUID.")
@@ -87,6 +93,22 @@ public class DocumentController {
     public DocumentTextResponse getDocumentText(
             @Parameter(description = "Document UUID") @PathVariable UUID id) {
         return documentService.getDocumentText(id);
+    }
+
+    @Operation(summary = "Download a document PDF",
+            description = "Streams the original document file via a token-authenticated URL. "
+                    + "Used by the AI extraction worker instead of MinIO presigned URLs.")
+    @GetMapping("/{id}/download")
+    public ResponseEntity<InputStreamResource> downloadDocument(
+            @PathVariable UUID id,
+            @RequestParam("token") String token) {
+        Document doc = documentService.getDocumentForDownload(id, token);
+        var stream = documentObjectStorage.getStream(doc.getFileUrl());
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "inline; filename=\"" + doc.getOriginalFilename() + "\"")
+                .body(new InputStreamResource(stream));
     }
 
     @Operation(summary = "Soft-delete a document",

@@ -54,6 +54,7 @@ public class SecurityConfig {
                                 "/ws",
                                 "/ws/**")
                         .permitAll()
+                        .requestMatchers("/api/documents/*/download").permitAll()
                         .requestMatchers("/api/auth/update-password").authenticated()
                         .requestMatchers("/api/users/profile").authenticated()
                         .requestMatchers("/api/users/**").hasRole("ADMIN")

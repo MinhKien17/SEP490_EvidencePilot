@@ -23,6 +23,7 @@ public class SchemaMigrationRunner implements CommandLineRunner {
     @Override
     public void run(String... args) {
         try {
+            ensureColumnIsVarchar();
             String constraintName = findCheckConstraint();
             if (constraintName != null) {
                 jdbcTemplate.execute("ALTER TABLE documents DROP CHECK " + constraintName);
@@ -31,7 +32,18 @@ public class SchemaMigrationRunner implements CommandLineRunner {
             jdbcTemplate.execute("ALTER TABLE documents ADD CONSTRAINT documents_processing_status_check CHECK (" + EXPECTED_CONSTRAINT + ")");
             log.info("Applied processing_status CHECK constraint");
         } catch (Exception e) {
-            log.warn("Could not migrate CHECK constraint (non-fatal): {}", e.getMessage());
+            log.warn("Could not migrate processing_status column (non-fatal): {}", e.getMessage());
+        }
+    }
+
+    private void ensureColumnIsVarchar() {
+        String columnType = jdbcTemplate.queryForObject(
+                "SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'documents' AND COLUMN_NAME = 'processing_status'",
+                String.class);
+        if (columnType != null && columnType.equalsIgnoreCase("enum")) {
+            jdbcTemplate.execute(
+                    "ALTER TABLE documents MODIFY COLUMN processing_status VARCHAR(50) NOT NULL");
+            log.info("Changed processing_status column from ENUM to VARCHAR(50)");
         }
     }
 

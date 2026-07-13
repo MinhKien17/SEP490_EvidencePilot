@@ -259,6 +259,15 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
+    public Document getDocumentForDownload(UUID id, String token) {
+        Document doc = findDocument(id);
+        if (!token.equals(doc.getDownloadToken())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Invalid download token");
+        }
+        return doc;
+    }
+
+    @Override
     public List<DocumentChunkResponse> getDocumentChunks(UUID documentId) {
         var currentUser = currentUserService.requireCurrentUser();
         Document doc = findDocument(documentId);

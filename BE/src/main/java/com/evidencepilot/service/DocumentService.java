@@ -4,6 +4,7 @@ import com.evidencepilot.dto.response.DocumentChunkResponse;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.DocumentTextResponse;
 import com.evidencepilot.dto.response.PagedResponse;
+import com.evidencepilot.model.Document;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import java.util.List;
@@ -47,4 +48,5 @@ public interface DocumentService {
     List<DocumentChunkResponse> getDocumentChunks(UUID documentId);
     DocumentTextResponse getDocumentText(UUID documentId);
     void deleteDocument(UUID id);
+    Document getDocumentForDownload(UUID id, String token);
 }

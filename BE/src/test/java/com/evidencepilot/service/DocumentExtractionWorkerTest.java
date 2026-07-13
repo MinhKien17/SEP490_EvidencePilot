@@ -14,6 +14,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Collections;
 import java.util.List;
@@ -23,6 +24,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -56,9 +58,8 @@ class DocumentExtractionWorkerTest {
 
         when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
         when(documentObjectStorage.exists(markdownKey)).thenReturn(false);
-        when(documentObjectStorage.presignedGetUrl(document.getFileUrl(), 15)).thenReturn("https://storage.test/file");
         when(aiModelClient.extractDocument(
-                documentId, "source.pdf", "application/pdf", "https://storage.test/file"))
+                eq(documentId), eq("source.pdf"), eq("application/pdf"), anyString()))
                 .thenReturn(new AiModelClient.ExtractedDocument("source.pdf", "mineru", markdown));
         when(aiModelClient.generateEmbeddings(List.of(markdown))).thenReturn(List.of(vector));
         when(sparseVectorGenerator.generate(markdown))
@@ -106,7 +107,6 @@ class DocumentExtractionWorkerTest {
         Document document = document(documentId);
         when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
         when(documentObjectStorage.exists(any())).thenReturn(false);
-        when(documentObjectStorage.presignedGetUrl(document.getFileUrl(), 15)).thenReturn("https://storage.test/file");
         when(aiModelClient.extractDocument(eq(documentId), any(), any(), any()))
                 .thenThrow(new AiModelClient.AiApiException("/extract", 503));
 
@@ -118,13 +118,15 @@ class DocumentExtractionWorkerTest {
     }
 
     private DocumentExtractionWorkerImpl worker() {
-        return new DocumentExtractionWorkerImpl(
+        var w = new DocumentExtractionWorkerImpl(
                 documentRepository,
                 documentObjectStorage,
                 aiModelClient,
                 sparseVectorGenerator,
                 qdrantService,
                 persistence);
+        ReflectionTestUtils.setField(w, "baseUrl", "http://localhost:8080");
+        return w;
     }
 
     private static Document document(UUID id) {
@@ -133,6 +135,7 @@ class DocumentExtractionWorkerTest {
         document.setFileUrl("sources/raw/" + id + ".pdf");
         document.setOriginalFilename("source.pdf");
         document.setContentType("application/pdf");
+        document.setDownloadToken(UUID.randomUUID().toString());
         return document;
     }
 

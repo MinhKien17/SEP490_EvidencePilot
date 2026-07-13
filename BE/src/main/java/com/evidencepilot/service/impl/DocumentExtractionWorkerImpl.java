@@ -12,6 +12,7 @@ import com.evidencepilot.service.DocumentObjectStorage;
 import com.evidencepilot.service.QdrantService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -27,7 +28,9 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
     private static final int CHUNK_OVERLAP = 100;
     private static final int EMBEDDING_BATCH_SIZE = 32;
     private static final int EMBEDDING_DIMENSION = 768;
-    private static final int PRESIGNED_URL_MINUTES = 15;
+
+    @Value("${app.base-url}")
+    private String baseUrl;
 
     private final DocumentRepository documentRepository;
     private final DocumentObjectStorage documentObjectStorage;
@@ -58,8 +61,8 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
                     extractionMethod(document.getOriginalFilename()),
                     documentObjectStorage.readText(markdownKey));
         } else {
-            String downloadUrl = documentObjectStorage.presignedGetUrl(
-                    document.getFileUrl(), PRESIGNED_URL_MINUTES);
+            String downloadUrl = baseUrl + "/api/documents/" + document.getId()
+                    + "/download?token=" + document.getDownloadToken();
             extracted = aiModelClient.extractDocument(
                     document.getId(),
                     document.getOriginalFilename(),

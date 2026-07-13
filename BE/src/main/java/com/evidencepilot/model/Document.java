@@ -88,6 +88,9 @@ public class Document {
 
     private String publisher;
 
+    @Column(name = "download_token", length = 36)
+    private String downloadToken;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

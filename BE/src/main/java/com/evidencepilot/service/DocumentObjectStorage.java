@@ -78,6 +78,17 @@ public class DocumentObjectStorage {
         write(objectKey, new ByteArrayInputStream(data), data.length, contentType);
     }
 
+    public InputStream getStream(String objectKey) {
+        try {
+            return minioClient.getObject(GetObjectArgs.builder()
+                    .bucket(bucketName)
+                    .object(objectKey)
+                    .build());
+        } catch (Exception e) {
+            throw new DocumentStorageException("Failed to open stream for object " + objectKey, e);
+        }
+    }
+
     public boolean exists(String objectKey) {
         try {
             minioClient.statObject(StatObjectArgs.builder()
