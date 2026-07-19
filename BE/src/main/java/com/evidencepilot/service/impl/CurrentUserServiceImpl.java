@@ -139,8 +139,8 @@ public class CurrentUserServiceImpl implements CurrentUserService {
         if (project.getStatus() == ProjectStatus.SUBMITTED_FOR_REVIEW ||
             project.getStatus() == ProjectStatus.APPROVED) {
             throw new ResponseStatusException(
-                    org.springframework.http.HttpStatus.FORBIDDEN,
-                    "Write access denied: project is locked");
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "Project is locked and cannot be modified.");
         }
         return project.getProjectMembers().stream()
                 .anyMatch(pm -> pm.getUser() != null

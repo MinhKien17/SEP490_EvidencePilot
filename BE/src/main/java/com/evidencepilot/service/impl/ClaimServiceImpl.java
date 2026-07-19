@@ -294,6 +294,10 @@ public class ClaimServiceImpl implements ClaimService {
                 .orElseThrow(() -> new ResourceNotFoundException(mappingId, "ClaimEvidenceMapping"));
         User currentUser = currentUserService.requireCurrentUser();
         if (!currentUserService.isAdmin(currentUser)) {
+            if (!currentUserService.isInstructor(currentUser)) {
+                throw new ResponseStatusException(
+                        HttpStatus.FORBIDDEN, "Only instructors can review mappings");
+            }
             currentUserService.requireProjectAccess(currentUser, mapping.getClaim().getProject());
         }
 

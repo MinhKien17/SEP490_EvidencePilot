@@ -174,7 +174,7 @@ class FeedbackServiceImplTest {
 
         assertThatThrownBy(() -> service().submitForReview(project.getId(), null))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Only ACTIVE projects can be submitted for review.");
+                .hasMessageContaining("Only ACTIVE or RETURNED projects can be submitted for review.");
     }
 
     @Test

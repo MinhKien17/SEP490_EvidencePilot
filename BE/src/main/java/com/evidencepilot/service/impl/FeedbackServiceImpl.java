@@ -76,9 +76,10 @@ public class FeedbackServiceImpl implements FeedbackService {
         if (project.getStatus() == ProjectStatus.SUBMITTED_FOR_REVIEW) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is already in review.");
         }
-        if (project.getStatus() != ProjectStatus.IN_PROGRESS) {
+        if (project.getStatus() != ProjectStatus.IN_PROGRESS
+                && project.getStatus() != ProjectStatus.RETURNED) {
             throw new ResponseStatusException(
-                    HttpStatus.CONFLICT, "Only ACTIVE projects can be submitted for review.");
+                    HttpStatus.CONFLICT, "Only ACTIVE or RETURNED projects can be submitted for review.");
         }
 
         UUID instructorId = request != null ? request.instructorId() : null;

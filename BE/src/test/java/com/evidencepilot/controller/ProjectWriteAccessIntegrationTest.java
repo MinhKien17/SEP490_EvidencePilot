@@ -81,7 +81,7 @@ class ProjectWriteAccessIntegrationTest {
     }
 
     @Test
-    void studentOwnsProjectSubmittedForReview_shouldReturn403() throws Exception {
+    void studentOwnsProjectSubmittedForReview_shouldReturn409() throws Exception {
         givenStudentOwnsProject(ProjectStatus.SUBMITTED_FOR_REVIEW);
 
         mockMvc.perform(put("/api/projects/{id}", projectId)
@@ -90,11 +90,11 @@ class ProjectWriteAccessIntegrationTest {
                 .content("""
                         {"title":"Updated Title","description":"Updated","targetStandard":"CUSTOM"}
                         """))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isConflict());
     }
 
     @Test
-    void studentOwnsProjectApproved_shouldReturn403() throws Exception {
+    void studentOwnsProjectApproved_shouldReturn409() throws Exception {
         givenStudentOwnsProject(ProjectStatus.APPROVED);
 
         mockMvc.perform(put("/api/projects/{id}", projectId)
@@ -103,7 +103,7 @@ class ProjectWriteAccessIntegrationTest {
                 .content("""
                         {"title":"Updated Title","description":"Updated","targetStandard":"CUSTOM"}
                         """))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isConflict());
     }
 
     @Test
