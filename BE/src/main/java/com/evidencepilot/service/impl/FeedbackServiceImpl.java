@@ -5,14 +5,17 @@ import com.evidencepilot.dto.request.SubmitReviewRequest;
 import com.evidencepilot.dto.response.FeedbackRequestResponseDto;
 import com.evidencepilot.dto.response.InstructorFeedbackResponseDto;
 import com.evidencepilot.exception.ResourceNotFoundException;
+import com.evidencepilot.model.Document;
 import com.evidencepilot.model.FeedbackRequest;
 import com.evidencepilot.model.FeedbackStatus;
 import com.evidencepilot.model.InstructorFeedback;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
+import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
@@ -20,9 +23,11 @@ import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.FeedbackService;
+import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.SystemNotificationService;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -33,15 +38,18 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class FeedbackServiceImpl implements FeedbackService {
 
     private final FeedbackRequestRepository feedbackRequestRepository;
     private final InstructorFeedbackRepository instructorFeedbackRepository;
     private final PaperSectionRepository paperSectionRepository;
+    private final DocumentRepository documentRepository;
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
     private final SystemNotificationService systemNotificationService;
+    private final PaperProcessingService paperProcessingService;
 
     @Override
     public List<FeedbackRequestResponseDto> findAllForCurrentUser() {
@@ -85,12 +93,26 @@ public class FeedbackServiceImpl implements FeedbackService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project has no student.");
         }
 
+        List<Document> papers = documentRepository
+                .findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.PAPER);
+        String validationJson = null;
+        if (!papers.isEmpty()) {
+            try {
+                var validation = paperProcessingService.validateSections(papers.get(0).getId());
+                validationJson = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .writeValueAsString(validation);
+            } catch (Exception e) {
+                log.warn("Section validation failed for project {}: {}", project.getId(), e.getMessage());
+            }
+        }
+
         FeedbackRequest feedbackRequest = new FeedbackRequest();
         feedbackRequest.setProject(project);
         feedbackRequest.setStudent(student);
         feedbackRequest.setInstructor(instructor);
         feedbackRequest.setStatus(FeedbackStatus.PENDING);
         feedbackRequest.setRequestedAt(LocalDateTime.now());
+        feedbackRequest.setSectionValidation(validationJson);
 
         project.setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
         projectRepository.save(project);

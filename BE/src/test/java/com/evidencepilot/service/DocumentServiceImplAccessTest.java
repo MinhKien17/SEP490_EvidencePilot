@@ -9,10 +9,12 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.ProcessingStatus;
+import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.DocumentTextRepository;
+import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.SourceCategoryRepository;
 import com.evidencepilot.service.impl.DocumentPersistenceService;
@@ -64,6 +66,12 @@ class DocumentServiceImplAccessTest {
 
     @Mock
     private SourceCategoryRepository sourceCategoryRepository;
+
+    @Mock
+    private ProjectDocumentRepository projectDocumentRepository;
+
+    @Mock
+    private ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
 
     @Mock
     private CurrentUserService currentUserService;
@@ -416,6 +424,8 @@ class DocumentServiceImplAccessTest {
                 projectRepository,
                 collectionRepository,
                 sourceCategoryRepository,
+                projectDocumentRepository,
+                claimEvidenceMappingRepository,
                 currentUserService,
                 documentPersistenceService,
                 documentMapper,

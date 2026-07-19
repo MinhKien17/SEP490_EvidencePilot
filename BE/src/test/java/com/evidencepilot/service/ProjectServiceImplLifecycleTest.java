@@ -4,6 +4,7 @@ import com.evidencepilot.dto.request.ProjectUpdateRequest;
 import com.evidencepilot.mapper.ProjectMapper;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.ProjectMemberRepository;
 import com.evidencepilot.repository.ProjectRepository;
@@ -110,7 +111,7 @@ class ProjectServiceImplLifecycleTest {
 
         assertThatThrownBy(() -> service().updateProject(
                 project.getId(),
-                new ProjectUpdateRequest("Updated", "Description", "IEEE")))
+                new ProjectUpdateRequest("Updated", "Description", PaperStandard.IEEE)))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Project is read-only.");
     }
@@ -135,7 +136,7 @@ class ProjectServiceImplLifecycleTest {
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
         when(projectRepository.save(project)).thenReturn(project);
 
-        service().updateProject(project.getId(), new ProjectUpdateRequest("New", "Description", "ISO"));
+        service().updateProject(project.getId(), new ProjectUpdateRequest("New", "Description", PaperStandard.CUSTOM));
 
         assertThat(project.getTitle()).isEqualTo("New");
         assertThat(project.getDescription()).isEqualTo("Description");

@@ -7,6 +7,7 @@ import com.evidencepilot.dto.response.ProjectMemberResponse;
 import com.evidencepilot.dto.response.ProjectResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.ProjectMapper;
+import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.enums.ProjectRole;
@@ -269,8 +270,7 @@ public class ProjectServiceImpl implements ProjectService {
                 String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
                 predicates.add(cb.or(
                         cb.like(cb.lower(root.get("title")), like),
-                        cb.like(cb.lower(root.get("description")), like),
-                        cb.like(cb.lower(root.get("targetStandard")), like)));
+                        cb.like(cb.lower(root.get("description")), like)));
             }
 
             return cb.and(predicates.toArray(Predicate[]::new));

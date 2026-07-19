@@ -25,3 +25,6 @@ uploads/
 .skills/
 .opencode.json
 opencode.json
+
+# ── Local notes (local dev only) ─────────────────────────────────
+local-note/

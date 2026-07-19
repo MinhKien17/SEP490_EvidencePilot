@@ -6,16 +6,21 @@ import com.evidencepilot.dto.response.DocumentTextResponse;
 import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.DocumentMapper;
+import com.evidencepilot.model.Collection;
 import com.evidencepilot.model.Document;
+import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.Project;
+import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.CollectionRepository;
+import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.DocumentTextRepository;
+import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.SourceCategoryRepository;
 import com.evidencepilot.service.CurrentUserService;
@@ -40,6 +45,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -60,6 +66,8 @@ public class DocumentServiceImpl implements DocumentService {
     private final ProjectRepository projectRepository;
     private final CollectionRepository collectionRepository;
     private final SourceCategoryRepository sourceCategoryRepository;
+    private final ProjectDocumentRepository projectDocumentRepository;
+    private final ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
     private final CurrentUserService currentUserService;
     private final DocumentPersistenceService documentPersistenceService;
     private final DocumentMapper documentMapper;
@@ -167,15 +175,33 @@ public class DocumentServiceImpl implements DocumentService {
             String q,
             ProcessingStatus processingStatus,
             Boolean active) {
-        return getDocumentsByProject(
-                projectId,
+        requireProjectAccess(projectId);
+        var pageable = PagingRequest.pageable(
+                page, size, sort, DOCUMENT_SORT_FIELDS, "createdAt,desc");
+
+        var projectDocs = documentRepository.findAll(
+                documentSpec(projectId, DocumentType.SOURCE, processingStatus, active, q),
+                pageable);
+
+        var sharedDocs = projectDocumentRepository.findByProjectId(projectId).stream()
+                .map(ProjectDocument::getDocument)
+                .filter(d -> d.isActive() && d.getDocType() == DocumentType.SOURCE)
+                .filter(d -> processingStatus == null || d.getProcessingStatus() == processingStatus)
+                .filter(d -> active == null || d.isActive() == active)
+                .map(DocumentResponse::from)
+                .toList();
+
+        List<DocumentResponse> combined = new ArrayList<>(projectDocs.getContent().stream()
+                .map(DocumentResponse::from).toList());
+        combined.addAll(sharedDocs);
+
+        return new PagedResponse<>(
+                combined,
                 page,
                 size,
-                sort,
-                q,
-                DocumentType.SOURCE,
-                processingStatus,
-                active);
+                combined.size(),
+                (int) Math.ceil((double) combined.size() / size),
+                page * size + size >= combined.size());
     }
 
     @Override
@@ -259,6 +285,88 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
+    @Transactional
+    public Map<String, Object> shareToProject(UUID collectionId, UUID sourceId, UUID projectId) {
+        var currentUser = currentUserService.requireCurrentUser();
+        var collection = collectionRepository.findById(collectionId)
+                .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
+        currentUserService.requireCollectionAccess(currentUser, collection);
+
+        Document doc = findDocument(sourceId);
+        if (doc.getDocType() != DocumentType.SOURCE || !doc.isActive()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source not found or inactive");
+        }
+
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
+        currentUserService.requireProjectAccess(currentUser, project);
+
+        if (projectDocumentRepository.existsByProjectIdAndDocumentId(projectId, sourceId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Document already shared to this project");
+        }
+
+        ProjectDocument pd = new ProjectDocument();
+        pd.setProject(project);
+        pd.setDocument(doc);
+        pd.setSharedBy(currentUser);
+        pd.setSharedAt(LocalDateTime.now());
+        projectDocumentRepository.save(pd);
+
+        String score = "MEDIUM";
+        String explanation = "Document shared to project \"" + project.getTitle() + "\"";
+        List<String> matchedTerms = new ArrayList<>();
+        if (doc.getTitle() != null && project.getTitle() != null) {
+            String docTitle = doc.getTitle().toLowerCase(Locale.ROOT);
+            String projTitle = project.getTitle().toLowerCase(Locale.ROOT);
+            for (String word : projTitle.split("\\s+")) {
+                if (word.length() > 3 && docTitle.contains(word)) {
+                    matchedTerms.add(word);
+                }
+            }
+            if (!matchedTerms.isEmpty()) {
+                score = "HIGH";
+                explanation = "Document shares " + matchedTerms.size() + " keyword(s) with project topic";
+            } else if (doc.getAuthors() != null) {
+                score = "MEDIUM";
+                explanation = "Document metadata partially overlaps with project topic";
+            } else {
+                score = "LOW";
+                explanation = "Document appears unrelated to project \"" + project.getTitle() + "\"";
+            }
+        }
+
+        return Map.of(
+                "document", DocumentResponse.from(doc),
+                "suitability", Map.of("score", score, "explanation", explanation, "matchedTerms", matchedTerms),
+                "warnings", "LOW".equals(score)
+                        ? List.of("This document appears unrelated to \"" + project.getTitle()
+                                + "\". It may not be useful as evidence.")
+                        : List.of());
+    }
+
+    @Override
+    @Transactional
+    public void removeSharedDocument(UUID projectId, UUID sourceId) {
+        var currentUser = currentUserService.requireCurrentUser();
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
+        currentUserService.requireProjectAccess(currentUser, project);
+
+        ProjectDocument pd = projectDocumentRepository.findByProjectIdAndDocumentId(projectId, sourceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Shared document not found"));
+
+        boolean hasMappings = documentChunkRepository.findByDocumentId(sourceId).stream()
+                .anyMatch(chunk -> !claimEvidenceMappingRepository
+                        .findByDocumentChunkId(chunk.getId()).isEmpty());
+        if (hasMappings) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Evidence mappings exist for this source. Remove mappings first.");
+        }
+
+        projectDocumentRepository.delete(pd);
+    }
+
+    @Override
     public Document getDocumentForDownload(UUID id, String token) {
         Document doc = findDocument(id);
         if (!token.equals(doc.getDownloadToken())) {
@@ -287,6 +395,46 @@ public class DocumentServiceImpl implements DocumentService {
             throw new ResourceNotFoundException("Document text not found for document " + documentId);
         }
         return documentMapper.toDocumentTextResponse(text);
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse attachFileToDocument(UUID documentId, MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File is empty");
+        }
+        validateFile(file);
+        var currentUser = currentUserService.requireCurrentUser();
+        Document doc = findDocument(documentId);
+        requireDocumentAccess(currentUser, doc);
+
+        if (doc.getProcessingStatus() != ProcessingStatus.METADATA_FETCHED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Can only attach file to a metadata-only document (status: METADATA_FETCHED)");
+        }
+
+        String objectKey = "sources/raw/" + doc.getId().toString() + fileExtension(file.getOriginalFilename());
+        try (var in = file.getInputStream()) {
+            minioClient.putObject(PutObjectArgs.builder()
+                    .bucket(bucketName)
+                    .object(objectKey)
+                    .stream(in, file.getSize(), -1)
+                    .contentType(file.getContentType())
+                    .build());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to upload file to MinIO", e);
+        }
+
+        doc.setContentType(file.getContentType());
+        doc.setOriginalFilename(file.getOriginalFilename());
+        doc.setFileSizeBytes(file.getSize());
+        doc = documentPersistenceService.markDocumentAsUploaded(doc.getId(), objectKey);
+
+        if (doc.getProject() != null) {
+            refreshProjectStatus(doc.getProject());
+        }
+
+        return DocumentResponse.from(doc);
     }
 
     @Override
@@ -412,12 +560,14 @@ public class DocumentServiceImpl implements DocumentService {
             case ".pdf" -> genericType || contentType.equals("application/pdf");
             case ".docx" -> genericType || contentType.equals(
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+            case ".md", ".markdown" -> genericType || contentType.startsWith("text/markdown");
+            case ".tex" -> genericType || contentType.startsWith("text/") || contentType.contains("latex");
             default -> false;
         };
         if (!supported) {
             throw new ResponseStatusException(
                     HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-                    "Only PDF and DOCX files are supported");
+                    "Only PDF, DOCX, Markdown, and TeX files are supported");
         }
     }
 }

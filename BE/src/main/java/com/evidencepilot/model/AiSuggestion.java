@@ -8,6 +8,8 @@ import org.hibernate.annotations.JdbcTypeCode;
 
 import lombok.Getter;
 import lombok.Setter;
+import com.evidencepilot.model.enums.EvidenceRelation;
+import com.evidencepilot.model.enums.StrengthBand;
 import com.evidencepilot.model.enums.SuggestionStatus;
 
 @Entity
@@ -43,6 +45,34 @@ public class AiSuggestion {
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    @Column(name = "model_name")
+    private String modelName;
+
+    @Column(name = "model_version")
+    private String modelVersion;
+
+    @Column(name = "prompt_version")
+    private String promptVersion;
+
+    @Column(name = "rubric_version")
+    private String rubricVersion;
+
+    @Column(name = "evaluated_at")
+    private LocalDateTime evaluatedAt;
+
+    @Column(name = "score_breakdown", columnDefinition = "JSON")
+    private String scoreBreakdown;
+
+    @Enumerated(EnumType.STRING)
+    private EvidenceRelation relation;
+
+    @Column(name = "strength_score")
+    private Integer strengthScore;
+
+    @Column(name = "strength_band")
+    @Enumerated(EnumType.STRING)
+    private StrengthBand strengthBand;
 
     @Override
     public boolean equals(Object o) {

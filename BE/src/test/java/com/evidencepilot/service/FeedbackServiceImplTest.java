@@ -13,6 +13,7 @@ import com.evidencepilot.model.FeedbackStatus;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
+import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
@@ -50,6 +51,9 @@ class FeedbackServiceImplTest {
     private PaperSectionRepository paperSectionRepository;
 
     @Mock
+    private DocumentRepository documentRepository;
+
+    @Mock
     private ProjectRepository projectRepository;
 
     @Mock
@@ -60,6 +64,9 @@ class FeedbackServiceImplTest {
 
     @Mock
     private SystemNotificationService systemNotificationService;
+
+    @Mock
+    private PaperProcessingService paperProcessingService;
 
     @Test
     void submitForReviewUsesProjectInstructorAndStudent() {
@@ -232,10 +239,12 @@ class FeedbackServiceImplTest {
                 feedbackRequestRepository,
                 instructorFeedbackRepository,
                 paperSectionRepository,
+                documentRepository,
                 projectRepository,
                 userRepository,
                 currentUserService,
-                systemNotificationService);
+                systemNotificationService,
+                paperProcessingService);
     }
 
     private User user(UserRole role) {

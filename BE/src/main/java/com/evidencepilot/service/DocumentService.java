@@ -8,6 +8,7 @@ import com.evidencepilot.model.Document;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -45,6 +46,9 @@ public interface DocumentService {
             MultipartFile file,
             DocumentType docType);
 
+    DocumentResponse attachFileToDocument(UUID documentId, MultipartFile file);
+    Map<String, Object> shareToProject(UUID collectionId, UUID sourceId, UUID projectId);
+    void removeSharedDocument(UUID projectId, UUID sourceId);
     List<DocumentChunkResponse> getDocumentChunks(UUID documentId);
     DocumentTextResponse getDocumentText(UUID documentId);
     void deleteDocument(UUID id);

@@ -14,7 +14,6 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class AiAnalysisServiceImplTest {
@@ -22,13 +21,12 @@ class AiAnalysisServiceImplTest {
     private final ClaimMatchingService matching = mock(ClaimMatchingService.class);
     private final ClaimRepository claims = mock(ClaimRepository.class);
     private final DocumentChunkRepository chunks = mock(DocumentChunkRepository.class);
-    private final EvidenceEdgeRepository edges = mock(EvidenceEdgeRepository.class);
     private final ClaimMapper mapper = mock(ClaimMapper.class);
     private AiAnalysisServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new AiAnalysisServiceImpl(matching, claims, chunks, edges, mapper);
+        service = new AiAnalysisServiceImpl(matching, claims, chunks, mapper);
     }
 
     @Test
@@ -37,7 +35,7 @@ class AiAnalysisServiceImplTest {
         when(matching.matchClaim(claim.getId(), claim.getProject().getId())).thenReturn(List.of());
 
         assertThat(service.analyzeAndPersist(claim)).isSameAs(claim);
-        verifyNoInteractions(claims, chunks, edges);
+        verifyNoInteractions(claims, chunks);
     }
 
     @Test
@@ -53,7 +51,6 @@ class AiAnalysisServiceImplTest {
         Claim saved = service.analyzeAndPersist(claim);
 
         assertThat(saved.getAiConfidenceScore()).isEqualTo(0.4f);
-        verify(edges, times(2)).save(any(EvidenceEdge.class));
     }
 
     @Test
@@ -77,9 +74,6 @@ class AiAnalysisServiceImplTest {
         Claim saved = service.analyzeAndPersist(claim, chunkId.toString(), "excerpt", "title");
 
         assertThat(saved.getAiConfidenceScore()).isEqualTo(0.75f);
-        verify(edges).save(argThat(edge -> edge.getDocumentChunk() == chunk
-                && edge.getVerdict().equals("SUPPORTIVE")
-                && edge.getExplanation().equals("excerpt")));
     }
 
     private static Claim claim() {

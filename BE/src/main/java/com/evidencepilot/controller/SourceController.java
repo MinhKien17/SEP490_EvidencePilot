@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
@@ -71,6 +72,25 @@ public class SourceController {
     public DocumentTextResponse text(
             @Parameter(description = "Source document UUID") @PathVariable UUID id) {
         return documentService.getDocumentText(id);
+    }
+
+    @Operation(summary = "Remove shared source from project",
+            description = "Removes a collection-shared source from a project by deleting the reference. "
+                    + "Original document remains in collection. "
+                    + "Blocked with 409 if evidence mappings exist.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Shared source removed"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Shared source not found"),
+            @ApiResponse(responseCode = "409", description = "Evidence mappings exist — remove them first")
+    })
+    @DeleteMapping("/projects/{projectId}/sources/{sourceId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeSharedSource(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId,
+            @Parameter(description = "Source document UUID") @PathVariable UUID sourceId) {
+        documentService.removeSharedDocument(projectId, sourceId);
     }
 
     @Operation(summary = "Soft-delete source by ID",

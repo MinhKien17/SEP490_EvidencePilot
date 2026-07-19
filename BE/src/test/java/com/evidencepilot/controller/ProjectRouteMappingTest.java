@@ -69,9 +69,11 @@ class ProjectRouteMappingTest {
                 "POST /api/collections",
                 "GET /api/collections/{id}",
                 "GET /api/collections/{id}/sources",
+                "POST /api/collections/{collectionId}/sources/{sourceId}/share-to-project/{projectId}",
                 "DELETE /api/collections/{id}",
                 "GET /api/documents/{id}",
                 "POST /api/documents",
+                "POST /api/documents/{documentId}/file",
                 "GET /api/documents/{id}/chunks",
                 "GET /api/documents/{id}/text",
                 "GET /api/documents/{id}/download",
@@ -80,6 +82,9 @@ class ProjectRouteMappingTest {
                 "GET /api/papers/{id}",
                 "GET /api/projects/{projectId}/papers",
                 "GET /api/papers/{id}/sections",
+                "PUT /api/papers/{documentId}/sections/{sectionId}",
+                "POST /api/papers/{documentId}/sections/create",
+                "GET /api/papers/{id}/validate",
                 "POST /api/papers/{id}/reviews",
                 "DELETE /api/papers/{id}",
                 "POST /api/papers",
@@ -88,6 +93,7 @@ class ProjectRouteMappingTest {
                 "GET /api/sources/{id}/text",
                 "DELETE /api/sources/{id}",
                 "POST /api/sources",
+                "DELETE /api/sources/projects/{projectId}/sources/{sourceId}",
                 "GET /api/source-categories",
                 "GET /api/admin/source-categories",
                 "POST /api/admin/source-categories",
@@ -100,9 +106,10 @@ class ProjectRouteMappingTest {
                 "DELETE /api/claims/{id}",
                 "GET /api/claims/{id}/suggestions",
                 "POST /api/claims/{id}/suggestions",
+                "POST /api/claims/{id}/suggestions/generate",
                 "PATCH /api/claims/suggestions/{suggestionId}/status",
                 "GET /api/claims/{id}/mappings",
-                "GET /api/claims/{id}/edges",
+                "PATCH /api/claims/mappings/{mappingId}/review",
                 "POST /api/paper/{documentId}/claims/match",
                 "POST /api/sources/{documentId}/claims/match",
                 "GET /api/feedback-requests",
@@ -113,7 +120,9 @@ class ProjectRouteMappingTest {
                 "GET /api/notifications/unread-count",
                 "PATCH /api/notifications/{id}/read",
                 "GET /api/projects/{projectId}/traceability",
-                "GET /api/health"));
+                "GET /api/health",
+                "GET /api/health/live",
+                "GET /api/health/ready"));
     }
 
     @Test

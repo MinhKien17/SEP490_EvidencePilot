@@ -91,6 +91,9 @@ public class Document {
     @Column(name = "download_token", length = 36)
     private String downloadToken;
 
+    @Column(name = "extraction_quality", columnDefinition = "JSON")
+    private String extractionQuality;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

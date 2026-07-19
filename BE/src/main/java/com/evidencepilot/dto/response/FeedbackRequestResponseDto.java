@@ -11,7 +11,8 @@ public record FeedbackRequestResponseDto(
     UUID studentId,
     UUID instructorId,
     FeedbackStatus status,
-    LocalDateTime requestedAt
+    LocalDateTime requestedAt,
+    String sectionValidation
 ) {
     public static FeedbackRequestResponseDto fromEntity(FeedbackRequest request) {
         return new FeedbackRequestResponseDto(
@@ -20,7 +21,8 @@ public record FeedbackRequestResponseDto(
             request.getStudent() != null ? request.getStudent().getId() : null,
             request.getInstructor() != null ? request.getInstructor().getId() : null,
             request.getStatus(),
-            request.getRequestedAt()
+            request.getRequestedAt(),
+            request.getSectionValidation()
         );
     }
 }

@@ -7,6 +7,7 @@ import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.*;
 import com.evidencepilot.service.impl.TraceabilityExportServiceImpl;
+import com.evidencepilot.service.GapDetectionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -25,17 +26,18 @@ class TraceabilityExportServiceImplTest {
     private final DocumentRepository documents = mock(DocumentRepository.class);
     private final DocumentReferenceRepository references = mock(DocumentReferenceRepository.class);
     private final FeedbackRequestRepository feedback = mock(FeedbackRequestRepository.class);
-    private final EvidenceEdgeRepository edges = mock(EvidenceEdgeRepository.class);
     private final DocumentChunkRepository chunks = mock(DocumentChunkRepository.class);
-    private final ClaimMatchingService matching = mock(ClaimMatchingService.class);
+    private final AiSuggestionRepository aiSuggestions = mock(AiSuggestionRepository.class);
+    private final ClaimEvidenceMappingRepository claimEvMappings = mock(ClaimEvidenceMappingRepository.class);
     private final CurrentUserService currentUsers = mock(CurrentUserService.class);
+    private final GapDetectionService gapDetection = mock(GapDetectionService.class);
     private TraceabilityExportServiceImpl service;
 
     @BeforeEach
     void setUp() {
         service = new TraceabilityExportServiceImpl(
-                projects, claims, documents, references, feedback, edges, chunks,
-                matching, currentUsers, new ObjectMapper());
+                projects, claims, documents, references, feedback, chunks,
+                aiSuggestions, claimEvMappings, currentUsers, gapDetection, new ObjectMapper());
     }
 
     @Test

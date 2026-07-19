@@ -78,13 +78,18 @@ CREATE TABLE documents (
     content_type VARCHAR(255),
     file_size_bytes BIGINT,
     file_hash_sha256 VARCHAR(64),
-    processing_status VARCHAR(50) NOT NULL CHECK (processing_status IN ('PENDING_UPLOAD', 'UPLOADED', 'METADATA_FETCHED', 'PDF_DOWNLOADED', 'QUEUED', 'PROCESSING', 'RAW_EXTRACTED', 'READY', 'COMPLETED', 'FAILED')),
+    processing_status VARCHAR(50) NOT NULL CHECK (processing_status IN ('PENDING_UPLOAD', 'UPLOADED', 'METADATA_FETCHED', 'PDF_DOWNLOADED', 'QUEUED', 'PROCESSING', 'RAW_EXTRACTED', 'PARTIAL', 'READY', 'COMPLETED', 'FAILED')),
     processing_error TEXT,
     chunk_count INT DEFAULT 0,
     processed_at DATETIME,
     published_at DATETIME,
     active BOOLEAN NOT NULL DEFAULT TRUE,
     doi VARCHAR(255),
+    title VARCHAR(500),
+    authors TEXT,
+    publication_year INT,
+    publisher VARCHAR(255),
+    download_token VARCHAR(36),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_documents_project_id (project_id),
     INDEX idx_documents_collection_id (collection_id),
@@ -124,6 +129,8 @@ CREATE TABLE document_references (
     raw_text TEXT NOT NULL,
     title VARCHAR(255),
     publication_year INT,
+    doi VARCHAR(255),
+    edge_type VARCHAR(50),
     FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
 );
 

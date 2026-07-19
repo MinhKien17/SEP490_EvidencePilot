@@ -41,6 +41,9 @@ public class PaperSection {
     @Column(name = "content_md_cache", columnDefinition = "LONGTEXT")
     private String contentMdCache;
 
+    @Column(name = "active")
+    private boolean active = true;
+
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 

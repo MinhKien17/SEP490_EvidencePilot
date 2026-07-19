@@ -41,6 +41,9 @@ class PaperProcessingServiceImplTest {
     @Mock
     private CurrentUserService currentUserService;
 
+    @Mock
+    private PaperStandardService paperStandardService;
+
     @Test
     void getPaperSectionsRequiresProjectAccess() {
         User user = user();
@@ -111,7 +114,8 @@ class PaperProcessingServiceImplTest {
                 paperSectionRepository,
                 documentRepository,
                 projectMapper,
-                currentUserService);
+                currentUserService,
+                paperStandardService);
     }
 
     private User user() {

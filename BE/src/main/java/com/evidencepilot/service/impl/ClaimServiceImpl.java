@@ -1,27 +1,33 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.request.ClaimCreationRequest;
+import com.evidencepilot.dto.request.MappingReviewRequest;
 import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.dto.response.ClaimEvidenceMappingResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
-import com.evidencepilot.dto.response.EvidenceEdgeResponse;
 import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.ClaimMapper;
 import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Claim;
+import com.evidencepilot.model.ClaimEvidenceMapping;
+import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
+import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.MappingReviewStatus;
+import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.ClaimRepository;
-import com.evidencepilot.repository.EvidenceEdgeRepository;
+import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectMemberRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.service.ClaimMatchingService;
 import com.evidencepilot.service.ClaimService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.dto.request.PagingRequest;
@@ -53,7 +59,8 @@ public class ClaimServiceImpl implements ClaimService {
     private final PaperSectionRepository paperSectionRepository;
     private final AiSuggestionRepository aiSuggestionRepository;
     private final ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
-    private final EvidenceEdgeRepository evidenceEdgeRepository;
+    private final DocumentChunkRepository documentChunkRepository;
+    private final ClaimMatchingService claimMatchingService;
     private final CurrentUserService currentUserService;
     private final ClaimMapper claimMapper;
 
@@ -196,9 +203,20 @@ public class ClaimServiceImpl implements ClaimService {
             Float score, String explanation) {
         Claim claim = requireClaimWriteAccess(claimId);
 
+        DocumentChunk chunk = documentChunkRepository.findById(documentChunkId)
+                .orElseThrow(() -> new ResourceNotFoundException(documentChunkId, "DocumentChunk"));
+        if (!chunk.isActive() || chunk.getDocument() == null || !chunk.getDocument().isActive()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Document chunk is not active or belongs to an inactive document");
+        }
+        if (chunk.getDocument().getDocType() != DocumentType.SOURCE) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Document chunk must belong to a SOURCE document");
+        }
+
         AiSuggestion suggestion = new AiSuggestion();
         suggestion.setClaim(claim);
-        suggestion.setDocumentChunk(null);
+        suggestion.setDocumentChunk(chunk);
         suggestion.setStatus(SuggestionStatus.PENDING);
         suggestion.setScore(score);
         suggestion.setExplanation(explanation);
@@ -214,6 +232,27 @@ public class ClaimServiceImpl implements ClaimService {
         AiSuggestion suggestion = requireSuggestionWriteAccess(suggestionId);
         suggestion.setStatus(SuggestionStatus.ACCEPTED);
         aiSuggestionRepository.save(suggestion);
+
+        User currentUser = currentUserService.requireCurrentUser();
+        DocumentChunk chunk = suggestion.getDocumentChunk();
+        if (chunk == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Suggestion has no associated document chunk");
+        }
+
+        List<ClaimEvidenceMapping> existing = claimEvidenceMappingRepository
+                .findByClaimIdAndDocumentChunkId(suggestion.getClaim().getId(), chunk.getId());
+        if (existing.isEmpty()) {
+            ClaimEvidenceMapping mapping = new ClaimEvidenceMapping();
+            mapping.setClaim(suggestion.getClaim());
+            mapping.setDocumentChunk(chunk);
+            mapping.setSuggestion(suggestion);
+            mapping.setCreatedBy(currentUser);
+            mapping.setStatus(MappingStatus.ACTIVE);
+            mapping.setReviewStatus(MappingReviewStatus.PENDING);
+            mapping.setCreatedAt(LocalDateTime.now());
+            claimEvidenceMappingRepository.save(mapping);
+        }
     }
 
     @Override
@@ -249,11 +288,38 @@ public class ClaimServiceImpl implements ClaimService {
     }
 
     @Override
-    public List<EvidenceEdgeResponse> getEdgesForClaim(UUID claimId) {
-        requireClaimAccess(claimId);
-        return evidenceEdgeRepository.findByClaimId(claimId).stream()
-                .map(claimMapper::toEvidenceEdgeResponse)
-                .toList();
+    @Transactional
+    public ClaimEvidenceMappingResponse reviewMapping(UUID mappingId, MappingReviewRequest request) {
+        ClaimEvidenceMapping mapping = claimEvidenceMappingRepository.findById(mappingId)
+                .orElseThrow(() -> new ResourceNotFoundException(mappingId, "ClaimEvidenceMapping"));
+        User currentUser = currentUserService.requireCurrentUser();
+        currentUserService.requireProjectWriteAccess(currentUser, mapping.getClaim().getProject());
+
+        mapping.setReviewStatus(request.reviewStatus());
+        mapping.setReviewNote(request.reviewNote());
+        mapping.setReviewedBy(currentUser);
+        mapping.setReviewedAt(LocalDateTime.now());
+
+        if (request.relationOverride() != null && !request.relationOverride().isBlank()) {
+            try {
+                mapping.setRelationOverride(
+                        com.evidencepilot.model.enums.EvidenceRelation.valueOf(request.relationOverride().toUpperCase()));
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid relationOverride value");
+            }
+        }
+
+        return claimMapper.toClaimEvidenceMappingResponse(
+                claimEvidenceMappingRepository.save(mapping));
+    }
+
+    @Override
+    @Transactional
+    public List<AiSuggestionResponse> generateSuggestions(UUID claimId) {
+        Claim claim = findActiveClaim(claimId);
+        User currentUser = currentUserService.requireCurrentUser();
+        requireProjectContentWriteAccess(currentUser, claim.getProject());
+        return claimMatchingService.matchClaim(claimId, claim.getProject().getId());
     }
 
     private Claim requireClaimAccess(UUID claimId) {

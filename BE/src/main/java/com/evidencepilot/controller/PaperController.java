@@ -2,6 +2,7 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.PaperSectionResponse;
+import com.evidencepilot.dto.response.PaperValidationResponse;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.PaperProcessingService;
@@ -19,8 +20,10 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
@@ -96,6 +99,58 @@ public class PaperController {
     public List<PaperSectionResponse> sections(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
         return paperProcessingService.getPaperSections(id);
+    }
+
+    @Operation(summary = "Validate paper against standard",
+            description = "Compares detected paper sections against the project's targetStandard. "
+                    + "Returns missing, extra, and out-of-order sections.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Validation result returned"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Paper not found")
+    })
+    @GetMapping("/papers/{id}/validate")
+    public PaperValidationResponse validate(
+            @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
+        return paperProcessingService.validateSections(id);
+    }
+
+    @Operation(summary = "Update a paper section",
+            description = "Rename, reorder, or merge a paper section. "
+                    + "Set mergeIntoId to merge this section into another.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Section updated"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Section not found")
+    })
+    @PutMapping("/papers/{documentId}/sections/{sectionId}")
+    public PaperSectionResponse updateSection(
+            @Parameter(description = "Paper document UUID") @PathVariable UUID documentId,
+            @Parameter(description = "Section UUID") @PathVariable UUID sectionId,
+            @RequestParam(required = false) String title,
+            @RequestParam(required = false) Integer order,
+            @RequestParam(required = false) UUID mergeIntoId) {
+        return paperProcessingService.updateSection(documentId, sectionId, title, order, mergeIntoId);
+    }
+
+    @Operation(summary = "Create a new paper section",
+            description = "Adds a new section to a paper document. "
+                    + "Optionally specify a parent section ID for ordering.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Section created"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Paper not found")
+    })
+    @PostMapping("/papers/{documentId}/sections/create")
+    @ResponseStatus(HttpStatus.CREATED)
+    public PaperSectionResponse createSection(
+            @Parameter(description = "Paper document UUID") @PathVariable UUID documentId,
+            @RequestParam String title,
+            @RequestParam(required = false) UUID parentSectionId) {
+        return paperProcessingService.createSection(documentId, title, parentSectionId);
     }
 
     @Operation(summary = "Generate AI paper review",

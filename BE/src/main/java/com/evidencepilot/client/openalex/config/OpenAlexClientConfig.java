@@ -37,16 +37,16 @@ public class OpenAlexClientConfig {
         factory.setConnectTimeout(Duration.ofSeconds(10));
         factory.setReadTimeout(Duration.ofSeconds(Math.max(1, readTimeoutSeconds)));
 
-        var builder = RestClient.builder()
+        return RestClient.builder()
                 .requestFactory(factory)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
-                .defaultHeader(HttpHeaders.USER_AGENT, userAgent);
+                .defaultHeader(HttpHeaders.USER_AGENT, userAgent)
+                .build();
+    }
 
-        if (apiKey != null && !apiKey.isBlank()) {
-            builder.defaultHeader("X-API-Key", apiKey);
-        }
-
-        return builder.build();
+    @Bean("openAlexApiKey")
+    public String openAlexApiKey() {
+        return apiKey;
     }
 }

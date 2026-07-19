@@ -69,6 +69,22 @@ public class DocumentController {
         return documentService.uploadDocument(projectId, file, DocumentType.SOURCE);
     }
 
+    @Operation(summary = "Attach file to metadata-only document",
+            description = "Uploads a PDF file to an existing metadata-only document "
+                    + "(status = METADATA_FETCHED). Triggers the extraction pipeline after upload.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "File attached, extraction queued"),
+            @ApiResponse(responseCode = "400", description = "Document is not in METADATA_FETCHED status"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "404", description = "Document not found")
+    })
+    @PostMapping("/{documentId}/file")
+    public DocumentResponse attachFileToDocument(
+            @Parameter(description = "Document UUID") @PathVariable UUID documentId,
+            @Parameter(description = "PDF file to attach") @RequestParam("file") MultipartFile file) {
+        return documentService.attachFileToDocument(documentId, file);
+    }
+
     @Operation(summary = "Get document chunks",
             description = "Returns all text chunks for the specified document.")
     @ApiResponses({

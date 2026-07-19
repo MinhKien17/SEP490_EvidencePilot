@@ -75,7 +75,7 @@ class ProjectWriteAccessIntegrationTest {
                 .header("Authorization", bearerToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"title":"Updated Title","description":"Updated","targetStandard":"ISO 27001"}
+                        {"title":"Updated Title","description":"Updated","targetStandard":"CUSTOM"}
                         """))
                 .andExpect(status().isOk());
     }
@@ -88,7 +88,7 @@ class ProjectWriteAccessIntegrationTest {
                 .header("Authorization", bearerToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"title":"Updated Title","description":"Updated","targetStandard":"ISO 27001"}
+                        {"title":"Updated Title","description":"Updated","targetStandard":"CUSTOM"}
                         """))
                 .andExpect(status().isForbidden());
     }
@@ -101,7 +101,7 @@ class ProjectWriteAccessIntegrationTest {
                 .header("Authorization", bearerToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"title":"Updated Title","description":"Updated","targetStandard":"ISO 27001"}
+                        {"title":"Updated Title","description":"Updated","targetStandard":"CUSTOM"}
                         """))
                 .andExpect(status().isForbidden());
     }
@@ -119,7 +119,7 @@ class ProjectWriteAccessIntegrationTest {
                 .header("Authorization", bearerToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"title":"Updated Title","description":"Updated","targetStandard":"ISO 27001"}
+                        {"title":"Updated Title","description":"Updated","targetStandard":"CUSTOM"}
                         """))
                 .andExpect(status().isForbidden());
     }
@@ -137,7 +137,7 @@ class ProjectWriteAccessIntegrationTest {
                 .header("Authorization", bearerToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"title":"Updated Title","description":"Updated","targetStandard":"ISO 27001"}
+                        {"title":"Updated Title","description":"Updated","targetStandard":"CUSTOM"}
                         """))
                 .andExpect(status().isForbidden());
     }
@@ -155,7 +155,7 @@ class ProjectWriteAccessIntegrationTest {
                 .header("Authorization", bearerToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
-                        {"title":"Updated Title","description":"Updated","targetStandard":"ISO 27001"}
+                        {"title":"Updated Title","description":"Updated","targetStandard":"CUSTOM"}
                         """))
                 .andExpect(status().isOk());
     }

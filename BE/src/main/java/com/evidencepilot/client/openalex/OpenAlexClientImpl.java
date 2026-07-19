@@ -20,32 +20,42 @@ public class OpenAlexClientImpl implements OpenAlexClient {
 
     private final RestClient restClient;
     private final String baseUrl;
+    private final String apiKey;
     private final HttpClient httpClient;
 
     @org.springframework.beans.factory.annotation.Autowired
     public OpenAlexClientImpl(
             @Qualifier("openAlexRestClient") RestClient restClient,
-            @Qualifier("openAlexBaseUrl") String baseUrl) {
-        this(restClient, baseUrl, HttpClient.newBuilder()
+            @Qualifier("openAlexBaseUrl") String baseUrl,
+            @Qualifier("openAlexApiKey") String apiKey) {
+        this(restClient, baseUrl, apiKey, HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .connectTimeout(Duration.ofSeconds(15))
                 .build());
     }
 
-    OpenAlexClientImpl(RestClient restClient, String baseUrl, HttpClient httpClient) {
+    OpenAlexClientImpl(RestClient restClient, String baseUrl, String apiKey, HttpClient httpClient) {
         this.restClient = restClient;
         this.baseUrl = trimTrailingSlash(baseUrl);
+        this.apiKey = apiKey;
         this.httpClient = httpClient;
     }
 
     @Override
     public OpenAlexWorkResponse fetchWork(String doi) {
-        String normalizedDoi = doi.startsWith("doi:") ? doi : "doi:" + doi;
-        String url = baseUrl + "/works/" + normalizedDoi;
+        String openAlexId = DoiUtils.toOpenAlexId(doi);
+        if (openAlexId == null) {
+            throw new OpenAlexApiException("Invalid DOI: " + doi, 0);
+        }
 
-        log.info("Fetching OpenAlex work: {}", url);
+        String uri = baseUrl + "/works/" + openAlexId;
+        if (apiKey != null && !apiKey.isBlank()) {
+            uri += "?api_key=" + apiKey;
+        }
+
+        log.info("Fetching OpenAlex work: {}/works/{}", baseUrl, openAlexId);
         OpenAlexWorkResponse response = restClient.get()
-                .uri(url)
+                .uri(uri)
                 .retrieve()
                 .body(OpenAlexWorkResponse.class);
 

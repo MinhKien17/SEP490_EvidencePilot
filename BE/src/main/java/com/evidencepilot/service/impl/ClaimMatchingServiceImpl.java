@@ -99,6 +99,9 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
         suggestion.setExplanation("Matched " + sourceName(chunk) + " chunk " + chunk.getChunkIndex());
         suggestion.setClaimVersion(claim.getClaimVersion());
         suggestion.setCreatedAt(LocalDateTime.now());
+        suggestion.setModelName("ollama");
+        suggestion.setModelVersion("nomic-embed-text");
+        suggestion.setEvaluatedAt(LocalDateTime.now());
         return suggestion;
     }
 

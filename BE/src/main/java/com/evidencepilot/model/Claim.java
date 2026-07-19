@@ -49,9 +49,6 @@ public class Claim {
     @OneToMany(mappedBy = "claim")
     private List<ClaimEvidenceMapping> claimEvidenceMappings;
 
-    @OneToMany(mappedBy = "claim")
-    private List<EvidenceEdge> evidenceEdges;
-
     @Override
     public boolean equals(Object o) {
         if (this == o)

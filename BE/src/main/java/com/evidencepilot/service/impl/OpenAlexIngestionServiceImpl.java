@@ -1,5 +1,6 @@
 package com.evidencepilot.service.impl;
 
+import com.evidencepilot.client.openalex.DoiUtils;
 import com.evidencepilot.client.openalex.OpenAlexClient;
 import com.evidencepilot.dto.openalex.OpenAlexWorkResponse;
 import com.evidencepilot.dto.response.DocumentResponse;
@@ -43,7 +44,11 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
 
     @Override
     public OpenAlexPreview lookupByDoi(String doi) {
-        OpenAlexWorkResponse work = openAlexClient.fetchWork(doi);
+        String normalizedDoi = DoiUtils.normalize(doi);
+        if (normalizedDoi == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid DOI: " + doi);
+        }
+        OpenAlexWorkResponse work = openAlexClient.fetchWork(normalizedDoi);
         String oaUrl = work.oaUrl();
         boolean hasPdf = oaUrl != null && urlIsReachable(oaUrl);
         return new OpenAlexPreview(
@@ -64,28 +69,32 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
 
         OpenAlexWorkResponse work = openAlexClient.fetchWork(doi);
         String oaUrl = work.oaUrl();
-        if (oaUrl == null || oaUrl.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "No open-access PDF URL available for DOI: " + doi);
-        }
 
         Document document = new Document();
         document.setProject(project);
         document.setUploadedBy(currentUser);
         document.setDocType(DocumentType.SOURCE);
         document.setFileUrl("pending");
-        document.setOriginalFilename(work.title() != null ? work.title() + ".pdf" : doi + ".pdf");
+        document.setOriginalFilename(work.title() != null ? work.title() + ".pdf" : DoiUtils.normalize(doi) + ".pdf");
         document.setContentType("application/pdf");
         document.setFileSizeBytes(0L);
-        document.setProcessingStatus(ProcessingStatus.METADATA_FETCHED);
         document.setActive(true);
         document.setCreatedAt(LocalDateTime.now());
         document.setDownloadToken(UUID.randomUUID().toString());
-        document.setDoi(doi);
+        document.setDoi(DoiUtils.normalize(doi));
         document.setTitle(work.title());
         document.setAuthors(toJson(work.authorNames()));
         document.setPublicationYear(work.publicationYear());
         document.setPublisher(work.publisher());
+
+        if (oaUrl == null || oaUrl.isBlank()) {
+            document.setProcessingStatus(ProcessingStatus.METADATA_FETCHED);
+            document.setProcessingError("No open-access PDF available for this DOI");
+            document = documentRepository.save(document);
+            return DocumentResponse.from(document);
+        }
+
+        document.setProcessingStatus(ProcessingStatus.METADATA_FETCHED);
         document = documentRepository.save(document);
 
         String objectKey = "sources/raw/" + document.getId() + ".pdf";
@@ -93,16 +102,15 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
             byte[] pdfBytes = pdfStream.readAllBytes();
             documentObjectStorage.write(objectKey, pdfBytes, "application/pdf");
             document.setFileSizeBytes((long) pdfBytes.length);
+            document = documentPersistenceService.markDocumentAsUploaded(document.getId(), objectKey);
         } catch (Exception e) {
-            log.error("Failed to download PDF from {} for document {}", oaUrl, document.getId(), e);
-            document.setProcessingStatus(ProcessingStatus.FAILED);
-            document.setProcessingError("PDF download failed: " + e.getMessage());
+            log.warn("Failed to download PDF from {} for document {}: {}. Metadata saved, user can attach file later.",
+                    oaUrl, document.getId(), e.getMessage());
+            document.setProcessingStatus(ProcessingStatus.METADATA_FETCHED);
+            document.setProcessingError("PDF download not completed: " + e.getMessage() + ". Metadata saved.");
             documentRepository.save(document);
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to download PDF from " + oaUrl, e);
         }
 
-        document = documentPersistenceService.markDocumentAsUploaded(document.getId(), objectKey);
         return DocumentResponse.from(document);
     }
 

@@ -8,7 +8,10 @@ import org.hibernate.annotations.JdbcTypeCode;
 
 import lombok.Getter;
 import lombok.Setter;
+import com.evidencepilot.model.enums.EvidenceRelation;
+import com.evidencepilot.model.enums.MappingReviewStatus;
 import com.evidencepilot.model.enums.MappingStatus;
+import com.evidencepilot.model.enums.StrengthBand;
 
 @Entity
 @Table(name = "claim_evidence_mappings")
@@ -45,6 +48,37 @@ public class ClaimEvidenceMapping {
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    @Enumerated(EnumType.STRING)
+    private EvidenceRelation relation;
+
+    @Column(name = "strength_score")
+    private Integer strengthScore;
+
+    @Column(name = "strength_band")
+    @Enumerated(EnumType.STRING)
+    private StrengthBand strengthBand;
+
+    @Column(name = "review_status")
+    @Enumerated(EnumType.STRING)
+    private MappingReviewStatus reviewStatus;
+
+    @ManyToOne
+    @JoinColumn(name = "reviewed_by", columnDefinition = "BINARY(16)", referencedColumnName = "id")
+    private User reviewedBy;
+
+    @Column(name = "reviewed_at")
+    private LocalDateTime reviewedAt;
+
+    @Column(name = "review_note", columnDefinition = "TEXT")
+    private String reviewNote;
+
+    @Column(name = "relation_override")
+    @Enumerated(EnumType.STRING)
+    private EvidenceRelation relationOverride;
+
+    @Column(name = "score_breakdown", columnDefinition = "JSON")
+    private String scoreBreakdown;
 
     @Override
     public boolean equals(Object o) {

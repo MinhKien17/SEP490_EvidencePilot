@@ -156,7 +156,7 @@ class OpenAlexIngestionServiceImplTest {
     }
 
     @Test
-    void ingestByDoi_throwsWhenOaUrlIsNull() {
+    void ingestByDoi_returnsMetadataOnlyWhenOaUrlIsNull() {
         var workNoPdf = new OpenAlexWorkResponse(
                 "https://openalex.org/W456", "https://doi.org/10.1000/no-pdf",
                 "No PDF", List.of(), null, null, null, null, 2023);
@@ -164,10 +164,16 @@ class OpenAlexIngestionServiceImplTest {
         when(currentUserService.requireCurrentUser()).thenReturn(currentUser);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
         when(openAlexClient.fetchWork("10.1000/no-pdf")).thenReturn(workNoPdf);
+        when(documentRepository.save(any())).thenAnswer(invocation -> {
+            var doc = (com.evidencepilot.model.Document) invocation.getArgument(0);
+            if (doc.getId() == null) doc.setId(UUID.randomUUID());
+            return doc;
+        });
 
-        assertThatThrownBy(() -> service.ingestByDoi(project.getId(), "10.1000/no-pdf"))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("No open-access PDF URL");
+        var result = service.ingestByDoi(project.getId(), "10.1000/no-pdf");
+
+        assertThat(result.processingStatus()).isEqualTo(ProcessingStatus.METADATA_FETCHED);
+        assertThat(result.originalFilename()).contains("No PDF");
     }
 
     @Test

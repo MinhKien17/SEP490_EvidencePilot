@@ -56,7 +56,7 @@ class ProjectControllerTest {
     void createProject_returns201() throws Exception {
         mockMvc.perform(post("/api/projects")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"title\":\"Audit\",\"description\":\"Evidence\",\"targetStandard\":\"ISO\"}"))
+                        .content("{\"title\":\"Audit\",\"description\":\"Evidence\",\"targetStandard\":\"CUSTOM\"}"))
                 .andExpect(status().isCreated());
         verify(projectService).createProject(any(ProjectCreateRequest.class));
     }

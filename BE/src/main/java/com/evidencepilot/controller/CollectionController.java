@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,9 +23,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -68,6 +71,24 @@ public class CollectionController {
             @Parameter(description = "Collection UUID") @PathVariable UUID id,
             @RequestParam(value = "sourceCategoryId", required = false) String sourceCategoryId) {
         return documentService.getSourcesByCollection(id, parseOptionalUuid(sourceCategoryId));
+    }
+
+    @Operation(summary = "Share collection document to project",
+            description = "Shares a source document from a collection to a project by reference. "
+                    + "No file copy occurs — chunks and embeddings are reused. "
+                    + "Returns suitability score (HIGH/MEDIUM/LOW) based on topic match.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Document shared with suitability info"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "404", description = "Collection, source, or project not found"),
+            @ApiResponse(responseCode = "409", description = "Document already shared to this project")
+    })
+    @PostMapping("/{collectionId}/sources/{sourceId}/share-to-project/{projectId}")
+    public Map<String, Object> shareToProject(
+            @Parameter(description = "Collection UUID") @PathVariable UUID collectionId,
+            @Parameter(description = "Source document UUID") @PathVariable UUID sourceId,
+            @Parameter(description = "Target project UUID") @PathVariable UUID projectId) {
+        return documentService.shareToProject(collectionId, sourceId, projectId);
     }
 
     @Operation(summary = "Soft-delete a collection",

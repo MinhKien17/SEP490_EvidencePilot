@@ -1,161 +1,126 @@
-# Audit: Evidence Pilot Integration Layer
+# Audit: Evidence Pilot Backend
 
-*Last updated: 2026-07-11*
-
----
-
-## Previously Flagged Issues
-
-### 1. DOI Requirement — **STILL OPEN**
-
-**`Document.java` — missing `doi` field.**
-The entity at `src/main/java/com/evidencepilot/model/Document.java` (107 lines) still has no `doi` field.
-
-**Fix:** Add after line 76 (`private boolean active = true;`):
-```java
-    @Column(name = "doi")
-    private String doi;
-```
-And create `src/main/resources/db/migration/V2__add_document_doi.sql`:
-```sql
-ALTER TABLE documents
-    ADD COLUMN doi VARCHAR(255) NULL AFTER active;
-```
+*Last updated: 2026-07-18*
 
 ---
 
-### 2. Publishing Pipeline — **STILL OPEN (two issues)**
+## Requirements Coverage
 
-#### 2a. `uploadDocument` never transitions project status
+### Student Functional Requirements
 
-**`DocumentServiceImpl.java:192-254`** — `uploadDocument` still never calls `refreshProjectStatus`. The method exists at line 328 and is called in `deleteDocument` (line 294), but not after upload. The `DocumentUploadedEvent` listener only triggers extraction — no project status refresh.
+| # | Requirement | Status | Evidence |
+|---|-------------|--------|----------|
+| 1 | Submit project materials / upload sources | ✅ DONE | `DocumentController` upload, MinIO storage, project CRUD |
+| 2 | Review extracted metadata & candidate evidence | ✅ DONE | `DocumentText`, `DocumentChunk`, `PaperSection`, `DocumentReference` endpoints |
+| 3 | Evaluate evidence strength | ✅ DONE | `ClaimEvaluationService`, `EvidenceEdge` with `confidence_score`, `AiSuggestion.score` |
+| 4 | Check active links (URL accessibility) | ❌ **MISSING** | No link‑checking service or endpoint found anywhere in codebase |
+| 5 | Create / refine claim–source mappings | ✅ DONE | `ClaimEvidenceMapping`, `ClaimController` PUT/claim |
+| 6 | View AI suggestions; accept/reject | ✅ DONE | `AiSuggestion` with PENDING/ACCEPTED/REJECTED/INVALIDATED, PATCH `suggestions/{id}/status` |
+| 7 | Visualize relationships (papers ↔ sources) | ✅ DONE | `EvidenceEdge` graph, evidence‑mapping queries |
+| 8 | Inspect unsupported‑claim / weak‑source warnings | ✅ DONE | `TraceabilityExportService` flags unlinked claims |
+| 9 | Export evidence trace summaries | ✅ DONE | `TraceabilityExportController` GET `/projects/{id}/traceability/export` |
 
-**Fix:** After `markDocumentAsUploaded(...)` (line 248), add:
-```java
-        if (project != null) {
-            refreshProjectStatus(project);
-        }
-```
+### Instructor / Reviewer Functional Requirements
 
-#### 2b. RabbitMQ payload is bare UUID string
+| # | Requirement | Status | Evidence |
+|---|-------------|--------|----------|
+| 1 | View project evidence map & source trace | ✅ DONE | Project documents + claims endpoints |
+| 2 | Inspect unsupported claims & review flags | ✅ DONE | `TraceabilityExportService` |
+| 3 | Review evidence coverage summaries | ✅ DONE | Traceability export includes coverage |
+| 4 | Add comments / supervision notes | ✅ DONE | `SectionFeedback`, `InstructorFeedback`, `FeedbackRequest` |
+| 5 | Use traceability views | ✅ DONE | Dedicated controller + service |
 
-**`SourceExtractionServiceImpl.java:36`** — Payload is still `documentId.toString()`. The document entity is loaded but only its ID is used. `ExtractionRequest.java` does not exist.
+### AI Evidence Engine
 
-**Fix:** Create `src/main/java/com/evidencepilot/dto/ExtractionRequest.java`:
-```java
-package com.evidencepilot.dto;
+| # | Requirement | Status | Evidence |
+|---|-------------|--------|----------|
+| 1 | LLM Extraction (metadata + snippets) | ✅ DONE | `AiAnalysisService`, `AiModelClient`, extraction pipeline |
+| 2 | Correlation Marking (claim ↔ source) | ✅ DONE | `ClaimMatchingService`, `ClaimEvaluationService` |
+| 3 | Rules‑Based Scoring | ✅ DONE | `ClaimEvaluationService` deterministic scorer |
+| 4 | Gap Detection (unlinked / low‑scoring claims) | ✅ DONE | `TraceabilityExportService` |
+| 5 | API Delivery (JSON endpoints) | ✅ DONE | All REST controllers |
 
-import java.util.UUID;
+### System Administrator
 
-public record ExtractionRequest(
-    UUID documentId,
-    String s3ObjectKey,
-    UUID userId
-) {}
-```
+| # | Requirement | Status | Evidence |
+|---|-------------|--------|----------|
+| 1 | Manage users, roles, permissions | ✅ DONE | `UserController`, `ProjectMember`, JWT RBAC |
+| 2 | Monitor storage, logs, config | ⚠️ PARTIAL | `HealthController` (basic), no admin dashboard |
+| 3 | Security, backup, availability | ✅ DONE | Docker Compose, JWT, role isolation |
 
-Then update `SourceExtractionServiceImpl.triggerExtraction()`:
-```java
-    ExtractionRequest payload = new ExtractionRequest(
-            doc.getId(), doc.getFileUrl(), doc.getUploadedBy().getId());
-    rabbitTemplate.convertAndSend(RabbitMQConfig.EXTRACTION_QUEUE, payload);
-```
+### Non‑Functional Requirements
 
----
-
-### 3. Cloud Readiness
-
-#### 3a. DB_HOST/DB_PORT/DB_NAME/DB_USERNAME fallbacks — **STILL OPEN**
-
-| Line | Expression | Issue |
-|------|-----------|-------|
-| `application.yml:10` | `${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:evidence_pilot}` | Fallbacks mask missing env vars |
-| `application.yml:11` | `${DB_USERNAME:root}` | Same |
-
-**Fix:** Strip fallbacks — make them required env vars:
-```yaml
-url: jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
-username: ${DB_USERNAME}
-```
-
-#### 3b. MINIO_URL fallback — **FIXED**
-
-`application.yml:136` — `${MINIO_URL:http://minio:9000}` → `${MINIO_URL}`. Fallback correctly removed.
+| # | Requirement | Status | Notes |
+|---|-------------|--------|-------|
+| 1 | Performance | ✅ COVERED | Async extraction via RabbitMQ, chunked processing |
+| 2 | Usability (simple workflows) | ✅ COVERED | Well‑structured REST API |
+| 3 | Security (RBAC, file handling) | ✅ COVERED | JWT auth, workspace isolation via `CurrentUserService`, MinIO signed URLs |
+| 4 | Reliability (reproducible evidence) | ✅ COVERED | Status tracking, audit trail, extraction retry |
+| 5 | Transparency (AI editable) | ✅ COVERED | All AI output is PENDING; user must explicitly accept |
 
 ---
 
-## New Findings (since previous audit)
+## Previously Open Issues — Re‑assessment
 
-### N1. `CurrentUserServiceImpl.requireProjectAccess` — **FIXED**
-
-`CurrentUserServiceImpl.java:81-99` — Previously had a duplicate instructor block (lines 84-89 and 94-97 were identical) with no student-member check. Now correctly:
-1. Admin → full access
-2. Instructor → access only if reviewer for `SUBMITTED_FOR_REVIEW` project
-3. Others → checked via `isProjectMember()`
-
----
-
-### N2. Empty file validation — **FIXED**
-
-`DocumentServiceImpl.java:199-201` — `uploadDocument` now validates:
-```java
-if (file == null || file.isEmpty()) {
-    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File is empty");
-}
-```
-Returns 400 for empty uploads instead of 202.
+| # | Severity | Location | Issue | Previous | Current |
+|---|----------|----------|-------|----------|---------|
+| 1 | HIGH | `Document.java` | Missing `doi` field | OPEN | ✅ **FIXED** (lines 78‑79) |
+| 2a | HIGH | `DocumentServiceImpl.java:192‑254` | `uploadDocument` never calls `refreshProjectStatus` | OPEN | ✅ **FIXED** (lines 254‑256) |
+| 2b | HIGH | `SourceExtractionServiceImpl.java:36` | RabbitMQ payload is bare UUID | OPEN | ⚠️ **PARTIAL** — `ExtractionRequest` record exists but still only holds `documentId`. S3 key & userId not sent. Worker reloads document from DB so functional, but sub‑optimal. |
+| 3a | MEDIUM | `application.yml:10‑11` | DB_HOST / DB_PORT / DB_NAME / DB_USERNAME have fallbacks | OPEN | ❌ **STILL OPEN** — `url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:evidence_pilot}` and `username: ${DB_USERNAME:root}` |
+| 3b | MEDIUM | `application.yml:136` | MINIO_URL fallback | FIXED | ✅ **CONFIRMED FIXED** |
 
 ---
 
-### N3. `.env` completeness — **FIXED**
+## New Findings
 
-`BE/.env` — All variables required by `docker-compose.yml` are now present (was missing MinIO, Qdrant, RabbitMQ, Ollama vars). Uses Docker internal service names for URLs (`http://minio:9000`, `http://vector-db:6333`, `rabbitmq`).
+### N6. Missing: Active Link Checking — **HIGH**
 
----
+**Requirement:** *"Check active links: Our system verifies whether referenced URLs and paper links are still accessible."*
 
-### N4. MinIO & Qdrant config injection — **PASS (no change needed)**
+**Reality:** Zero implementation — no service, endpoint, or scheduled task for URL accessibility checking exists in the codebase.
 
-| File | Lines | Status |
-|------|-------|--------|
-| `MinioConfig.java` | 11-15 | `@Value("${minio.url}")` — proper injection |
-| `QdrantClientImpl.java` | 40-42 | `@Value("${qdrant.url}")`, `@Value("${qdrant.api-key}")` |
-| `QdrantGatewayImpl.java` | 23-25 | Same |
+### N7. Schema Drift — `document_references` table — **MEDIUM**
 
-No hardcoded credentials.
+**File:** `schema.sql:120‑128`
 
----
+The `document_references` DDL is missing two columns that exist in the entity (`DocumentReference.java`):
+- `doi VARCHAR(255)` (entity line 36)
+- `edge_type VARCHAR(50)` (entity lines 38‑40)
 
-### N5. `application.yml` — entries lacking defaults (for reference)
+Hibernate `ddl-auto: update` will add them, but `schema.sql` (used as `docker-entrypoint-initdb.d`) is stale. This causes a mismatch during fresh Docker deployments until Hibernate applies its own migration.
 
-14 entries have bare `${VAR}` with no default. By design (fail-fast cloud posture), but `.env` covers all for local Docker:
+### N8. No Flyway Migrations — **MEDIUM**
 
-| Line | Key | Expression |
-|------|-----|-----------|
-| 12 | `datasource.password` | `${DB_PASSWORD}` |
-| 56 | `rabbitmq.host` | `${RABBITMQ_HOST}` |
-| 58 | `rabbitmq.virtual-host` | `${RABBITMQ_VIRTUAL_HOST}` |
-| 59 | `rabbitmq.username` | `${RABBITMQ_USERNAME}` |
-| 60 | `rabbitmq.password` | `${RABBITMQ_PASSWORD}` |
-| 86 | `jwt.secret` | `${JWT_SECRET}` |
-| 112 | `ai.model.base-url` | `${AI_MODEL_BASE_URL}` |
-| 120 | `ollama.embedding.model` | `${OLLAMA_EMBEDDING_MODEL}` |
-| 122 | `ollama.generation.model` | `${OLLAMA_GENERATION_MODEL}` |
-| 126 | `qdrant.url` | `${QDRANT_URL}` |
-| 136-139 | `minio.*` | `${MINIO_URL}`, `${MINIO_ACCESS_KEY}`, `${MINIO_SECRET_KEY}`, `${MINIO_BUCKET_NAME}` |
+**Reality:** Flyway is disabled (`flyway.enabled: false`, no `db/migration/` directory). Schema management relies on:
+1. `schema.sql` mounted as `docker‑entrypoint‑initdb.d/01_schema.sql`
+2. Hibernate `ddl‑auto: update`
+3. `SchemaMigrationRunner` (Java `CommandLineRunner`) for processing_status ENUM→VARCHAR migration
+
+This is functional but unconventional. Schema changes must be tracked manually.
+
+### N9. `application.yml` Excludes SecurityAutoConfiguration — **LOW**
+
+**Lines 4‑7:** `spring.autoconfigure.exclude` lists both `SecurityAutoConfiguration` and `UserDetailsServiceAutoConfiguration`. However, `SecurityConfig.java` provides a full `SecurityFilterChain` bean with JWT filter. The exclusion is intentional (to avoid double‑configuration) but unusual. This works correctly but could confuse future maintainers.
+
+### N10. Document References Table — No `reference_url` Column — **LOW**
+
+**Requirement context:** Link checking would need a `reference_url` or `source_url` column on references to know *what* to check. Neither `schema.sql` nor the entity stores the original URL of a reference; only `raw_text` (full citation text) is stored.
 
 ---
 
 ## Summary
 
-| # | Severity | Location | Issue | Status |
-|---|----------|----------|-------|--------|
-| 1 | HIGH | `Document.java` | Missing `doi` field | **OPEN** |
-| 2 | HIGH | `DocumentServiceImpl.java:192-254` | `uploadDocument` never calls `refreshProjectStatus` | **OPEN** |
-| 3 | HIGH | `SourceExtractionServiceImpl.java:36` | RabbitMQ payload is bare UUID | **OPEN** |
-| 4 | MEDIUM | `application.yml:10-11` | DB host/port/name/username fallbacks mask missing vars | **OPEN** |
-| 5 | MEDIUM | `application.yml:136` | MINIO_URL fallback removed | **FIXED** |
-| N1 | MEDIUM | `CurrentUserServiceImpl.java:81-99` | Duplicate instructor block replaced with `isProjectMember` | **FIXED** |
-| N2 | LOW | `DocumentServiceImpl.java:199-201` | Missing empty-file validation | **FIXED** |
-| N3 | LOW | `BE/.env` | Incomplete env vars for docker-compose | **FIXED** |
-| N4 | — | `MinioConfig.java`, Qdrant configs | Proper injection confirmed | **PASS** |
-| N5 | INFO | `application.yml` (14 entries) | Bare placeholders without defaults | **INFO** |
+| # | Severity | Area | Issue | Status |
+|---|----------|------|-------|--------|
+| 1 | HIGH | Functional | **Active link checking** not implemented | **OPEN** |
+| 2 | MEDIUM | Config | DB_HOST/DB_PORT/DB_NAME/DB_USERNAME fallbacks in `application.yml` | **OPEN** |
+| 3 | MEDIUM | Schema | `document_references` table missing `doi` and `edge_type` columns | **OPEN** |
+| 4 | MEDIUM | Infra | No Flyway migration files; schema managed ad‑hoc | **OPEN** |
+| 5 | LOW | Config | SecurityAutoConfiguration exclusion may confuse | **INFO** |
+| 6 | LOW | Schema | Missing `reference_url` column needed for link‑checking feature | **INFO** |
+| P1 | HIGH | Entity | DOI field on Document.java | **FIXED** |
+| P2a | HIGH | Service | uploadDocument refreshProjectStatus | **FIXED** |
+| P2b | HIGH | Service | RabbitMQ payload bare UUID (partial fix) | **PARTIAL** |
+| P3b | MEDIUM | Config | MINIO_URL fallback | **FIXED** |
+| N1‑N5 | MED/LOW | Various | Previous audit items | **FIXED** |

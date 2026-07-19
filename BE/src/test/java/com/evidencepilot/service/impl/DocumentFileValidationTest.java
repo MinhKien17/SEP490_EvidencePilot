@@ -23,6 +23,6 @@ class DocumentFileValidationTest {
         assertThatCode(() -> DocumentServiceImpl.validateFile(docx)).doesNotThrowAnyException();
         assertThatThrownBy(() -> DocumentServiceImpl.validateFile(doc))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Only PDF and DOCX");
+                .hasMessageContaining("Only PDF, DOCX, Markdown, and TeX");
     }
 }
