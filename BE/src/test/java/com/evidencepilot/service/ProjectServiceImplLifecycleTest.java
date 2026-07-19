@@ -70,7 +70,7 @@ class ProjectServiceImplLifecycleTest {
 
         assertThatThrownBy(() -> service().completeProject(project.getId()))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Only ACTIVE projects can be completed.");
+                .hasMessageContaining("Project cannot be completed in its current state.");
     }
 
     @Test

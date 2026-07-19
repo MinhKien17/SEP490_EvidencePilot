@@ -61,9 +61,7 @@ class AiModelClientTest {
                 .andExpect(header("ngrok-skip-browser-warning", "true"))
                 .andExpect(content().json("""
                         {
-                          "document_id":"00000000-0000-0000-0000-000000000001",
                           "filename":"source.pdf",
-                          "content_type":"application/pdf",
                           "download_url":"https://storage.test/source.pdf"
                         }
                         """))

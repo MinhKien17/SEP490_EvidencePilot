@@ -467,6 +467,17 @@ public class DocumentServiceImpl implements DocumentService {
             currentUserService.requireProjectAccess(currentUser, doc.getProject());
             return;
         }
+        List<ProjectDocument> projectLinks = projectDocumentRepository.findByDocumentId(doc.getId());
+        if (!projectLinks.isEmpty()) {
+            for (ProjectDocument pd : projectLinks) {
+                try {
+                    currentUserService.requireProjectAccess(currentUser, pd.getProject());
+                    return;
+                } catch (ResponseStatusException e) {
+                    continue;
+                }
+            }
+        }
         if (doc.getCollection() != null) {
             currentUserService.requireCollectionAccess(currentUser, doc.getCollection());
             return;
@@ -561,7 +572,8 @@ public class DocumentServiceImpl implements DocumentService {
             case ".docx" -> genericType || contentType.equals(
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
             case ".md", ".markdown" -> genericType || contentType.startsWith("text/markdown");
-            case ".tex" -> genericType || contentType.startsWith("text/") || contentType.contains("latex");
+            case ".tex" -> genericType || contentType.startsWith("text/")
+                    || contentType.contains("latex") || contentType.equals("application/x-tex");
             default -> false;
         };
         if (!supported) {

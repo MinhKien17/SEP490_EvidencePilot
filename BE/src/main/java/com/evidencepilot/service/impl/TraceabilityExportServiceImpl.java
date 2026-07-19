@@ -124,6 +124,8 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
         List<TraceabilityExportResponse.TraceabilityMatch> matches = aiSuggestionRepository
                 .findByClaimId(claim.getId())
                 .stream()
+                .filter(suggestion -> suggestion.getStatus() != null
+                        && suggestion.getStatus() != com.evidencepilot.model.enums.SuggestionStatus.REJECTED)
                 .map(suggestion -> {
                     DocumentChunk chunk = suggestion.getDocumentChunk();
                     UUID sourceId = chunk != null && chunk.getDocument() != null

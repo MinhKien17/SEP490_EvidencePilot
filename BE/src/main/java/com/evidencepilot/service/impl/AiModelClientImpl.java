@@ -56,9 +56,7 @@ public class AiModelClientImpl implements AiModelClient {
         Map<String, Object> response = call("/extract", () -> restClient.post()
                 .uri(baseUrl + "/extract")
                 .body(Map.of(
-                        "document_id", documentId.toString(),
                         "filename", stringValue(filename, "document"),
-                        "content_type", stringValue(contentType, "application/octet-stream"),
                         "download_url", downloadUrl))
                 .retrieve()
                 .body(Map.class));

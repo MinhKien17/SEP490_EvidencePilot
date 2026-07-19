@@ -293,7 +293,9 @@ public class ClaimServiceImpl implements ClaimService {
         ClaimEvidenceMapping mapping = claimEvidenceMappingRepository.findById(mappingId)
                 .orElseThrow(() -> new ResourceNotFoundException(mappingId, "ClaimEvidenceMapping"));
         User currentUser = currentUserService.requireCurrentUser();
-        currentUserService.requireProjectWriteAccess(currentUser, mapping.getClaim().getProject());
+        if (!currentUserService.isAdmin(currentUser)) {
+            currentUserService.requireProjectAccess(currentUser, mapping.getClaim().getProject());
+        }
 
         mapping.setReviewStatus(request.reviewStatus());
         mapping.setReviewNote(request.reviewNote());

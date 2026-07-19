@@ -4,6 +4,7 @@ import com.evidencepilot.service.HealthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -24,13 +25,19 @@ public class HealthController {
 
     @Operation(summary = "Check backend readiness with component details")
     @GetMapping("/api/health/ready")
-    public Map<String, Object> ready() {
-        return healthService.checkReadiness();
+    public ResponseEntity<Map<String, Object>> ready() {
+        Map<String, Object> body = healthService.checkReadiness();
+        String status = (String) body.get("status");
+        int httpStatus = "UP".equals(status) ? 200 : 503;
+        return ResponseEntity.status(httpStatus).body(body);
     }
 
     @Operation(summary = "Check backend and AI worker health (legacy)")
     @GetMapping("/api/health")
-    public Map<String, Object> health() {
-        return healthService.checkReadiness();
+    public ResponseEntity<Map<String, Object>> health() {
+        Map<String, Object> body = healthService.checkReadiness();
+        String status = (String) body.get("status");
+        int httpStatus = "UP".equals(status) ? 200 : 503;
+        return ResponseEntity.status(httpStatus).body(body);
     }
 }

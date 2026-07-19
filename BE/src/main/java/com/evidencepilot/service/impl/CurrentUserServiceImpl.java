@@ -82,6 +82,8 @@ public class CurrentUserServiceImpl implements CurrentUserService {
         if (isAdmin(currentUser))
             return;
         if (isInstructor(currentUser)) {
+            if (isProjectMember(currentUser, project))
+                return;
             if (project.getStatus() == ProjectStatus.SUBMITTED_FOR_REVIEW && project.getId() != null
                     && feedbackRequestRepository.existsByProjectIdAndInstructorId(
                             project.getId(), currentUser.getId())) {

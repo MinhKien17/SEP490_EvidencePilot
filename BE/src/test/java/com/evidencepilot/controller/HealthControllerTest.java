@@ -19,13 +19,13 @@ class HealthControllerTest {
     @Test
     void health_returnsBackendAndAiStatus() throws Exception {
         HealthService healthService = mock(HealthService.class);
-        when(healthService.checkReadiness()).thenReturn(Map.of("status", "ok", "ai", Map.of("status", "ok")));
+        when(healthService.checkReadiness()).thenReturn(Map.of("status", "UP", "ai", Map.of("status", "UP")));
         MockMvc mockMvc = standaloneSetup(new HealthController(healthService)).build();
 
         mockMvc.perform(get("/api/health"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("ok"))
-                .andExpect(jsonPath("$.ai.status").value("ok"));
+                .andExpect(jsonPath("$.status").value("UP"))
+                .andExpect(jsonPath("$.ai.status").value("UP"));
 
         verify(healthService).checkReadiness();
     }
@@ -33,12 +33,12 @@ class HealthControllerTest {
     @Test
     void healthStaysUpWhenAiIsOffline() throws Exception {
         HealthService healthService = mock(HealthService.class);
-        when(healthService.checkReadiness()).thenReturn(Map.of("status", "ok", "ai", Map.of("status", "unavailable")));
+        when(healthService.checkReadiness()).thenReturn(Map.of("status", "UP", "ai", Map.of("status", "unavailable")));
         MockMvc mockMvc = standaloneSetup(new HealthController(healthService)).build();
 
         mockMvc.perform(get("/api/health"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("ok"))
+                .andExpect(jsonPath("$.status").value("UP"))
                 .andExpect(jsonPath("$.ai.status").value("unavailable"));
     }
 }

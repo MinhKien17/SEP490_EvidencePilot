@@ -25,6 +25,15 @@ public interface ClaimMapper {
     @Mapping(target = "chunkIndex", source = "documentChunk.chunkIndex")
     @Mapping(target = "excerpt", source = "documentChunk.text")
     @Mapping(target = "status", source = "status")
+    @Mapping(target = "modelName", source = "modelName")
+    @Mapping(target = "modelVersion", source = "modelVersion")
+    @Mapping(target = "promptVersion", source = "promptVersion")
+    @Mapping(target = "rubricVersion", source = "rubricVersion")
+    @Mapping(target = "evaluatedAt", source = "evaluatedAt")
+    @Mapping(target = "scoreBreakdown", source = "scoreBreakdown")
+    @Mapping(target = "relation", source = "relation")
+    @Mapping(target = "strengthScore", source = "strengthScore")
+    @Mapping(target = "strengthBand", source = "strengthBand")
     AiSuggestionResponse toAiSuggestionResponse(AiSuggestion entity);
 
     @Mapping(target = "claimId", source = "claim.id")

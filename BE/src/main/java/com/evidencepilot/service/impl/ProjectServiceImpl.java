@@ -133,8 +133,10 @@ public class ProjectServiceImpl implements ProjectService {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(id);
         currentUserService.requireProjectManageAccess(currentUser, project);
-        if (project.getStatus() != ProjectStatus.IN_PROGRESS) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only ACTIVE projects can be completed.");
+        if (project.getStatus() != ProjectStatus.IN_PROGRESS
+                && project.getStatus() != ProjectStatus.SUBMITTED_FOR_REVIEW
+                && project.getStatus() != ProjectStatus.RETURNED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project cannot be completed in its current state.");
         }
         project.setStatus(ProjectStatus.APPROVED);
         project.setUpdatedAt(LocalDateTime.now());

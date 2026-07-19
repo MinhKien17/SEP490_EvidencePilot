@@ -12,6 +12,7 @@ import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
+import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.service.impl.ClaimMatchingServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -50,6 +51,9 @@ class ClaimMatchingServiceImplTest {
 
     @Mock
     private QdrantClient qdrantClient;
+
+    @Mock
+    private ProjectDocumentRepository projectDocumentRepository;
 
     @Test
     void matchClaimUsesProjectScopedQdrantResultsAndReturnsChunkLocation() {
@@ -90,13 +94,15 @@ class ClaimMatchingServiceImplTest {
                     suggestion.getScore(),
                     suggestion.getExplanation(),
                     suggestion.getClaimVersion(),
-                    suggestion.getCreatedAt());
+                    suggestion.getCreatedAt(),
+                    null, null, null, null, null, null, null, null, null);
         });
 
         ClaimMatchingServiceImpl service = new ClaimMatchingServiceImpl(
                 claimRepository,
                 documentChunkRepository,
                 aiSuggestionRepository,
+                projectDocumentRepository,
                 claimMapper,
                 aiModelClient,
                 qdrantClient);

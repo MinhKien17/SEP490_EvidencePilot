@@ -88,6 +88,7 @@ class AiAnalysisServiceImplTest {
     private static AiSuggestionResponse suggestion(UUID chunkId, Float score, String explanation) {
         return new AiSuggestionResponse(
                 UUID.randomUUID(), UUID.randomUUID(), chunkId, null, null, null, null,
-                AiSuggestionResponse.PENDING, score, explanation, 1, null);
+                AiSuggestionResponse.PENDING, score, explanation, 1, null,
+                null, null, null, null, null, null, null, null, null);
     }
 }

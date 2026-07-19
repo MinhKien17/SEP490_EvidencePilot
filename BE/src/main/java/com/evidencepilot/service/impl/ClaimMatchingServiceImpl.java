@@ -6,12 +6,15 @@ import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.ClaimMapper;
 import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Claim;
+import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
+import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
+import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.service.ClaimMatchingService;
 import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.QdrantClient;
@@ -35,6 +38,7 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
     private final ClaimRepository claimRepository;
     private final DocumentChunkRepository documentChunkRepository;
     private final AiSuggestionRepository aiSuggestionRepository;
+    private final ProjectDocumentRepository projectDocumentRepository;
     private final ClaimMapper claimMapper;
     private final AiModelClient aiModelClient;
     private final QdrantClient qdrantClient;
@@ -86,8 +90,13 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
                 .filter(chunk -> chunk.getDocument() != null)
                 .filter(chunk -> chunk.getDocument().isActive())
                 .filter(chunk -> chunk.getDocument().getDocType() == DocumentType.SOURCE)
-                .filter(chunk -> chunk.getDocument().getProject() != null)
-                .filter(chunk -> projectId.equals(chunk.getDocument().getProject().getId()));
+                .filter(chunk -> isDocumentInProject(chunk.getDocument(), projectId));
+    }
+
+    private boolean isDocumentInProject(Document document, UUID projectId) {
+        if (document.getProject() != null && projectId.equals(document.getProject().getId()))
+            return true;
+        return projectDocumentRepository.existsByProjectIdAndDocumentId(projectId, document.getId());
     }
 
     private AiSuggestion buildSuggestion(Claim claim, DocumentChunk chunk, QdrantSearchResult match) {
@@ -101,6 +110,8 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
         suggestion.setCreatedAt(LocalDateTime.now());
         suggestion.setModelName("ollama");
         suggestion.setModelVersion("nomic-embed-text");
+        suggestion.setPromptVersion("v1");
+        suggestion.setRubricVersion("v1");
         suggestion.setEvaluatedAt(LocalDateTime.now());
         return suggestion;
     }

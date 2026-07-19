@@ -16,13 +16,13 @@ spring:
       initialization-fail-timeout: 0
 
   flyway:
+    enabled: true
     baseline-on-migrate: true
-    baseline-version: 1
-    enabled: false
+    baseline-version: 8
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: true
     properties:
       hibernate:
