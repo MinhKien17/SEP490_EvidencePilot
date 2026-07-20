@@ -132,7 +132,8 @@ public class ProjectServiceImpl implements ProjectService {
     public ProjectResponse completeProject(UUID id) {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(id);
-        currentUserService.requireProjectManageAccess(currentUser, project);
+        currentUserService.requireRole(currentUser, UserRole.INSTRUCTOR);
+        currentUserService.requireProjectAccess(currentUser, project);
         if (project.getStatus() != ProjectStatus.IN_PROGRESS
                 && project.getStatus() != ProjectStatus.SUBMITTED_FOR_REVIEW
                 && project.getStatus() != ProjectStatus.RETURNED) {

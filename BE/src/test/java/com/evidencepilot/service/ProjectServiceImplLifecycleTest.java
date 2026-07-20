@@ -6,6 +6,7 @@ import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.model.enums.ProjectStatus;
+import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.ProjectMemberRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
@@ -56,7 +57,8 @@ class ProjectServiceImplLifecycleTest {
 
         var response = service().completeProject(project.getId());
 
-        verify(currentUserService).requireProjectManageAccess(user, project);
+        verify(currentUserService).requireRole(user, UserRole.INSTRUCTOR);
+        verify(currentUserService).requireProjectAccess(user, project);
         assertThat(response.status()).isEqualTo(ProjectStatus.APPROVED);
     }
 
