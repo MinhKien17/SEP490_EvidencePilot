@@ -27,7 +27,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -160,6 +162,22 @@ class ProjectWriteAccessIntegrationTest {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void instructorMemberCompletesSubmittedProject_shouldReturn200() throws Exception {
+        User owner = createAndSaveUser(UserRole.STUDENT);
+        Project project = createAndSaveProject(ProjectStatus.SUBMITTED_FOR_REVIEW, owner);
+        projectId = project.getId();
+
+        currentUser = createAndSaveUser(UserRole.INSTRUCTOR);
+        addProjectMember(project, currentUser, ProjectRole.INSTRUCTOR);
+        bearerToken = "Bearer " + jwtUtils.generateToken(currentUser);
+
+        mockMvc.perform(patch("/api/projects/{id}/complete", projectId)
+                .header("Authorization", bearerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(ProjectStatus.APPROVED.name()));
+    }
+
     // -- fixture helpers --
 
     private void givenStudentOwnsProject(ProjectStatus status) {
@@ -188,10 +206,16 @@ class ProjectWriteAccessIntegrationTest {
         project.setActive(true);
         project = projectRepository.saveAndFlush(project);
 
+        addProjectMember(project, owner, ProjectRole.OWNER);
+
+        return project;
+    }
+
+    private void addProjectMember(Project project, User user, ProjectRole role) {
         ProjectMember member = new ProjectMember();
         member.setProject(project);
-        member.setUser(owner);
-        member.setRole(ProjectRole.OWNER);
+        member.setUser(user);
+        member.setRole(role);
         member.setJoinedAt(LocalDateTime.now());
         projectMemberRepository.saveAndFlush(member);
 
@@ -199,7 +223,5 @@ class ProjectWriteAccessIntegrationTest {
             project.setProjectMembers(new ArrayList<>());
         }
         project.getProjectMembers().add(member);
-
-        return project;
     }
 }
