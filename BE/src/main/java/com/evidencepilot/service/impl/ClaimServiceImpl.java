@@ -248,6 +248,10 @@ public class ClaimServiceImpl implements ClaimService {
             mapping.setDocumentChunk(chunk);
             mapping.setSuggestion(suggestion);
             mapping.setCreatedBy(currentUser);
+            mapping.setRelation(suggestion.getRelation());
+            mapping.setStrengthScore(suggestion.getStrengthScore());
+            mapping.setStrengthBand(suggestion.getStrengthBand());
+            mapping.setScoreBreakdown(suggestion.getScoreBreakdown());
             mapping.setStatus(MappingStatus.ACTIVE);
             mapping.setReviewStatus(MappingReviewStatus.PENDING);
             mapping.setCreatedAt(LocalDateTime.now());

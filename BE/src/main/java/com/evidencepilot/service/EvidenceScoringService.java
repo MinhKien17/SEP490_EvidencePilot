@@ -1,6 +1,5 @@
 package com.evidencepilot.service;
 
-import com.evidencepilot.model.ClaimEvidenceMapping;
 import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.DocumentReference;
 import com.evidencepilot.model.enums.EvidenceRelation;
@@ -16,13 +15,13 @@ public class EvidenceScoringService {
 
     static final String RUBRIC_VERSION = "1.0";
 
-    public ScoreResult computeScore(ClaimEvidenceMapping mapping, DocumentChunk chunk,
+    public ScoreResult computeScore(EvidenceRelation relation, DocumentChunk chunk,
                                     List<DocumentReference> references, boolean linkReachable) {
         int earned = 0;
         int applicable = 0;
         Map<String, Object> breakdown = new LinkedHashMap<>();
 
-        int relationPoints = scoreRelation(mapping.getRelation());
+        int relationPoints = scoreRelation(relation);
         earned += relationPoints;
         applicable += 35;
         breakdown.put("relation", Map.of("max", 35, "earned", relationPoints));
