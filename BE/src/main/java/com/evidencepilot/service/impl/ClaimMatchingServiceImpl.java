@@ -10,6 +10,7 @@ import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.EvidenceRelation;
 import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimRepository;
@@ -17,7 +18,10 @@ import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.service.ClaimMatchingService;
 import com.evidencepilot.service.AiModelClient;
+import com.evidencepilot.service.EvidenceScoringService;
 import com.evidencepilot.service.QdrantClient;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -42,6 +46,8 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
     private final ClaimMapper claimMapper;
     private final AiModelClient aiModelClient;
     private final QdrantClient qdrantClient;
+    private final EvidenceScoringService evidenceScoringService;
+    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional
@@ -100,6 +106,11 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
     }
 
     private AiSuggestion buildSuggestion(Claim claim, DocumentChunk chunk, QdrantSearchResult match) {
+        EvidenceRelation relation = EvidenceRelation.SUPPORTS;
+        EvidenceScoringService.ScoreResult strength = evidenceScoringService.computeScore(
+                relation, chunk, List.of(), false);
+        LocalDateTime evaluatedAt = LocalDateTime.now();
+
         AiSuggestion suggestion = new AiSuggestion();
         suggestion.setClaim(claim);
         suggestion.setDocumentChunk(chunk);
@@ -107,13 +118,25 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
         suggestion.setScore(match.score().floatValue());
         suggestion.setExplanation("Matched " + sourceName(chunk) + " chunk " + chunk.getChunkIndex());
         suggestion.setClaimVersion(claim.getClaimVersion());
-        suggestion.setCreatedAt(LocalDateTime.now());
+        suggestion.setCreatedAt(evaluatedAt);
         suggestion.setModelName("ollama");
         suggestion.setModelVersion("nomic-embed-text");
         suggestion.setPromptVersion("v1");
-        suggestion.setRubricVersion("v1");
-        suggestion.setEvaluatedAt(LocalDateTime.now());
+        suggestion.setRubricVersion(strength.rubricVersion());
+        suggestion.setEvaluatedAt(evaluatedAt);
+        suggestion.setScoreBreakdown(serializeBreakdown(strength));
+        suggestion.setRelation(relation);
+        suggestion.setStrengthScore(strength.strengthScore());
+        suggestion.setStrengthBand(strength.strengthBand());
         return suggestion;
+    }
+
+    private String serializeBreakdown(EvidenceScoringService.ScoreResult strength) {
+        try {
+            return objectMapper.writeValueAsString(strength.scoreBreakdown());
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Failed to serialize evidence score breakdown", e);
+        }
     }
 
     private String sourceName(DocumentChunk chunk) {

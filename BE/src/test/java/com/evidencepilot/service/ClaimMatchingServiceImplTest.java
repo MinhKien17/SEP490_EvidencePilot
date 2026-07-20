@@ -9,11 +9,14 @@ import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.EvidenceRelation;
+import com.evidencepilot.model.enums.StrengthBand;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.service.impl.ClaimMatchingServiceImpl;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -56,7 +59,7 @@ class ClaimMatchingServiceImplTest {
     private ProjectDocumentRepository projectDocumentRepository;
 
     @Test
-    void matchClaimUsesProjectScopedQdrantResultsAndReturnsChunkLocation() {
+    void matchClaimUsesProjectScopedQdrantResultsAndReturnsChunkLocation() throws Exception {
         UUID projectId = UUID.randomUUID();
         Claim claim = new Claim();
         claim.setId(UUID.randomUUID());
@@ -95,7 +98,15 @@ class ClaimMatchingServiceImplTest {
                     suggestion.getExplanation(),
                     suggestion.getClaimVersion(),
                     suggestion.getCreatedAt(),
-                    null, null, null, null, null, null, null, null, null);
+                    suggestion.getModelName(),
+                    suggestion.getModelVersion(),
+                    suggestion.getPromptVersion(),
+                    suggestion.getRubricVersion(),
+                    suggestion.getEvaluatedAt(),
+                    suggestion.getScoreBreakdown(),
+                    suggestion.getRelation(),
+                    suggestion.getStrengthScore(),
+                    suggestion.getStrengthBand());
         });
 
         ClaimMatchingServiceImpl service = new ClaimMatchingServiceImpl(
@@ -105,7 +116,9 @@ class ClaimMatchingServiceImplTest {
                 projectDocumentRepository,
                 claimMapper,
                 aiModelClient,
-                qdrantClient);
+                qdrantClient,
+                new EvidenceScoringService(),
+                new ObjectMapper());
 
         List<AiSuggestionResponse> responses = service.matchClaim(claim.getId(), projectId);
 
@@ -119,7 +132,14 @@ class ClaimMatchingServiceImplTest {
                     assertThat(suggestion.getDocumentChunk()).isSameAs(sourceChunk);
                     assertThat(suggestion.getScore()).isEqualTo(0.82f);
                     assertThat(suggestion.getExplanation()).contains("source-a.pdf", "chunk 3");
+                    assertThat(suggestion.getRelation()).isEqualTo(EvidenceRelation.SUPPORTS);
+                    assertThat(suggestion.getStrengthScore()).isEqualTo(45);
+                    assertThat(suggestion.getStrengthBand()).isEqualTo(StrengthBand.MEDIUM);
+                    assertThat(suggestion.getRubricVersion()).isEqualTo("1.0");
                 });
+        AiSuggestion savedSuggestion = suggestionsCaptor.getValue().get(0);
+        assertThat(new ObjectMapper().readTree(savedSuggestion.getScoreBreakdown())
+                .path("relation").path("earned").asInt()).isEqualTo(35);
         assertThat(responses)
                 .singleElement()
                 .satisfies(response -> {
@@ -128,6 +148,9 @@ class ClaimMatchingServiceImplTest {
                     assertThat(response.sourceFilename()).isEqualTo("source-a.pdf");
                     assertThat(response.chunkIndex()).isEqualTo(3);
                     assertThat(response.excerpt()).isEqualTo("Evidence text");
+                    assertThat(response.relation()).isEqualTo(EvidenceRelation.SUPPORTS);
+                    assertThat(response.strengthScore()).isEqualTo(45);
+                    assertThat(response.strengthBand()).isEqualTo(StrengthBand.MEDIUM);
                 });
     }
 

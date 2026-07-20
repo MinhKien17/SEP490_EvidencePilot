@@ -4,12 +4,15 @@ import com.evidencepilot.dto.request.ClaimCreationRequest;
 import com.evidencepilot.mapper.ClaimMapper;
 import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Claim;
+import com.evidencepilot.model.ClaimEvidenceMapping;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.EvidenceRelation;
+import com.evidencepilot.model.enums.StrengthBand;
 import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.AiSuggestionRepository;
@@ -22,6 +25,7 @@ import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.impl.ClaimServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
@@ -242,6 +246,10 @@ class ClaimServiceImplAccessTest {
         chunk.setId(UUID.randomUUID());
         AiSuggestion accepted = suggestion(claim);
         accepted.setDocumentChunk(chunk);
+        accepted.setRelation(EvidenceRelation.SUPPORTS);
+        accepted.setStrengthScore(45);
+        accepted.setStrengthBand(StrengthBand.MEDIUM);
+        accepted.setScoreBreakdown("{\"relation\":{\"max\":35,\"earned\":35}}");
         AiSuggestion rejected = suggestion(claim);
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(aiSuggestionRepository.findById(accepted.getId())).thenReturn(Optional.of(accepted));
@@ -253,6 +261,13 @@ class ClaimServiceImplAccessTest {
 
         assertThat(accepted.getStatus()).isEqualTo(SuggestionStatus.ACCEPTED);
         assertThat(rejected.getStatus()).isEqualTo(SuggestionStatus.REJECTED);
+        ArgumentCaptor<ClaimEvidenceMapping> mappingCaptor = ArgumentCaptor.forClass(ClaimEvidenceMapping.class);
+        verify(claimEvidenceMappingRepository).save(mappingCaptor.capture());
+        ClaimEvidenceMapping mapping = mappingCaptor.getValue();
+        assertThat(mapping.getRelation()).isEqualTo(EvidenceRelation.SUPPORTS);
+        assertThat(mapping.getStrengthScore()).isEqualTo(45);
+        assertThat(mapping.getStrengthBand()).isEqualTo(StrengthBand.MEDIUM);
+        assertThat(mapping.getScoreBreakdown()).isEqualTo(accepted.getScoreBreakdown());
     }
 
     private ClaimServiceImpl service() {
