@@ -3,6 +3,7 @@ package com.evidencepilot.service;
 import com.evidencepilot.mapper.ProjectMapper;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentText;
+import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.UserRole;
@@ -21,6 +22,7 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -106,6 +108,30 @@ class PaperProcessingServiceImplTest {
                     && iterator.next().getSectionTitle().equals("Full Text")
                     && !iterator.hasNext();
         }));
+    }
+
+    @Test
+    void detectAndPersistSectionsKeepsExistingSectionsOnRetry() {
+        Document document = document(project());
+        DocumentText text = new DocumentText();
+        text.setDocument(document);
+        text.setExtractedText("Introduction\nExtracted content");
+        document.setDocumentText(text);
+        PaperSection existing = new PaperSection();
+        existing.setId(UUID.randomUUID());
+        existing.setDocument(document);
+        existing.setSectionTitle("Edited Introduction");
+        existing.setSectionOrder(0);
+
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(existing));
+
+        org.assertj.core.api.Assertions.assertThat(service().detectAndPersistSections(document.getId()))
+                .hasSize(1);
+
+        verify(paperSectionRepository).findByDocumentIdOrderBySectionOrderAsc(document.getId());
+        verifyNoMoreInteractions(paperSectionRepository);
     }
 
     private PaperProcessingServiceImpl service() {

@@ -60,6 +60,13 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     public List<PaperSectionResponse> detectAndPersistSections(UUID documentId) {
         Document document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException(documentId, "Document"));
+        List<PaperSection> existing = paperSectionRepository
+                .findByDocumentIdOrderBySectionOrderAsc(documentId);
+        if (!existing.isEmpty()) {
+            return existing.stream()
+                    .map(projectMapper::toPaperSectionResponse)
+                    .toList();
+        }
         String text = document.getDocumentText() != null
                 ? document.getDocumentText().getExtractedText() : null;
         if (text == null || text.isBlank()) {

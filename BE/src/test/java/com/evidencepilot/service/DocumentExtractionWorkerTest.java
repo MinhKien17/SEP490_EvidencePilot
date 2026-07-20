@@ -4,6 +4,7 @@ import com.evidencepilot.dto.ExtractionResultPayload;
 import com.evidencepilot.dto.SparseVector;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
+import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.service.impl.DocumentExtractionWorkerImpl;
 import com.evidencepilot.service.impl.DocumentPersistenceService;
@@ -46,6 +47,8 @@ class DocumentExtractionWorkerTest {
     private QdrantService qdrantService;
     @Mock
     private DocumentPersistenceService persistence;
+    @Mock
+    private PaperProcessingService paperProcessingService;
 
     @Test
     void processExtractsChunksEmbedsAndMarksReadyAfterQdrant() {
@@ -101,6 +104,35 @@ class DocumentExtractionWorkerTest {
     }
 
     @Test
+    void processPaperDetectsSectionsAfterQdrantBeforeReady() {
+        UUID documentId = UUID.randomUUID();
+        Document document = document(documentId);
+        document.setDocType(DocumentType.PAPER);
+        document.setOriginalFilename("paper.pdf");
+        String markdown = "Introduction\n\nPaper content.";
+        String markdownKey = "documents/processed/" + documentId + "/document.md";
+        DocumentChunk chunk = chunk(document, markdown);
+
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(documentObjectStorage.exists(markdownKey)).thenReturn(false);
+        when(aiModelClient.extractDocument(eq("paper.pdf"), anyString()))
+                .thenReturn(new AiModelClient.ExtractedDocument("paper.pdf", "mineru", markdown));
+        when(aiModelClient.generateEmbeddings(List.of(markdown)))
+                .thenReturn(List.of(Collections.nCopies(768, 0.1f)));
+        when(sparseVectorGenerator.generate(markdown))
+                .thenReturn(new SparseVector(List.of(), List.of()));
+        when(persistence.saveExtraction(documentId, "mineru", markdown, List.of(markdown)))
+                .thenReturn(List.of(chunk));
+
+        worker().process(documentId);
+
+        InOrder completion = inOrder(qdrantService, paperProcessingService, persistence);
+        completion.verify(qdrantService).upsertVectors(any(ExtractionResultPayload.class));
+        completion.verify(paperProcessingService).detectAndPersistSections(documentId);
+        completion.verify(persistence).markReady(documentId, 1);
+    }
+
+    @Test
     void processMarksFailedWhenExtractionFails() {
         UUID documentId = UUID.randomUUID();
         Document document = document(documentId);
@@ -123,7 +155,8 @@ class DocumentExtractionWorkerTest {
                 aiModelClient,
                 sparseVectorGenerator,
                 qdrantService,
-                persistence);
+                persistence,
+                paperProcessingService);
         ReflectionTestUtils.setField(w, "baseUrl", "http://localhost:8080");
         return w;
     }

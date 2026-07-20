@@ -5,10 +5,12 @@ import com.evidencepilot.dto.SparseVector;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
+import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.DocumentExtractionWorker;
 import com.evidencepilot.service.DocumentObjectStorage;
+import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.QdrantService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +40,7 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
     private final SparseVectorGenerator sparseVectorGenerator;
     private final QdrantService qdrantService;
     private final DocumentPersistenceService documentPersistenceService;
+    private final PaperProcessingService paperProcessingService;
 
     @Override
     public void process(UUID documentId) {
@@ -95,6 +98,9 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
         }
 
         qdrantService.upsertVectors(new ExtractionResultPayload(document.getId(), payloadChunks));
+        if (document.getDocType() == DocumentType.PAPER) {
+            paperProcessingService.detectAndPersistSections(document.getId());
+        }
         documentPersistenceService.markReady(document.getId(), payloadChunks.size());
         log.info("Completed extraction for document {} with {} chunks", document.getId(), payloadChunks.size());
     }

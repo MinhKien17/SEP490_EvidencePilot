@@ -188,7 +188,7 @@ public class PaperController {
             description = "Uploads a student paper (multipart/form-data) and queues it for "
                     + "section detection and processing. The projectId is extracted from the JWT context.")
     @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Paper uploaded and sections detected"),
+            @ApiResponse(responseCode = "201", description = "Paper uploaded and queued for processing"),
             @ApiResponse(responseCode = "400", description = "Missing or invalid parameters"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
             @ApiResponse(responseCode = "403", description = "Access denied"),
@@ -201,7 +201,6 @@ public class PaperController {
             @Parameter(description = "Project UUID") @RequestParam("projectId") UUID projectId) {
 
         DocumentResponse response = documentService.uploadDocument(projectId, file, DocumentType.PAPER);
-        paperProcessingService.detectAndPersistSections(response.id());
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }

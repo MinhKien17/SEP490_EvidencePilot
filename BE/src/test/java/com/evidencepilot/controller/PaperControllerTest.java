@@ -96,7 +96,7 @@ class PaperControllerTest {
     }
 
     @Test
-    void upload_returns201AndDetectsSections() throws Exception {
+    void upload_returns201WithoutDetectingSectionsSynchronously() throws Exception {
         UUID projectId = UUID.randomUUID();
         UUID documentId = UUID.randomUUID();
         DocumentResponse response = mock(DocumentResponse.class);
@@ -108,7 +108,7 @@ class PaperControllerTest {
                 .andExpect(status().isCreated());
 
         verify(documentService).uploadDocument(eq(projectId), any(), eq(DocumentType.PAPER));
-        verify(paperService).detectAndPersistSections(documentId);
+        verify(paperService, never()).detectAndPersistSections(documentId);
     }
 
     private static DocumentResponse document(DocumentType type, boolean active) {
