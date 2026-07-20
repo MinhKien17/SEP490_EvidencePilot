@@ -7,7 +7,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
-import java.util.UUID;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -64,7 +63,7 @@ class AiModelClientTest {
                           "filename":"source.pdf",
                           "download_url":"https://storage.test/source.pdf"
                         }
-                        """))
+                        """, true))
                 .andRespond(withSuccess(
                         """
                         {"filename":"source.pdf","method":"mineru","markdown":"# Extracted"}
@@ -74,9 +73,7 @@ class AiModelClientTest {
         AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test");
 
         AiModelClient.ExtractedDocument result = client.extractDocument(
-                UUID.fromString("00000000-0000-0000-0000-000000000001"),
                 "source.pdf",
-                "application/pdf",
                 "https://storage.test/source.pdf");
 
         assertThat(result.filename()).isEqualTo("source.pdf");

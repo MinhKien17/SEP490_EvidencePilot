@@ -9,7 +9,6 @@ import org.springframework.web.client.RestClientException;
 
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 @Slf4j
 @Component
@@ -48,17 +47,11 @@ public class AiModelClientImpl implements AiModelClient {
 
     @SuppressWarnings("unchecked")
     @Override
-    public ExtractedDocument extractDocument(
-            UUID documentId,
-            String filename,
-            String contentType,
-            String downloadUrl) {
+    public ExtractedDocument extractDocument(String filename, String downloadUrl) {
         Map<String, Object> response = call("/extract", () -> restClient.post()
                 .uri(baseUrl + "/extract")
                 .body(Map.of(
-                        "document_id", documentId.toString(),
                         "filename", stringValue(filename, "document"),
-                        "content_type", stringValue(contentType, "application/octet-stream"),
                         "download_url", downloadUrl))
                 .retrieve()
                 .body(Map.class));

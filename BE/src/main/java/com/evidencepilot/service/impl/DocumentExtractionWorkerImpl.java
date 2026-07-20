@@ -64,9 +64,7 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
             String downloadUrl = baseUrl + "/api/documents/" + document.getId()
                     + "/download?token=" + document.getDownloadToken();
             extracted = aiModelClient.extractDocument(
-                    document.getId(),
                     document.getOriginalFilename(),
-                    document.getContentType(),
                     downloadUrl);
             documentObjectStorage.writeText(markdownKey, extracted.markdown());
         }

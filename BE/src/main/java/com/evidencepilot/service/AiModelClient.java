@@ -2,7 +2,6 @@ package com.evidencepilot.service;
 
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 public interface AiModelClient {
 
@@ -10,11 +9,7 @@ public interface AiModelClient {
 
     String generate(String prompt);
 
-    ExtractedDocument extractDocument(
-            UUID documentId,
-            String filename,
-            String contentType,
-            String downloadUrl);
+    ExtractedDocument extractDocument(String filename, String downloadUrl);
 
     List<Float> generateEmbedding(String text);
 

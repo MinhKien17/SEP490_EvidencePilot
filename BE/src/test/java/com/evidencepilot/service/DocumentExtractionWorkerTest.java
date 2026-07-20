@@ -58,8 +58,7 @@ class DocumentExtractionWorkerTest {
 
         when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
         when(documentObjectStorage.exists(markdownKey)).thenReturn(false);
-        when(aiModelClient.extractDocument(
-                eq(documentId), eq("source.pdf"), eq("application/pdf"), anyString()))
+        when(aiModelClient.extractDocument(eq("source.pdf"), anyString()))
                 .thenReturn(new AiModelClient.ExtractedDocument("source.pdf", "mineru", markdown));
         when(aiModelClient.generateEmbeddings(List.of(markdown))).thenReturn(List.of(vector));
         when(sparseVectorGenerator.generate(markdown))
@@ -97,7 +96,7 @@ class DocumentExtractionWorkerTest {
 
         worker().process(documentId);
 
-        verify(aiModelClient, never()).extractDocument(any(), any(), any(), any());
+        verify(aiModelClient, never()).extractDocument(any(), any());
         verify(persistence).markReady(documentId, 1);
     }
 
@@ -107,7 +106,7 @@ class DocumentExtractionWorkerTest {
         Document document = document(documentId);
         when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
         when(documentObjectStorage.exists(any())).thenReturn(false);
-        when(aiModelClient.extractDocument(eq(documentId), any(), any(), any()))
+        when(aiModelClient.extractDocument(any(), any()))
                 .thenThrow(new AiModelClient.AiApiException("/extract", 503));
 
         assertThatThrownBy(() -> worker().process(documentId))
