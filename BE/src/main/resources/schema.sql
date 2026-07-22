@@ -10,9 +10,14 @@ CREATE TABLE users (
     email VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL CHECK (role IN ('STUDENT', 'INSTRUCTOR', 'ADMIN')),
+    account_status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (account_status IN ('PENDING', 'ACTIVE', 'BANNED', 'DELETED')),
     email_verified BOOLEAN NOT NULL DEFAULT TRUE,
     email_verification_token_hash VARCHAR(255) UNIQUE,
     email_verification_token_expires_at DATETIME,
+    password_reset_token_hash VARCHAR(255) UNIQUE,
+    password_reset_token_expires_at DATETIME,
+    password_reset_requested_at DATETIME,
+    token_version INT NOT NULL DEFAULT 0,
     first_name VARCHAR(100),
     last_name VARCHAR(100),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -25,7 +30,7 @@ CREATE TABLE projects (
     id BINARY(16) NOT NULL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     description TEXT,
-    status VARCHAR(50) NOT NULL CHECK (status IN ('ASSIGNED', 'IN_PROGRESS', 'SUBMITTED_FOR_REVIEW', 'RETURNED', 'APPROVED')),
+    status VARCHAR(50) NOT NULL CHECK (status IN ('ASSIGNED', 'IN_PROGRESS', 'SUBMITTED_FOR_REVIEW', 'RETURNED', 'APPROVED', 'ARCHIVED')),
     target_standard VARCHAR(50),
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -276,5 +281,23 @@ CREATE TABLE system_notifications (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- ==========================================
+-- 9. AUDIT TRAIL
+-- ==========================================
+CREATE TABLE audit_logs (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    actor_id BINARY(16) NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    entity_type VARCHAR(50) NOT NULL,
+    entity_id BINARY(16),
+    old_value JSON,
+    new_value JSON,
+    occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_audit_entity (entity_type, entity_id),
+    INDEX idx_audit_actor (actor_id),
+    INDEX idx_audit_occurred (occurred_at),
+    FOREIGN KEY (actor_id) REFERENCES users(id)
 );
 

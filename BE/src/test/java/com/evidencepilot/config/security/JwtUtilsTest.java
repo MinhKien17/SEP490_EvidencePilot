@@ -23,6 +23,7 @@ class JwtUtilsTest {
         assertThat(jwt.extractUserId(token)).isEqualTo(user.getId());
         assertThat(jwt.extractEmail(token)).isEqualTo(user.getEmail());
         assertThat(jwt.extractRole(token)).isEqualTo("INSTRUCTOR");
+        assertThat(jwt.extractTokenVersion(token)).isEqualTo(7);
     }
 
     @Test
@@ -39,6 +40,7 @@ class JwtUtilsTest {
         user.setId(UUID.randomUUID());
         user.setEmail("instructor@test.com");
         user.setRole(UserRole.INSTRUCTOR);
+        user.setTokenVersion(7);
         return user;
     }
 }

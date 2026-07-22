@@ -7,6 +7,7 @@ import com.evidencepilot.dto.response.AuthResponse;
 import com.evidencepilot.dto.response.UserResponse;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.UserRole;
+import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.AuthService;
 import com.evidencepilot.service.EmailVerificationService;
@@ -37,6 +38,7 @@ public class AuthServiceImpl implements AuthService {
         user.setFirstName(request.getFirstName());
         user.setLastName(request.getLastName());
         user.setRole(UserRole.STUDENT);
+        user.setAccountStatus(AccountStatus.PENDING);
         String verificationToken = emailVerificationService.createVerificationToken(user);
 
         userRepository.save(user);
@@ -56,6 +58,10 @@ public class AuthServiceImpl implements AuthService {
 
         if (Boolean.FALSE.equals(user.getEmailVerified())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Email is not verified");
+        }
+
+        if (user.getAccountStatus() != AccountStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account is not active");
         }
 
         String token = jwtUtils.generateToken(user);
