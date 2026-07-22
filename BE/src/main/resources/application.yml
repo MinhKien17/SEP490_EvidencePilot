@@ -105,6 +105,10 @@ app:
   email-verification:
     url: ${EMAIL_VERIFICATION_URL:}
     token-ttl-hours: ${EMAIL_VERIFICATION_TOKEN_TTL_HOURS:24}
+  password-reset:
+    url: ${PASSWORD_RESET_URL:}
+    token-ttl-minutes: ${PASSWORD_RESET_TOKEN_TTL_MINUTES:60}
+    request-cooldown-seconds: ${PASSWORD_RESET_REQUEST_COOLDOWN_SECONDS:60}
 
 # ── External AI model integration ────────────────────────────────────────
 ai:

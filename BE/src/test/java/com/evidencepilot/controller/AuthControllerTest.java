@@ -3,8 +3,11 @@ package com.evidencepilot.controller;
 import com.evidencepilot.dto.request.LoginRequest;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.UserRole;
+import com.evidencepilot.model.enums.AccountStatus;
+import com.evidencepilot.config.security.JwtUtils;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.EmailVerificationService;
+import com.evidencepilot.service.PasswordResetService;
 import io.minio.MinioClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -46,8 +49,14 @@ class AuthControllerTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private JwtUtils jwtUtils;
+
     @MockBean
     private EmailVerificationService emailVerificationService;
+
+    @MockBean
+    private PasswordResetService passwordResetService;
 
     @MockBean(name = "minioClient")
     private MinioClient minioClient;
@@ -85,6 +94,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.user.role", is("STUDENT")));
 
         User user = userRepository.findByEmail("newuser@test.com").orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.PENDING);
         verify(emailVerificationService).sendVerificationEmail(eq(user), eq("raw-token"));
     }
 
@@ -149,5 +159,54 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message", is("Email verified successfully")))
                 .andExpect(jsonPath("$.email", is("student@test.com")));
+    }
+
+    @Test
+    void passwordResetRequest_alwaysReturnsSameAcceptedResponse() throws Exception {
+        org.mockito.Mockito.doThrow(new IllegalStateException("mail unavailable"))
+                .when(passwordResetService).requestReset("student@test.com");
+
+        mockMvc.perform(post("/api/auth/password-reset/request")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"student@test.com\"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.message", is("If the account is eligible, a password reset email will be sent")));
+    }
+
+    @Test
+    void passwordResetConfirm_isPublic() throws Exception {
+        mockMvc.perform(post("/api/auth/password-reset/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"raw-token\",\"newPassword\":\"NewStrongPass1!\"}"))
+                .andExpect(status().isOk());
+
+        verify(passwordResetService).confirmReset("raw-token", "NewStrongPass1!");
+    }
+
+    @Test
+    void publicPasswordResetPathsIgnoreStaleBearerToken() throws Exception {
+        User user = new User();
+        user.setEmail("banned@test.com");
+        user.setPasswordHash(passwordEncoder.encode("ValidPass1!"));
+        user.setRole(UserRole.STUDENT);
+        user.setEmailVerified(true);
+        user.setAccountStatus(AccountStatus.ACTIVE);
+        userRepository.saveAndFlush(user);
+        String staleToken = jwtUtils.generateToken(user);
+        user.setAccountStatus(AccountStatus.BANNED);
+        user.setTokenVersion(1);
+        userRepository.saveAndFlush(user);
+
+        mockMvc.perform(post("/api/auth/password-reset/request")
+                        .header("Authorization", "Bearer " + staleToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"banned@test.com\"}"))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(post("/api/auth/password-reset/confirm")
+                        .header("Authorization", "Bearer " + staleToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"raw-token\",\"newPassword\":\"NewStrongPass1!\"}"))
+                .andExpect(status().isOk());
     }
 }
