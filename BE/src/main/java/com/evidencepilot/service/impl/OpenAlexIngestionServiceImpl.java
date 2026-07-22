@@ -11,7 +11,6 @@ import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
-import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.CurrentUserService;
@@ -117,10 +116,7 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
     private Project validateProject(UUID projectId, User currentUser) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
-        currentUserService.requireProjectAccess(currentUser, project);
-        if (project.getStatus() == ProjectStatus.APPROVED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
-        }
+        currentUserService.requireProjectWriteAccess(currentUser, project);
         return project;
     }
 

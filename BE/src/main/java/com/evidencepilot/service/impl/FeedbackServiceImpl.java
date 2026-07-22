@@ -136,7 +136,7 @@ public class FeedbackServiceImpl implements FeedbackService {
         if (feedbackRequest.getStatus() != FeedbackStatus.PENDING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Feedback request closed.");
         }
-        if (feedbackRequest.getProject().getStatus() == ProjectStatus.APPROVED) {
+        if (feedbackRequest.getProject().getStatus().isReadOnly()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
         }
         PaperSection section = requireSectionInProject(request.sectionId(), feedbackRequest.getProject());
@@ -187,6 +187,9 @@ public class FeedbackServiceImpl implements FeedbackService {
 
     private FeedbackRequest transition(UUID id, FeedbackStatus status, ProjectStatus projectStatus, User currentUser) {
         FeedbackRequest feedbackRequest = requireFeedbackAccess(id, currentUser, true);
+        if (feedbackRequest.getProject().getStatus().isReadOnly()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
+        }
         feedbackRequest.setStatus(status);
         feedbackRequest.getProject().setStatus(projectStatus);
         projectRepository.save(feedbackRequest.getProject());

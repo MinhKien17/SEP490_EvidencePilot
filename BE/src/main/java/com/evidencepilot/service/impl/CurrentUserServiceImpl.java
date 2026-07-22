@@ -102,8 +102,18 @@ public class CurrentUserServiceImpl implements CurrentUserService {
 
     @Override
     public void requireProjectWriteAccess(User currentUser, Project project) {
+        if (project.getStatus().isReadOnly()) {
+            throw new ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "Project is read-only.");
+        }
         if (isAdmin(currentUser))
             return;
+        if (project.getStatus() == ProjectStatus.SUBMITTED_FOR_REVIEW) {
+            throw new ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "Project is locked and cannot be modified.");
+        }
         if (!hasProjectRole(currentUser, project, Set.of(
                 ProjectRole.OWNER, ProjectRole.EDITOR, ProjectRole.INSTRUCTOR))) {
             throw new ResponseStatusException(
@@ -135,12 +145,6 @@ public class CurrentUserServiceImpl implements CurrentUserService {
     private boolean hasProjectRole(User currentUser, Project project, Set<ProjectRole> roles) {
         if (project.getProjectMembers() == null) {
             return false;
-        }
-        if (project.getStatus() == ProjectStatus.SUBMITTED_FOR_REVIEW ||
-            project.getStatus() == ProjectStatus.APPROVED) {
-            throw new ResponseStatusException(
-                    org.springframework.http.HttpStatus.CONFLICT,
-                    "Project is locked and cannot be modified.");
         }
         return project.getProjectMembers().stream()
                 .anyMatch(pm -> pm.getUser() != null

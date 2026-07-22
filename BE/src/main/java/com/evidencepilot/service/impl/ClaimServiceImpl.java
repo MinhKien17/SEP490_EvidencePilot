@@ -19,7 +19,6 @@ import com.evidencepilot.model.enums.MappingReviewStatus;
 import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.model.User;
-import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.ClaimRepository;
@@ -297,6 +296,7 @@ public class ClaimServiceImpl implements ClaimService {
         ClaimEvidenceMapping mapping = claimEvidenceMappingRepository.findById(mappingId)
                 .orElseThrow(() -> new ResourceNotFoundException(mappingId, "ClaimEvidenceMapping"));
         User currentUser = currentUserService.requireCurrentUser();
+        currentUserService.requireProjectWriteAccess(currentUser, mapping.getClaim().getProject());
         if (!currentUserService.isAdmin(currentUser)) {
             if (!currentUserService.isInstructor(currentUser)) {
                 throw new ResponseStatusException(
@@ -356,9 +356,6 @@ public class ClaimServiceImpl implements ClaimService {
 
     private void requireProjectContentWriteAccess(User currentUser, Project project) {
         currentUserService.requireProjectWriteAccess(currentUser, project);
-        if (project.getStatus() == ProjectStatus.APPROVED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
-        }
     }
 
     private Claim findActiveClaim(UUID id) {

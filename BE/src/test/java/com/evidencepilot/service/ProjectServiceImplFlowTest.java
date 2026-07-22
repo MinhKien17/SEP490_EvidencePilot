@@ -49,6 +49,9 @@ class ProjectServiceImplFlowTest {
     @Mock
     private ProjectMapper projectMapper;
 
+    @Mock
+    private AuditService auditService;
+
     @Test
     void createProjectRequiresInstructorAndStoresInstructorMembership() {
         User instructor = user(UserRole.INSTRUCTOR);
@@ -160,7 +163,8 @@ class ProjectServiceImplFlowTest {
                 userRepository,
                 currentUserService,
                 systemNotificationService,
-                projectMapper);
+                projectMapper,
+                auditService);
     }
 
     private User user(UserRole role) {

@@ -86,6 +86,13 @@ class ProjectControllerTest {
     }
 
     @Test
+    void unarchiveProject_delegatesId() throws Exception {
+        UUID id = UUID.randomUUID();
+        mockMvc.perform(patch("/api/projects/{id}/unarchive", id)).andExpect(status().isOk());
+        verify(projectService).unarchiveProject(id);
+    }
+
+    @Test
     void deleteProject_returns204() throws Exception {
         UUID id = UUID.randomUUID();
         mockMvc.perform(delete("/api/projects/{id}", id)).andExpect(status().isNoContent());

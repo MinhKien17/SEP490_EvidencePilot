@@ -232,8 +232,7 @@ public class DocumentServiceImpl implements DocumentService {
         if (projectId != null) {
             project = projectRepository.findById(projectId)
                     .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
-            currentUserService.requireProjectAccess(currentUser, project);
-            requireMutable(project);
+            currentUserService.requireProjectWriteAccess(currentUser, project);
         }
 
         com.evidencepilot.model.Collection collection = null;
@@ -242,7 +241,7 @@ public class DocumentServiceImpl implements DocumentService {
                     .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
             currentUserService.requireCollectionAccess(currentUser, collection);
             if (collection.getProject() != null) {
-                requireMutable(collection.getProject());
+                currentUserService.requireProjectWriteAccess(currentUser, collection.getProject());
             }
         }
 
@@ -299,7 +298,7 @@ public class DocumentServiceImpl implements DocumentService {
 
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
-        currentUserService.requireProjectAccess(currentUser, project);
+        currentUserService.requireProjectWriteAccess(currentUser, project);
 
         if (projectDocumentRepository.existsByProjectIdAndDocumentId(projectId, sourceId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Document already shared to this project");
@@ -350,7 +349,7 @@ public class DocumentServiceImpl implements DocumentService {
         var currentUser = currentUserService.requireCurrentUser();
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
-        currentUserService.requireProjectAccess(currentUser, project);
+        currentUserService.requireProjectWriteAccess(currentUser, project);
 
         ProjectDocument pd = projectDocumentRepository.findByProjectIdAndDocumentId(projectId, sourceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Shared document not found"));
@@ -406,7 +405,7 @@ public class DocumentServiceImpl implements DocumentService {
         validateFile(file);
         var currentUser = currentUserService.requireCurrentUser();
         Document doc = findDocument(documentId);
-        requireDocumentAccess(currentUser, doc);
+        requireDocumentWriteAccess(currentUser, doc);
 
         if (doc.getProcessingStatus() != ProcessingStatus.METADATA_FETCHED) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -442,13 +441,10 @@ public class DocumentServiceImpl implements DocumentService {
     public void deleteDocument(UUID id) {
         var currentUser = currentUserService.requireCurrentUser();
         Document doc = findDocument(id);
-        requireDocumentAccess(currentUser, doc);
+        requireDocumentWriteAccess(currentUser, doc);
         Project project = doc.getProject();
         if (project == null && doc.getCollection() != null) {
             project = doc.getCollection().getProject();
-        }
-        if (project != null) {
-            requireMutable(project);
         }
         doc.setActive(false);
         documentRepository.save(doc);
@@ -485,17 +481,33 @@ public class DocumentServiceImpl implements DocumentService {
         currentUserService.requireUserIdOrAdmin(currentUser, doc.getUploadedBy().getId());
     }
 
+    private void requireDocumentWriteAccess(User currentUser, Document doc) {
+        requireDocumentAccess(currentUser, doc);
+        Project project = doc.getProject();
+        if (project == null && doc.getCollection() != null) {
+            project = doc.getCollection().getProject();
+        }
+        if (project != null) {
+            currentUserService.requireProjectWriteAccess(currentUser, project);
+        }
+        for (ProjectDocument link : projectDocumentRepository.findByDocumentId(doc.getId())) {
+            ProjectStatus status = link.getProject().getStatus();
+            if (status.isReadOnly()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
+            }
+            if (status == ProjectStatus.SUBMITTED_FOR_REVIEW
+                    && !currentUserService.isAdmin(currentUser)) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT, "Project is locked and cannot be modified.");
+            }
+        }
+    }
+
     private void requireProjectAccess(UUID projectId) {
         var currentUser = currentUserService.requireCurrentUser();
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
         currentUserService.requireProjectAccess(currentUser, project);
-    }
-
-    private void requireMutable(Project project) {
-        if (project.getStatus() == ProjectStatus.APPROVED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
-        }
     }
 
     private void refreshProjectStatus(Project project) {

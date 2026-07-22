@@ -1,6 +1,7 @@
 package com.evidencepilot.service;
 
 import com.evidencepilot.dto.request.ClaimCreationRequest;
+import com.evidencepilot.dto.request.MappingReviewRequest;
 import com.evidencepilot.mapper.ClaimMapper;
 import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Claim;
@@ -15,6 +16,7 @@ import com.evidencepilot.model.enums.EvidenceRelation;
 import com.evidencepilot.model.enums.StrengthBand;
 import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
+import com.evidencepilot.model.enums.MappingReviewStatus;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.ClaimRepository;
@@ -41,6 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -151,13 +154,37 @@ class ClaimServiceImplAccessTest {
     void updateClaimRejectsCompletedProject() {
         User user = user();
         Claim claim = claim();
-        claim.getProject().setStatus(ProjectStatus.APPROVED);
+        claim.getProject().setStatus(ProjectStatus.ARCHIVED);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
+        doThrow(new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.CONFLICT, "Project is read-only."))
+                .when(currentUserService).requireProjectWriteAccess(user, claim.getProject());
 
         assertThatThrownBy(() -> service().updateClaim(claim.getId(), "Updated", null))
                 .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("Project is read-only.");
+    }
+
+    @Test
+    void archivedProjectRejectsAdminEvidenceMappingReview() {
+        User admin = user();
+        admin.setRole(com.evidencepilot.model.enums.UserRole.ADMIN);
+        Claim claim = claim();
+        claim.getProject().setStatus(ProjectStatus.ARCHIVED);
+        ClaimEvidenceMapping mapping = new ClaimEvidenceMapping();
+        mapping.setId(UUID.randomUUID());
+        mapping.setClaim(claim);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(admin);
+        when(claimEvidenceMappingRepository.findById(mapping.getId())).thenReturn(Optional.of(mapping));
+        doThrow(new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.CONFLICT, "Project is read-only."))
+                .when(currentUserService).requireProjectWriteAccess(admin, claim.getProject());
+
+        assertThatThrownBy(() -> service().reviewMapping(
+                mapping.getId(), new MappingReviewRequest(MappingReviewStatus.VERIFIED, null, null)))
                 .hasMessageContaining("Project is read-only.");
     }
 
@@ -191,6 +218,7 @@ class ClaimServiceImplAccessTest {
     void projectClaimQueriesRequireProjectAccess() {
         User user = user();
         Project project = claim().getProject();
+        project.setStatus(ProjectStatus.ARCHIVED);
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());

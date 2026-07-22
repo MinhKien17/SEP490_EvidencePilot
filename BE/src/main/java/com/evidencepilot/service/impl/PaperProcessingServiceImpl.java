@@ -9,7 +9,6 @@ import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.PaperStandard;
-import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.service.AiModelClient;
@@ -149,14 +148,11 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     @Transactional
     public PaperSectionResponse updateSection(UUID documentId, UUID sectionId,
             String title, Integer order, UUID mergeIntoId) {
-        requireDocumentAccess(documentId);
-        User currentUser = currentUserService.requireCurrentUser();
+        requireDocumentWriteAccess(documentId);
 
         if (mergeIntoId != null) {
-            PaperSection target = paperSectionRepository.findById(mergeIntoId)
-                    .orElseThrow(() -> new ResourceNotFoundException(mergeIntoId, "PaperSection"));
-            PaperSection source = paperSectionRepository.findById(sectionId)
-                    .orElseThrow(() -> new ResourceNotFoundException(sectionId, "PaperSection"));
+            PaperSection target = requireSectionInDocument(mergeIntoId, documentId);
+            PaperSection source = requireSectionInDocument(sectionId, documentId);
             target.setContentTex(
                     (target.getContentTex() != null ? target.getContentTex() : "")
                     + "\n\n" + (source.getContentTex() != null ? source.getContentTex() : ""));
@@ -168,8 +164,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             return projectMapper.toPaperSectionResponse(target);
         }
 
-        PaperSection section = paperSectionRepository.findById(sectionId)
-                .orElseThrow(() -> new ResourceNotFoundException(sectionId, "PaperSection"));
+        PaperSection section = requireSectionInDocument(sectionId, documentId);
         if (title != null && !title.isBlank()) {
             section.setSectionTitle(title);
         }
@@ -183,9 +178,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     @Override
     @Transactional
     public PaperSectionResponse createSection(UUID documentId, String title, UUID parentSectionId) {
-        requireDocumentAccess(documentId);
-        Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new ResourceNotFoundException(documentId, "Document"));
+        Document document = requireDocumentWriteAccess(documentId);
 
         List<PaperSection> existing = paperSectionRepository
                 .findByDocumentIdOrderBySectionOrderAsc(documentId);
@@ -201,11 +194,19 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         section.setContentTex("");
         section.setUpdatedAt(LocalDateTime.now());
         if (parentSectionId != null) {
-            PaperSection parent = paperSectionRepository.findById(parentSectionId)
-                    .orElseThrow(() -> new ResourceNotFoundException(parentSectionId, "PaperSection"));
+            PaperSection parent = requireSectionInDocument(parentSectionId, documentId);
             section.setSectionOrder(parent.getSectionOrder() + 1);
         }
         return projectMapper.toPaperSectionResponse(paperSectionRepository.save(section));
+    }
+
+    private PaperSection requireSectionInDocument(UUID sectionId, UUID documentId) {
+        PaperSection section = paperSectionRepository.findById(sectionId)
+                .orElseThrow(() -> new ResourceNotFoundException(sectionId, "PaperSection"));
+        if (!documentId.equals(section.getDocument().getId())) {
+            throw new ResourceNotFoundException(sectionId, "PaperSection");
+        }
+        return section;
     }
 
     private List<PaperSection> parseSections(String text, Document document) {
@@ -259,6 +260,15 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             return document;
         }
         currentUserService.requireUserIdOrAdmin(currentUser, document.getUploadedBy().getId());
+        return document;
+    }
+
+    private Document requireDocumentWriteAccess(UUID documentId) {
+        Document document = requireDocumentAccess(documentId);
+        if (document.getProject() != null) {
+            currentUserService.requireProjectWriteAccess(
+                    currentUserService.requireCurrentUser(), document.getProject());
+        }
         return document;
     }
 }

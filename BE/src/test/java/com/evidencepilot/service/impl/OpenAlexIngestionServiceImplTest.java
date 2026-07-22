@@ -33,6 +33,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -187,10 +188,13 @@ class OpenAlexIngestionServiceImplTest {
     }
 
     @Test
-    void ingestByDoi_throwsWhenProjectIsApproved() {
-        project.setStatus(ProjectStatus.APPROVED);
+    void ingestByDoi_throwsWhenProjectIsArchived() {
+        project.setStatus(ProjectStatus.ARCHIVED);
         when(currentUserService.requireCurrentUser()).thenReturn(currentUser);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        doThrow(new ResponseStatusException(
+                org.springframework.http.HttpStatus.CONFLICT, "Project is read-only."))
+                .when(currentUserService).requireProjectWriteAccess(currentUser, project);
 
         assertThatThrownBy(() -> service.ingestByDoi(project.getId(), "10.1000/xyz"))
                 .isInstanceOf(ResponseStatusException.class)

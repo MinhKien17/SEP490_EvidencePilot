@@ -23,6 +23,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -45,6 +48,9 @@ class ProjectServiceImplLifecycleTest {
 
     @Mock
     private ProjectMapper projectMapper;
+
+    @Mock
+    private AuditService auditService;
 
     @Test
     void completeActiveProjectMarksCompleted() {
@@ -87,7 +93,11 @@ class ProjectServiceImplLifecycleTest {
         var response = service().archiveProject(project.getId());
 
         verify(currentUserService).requireProjectManageAccess(user, project);
-        assertThat(response.status()).isEqualTo(ProjectStatus.APPROVED);
+        assertThat(response.status()).isEqualTo(ProjectStatus.ARCHIVED);
+        assertThat(project.isActive()).isTrue();
+        verify(auditService).record(
+                "PROJECT_ARCHIVED", "PROJECT", project.getId(), user,
+                ProjectStatus.APPROVED, ProjectStatus.ARCHIVED);
     }
 
     @Test
@@ -100,7 +110,59 @@ class ProjectServiceImplLifecycleTest {
 
         assertThatThrownBy(() -> service().archiveProject(project.getId()))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Only COMPLETED projects can be archived.");
+                .hasMessageContaining("Only APPROVED projects can be archived.")
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(org.springframework.http.HttpStatus.CONFLICT));
+        verify(projectRepository, never()).save(project);
+        verify(auditService, never()).record(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void unarchiveArchivedProjectMarksApprovedAndAudits() {
+        User user = user();
+        Project project = project(ProjectStatus.ARCHIVED);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(projectRepository.save(project)).thenReturn(project);
+
+        var response = service().unarchiveProject(project.getId());
+
+        verify(currentUserService).requireProjectManageAccess(user, project);
+        assertThat(response.status()).isEqualTo(ProjectStatus.APPROVED);
+        assertThat(project.isActive()).isTrue();
+        verify(auditService).record(
+                "PROJECT_UNARCHIVED", "PROJECT", project.getId(), user,
+                ProjectStatus.ARCHIVED, ProjectStatus.APPROVED);
+    }
+
+    @Test
+    void unarchiveRejectsNonArchivedProjectWithoutSaveOrAudit() {
+        User user = user();
+        Project project = project(ProjectStatus.APPROVED);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+
+        assertThatThrownBy(() -> service().unarchiveProject(project.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Only ARCHIVED projects can be unarchived.")
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(org.springframework.http.HttpStatus.CONFLICT));
+        verify(projectRepository, never()).save(project);
+        verify(auditService, never()).record(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -110,6 +172,8 @@ class ProjectServiceImplLifecycleTest {
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        doThrow(new ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT, "Project is read-only."))
+                .when(currentUserService).requireProjectWriteAccess(user, project);
 
         assertThatThrownBy(() -> service().updateProject(
                 project.getId(),
@@ -119,15 +183,39 @@ class ProjectServiceImplLifecycleTest {
     }
 
     @Test
+    void archivedProjectRejectsMetadataDeleteAndMemberMutations() {
+        User user = user();
+        Project project = project(ProjectStatus.ARCHIVED);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        doThrow(new ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT, "Project is read-only."))
+                .when(currentUserService).requireProjectWriteAccess(user, project);
+
+        assertReadOnly(() -> service().updateProject(
+                project.getId(),
+                new ProjectUpdateRequest("Updated", "Description", PaperStandard.IEEE)));
+        assertReadOnly(() -> service().deleteProject(project.getId()));
+        assertReadOnly(() -> service().addMember(project.getId(), UUID.randomUUID(), null));
+        assertReadOnly(() -> service().removeMember(project.getId(), UUID.randomUUID()));
+
+        verify(projectRepository, never()).save(project);
+        verify(projectMemberRepository, never()).save(org.mockito.ArgumentMatchers.any());
+        verify(projectMemberRepository, never()).deleteAll(org.mockito.ArgumentMatchers.any());
+        verify(currentUserService, times(4)).requireProjectWriteAccess(user, project);
+    }
+
+    @Test
     void getProjectByIdRequiresAccess() {
         User user = user();
-        Project project = project(ProjectStatus.IN_PROGRESS);
+        Project project = project(ProjectStatus.ARCHIVED);
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
 
-        service().getProjectById(project.getId());
+        var response = service().getProjectById(project.getId());
 
         verify(currentUserService).requireProjectAccess(user, project);
+        assertThat(response.status()).isEqualTo(ProjectStatus.ARCHIVED);
+        assertThat(project.isActive()).isTrue();
     }
 
     @Test
@@ -165,7 +253,14 @@ class ProjectServiceImplLifecycleTest {
                 userRepository,
                 currentUserService,
                 systemNotificationService,
-                projectMapper);
+                projectMapper,
+                auditService);
+    }
+
+    private void assertReadOnly(org.assertj.core.api.ThrowableAssert.ThrowingCallable action) {
+        assertThatThrownBy(action)
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Project is read-only.");
     }
 
     private User user() {

@@ -23,12 +23,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 class ProjectRouteMappingTest {
 
     private static final Class<?>[] CONTROLLERS = {
+            AdminController.class,
             AuthController.class,
             ClaimController.class,
             CollectionController.class,
             DocumentController.class,
             FeedbackController.class,
             HealthController.class,
+            OpenAlexController.class,
             PaperController.class,
             ProjectController.class,
             RagController.class,
@@ -49,6 +51,8 @@ class ProjectRouteMappingTest {
                 "POST /api/auth/register",
                 "GET /api/auth/verify-email",
                 "POST /api/auth/login",
+                "POST /api/auth/password-reset/request",
+                "POST /api/auth/password-reset/confirm",
                 "GET /api/users/{id}",
                 "GET /api/users/profile",
                 "PUT /api/users/profile",
@@ -58,6 +62,7 @@ class ProjectRouteMappingTest {
                 "PUT /api/projects/{id}",
                 "PATCH /api/projects/{id}/complete",
                 "PATCH /api/projects/{id}/archive",
+                "PATCH /api/projects/{id}/unarchive",
                 "DELETE /api/projects/{id}",
                 "GET /api/projects/{id}/members",
                 "GET /api/projects/{projectId}/documents",
@@ -73,6 +78,8 @@ class ProjectRouteMappingTest {
                 "DELETE /api/collections/{id}",
                 "GET /api/documents/{id}",
                 "POST /api/documents",
+                "POST /api/documents/lookup",
+                "POST /api/documents/ingest/doi",
                 "POST /api/documents/{documentId}/file",
                 "GET /api/documents/{id}/chunks",
                 "GET /api/documents/{id}/text",
@@ -99,6 +106,15 @@ class ProjectRouteMappingTest {
                 "POST /api/admin/source-categories",
                 "PUT /api/admin/source-categories/{id}",
                 "DELETE /api/admin/source-categories/{id}",
+                "GET /api/admin/users",
+                "POST /api/admin/users",
+                "PATCH /api/admin/users/{id}/role",
+                "PATCH /api/admin/users/{id}/status",
+                "DELETE /api/admin/users/{id}",
+                "POST /api/admin/users/{id}/password-reset",
+                "GET /api/admin/dashboard",
+                "GET /api/admin/audit-logs",
+                "POST /api/admin/notifications/broadcast",
                 "GET /api/claims",
                 "GET /api/claims/{id}",
                 "POST /api/claims",
@@ -123,6 +139,7 @@ class ProjectRouteMappingTest {
                 "GET /api/health",
                 "GET /api/health/live",
                 "GET /api/health/ready"));
+        assertThat(routes).hasSize(91);
     }
 
     @Test

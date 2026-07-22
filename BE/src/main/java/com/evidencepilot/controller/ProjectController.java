@@ -120,11 +120,19 @@ public class ProjectController {
     }
 
     @Operation(summary = "Archive a project",
-            description = "Marks a COMPLETED project as ARCHIVED.")
+            description = "Transitions an APPROVED project to ARCHIVED.")
     @PatchMapping("/{id}/archive")
     public ProjectResponse archiveProject(
             @Parameter(description = "Project UUID") @PathVariable UUID id) {
         return projectService.archiveProject(id);
+    }
+
+    @Operation(summary = "Unarchive a project",
+            description = "Restores an ARCHIVED project to APPROVED.")
+    @PatchMapping("/{id}/unarchive")
+    public ProjectResponse unarchiveProject(
+            @Parameter(description = "Project UUID") @PathVariable UUID id) {
+        return projectService.unarchiveProject(id);
     }
 
     @Operation(summary = "Soft-delete a project",

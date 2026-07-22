@@ -42,6 +42,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -89,6 +90,7 @@ class DocumentServiceImplAccessTest {
     void getDocumentByIdRequiresProjectAccess() {
         User user = user();
         Project project = project();
+        project.setStatus(ProjectStatus.ARCHIVED);
         Document document = document(project);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
@@ -116,7 +118,7 @@ class DocumentServiceImplAccessTest {
     }
 
     @Test
-    void deleteDocumentRequiresProjectAccess() {
+    void deleteDocumentRequiresProjectWriteAccess() {
         User user = user();
         Project project = project();
         Document document = document(project);
@@ -126,11 +128,11 @@ class DocumentServiceImplAccessTest {
 
         service().deleteDocument(document.getId());
 
-        verify(currentUserService).requireProjectAccess(user, project);
+        verify(currentUserService).requireProjectWriteAccess(user, project);
     }
 
     @Test
-    void uploadDocumentRequiresProjectAccess() throws Exception {
+    void uploadDocumentRequiresProjectWriteAccess() throws Exception {
         User user = user();
         Project project = project();
         Document persisted = document(project);
@@ -151,7 +153,7 @@ class DocumentServiceImplAccessTest {
 
         service().uploadDocument(project.getId(), file, DocumentType.PAPER);
 
-        verify(currentUserService).requireProjectAccess(user, project);
+        verify(currentUserService).requireProjectWriteAccess(user, project);
     }
 
     @Test
@@ -222,6 +224,7 @@ class DocumentServiceImplAccessTest {
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        doThrow(readOnly()).when(currentUserService).requireProjectWriteAccess(user, project);
 
         assertThatThrownBy(() -> service().uploadDocument(project.getId(), file, DocumentType.PAPER))
                 .isInstanceOf(ResponseStatusException.class)
@@ -233,16 +236,100 @@ class DocumentServiceImplAccessTest {
     void deleteDocumentRejectsArchivedProject() {
         User user = user();
         Project project = project();
-        project.setStatus(ProjectStatus.APPROVED);
+        project.setStatus(ProjectStatus.ARCHIVED);
         Document document = document(project);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        doThrow(readOnly()).when(currentUserService).requireProjectWriteAccess(user, project);
 
         assertThatThrownBy(() -> service().deleteDocument(document.getId()))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Project is read-only.");
         verify(documentRepository, never()).save(any(Document.class));
+    }
+
+    @Test
+    void archivedProjectRejectsShareAndRemoveSharedDocument() {
+        User user = user();
+        Project project = project();
+        project.setStatus(ProjectStatus.ARCHIVED);
+        com.evidencepilot.model.Collection collection = collection();
+        Document source = document(null);
+        source.setDocType(DocumentType.SOURCE);
+        source.setCollection(collection);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        doThrow(readOnly()).when(currentUserService).requireProjectWriteAccess(user, project);
+
+        assertThatThrownBy(() -> service().shareToProject(collection.getId(), source.getId(), project.getId()))
+                .hasMessageContaining("Project is read-only.");
+        assertThatThrownBy(() -> service().removeSharedDocument(project.getId(), source.getId()))
+                .hasMessageContaining("Project is read-only.");
+        verify(projectDocumentRepository, never()).save(any());
+        verify(projectDocumentRepository, never()).delete(any());
+    }
+
+    @Test
+    void archivedProjectRejectsExtractionAffectingFileAttachment() {
+        User user = user();
+        Project project = project();
+        project.setStatus(ProjectStatus.ARCHIVED);
+        Document document = document(project);
+        document.setProcessingStatus(ProcessingStatus.METADATA_FETCHED);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "paper.pdf", "application/pdf", "content".getBytes());
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        doThrow(readOnly()).when(currentUserService).requireProjectWriteAccess(user, project);
+
+        assertThatThrownBy(() -> service().attachFileToDocument(document.getId(), file))
+                .hasMessageContaining("Project is read-only.");
+        verify(documentPersistenceService, never()).markDocumentAsUploaded(any(), anyString());
+    }
+
+    @Test
+    void submittedProjectLocksLinkedDocumentMutationForNonAdmin() {
+        User user = user();
+        Project project = project();
+        project.setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
+        com.evidencepilot.model.Collection collection = collection();
+        Document source = document(null);
+        source.setCollection(collection);
+        com.evidencepilot.model.ProjectDocument link = new com.evidencepilot.model.ProjectDocument();
+        link.setProject(project);
+        link.setDocument(source);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(projectDocumentRepository.findByDocumentId(source.getId())).thenReturn(List.of(link));
+
+        assertThatThrownBy(() -> service().deleteDocument(source.getId()))
+                .hasMessageContaining("Project is locked and cannot be modified.");
+        verify(documentRepository, never()).save(source);
+    }
+
+    @Test
+    void submittedProjectAllowsLinkedDocumentMutationForAdmin() {
+        User admin = user();
+        Project project = project();
+        project.setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
+        Document source = document(null);
+        com.evidencepilot.model.ProjectDocument link = new com.evidencepilot.model.ProjectDocument();
+        link.setProject(project);
+        link.setDocument(source);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(admin);
+        when(currentUserService.isAdmin(admin)).thenReturn(true);
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(projectDocumentRepository.findByDocumentId(source.getId())).thenReturn(List.of(link));
+
+        service().deleteDocument(source.getId());
+
+        verify(documentRepository).save(source);
     }
 
     @Test
@@ -432,6 +519,10 @@ class DocumentServiceImplAccessTest {
                 minioClient);
         ReflectionTestUtils.setField(service, "bucketName", "test-bucket");
         return service;
+    }
+
+    private ResponseStatusException readOnly() {
+        return new ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT, "Project is read-only.");
     }
 
     private User user() {

@@ -7,7 +7,6 @@ import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Collection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
-import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
@@ -18,9 +17,7 @@ import jakarta.persistence.criteria.Predicate;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -49,8 +46,7 @@ public class CollectionServiceImpl implements CollectionService {
         if (request.projectId() != null) {
             project = projectRepository.findById(request.projectId())
                     .orElseThrow(() -> new ResourceNotFoundException(request.projectId(), "Project"));
-            currentUserService.requireProjectAccess(currentUser, project);
-            requireMutable(project);
+            currentUserService.requireProjectWriteAccess(currentUser, project);
         }
 
         Collection collection = new Collection();
@@ -114,16 +110,10 @@ public class CollectionServiceImpl implements CollectionService {
                 .orElseThrow(() -> new ResourceNotFoundException(id, "Collection"));
         currentUserService.requireCollectionAccess(currentUser, collection);
         if (collection.getProject() != null) {
-            requireMutable(collection.getProject());
+            currentUserService.requireProjectWriteAccess(currentUser, collection.getProject());
         }
         collection.setActive(false);
         collectionRepository.save(collection);
-    }
-
-    private void requireMutable(Project project) {
-        if (project.getStatus() == ProjectStatus.APPROVED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
-        }
     }
 
     private CollectionResponse toResponse(Collection collection) {
