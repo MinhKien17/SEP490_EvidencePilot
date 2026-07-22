@@ -1,0 +1,100 @@
+package com.evidencepilot.controller;
+
+import com.evidencepilot.dto.request.AdminBroadcastRequest;
+import com.evidencepilot.dto.request.AdminUserCreateRequest;
+import com.evidencepilot.dto.request.AdminUserRoleRequest;
+import com.evidencepilot.dto.request.AdminUserStatusRequest;
+import com.evidencepilot.dto.response.AdminAuditLogResponse;
+import com.evidencepilot.dto.response.AdminDashboardResponse;
+import com.evidencepilot.dto.response.AdminUserResponse;
+import com.evidencepilot.dto.response.BroadcastResponse;
+import com.evidencepilot.dto.response.PagedResponse;
+import com.evidencepilot.model.enums.AccountStatus;
+import com.evidencepilot.model.enums.UserRole;
+import com.evidencepilot.service.AdminService;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/api/admin")
+@PreAuthorize("hasRole('ADMIN')")
+@RequiredArgsConstructor
+@Tag(name = "Administration", description = "User administration, audit, dashboard, and broadcast operations")
+public class AdminController {
+
+    private final AdminService adminService;
+
+    @GetMapping("/users")
+    public PagedResponse<AdminUserResponse> users(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "createdAt,desc") String sort,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) UserRole role,
+            @RequestParam(required = false) AccountStatus status) {
+        return adminService.getUsers(page, size, sort, q, role, status);
+    }
+
+    @PostMapping("/users")
+    @ResponseStatus(HttpStatus.CREATED)
+    public AdminUserResponse createUser(@Valid @RequestBody AdminUserCreateRequest request) {
+        return adminService.createUser(request);
+    }
+
+    @PatchMapping("/users/{id}/role")
+    public AdminUserResponse updateRole(@PathVariable UUID id, @Valid @RequestBody AdminUserRoleRequest request) {
+        return adminService.updateRole(id, request);
+    }
+
+    @PatchMapping("/users/{id}/status")
+    public AdminUserResponse updateStatus(@PathVariable UUID id, @Valid @RequestBody AdminUserStatusRequest request) {
+        return adminService.updateStatus(id, request);
+    }
+
+    @DeleteMapping("/users/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteUser(@PathVariable UUID id) {
+        adminService.deleteUser(id);
+    }
+
+    @PostMapping("/users/{id}/password-reset")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public void requestPasswordReset(@PathVariable UUID id) {
+        adminService.requestPasswordReset(id);
+    }
+
+    @GetMapping("/dashboard")
+    public AdminDashboardResponse dashboard() {
+        return adminService.getDashboard();
+    }
+
+    @GetMapping("/audit-logs")
+    public PagedResponse<AdminAuditLogResponse> auditLogs(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) UUID actorId,
+            @RequestParam(required = false) String entityType,
+            @RequestParam(required = false) UUID entityId) {
+        return adminService.getAuditLogs(page, size, actorId, entityType, entityId);
+    }
+
+    @PostMapping("/notifications/broadcast")
+    public BroadcastResponse broadcast(@Valid @RequestBody AdminBroadcastRequest request) {
+        return new BroadcastResponse(adminService.broadcast(request));
+    }
+}

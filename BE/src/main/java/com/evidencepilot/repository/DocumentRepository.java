@@ -13,6 +13,7 @@ import java.util.UUID;
 import java.util.Optional;
 
 public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSpecificationExecutor<Document> {
+    long countByActiveTrueAndDocType(DocumentType docType);
     Optional<Document> findByFileHashSha256(String fileHash);
     List<Document> findByProjectId(UUID projectId);
     List<Document> findByProjectIdAndDocTypeAndActiveTrue(UUID projectId, DocumentType docType);

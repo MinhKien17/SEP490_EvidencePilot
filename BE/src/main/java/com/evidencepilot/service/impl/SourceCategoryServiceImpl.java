@@ -6,6 +6,8 @@ import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.SourceCategory;
 import com.evidencepilot.repository.SourceCategoryRepository;
 import com.evidencepilot.service.SourceCategoryService;
+import com.evidencepilot.service.AuditService;
+import com.evidencepilot.service.CurrentUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -14,6 +16,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -21,6 +25,8 @@ import java.util.UUID;
 public class SourceCategoryServiceImpl implements SourceCategoryService {
 
     private final SourceCategoryRepository sourceCategoryRepository;
+    private final CurrentUserService currentUserService;
+    private final AuditService auditService;
 
     @Override
     public List<SourceCategoryResponse> getActiveCategories() {
@@ -52,7 +58,10 @@ public class SourceCategoryServiceImpl implements SourceCategoryService {
         category.setDescription(request.description());
         category.setActive(true);
         category.setCreatedAt(LocalDateTime.now());
-        return SourceCategoryResponse.from(sourceCategoryRepository.save(category));
+        category = sourceCategoryRepository.save(category);
+        auditService.record("SOURCE_CATEGORY_CREATED", "SOURCE_CATEGORY", category.getId(),
+                currentUserService.requireCurrentUser(), null, safeValue(category));
+        return SourceCategoryResponse.from(category);
     }
 
     @Override
@@ -65,12 +74,16 @@ public class SourceCategoryServiceImpl implements SourceCategoryService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Source category already exists");
         }
 
+        Map<String, Object> oldValue = safeValue(category);
         category.setName(name);
         category.setDescription(request.description());
         if (active != null) {
             category.setActive(active);
         }
-        return SourceCategoryResponse.from(sourceCategoryRepository.save(category));
+        category = sourceCategoryRepository.save(category);
+        auditService.record("SOURCE_CATEGORY_UPDATED", "SOURCE_CATEGORY", category.getId(),
+                currentUserService.requireCurrentUser(), oldValue, safeValue(category));
+        return SourceCategoryResponse.from(category);
     }
 
     @Override
@@ -78,7 +91,18 @@ public class SourceCategoryServiceImpl implements SourceCategoryService {
     public void delete(UUID id) {
         SourceCategory category = sourceCategoryRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(id, "Source category"));
+        Map<String, Object> oldValue = safeValue(category);
         category.setActive(false);
         sourceCategoryRepository.save(category);
+        auditService.record("SOURCE_CATEGORY_DELETED", "SOURCE_CATEGORY", category.getId(),
+                currentUserService.requireCurrentUser(), oldValue, safeValue(category));
+    }
+
+    private Map<String, Object> safeValue(SourceCategory category) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("name", category.getName());
+        value.put("description", category.getDescription());
+        value.put("active", category.isActive());
+        return value;
     }
 }

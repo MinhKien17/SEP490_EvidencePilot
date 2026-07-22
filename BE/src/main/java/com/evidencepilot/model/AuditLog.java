@@ -29,7 +29,7 @@ public class AuditLog {
     @Column(name = "entity_type", nullable = false, length = 50)
     private String entityType;
 
-    @Column(name = "entity_id", columnDefinition = "BINARY(16)", nullable = false)
+    @Column(name = "entity_id", columnDefinition = "BINARY(16)")
     @JdbcTypeCode(java.sql.Types.BINARY)
     private UUID entityId;
 

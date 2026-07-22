@@ -13,4 +13,5 @@ public interface SourceCategoryRepository extends JpaRepository<SourceCategory, 
     Optional<SourceCategory> findByIdAndActiveTrue(UUID id);
     boolean existsByNameIgnoreCase(String name);
     boolean existsByNameIgnoreCaseAndIdNot(String name, UUID id);
+    long countByActiveTrue();
 }

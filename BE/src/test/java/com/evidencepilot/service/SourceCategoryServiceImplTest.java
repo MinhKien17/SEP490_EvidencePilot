@@ -18,13 +18,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 @ExtendWith(MockitoExtension.class)
 class SourceCategoryServiceImplTest {
 
     @Mock
     private SourceCategoryRepository sourceCategoryRepository;
+
+    @Mock
+    private CurrentUserService currentUserService;
+
+    @Mock
+    private AuditService auditService;
 
     @Test
     void listsActiveCategoriesForInstructors() {
@@ -40,6 +48,8 @@ class SourceCategoryServiceImplTest {
 
     @Test
     void createsCategoryWithUniqueName() {
+        com.evidencepilot.model.User admin = admin();
+        when(currentUserService.requireCurrentUser()).thenReturn(admin);
         when(sourceCategoryRepository.existsByNameIgnoreCase("Journal")).thenReturn(false);
         when(sourceCategoryRepository.save(any(SourceCategory.class))).thenAnswer(invocation -> {
             SourceCategory category = invocation.getArgument(0);
@@ -51,6 +61,10 @@ class SourceCategoryServiceImplTest {
 
         assertThat(response.name()).isEqualTo("Journal");
         assertThat(response.active()).isTrue();
+        verify(auditService).record(org.mockito.ArgumentMatchers.eq("SOURCE_CATEGORY_CREATED"),
+                org.mockito.ArgumentMatchers.eq("SOURCE_CATEGORY"), org.mockito.ArgumentMatchers.eq(response.id()),
+                org.mockito.ArgumentMatchers.eq(admin), org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.any(java.util.Map.class));
     }
 
     @Test
@@ -60,11 +74,25 @@ class SourceCategoryServiceImplTest {
         assertThatThrownBy(() -> service().create(new SourceCategoryRequest("Journal", null)))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("already exists");
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void failedPersistenceIsNotAudited() {
+        when(sourceCategoryRepository.existsByNameIgnoreCase("Journal")).thenReturn(false);
+        doThrow(new IllegalStateException("database down"))
+                .when(sourceCategoryRepository).save(any(SourceCategory.class));
+
+        assertThatThrownBy(() -> service().create(new SourceCategoryRequest("Journal", null)))
+                .isInstanceOf(IllegalStateException.class);
+
+        verifyNoInteractions(auditService);
     }
 
     @Test
     void updatesCategory() {
         SourceCategory category = category("Old");
+        when(currentUserService.requireCurrentUser()).thenReturn(admin());
 
         when(sourceCategoryRepository.findById(category.getId())).thenReturn(Optional.of(category));
         when(sourceCategoryRepository.existsByNameIgnoreCaseAndIdNot("New", category.getId())).thenReturn(false);
@@ -75,11 +103,16 @@ class SourceCategoryServiceImplTest {
         assertThat(response.name()).isEqualTo("New");
         assertThat(response.description()).isEqualTo("Updated");
         assertThat(response.active()).isFalse();
+        verify(auditService).record(org.mockito.ArgumentMatchers.eq("SOURCE_CATEGORY_UPDATED"),
+                org.mockito.ArgumentMatchers.eq("SOURCE_CATEGORY"), org.mockito.ArgumentMatchers.eq(category.getId()),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(java.util.Map.class),
+                org.mockito.ArgumentMatchers.any(java.util.Map.class));
     }
 
     @Test
     void softDeletesCategory() {
         SourceCategory category = category("Journal");
+        when(currentUserService.requireCurrentUser()).thenReturn(admin());
 
         when(sourceCategoryRepository.findById(category.getId())).thenReturn(Optional.of(category));
 
@@ -87,10 +120,14 @@ class SourceCategoryServiceImplTest {
 
         assertThat(category.isActive()).isFalse();
         verify(sourceCategoryRepository).save(category);
+        verify(auditService).record(org.mockito.ArgumentMatchers.eq("SOURCE_CATEGORY_DELETED"),
+                org.mockito.ArgumentMatchers.eq("SOURCE_CATEGORY"), org.mockito.ArgumentMatchers.eq(category.getId()),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(java.util.Map.class),
+                org.mockito.ArgumentMatchers.any(java.util.Map.class));
     }
 
     private SourceCategoryServiceImpl service() {
-        return new SourceCategoryServiceImpl(sourceCategoryRepository);
+        return new SourceCategoryServiceImpl(sourceCategoryRepository, currentUserService, auditService);
     }
 
     private SourceCategory category(String name) {
@@ -99,5 +136,12 @@ class SourceCategoryServiceImplTest {
         category.setName(name);
         category.setActive(true);
         return category;
+    }
+
+    private com.evidencepilot.model.User admin() {
+        com.evidencepilot.model.User user = new com.evidencepilot.model.User();
+        user.setId(UUID.randomUUID());
+        user.setEmail("admin@test.com");
+        return user;
     }
 }
