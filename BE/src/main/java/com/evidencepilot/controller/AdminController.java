@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -132,5 +133,20 @@ public class AdminController {
     @PostMapping("/notifications/broadcast")
     public BroadcastResponse broadcast(@Valid @RequestBody AdminBroadcastRequest request) {
         return new BroadcastResponse(adminService.broadcast(request));
+    }
+
+    @GetMapping("/documents/extraction-queue")
+    public Map<String, Object> extractionQueue() {
+        return adminService.getExtractionQueue();
+    }
+
+    @GetMapping("/notifications/broadcast-history")
+    public List<Map<String, Object>> broadcastHistory() {
+        return adminService.getBroadcastHistory();
+    }
+
+    @GetMapping("/collections")
+    public List<Map<String, Object>> collections() {
+        return adminService.getCollections();
     }
 }

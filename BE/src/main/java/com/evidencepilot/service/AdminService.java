@@ -10,9 +10,11 @@ import com.evidencepilot.dto.response.AdminDashboardResponse;
 import com.evidencepilot.dto.response.AdminUserResponse;
 import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
+import com.evidencepilot.model.Document;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.AuditLogRepository;
@@ -21,6 +23,7 @@ import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.SourceCategoryRepository;
 import com.evidencepilot.repository.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -58,6 +61,7 @@ public class AdminService {
     private final HealthService health;
     private final AuditService audit;
     private final SystemNotificationService notifications;
+    private final ObjectMapper objectMapper;
     private final PasswordEncoder passwords;
 
     @Transactional(readOnly = true)
@@ -224,6 +228,59 @@ public class AdminService {
         metadata.put("recipientCount", recipients.size());
         audit.record("NOTIFICATION_BROADCAST", "SYSTEM_NOTIFICATION", null, actor, null, metadata);
         return recipients.size();
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getExtractionQueue() {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (ProcessingStatus s : ProcessingStatus.values()) {
+            counts.put(s.name(), documents.countByProcessingStatus(s));
+        }
+        List<Document> failed = documents.findByProcessingStatusAndActiveTrue(ProcessingStatus.FAILED);
+        List<Map<String, Object>> failedList = failed.stream().limit(50).<Map<String, Object>>map(d -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", d.getId());
+            m.put("originalFilename", d.getOriginalFilename());
+            m.put("processingError", d.getProcessingError());
+            m.put("createdAt", d.getCreatedAt() != null ? d.getCreatedAt().toString() : null);
+            return m;
+        }).toList();
+        return Map.of("counts", counts, "failed", failedList);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getBroadcastHistory() {
+        Pageable pageable = PagingRequest.pageable(0, 20, "occurredAt,desc", Set.of("occurredAt"), "occurredAt,desc");
+        return auditLogs.findByActionOrderByOccurredAtDesc("NOTIFICATION_BROADCAST", pageable)
+                .map(log -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("actorEmail", log.getActor() != null ? log.getActor().getEmail() : null);
+                    m.put("occurredAt", log.getOccurredAt() != null ? log.getOccurredAt().toString() : null);
+                    try {
+                        m.put("details", log.getNewValue() != null
+                                ? objectMapper.readValue(log.getNewValue(), Map.class)
+                                : null);
+                    } catch (Exception e) {
+                        m.put("details", log.getNewValue());
+                    }
+                    return m;
+                }).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getCollections() {
+        return collections.findAll().stream()
+                .filter(c -> c.isActive() || c.getInstructor() != null)
+                .map(c -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("id", c.getId());
+                    m.put("name", c.getTitle());
+                    m.put("description", c.getDescription());
+                    m.put("instructorEmail", c.getInstructor().getEmail());
+                    m.put("createdAt", c.getCreatedAt() != null ? c.getCreatedAt().toString() : null);
+                    m.put("active", c.isActive());
+                    return m;
+                }).toList();
     }
 
     private User requireMutableUser(UUID id) {
