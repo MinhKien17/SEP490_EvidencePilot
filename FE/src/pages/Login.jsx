@@ -26,13 +26,15 @@ export default function Login() {
         password: form.passwordHash
       });
       const token = res.data.token ?? res.data.accessToken ?? res.data.jwt;
-      const role = res.data.role;
+      const role = res.data.user?.role ?? res.data.role;
 
       if (!token) throw new Error('Token not found in response');
 
       login(token, role);
 
-      if (role === 'INSTRUCTOR') {
+      if (role === 'ADMIN') {
+        navigate('/admin/dashboard');
+      } else if (role === 'INSTRUCTOR') {
         navigate('/instructor/dashboard');
       } else {
         navigate('/student/projects');

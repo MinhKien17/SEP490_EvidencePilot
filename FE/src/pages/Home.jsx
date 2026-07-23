@@ -17,7 +17,7 @@ export default function Home() {
           {isAuthenticated ? (
             <>
               <Link
-                to={role === 'INSTRUCTOR' ? '/instructor/dashboard' : '/student/projects'}
+                to={role === 'ADMIN' ? '/admin/dashboard' : role === 'INSTRUCTOR' ? '/instructor/dashboard' : '/student/projects'}
                 className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white px-4 py-1.5 rounded text-sm font-medium transition shadow-sm"
               >
                 Go to Workspace
@@ -55,8 +55,8 @@ export default function Home() {
           <div className="pt-4">
             {isAuthenticated ? (
               <Link
-                to={role === 'INSTRUCTOR' ? '/instructor/dashboard' : '/student/projects'}
-                className="bg-[#1e3a8a] hover:bg-[#1e40af] text-white px-8 py-3.5 rounded text-base font-semibold transition shadow-md inline-block"
+                to={role === 'ADMIN' ? '/admin/dashboard' : role === 'INSTRUCTOR' ? '/instructor/dashboard' : '/student/projects'}
+                className="bg-[#2563eb] hover:bg-[#1d4ed8] text-white px-2.5 py-1.5 rounded text-sm font-medium transition shadow-sm"
               >
                 Go to Workspace
               </Link>
