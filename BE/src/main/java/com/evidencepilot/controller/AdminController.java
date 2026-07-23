@@ -15,6 +15,7 @@ import com.evidencepilot.service.AdminService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -38,6 +40,40 @@ import java.util.UUID;
 public class AdminController {
 
     private final AdminService adminService;
+
+    @Value("${jwt.expiration-ms}")
+    private String jwtExpirationMs;
+
+    @Value("${minio.url}")
+    private String minioUrl;
+
+    @Value("${minio.bucket-name}")
+    private String minioBucket;
+
+    @Value("${minio.public-url:}")
+    private String minioPublicUrl;
+
+    @Value("${qdrant.url}")
+    private String qdrantUrl;
+
+    @Value("${ai.model.base-url}")
+    private String aiModelBaseUrl;
+
+    @Value("${openalex.api-base-url}")
+    private String openalexBaseUrl;
+
+    @GetMapping("/config")
+    public Map<String, String> getConfig() {
+        return Map.of(
+                "jwtExpirationMs", jwtExpirationMs,
+                "minioUrl", minioUrl,
+                "minioBucket", minioBucket,
+                "minioPublicUrl", minioPublicUrl,
+                "qdrantUrl", qdrantUrl,
+                "aiModelBaseUrl", aiModelBaseUrl,
+                "openalexBaseUrl", openalexBaseUrl
+        );
+    }
 
     @GetMapping("/users")
     public PagedResponse<AdminUserResponse> users(
