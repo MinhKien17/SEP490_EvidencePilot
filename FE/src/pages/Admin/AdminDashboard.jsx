@@ -88,6 +88,21 @@ const t = {
     guideConfigDesc: 'View current system configuration values.',
     guideConfigTable: 'Each row shows a setting name and its current value. Loaded at startup.',
     guideConfigDone: 'Configuration walkthrough complete.',
+    extractionQueue: 'Extraction Queue', extractionStatus: 'Status', queueSummary: 'Queue Summary',
+    noFailedDocuments: 'No failed documents', queueRetry: 'Retry',
+    guideQueueDesc: 'Monitor document extraction progress and retry failed jobs.',
+    guideQueueCards: 'Summary cards show counts per processing status.',
+    guideQueueFailed: 'List of failed documents. Click Retry to re-queue.',
+    guideQueueDone: 'Extraction queue walkthrough complete.',
+    broadcastHistory: 'Broadcast History', recipients: 'Recipients', noBroadcastHistory: 'No broadcast history',
+    guideHistoryDesc: 'View past broadcast notifications sent to users.',
+    guideHistoryTable: 'Each entry shows message, target role, recipient count, and sent time.',
+    guideHistoryDone: 'Broadcast history walkthrough complete.',
+    collections: 'Collections', instructor: 'Instructor', sourceCount: 'Sources',
+    noCollections: 'No collections found',
+    guideCollectionsDesc: 'Browse all instructor evidence collections.',
+    guideCollectionsTable: 'List of collections with instructor email and source count.',
+    guideCollectionsDone: 'Collections walkthrough complete.',
   },
   vi: {
     dashboard: 'Bảng điều khiển', users: 'Người dùng', papers: 'Bài báo', audit: 'Nhật ký',
@@ -170,6 +185,21 @@ const t = {
     guideConfigDesc: 'Xem các giá trị cấu hình hệ thống hiện tại.',
     guideConfigTable: 'Mỗi dòng hiển thị tên cài đặt và giá trị hiện tại. Được tải khi khởi động.',
     guideConfigDone: 'Đã hoàn thành hướng dẫn cấu hình.',
+    extractionQueue: 'Hàng đợi trích xuất', extractionStatus: 'Trạng thái', queueSummary: 'Tóm tắt hàng đợi',
+    noFailedDocuments: 'Không có tài liệu thất bại', queueRetry: 'Thử lại',
+    guideQueueDesc: 'Theo dõi tiến trình trích xuất tài liệu và thử lại các tác vụ thất bại.',
+    guideQueueCards: 'Thẻ tóm tắt hiển thị số lượng theo từng trạng thái xử lý.',
+    guideQueueFailed: 'Danh sách tài liệu thất bại. Nhấp Thử lại để xếp hàng lại.',
+    guideQueueDone: 'Đã hoàn thành hướng dẫn hàng đợi trích xuất.',
+    broadcastHistory: 'Lịch sử thông báo', recipients: 'Người nhận', noBroadcastHistory: 'Không có lịch sử thông báo',
+    guideHistoryDesc: 'Xem các thông báo đã gửi trước đây đến người dùng.',
+    guideHistoryTable: 'Mỗi mục hiển thị nội dung, đối tượng nhận, số lượng người nhận và thời gian gửi.',
+    guideHistoryDone: 'Đã hoàn thành hướng dẫn lịch sử thông báo.',
+    collections: 'Bộ sưu tập', instructor: 'Giảng viên', sourceCount: 'Nguồn',
+    noCollections: 'Không tìm thấy bộ sưu tập',
+    guideCollectionsDesc: 'Xem tất cả bộ sưu tập bằng chứng của giảng viên.',
+    guideCollectionsTable: 'Danh sách bộ sưu tập với email giảng viên và số lượng nguồn.',
+    guideCollectionsDone: 'Đã hoàn thành hướng dẫn bộ sưu tập.',
   }
 };
 
@@ -819,12 +849,99 @@ function InfraSection({ lang, api }) {
   );
 }
 
+function QueueSection({ lang, api }) {
+  const [queue, setQueue] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [guideActive, setGuideActive] = useState(false);
+
+  const fetch = useCallback(async (signal) => {
+    setLoading(true);
+    try { const r = await api.get('/api/admin/documents/extraction-queue', { signal }); setQueue(r.data); }
+    catch (e) { /* silent */ }
+    finally { setLoading(false); }
+  }, [api]);
+
+  useEffect(() => { const ac = new AbortController(); fetch(ac.signal); return () => ac.abort(); }, [fetch]);
+
+  const doRetry = async (id) => {
+    try { await api.post(`/api/documents/${id}/file`, new FormData()); fetch(new AbortController().signal); }
+    catch (e) { /* silent */ }
+  };
+
+  const startProcessGuide = () => {
+    setGuideActive(true);
+    setTimeout(() => {
+      const d = driver({
+        animate: true, showProgress: true,
+        steps: [
+          { popover: { title: lang.processGuide, description: lang.guideQueueDesc, side: 'center' } },
+          { element: '[data-guide="queue-cards"]', popover: { title: lang.queueSummary, description: lang.guideQueueCards, side: 'bottom' } },
+          { element: '[data-guide="queue-failed"]', popover: { title: lang.extractionQueue, description: lang.guideQueueFailed, side: 'left' } },
+          { popover: { title: lang.done, description: lang.guideQueueDone, side: 'center' } },
+        ],
+        onDestroy: () => setGuideActive(false),
+      });
+      d.drive();
+    }, 300);
+  };
+
+  const statusColors = { FAILED: 'bg-rose-100 text-rose-700', PROCESSING: 'bg-amber-100 text-amber-700', QUEUED: 'bg-blue-100 text-blue-700', READY: 'bg-emerald-100 text-emerald-700' };
+
+  if (loading) return <PageSkeleton />;
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-gray-900">{lang.extractionQueue}</h2>
+        <button onClick={startProcessGuide} className="px-2.5 py-1.5 text-xs font-bold text-gray-500 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition">
+          {'\u2753'} {lang.processGuide}
+        </button>
+      </div>
+      <div data-guide="queue-cards" className="grid grid-cols-3 md:grid-cols-5 gap-3">
+        {queue?.counts && Object.entries(queue.counts).filter(([, v]) => v > 0).map(([k, v]) => (
+          <StatCard key={k} label={k} value={v} color={statusColors[k]?.split(' ')[1] || 'text-gray-500'} sub={<span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${statusColors[k] || 'bg-gray-50 text-gray-500'}`}>{k}</span>} />
+        ))}
+      </div>
+      <div data-guide="queue-failed" className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100">
+          <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{lang.extractionStatus}: FAILED</span>
+        </div>
+        {!queue?.failed || queue.failed.length === 0 ? (
+          <div className="text-sm text-gray-400 text-center py-8">{lang.noFailedDocuments}</div>
+        ) : (
+          <div className="divide-y divide-gray-100 text-xs">
+            {queue.failed.map(d => (
+              <div key={d.id} className="flex items-center justify-between px-5 py-3">
+                <div className="truncate max-w-[300px]">
+                  <span className="font-semibold text-gray-900">{d.originalFilename || '—'}</span>
+                  {d.processingError && <span className="text-gray-400 ml-2" title={d.processingError}>— {d.processingError}</span>}
+                </div>
+                <button onClick={() => doRetry(d.id)} className="px-2 py-1 text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition shrink-0">{lang.queueRetry}</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function NotificationsSection({ lang, api }) {
   const [form, setForm] = useState({ message: '', role: '' });
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
   const [guideActive, setGuideActive] = useState(false);
+  const [broadcastHistory, setBroadcastHistory] = useState([]);
+  const [bhLoading, setBhLoading] = useState(true);
+
+  const fetchHistory = useCallback(async (signal) => {
+    setBhLoading(true);
+    try { const r = await api.get('/api/admin/notifications/broadcast-history', { signal }); setBroadcastHistory(r.data); }
+    catch (e) { /* silent */ }
+    finally { setBhLoading(false); }
+  }, [api]);
+
+  useEffect(() => { const ac = new AbortController(); fetchHistory(ac.signal); return () => ac.abort(); }, [fetchHistory]);
 
   const doSend = async (e) => {
     e.preventDefault(); setSending(true); setResult(null);
@@ -848,6 +965,7 @@ function NotificationsSection({ lang, api }) {
           { popover: { title: lang.processGuide, description: lang.guideNotifDesc, side: 'center' } },
           { element: '[data-guide="notif-form"]', popover: { title: lang.broadcast, description: lang.guideNotifForm, side: 'top' } },
           { element: '[data-guide="notif-history"]', popover: { title: lang.sent, description: lang.guideNotifHistory, side: 'bottom' } },
+          { element: '[data-guide="notif-broadcast-history"]', popover: { title: lang.broadcastHistory, description: lang.guideHistoryTable, side: 'bottom' } },
           { popover: { title: lang.done, description: lang.guideNotifDone, side: 'center' } },
         ],
         onDestroy: () => setGuideActive(false),
@@ -897,6 +1015,94 @@ function NotificationsSection({ lang, api }) {
           </div>
         </div>
       )}
+      <div data-guide="notif-broadcast-history" className="bg-white rounded-2xl shadow-sm border border-gray-100">
+        <div className="px-5 py-3 border-b border-gray-100">
+          <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{lang.broadcastHistory}</span>
+        </div>
+        {bhLoading ? (
+          <div className="animate-pulse space-y-2 p-5">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-6 bg-gray-200 rounded w-full" />)}</div>
+        ) : broadcastHistory.length === 0 ? (
+          <div className="text-sm text-gray-400 text-center py-6">{lang.noBroadcastHistory}</div>
+        ) : (
+          <div className="divide-y divide-gray-100 text-xs max-h-48 overflow-y-auto">
+            {broadcastHistory.map((h, i) => (
+              <div key={i} className="px-5 py-2.5 flex justify-between">
+                <span className="text-gray-700 truncate max-w-[250px]">{h.actorEmail}</span>
+                <span className="text-gray-400 shrink-0 ml-3">{h.details?.recipientCount || '—'} {lang.recipients} &middot; {h.occurredAt ? new Date(h.occurredAt).toLocaleString() : ''}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CollectionsSection({ lang, api }) {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [guideActive, setGuideActive] = useState(false);
+
+  const fetch = useCallback(async (signal) => {
+    setLoading(true);
+    try { const r = await api.get('/api/admin/collections', { signal }); setData(r.data); }
+    catch (e) { /* silent */ }
+    finally { setLoading(false); }
+  }, [api]);
+
+  useEffect(() => { const ac = new AbortController(); fetch(ac.signal); return () => ac.abort(); }, [fetch]);
+
+  const startProcessGuide = () => {
+    setGuideActive(true);
+    setTimeout(() => {
+      const d = driver({
+        animate: true, showProgress: true,
+        steps: [
+          { popover: { title: lang.processGuide, description: lang.guideCollectionsDesc, side: 'center' } },
+          { element: '[data-guide="collections-table"]', popover: { title: lang.collections, description: lang.guideCollectionsTable, side: 'left' } },
+          { popover: { title: lang.done, description: lang.guideCollectionsDone, side: 'center' } },
+        ],
+        onDestroy: () => setGuideActive(false),
+      });
+      d.drive();
+    }, 300);
+  };
+
+  if (loading) return <PageSkeleton />;
+  return (
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-bold text-gray-900">{lang.collections}</h2>
+        <button onClick={startProcessGuide} className="px-2.5 py-1.5 text-xs font-bold text-gray-500 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition">
+          {'\u2753'} {lang.processGuide}
+        </button>
+      </div>
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table data-guide="collections-table" className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-50 text-gray-400 text-xs font-bold uppercase border-b border-gray-100">
+                <th className="px-5 py-3">{lang.collectionName}</th>
+                <th className="px-5 py-3">{lang.instructor}</th>
+                <th className="px-5 py-3">{lang.createdAt}</th>
+                <th className="px-5 py-3">{lang.status}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 text-xs">
+              {data.length === 0 ? (
+                <tr><td colSpan={4} className="px-5 py-10 text-center text-gray-400">{lang.noCollections}</td></tr>
+              ) : data.map(c => (
+                <tr key={c.id} className="hover:bg-gray-50/50 transition">
+                  <td className="px-5 py-3 font-semibold text-gray-900">{c.name}</td>
+                  <td className="px-5 py-3 text-gray-600">{c.instructorEmail}</td>
+                  <td className="px-5 py-3 text-gray-500">{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—'}</td>
+                  <td className="px-5 py-3"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${c.active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{c.active ? lang.active : lang.banned}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1065,13 +1271,15 @@ const NAV_ITEMS = [
   { key: 'papers', icon: '\uD83D\uDCC4', labelEn: 'Papers', labelVi: 'B\u00E0i b\u00E1o' },
   { key: 'audit', icon: '\uD83D\uDCCB', labelEn: 'Audit Logs', labelVi: 'Nh\u1EADt k\u00FD' },
   { key: 'infra', icon: '\uD83D\uDDA5\uFE0F', labelEn: 'Infrastructure', labelVi: 'H\u1EA1 t\u1EA7ng' },
+  { key: 'extraction', icon: '\u2699\uFE0F', labelEn: 'Extraction Queue', labelVi: 'H\u00E0ng \u0111\u1EE3i' },
+  { key: 'collections', icon: '\uD83D\uDCDA', labelEn: 'Collections', labelVi: 'B\u1ED9 s\u01B0u t\u1EADp' },
   { key: 'notifications', icon: '\uD83D\uDD14', labelEn: 'Notifications', labelVi: 'Th\u00F4ng b\u00E1o' },
   { key: 'settings', icon: '\u2699\uFE0F', labelEn: 'Settings', labelVi: 'C\u00E0i \u0111\u1EB7t' },
 ];
 
 const SECTIONS = {
   dashboard: DashboardSection, users: UsersSection, projects: ProjectsSection, papers: PapersSection,
-  audit: AuditLogsSection, infra: InfraSection, notifications: NotificationsSection,
+  audit: AuditLogsSection, infra: InfraSection, extraction: QueueSection, collections: CollectionsSection, notifications: NotificationsSection,
   settings: SettingsSection,
 };
 
