@@ -1,6 +1,6 @@
 export const homeText = {
   en: {
-    nav: { home: 'Home', features: 'Features', about: 'About', terms: 'Terms', privacy: 'Privacy', login: 'Log In', register: 'Register', signOut: 'Sign Out', workspace: 'Go to Workspace', lang: 'Tiếng Việt' },
+    nav: { home: 'Home', features: 'Features', about: 'About', terms: 'Terms', privacy: 'Privacy', login: 'Log In', register: 'Register', signOut: 'Sign Out', workspace: 'Go to Workspace', lang: 'Tiếng Việt', profile: 'Profile' },
     hero: {
       titleStart: 'The',
       titleHighlight: 'Evidence-Powered',
@@ -134,7 +134,7 @@ export const homeText = {
     },
   },
   vi: {
-    nav: { home: 'Trang chủ', features: 'Tính năng', about: 'Giới thiệu', terms: 'Điều khoản', privacy: 'Bảo mật', login: 'Đăng nhập', register: 'Đăng ký', signOut: 'Đăng xuất', workspace: 'Vào làm việc', lang: 'English' },
+    nav: { home: 'Trang chủ', features: 'Tính năng', about: 'Giới thiệu', terms: 'Điều khoản', privacy: 'Bảo mật', login: 'Đăng nhập', register: 'Đăng ký', signOut: 'Đăng xuất', workspace: 'Vào làm việc', lang: 'English', profile: 'Hồ sơ' },
     hero: {
       titleStart: 'Nền tảng',
       titleHighlight: 'Nghiên cứu Dựa trên Bằng chứng',

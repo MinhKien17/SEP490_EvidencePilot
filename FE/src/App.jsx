@@ -110,6 +110,7 @@ import CollectionList from './pages/Instructor/CollectionList.jsx';
 import CreateCollection from './pages/Instructor/CreateCollection.jsx';
 import ReviewRequests from './pages/Instructor/ReviewRequests.jsx';
 import InstructorDashboard from './pages/Instructor/Dashboard.jsx';
+import ProjectManagement from './pages/Instructor/ProjectManagement.jsx';
 
 // STUDENT SUB-SYSTEM IMPORTS
 import StudentProjects from './pages/Student/Projects.jsx';
@@ -139,6 +140,7 @@ function App() {
             <Route path="/instructor/profile" element={<Profile />} />
             <Route path="/admin/profile" element={<Profile />} />
             <Route path="/instructor/dashboard" element={<InstructorDashboard />} />
+            <Route path="/instructor/projects" element={<ProjectManagement />} />
             <Route path="/instructor/requests" element={<ReviewRequests />} />
             <Route path="/instructor/collections" element={<CollectionList />} />
             <Route path="/instructor/collections/create" element={<CreateCollection />} />           

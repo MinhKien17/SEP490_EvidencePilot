@@ -4,11 +4,13 @@ import { useLanguage } from '../../context/LanguageContext';
 import AnimateIn from '../../components/AnimateIn';
 
 export default function HeroSection({ t }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, role } = useAuth();
   const { language } = useLanguage();
 
   const wsLink = !isAuthenticated ? '/login'
-    : '/student/projects';
+    : role === 'ADMIN' ? '/admin/dashboard'
+      : role === 'INSTRUCTOR' ? '/instructor/dashboard'
+        : '/student/projects';
 
   return (
     <section className="relative pt-32 pb-24 md:pt-40 md:pb-32 overflow-hidden">
@@ -53,7 +55,6 @@ export default function HeroSection({ t }) {
               </>
             )}
           </div>
-          <p className="text-xs text-gray-400 mt-4">{t.hero.ctaSub}</p>
         </AnimateIn>
       </div>
     </section>

@@ -1,10 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import FileViewerModal from '../../components/FileViewerModal';
 import api from '../../api.js';
 import { useLanguage } from '../../context/LanguageContext';
 import { UI_TEXT } from '../../constants/uiText';
+import { TourLauncher, StatusBadge, Modal, EmptyState, LoadingSkeleton } from '../../components';
 
 const DEFAULT_SAMPLE_LATEX = `\\documentclass{article}
 \\usepackage[utf-8]{inputenc}
@@ -48,7 +49,7 @@ const RichTextEditor = React.memo(({ initialHtml, onHtmlChange }) => {
 export default function Workspace() {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const { logout, user } = useAuth();
+  const { logout, user, role } = useAuth();
   const { language, toggleLanguage } = useLanguage();
   const [activeTab, setActiveTab] = useState('Source');
   const [editorMode, setEditorMode] = useState('Code');
@@ -71,12 +72,25 @@ export default function Workspace() {
   const [currentUser, setCurrentUser] = useState(null);
 
   const [codeContent, setCodeContent] = useState('');
+  const [newClaimContent, setNewClaimContent] = useState('');
+  const [sections, setSections] = useState([]);
+  const [selectedSectionId, setSelectedSectionId] = useState('');
+  const [selectedClaim, setSelectedClaim] = useState(null);
+  const [claimMatches, setClaimMatches] = useState([]);
+  const [loadingMatches, setLoadingMatches] = useState(false);
+  const [editingClaim, setEditingClaim] = useState(null);
+  const [editClaimContent, setEditClaimContent] = useState('');
+  const [selectedInstructorId, setSelectedInstructorId] = useState('');
+  const [showSubmitReviewModal, setShowSubmitReviewModal] = useState(false);
+  const [aiReviewResult, setAiReviewResult] = useState(null);
+  const [showAiReviewModal, setShowAiReviewModal] = useState(false);
+  const [loadingAiReview, setLoadingAiReview] = useState(false);
 
   const displayContent = selectedPaper ? codeContent : DEFAULT_SAMPLE_LATEX;
 
   // 1. Tải thông tin người dùng hiện tại
   useEffect(() => {
-    api.get('/api/users/me')
+      api.get('/api/users/profile')
       .then(res => setCurrentUser(res.data))
       .catch(err => console.error('Failed to fetch user profile', err));
   }, []);
@@ -92,12 +106,12 @@ export default function Workspace() {
       // Tải nguồn tài liệu (Sources)
       try {
         const srcRes = await api.get(`/api/projects/${projId}/sources`);
-        setSources(srcRes.data || []);
+        setSources(srcRes.data?.content || []);
       } catch (e) { console.error('Failed to fetch sources', e); }
 
       // Tải các bản nháp (Papers)
       try {
-        const paperRes = await api.get(`/api/papers/by-project/${projId}`);
+        const paperRes = await api.get(`/api/projects/${projId}/papers`);
         const paperList = paperRes.data || [];
         setPapers(paperList);
 
@@ -106,16 +120,25 @@ export default function Workspace() {
           const defaultPaper = paperList[0];
           setSelectedPaper(defaultPaper);
           setCodeContent(defaultPaper.extractedText || '');
+          // Lấy danh sách sections cho paper
+          try {
+            const secRes = await api.get(`/api/papers/${defaultPaper.id}/sections`);
+            setSections(secRes.data || []);
+            if (secRes.data && secRes.data.length > 0) {
+              setSelectedSectionId(secRes.data[0].id);
+            }
+          } catch (e) { console.error('Failed to fetch sections', e); }
         } else {
           setSelectedPaper(null);
           setCodeContent('');
+          setSections([]);
         }
       } catch (e) { console.error('Failed to fetch papers', e); }
 
       // Tải luận điểm (Claims)
       try {
-        const claimRes = await api.get(`/api/claims/by-project/${projId}`);
-        setClaims(claimRes.data || []);
+        const claimRes = await api.get(`/api/projects/${projId}/claims`);
+        setClaims(claimRes.data?.content || []);
       } catch (e) { console.error('Failed to fetch claims', e); }
 
       // Tải phản hồi (Feedbacks) - gọi đúng URL /api/feedback-requests
@@ -126,9 +149,9 @@ export default function Workspace() {
         setFeedbacks(projectFbs);
       } catch (e) { console.error('Failed to fetch feedback', e); }
 
-      // Tải dữ liệu đồ thị (Graph) - gọi đúng URL /api/projects/{id}/traceability-export
+      // Tải dữ liệu đồ thị (Graph) - gọi đúng URL /api/projects/{id}/traceability
       try {
-        const graphRes = await api.get(`/api/projects/${projId}/traceability-export`);
+        const graphRes = await api.get(`/api/projects/${projId}/traceability`);
         setGraphData(graphRes.data);
       } catch (e) { console.error('Failed to fetch graph data', e); }
 
@@ -234,17 +257,16 @@ export default function Workspace() {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('projectId', project.id);
-    formData.append('uploadedBy', currentUser.id); // Bắt buộc theo API của BE
 
     try {
-      await api.post('/api/sources/upload', formData, {
+      await api.post('/api/sources', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       showToast(`${file.name} đã được tải lên thành công.`);
       // Tải lại nguồn và graph
       const srcRes = await api.get(`/api/projects/${project.id}/sources`);
-      setSources(srcRes.data || []);
-      const graphRes = await api.get(`/api/projects/${project.id}/traceability-export`);
+      setSources(srcRes.data?.content || []);
+      const graphRes = await api.get(`/api/projects/${project.id}/traceability`);
       setGraphData(graphRes.data);
     } catch (err) {
       console.error('Upload source failed', err);
@@ -260,8 +282,8 @@ export default function Workspace() {
       showToast("Xóa tài liệu thành công!");
       // Tải lại nguồn và graph
       const srcRes = await api.get(`/api/projects/${project.id}/sources`);
-      setSources(srcRes.data || []);
-      const graphRes = await api.get(`/api/projects/${project.id}/traceability-export`);
+      setSources(srcRes.data?.content || []);
+      const graphRes = await api.get(`/api/projects/${project.id}/traceability`);
       setGraphData(graphRes.data);
     } catch (err) {
       console.error(err);
@@ -279,13 +301,13 @@ export default function Workspace() {
     formData.append('projectId', project.id);
 
     try {
-      const res = await api.post('/api/papers/upload', formData, {
+      const res = await api.post('/api/papers', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       showToast("Tải lên bản nháp bài báo thành công.");
 
       // Tải lại danh sách Paper
-      const paperRes = await api.get(`/api/papers/by-project/${project.id}`);
+      const paperRes = await api.get(`/api/projects/${project.id}/papers`);
       const paperList = paperRes.data || [];
       setPapers(paperList);
 
@@ -307,7 +329,7 @@ export default function Workspace() {
       showToast("Xóa bản nháp thành công!");
 
       // Tải lại danh sách Paper
-      const paperRes = await api.get(`/api/papers/by-project/${project.id}`);
+      const paperRes = await api.get(`/api/projects/${project.id}/papers`);
       const paperList = paperRes.data || [];
       setPapers(paperList);
 
@@ -328,19 +350,19 @@ export default function Workspace() {
 
   // Tạo luận điểm mới (Claim)
   const handleCreateClaim = async () => {
-    if (!newClaimContent.trim() || !project) return;
+    if (!newClaimContent.trim() || !project || !selectedSectionId) return;
     try {
       await api.post('/api/claims', {
-        content: newClaimContent,
-        project: { id: project.id }
+        sectionId: selectedSectionId,
+        content: newClaimContent
       });
       showToast("Đã thêm luận điểm mới.");
       setNewClaimContent('');
 
       // Tải lại danh sách claims và graph
-      const claimRes = await api.get(`/api/claims/by-project/${project.id}`);
-      setClaims(claimRes.data || []);
-      const graphRes = await api.get(`/api/projects/${project.id}/traceability-export`);
+      const claimRes = await api.get(`/api/projects/${project.id}/claims`);
+      setClaims(claimRes.data?.content || []);
+      const graphRes = await api.get(`/api/projects/${project.id}/traceability`);
       setGraphData(graphRes.data);
     } catch (err) {
       console.error(err);
@@ -363,9 +385,9 @@ export default function Workspace() {
       setEditClaimContent('');
 
       // Tải lại danh sách claims và graph
-      const claimRes = await api.get(`/api/claims/by-project/${project.id}`);
-      setClaims(claimRes.data || []);
-      const graphRes = await api.get(`/api/projects/${project.id}/traceability-export`);
+      const claimRes = await api.get(`/api/projects/${project.id}/claims`);
+      setClaims(claimRes.data?.content || []);
+      const graphRes = await api.get(`/api/projects/${project.id}/traceability`);
       setGraphData(graphRes.data);
     } catch (err) {
       console.error(err);
@@ -381,9 +403,9 @@ export default function Workspace() {
       showToast("Xóa luận điểm thành công!");
 
       // Tải lại danh sách claims và graph
-      const claimRes = await api.get(`/api/claims/by-project/${project.id}`);
-      setClaims(claimRes.data || []);
-      const graphRes = await api.get(`/api/projects/${project.id}/traceability-export`);
+      const claimRes = await api.get(`/api/projects/${project.id}/claims`);
+      setClaims(claimRes.data?.content || []);
+      const graphRes = await api.get(`/api/projects/${project.id}/traceability`);
       setGraphData(graphRes.data);
 
       if (selectedClaim && selectedClaim.id === claimId) {
@@ -396,17 +418,81 @@ export default function Workspace() {
     }
   };
 
+  const canEditClaim = (claim) => {
+    if (role === 'ADMIN' || role === 'INSTRUCTOR') return true;
+    const assignedIds = sections.filter(s => s.assignedUserId === currentUser?.id).map(s => s.id);
+    return assignedIds.includes(claim.sectionId);
+  };
+
+  const handleExportJson = () => {
+    if (!graphData) return;
+    const blob = new Blob([JSON.stringify(graphData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `traceability-${project?.title || 'export'}.json`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  const [saveStatus, setSaveStatus] = useState('');
+  const [lastSaved, setLastSaved] = useState(null);
+  const handleSaveDraft = async () => {
+    if (!selectedPaper) { showToast("Chưa có bài viết để lưu."); return; }
+    setSaveStatus('saving');
+    try {
+      await api.put(`/api/documents/${selectedPaper.id}/text`, codeContent, { headers: { 'Content-Type': 'text/plain' } });
+      setSaveStatus('saved'); setLastSaved(new Date());
+      setTimeout(() => setSaveStatus(''), 3000);
+    } catch (e) { setSaveStatus('error'); showToast("Lưu thất bại."); }
+  };
+
+  const handleExportCsv = () => {
+    if (!graphData) return;
+    const esc = (s) => `"${(s || '').replace(/"/g, '""')}"`;
+    const rows = [['Claim ID','Claim Content','Verdict','Confidence','Section','Source File','Excerpt','Score','Explanation','Source Page']];
+    const srcMap = {};
+    (graphData.sources || []).forEach(s => { srcMap[s.id] = s.filename; });
+    (graphData.claims || []).forEach(c => {
+      const g = c.graphData || {};
+      const verdict = g.verdict || '';
+      const conf = g.confidence ? (g.confidence * 100).toFixed(0) : '';
+      if (c.matches && c.matches.length > 0) {
+        c.matches.forEach(m => {
+          rows.push([esc(c.id), esc(c.content), esc(verdict), conf, esc(c.sectionTitle || ''), esc(srcMap[m.sourceId] || m.filename || ''), esc(m.excerpt), m.score ? (m.score * 100).toFixed(0) : '', esc(m.explanation || ''), m.page || '']);
+        });
+      } else {
+        rows.push([esc(c.id), esc(c.content), esc(verdict), conf, esc(c.sectionTitle || ''), '','','','','']);
+      }
+    });
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `traceability-${project?.title || 'export'}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  const fetchGraphData = useCallback(async (projId) => {
+    try {
+      const res = await api.get(`/api/projects/${projId}/traceability`);
+      setGraphData(res.data);
+    } catch (e) { console.error('Failed to fetch traceability', e); }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'Graph' && project?.id && !graphData) {
+      fetchGraphData(project.id);
+    }
+  }, [activeTab, project?.id, graphData, fetchGraphData]);
+
   // AI phân tích luận điểm tự động (Analyze Claim)
   const handleAnalyzeClaim = async (claimId) => {
     showToast("AI đang tìm chứng cứ và phân tích...");
     try {
-      const res = await api.post(`/api/claims/${claimId}/analyze`);
+      const res = await api.post(`/api/claims/${claimId}/suggestions/generate`);
       showToast("AI đã hoàn thành phân tích!");
 
       // Tải lại danh sách claims và graph
-      const claimRes = await api.get(`/api/claims/by-project/${project.id}`);
-      setClaims(claimRes.data || []);
-      const graphRes = await api.get(`/api/projects/${project.id}/traceability-export`);
+      const claimRes = await api.get(`/api/projects/${project.id}/claims`);
+      setClaims(claimRes.data?.content || []);
+      const graphRes = await api.get(`/api/projects/${project.id}/traceability`);
       setGraphData(graphRes.data);
 
       // Nếu đang chọn chính claim này, cập nhật lại selectedClaim
@@ -420,14 +506,12 @@ export default function Workspace() {
     }
   };
 
-  // Lấy các nguồn chứng cứ khớp từ AI (Get matches)
+  // Lấy các nguồn chứng cứ khớp từ AI (Get mappings)
   const handleFetchMatches = async (claimId) => {
     setLoadingMatches(true);
     try {
-      const res = await api.get(`/api/claims/${claimId}/matches`, {
-        params: { topK: 5 }
-      });
-      setClaimMatches(res.data?.matches || []);
+      const res = await api.get(`/api/claims/${claimId}/suggestions`);
+      setClaimMatches(res.data || []);
     } catch (err) {
       console.error(err);
       showToast("Lấy chứng cứ khớp thất bại.");
@@ -468,8 +552,8 @@ export default function Workspace() {
       return;
     }
     try {
-      await api.post(`/api/projects/${project.id}/submit-review`, {
-        instructorId: parseInt(selectedInstructorId)
+      await api.post(`/api/projects/${project.id}/reviews`, {
+        instructorId: selectedInstructorId
       });
       showToast("Gửi yêu cầu phê duyệt thành công!");
       setShowSubmitReviewModal(false);
@@ -495,6 +579,14 @@ export default function Workspace() {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(''), 3000);
   };
+
+  const WORKSPACE_TOUR_STEPS = [
+    { element: '#project-selector', popover: { title: 'Project Selector', description: 'Switch between your research projects quickly.', side: 'bottom', align: 'start' } },
+    { element: '#left-sidebar', popover: { title: 'Papers & Sources', description: 'Upload and manage your paper drafts and reference sources.', side: 'right', align: 'center' } },
+    { element: '#editor-pane', popover: { title: 'Editor', description: 'Write your paper in LaTeX or Rich Text mode. AI Review checks structure and formatting.', side: 'top', align: 'center' } },
+    { element: '#preview-pane', popover: { title: 'Preview', description: 'See a rendered preview of your document.', side: 'top', align: 'center' } },
+    { element: '#right-panel', popover: { title: 'Info, Claims, Feedback & Graph', description: 'Review project info, manage claims, see instructor feedback, and explore the traceability graph.', side: 'left', align: 'center' } },
+  ];
 
   const renderPreview = () => {
     const titleMatch = displayContent.match(/\\title\{([^}]+)\}/);
@@ -642,7 +734,7 @@ export default function Workspace() {
             <div className="w-7 h-7 bg-indigo-600 text-white rounded-md text-xs flex items-center justify-center font-bold shadow-sm shadow-indigo-200">EP</div>
             {projects.length > 0 ? (
               <div className="flex items-center gap-2">
-                <select
+                <select id="project-selector"
                   value={project?.id || ''}
                   onChange={(e) => navigate(`/student/projects/${e.target.value}`)}
                   className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500 max-w-[200px]"
@@ -739,7 +831,7 @@ export default function Workspace() {
         </div>
 
         {/* Left Sidebar: Paper & Source Management */}
-        <aside className="w-64 bg-slate-50/50 border-r border-slate-200 flex flex-col shrink-0 z-10 backdrop-blur-sm">
+        <aside id="left-sidebar" className="w-64 bg-slate-50/50 border-r border-slate-200 flex flex-col shrink-0 z-10 backdrop-blur-sm">
           {/* Section 1: Paper Drafts */}
           <div className="px-4 py-3 border-b border-slate-200 flex justify-between items-center bg-slate-100/40">
             <span className="text-[11px] font-bold text-slate-500 tracking-wider uppercase">{UI_TEXT[language].paperDrafts}</span>
@@ -768,6 +860,7 @@ export default function Workspace() {
                   onClick={() => {
                     setSelectedPaper(p);
                     setCodeContent(p.extractedText || '');
+                    api.get(`/api/papers/${p.id}/sections`).then(r => { setSections(r.data || []); if (r.data && r.data.length > 0) setSelectedSectionId(r.data[0].id); }).catch(() => setSections([]));
                   }}
                   className={`flex items-center justify-between text-xs font-medium p-2 rounded-md cursor-pointer transition-all mt-1 group ${selectedPaper?.id === p.id ? 'bg-indigo-50 text-indigo-700 border border-indigo-100 shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
                 >
@@ -843,7 +936,7 @@ export default function Workspace() {
         <div className="flex-1 flex overflow-hidden bg-slate-200/50 p-3 gap-3">
 
           {/* Editor Pane */}
-          <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+          <div id="editor-pane" className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
             <div className="h-11 border-b border-slate-100 flex items-center justify-between px-3 bg-white shadow-sm z-10">
               <div className="flex gap-1 border-r border-slate-200 pr-2">
                 <button onClick={() => showToast('Bold applied')} className="w-7 h-7 flex items-center justify-center hover:bg-slate-100 rounded-md text-slate-600 transition-colors"><span className="font-bold font-serif">B</span></button>
@@ -872,6 +965,11 @@ export default function Workspace() {
                     {UI_TEXT[language].aiReview}
                   </button>
                 )}
+                <button onClick={handleSaveDraft} disabled={saveStatus === 'saving'} className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold transition-colors disabled:opacity-50 ${saveStatus === 'saving' ? 'bg-amber-100 text-amber-700' : saveStatus === 'saved' ? 'bg-emerald-100 text-emerald-700' : saveStatus === 'error' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+                  {saveStatus === 'saving' ? 'Đang lưu...' : saveStatus === 'saved' ? 'Đã lưu' : saveStatus === 'error' ? 'Lỗi' : 'Lưu'}
+                  {lastSaved && saveStatus !== 'saving' && <span className="text-[9px] opacity-60 ml-0.5">{lastSaved.toLocaleTimeString()}</span>}
+                </button>
                 <div className="flex bg-slate-100 rounded-lg p-0.5 border border-slate-200">
                   <button
                     onClick={() => setEditorMode('Code')}
@@ -932,7 +1030,7 @@ export default function Workspace() {
           </div>
 
           {/* PDF Preview Pane */}
-          <div className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+          <div id="preview-pane" className="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
             <div className="h-11 border-b border-slate-100 flex items-center justify-between px-4 bg-white">
               <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
                 <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
@@ -949,7 +1047,7 @@ export default function Workspace() {
             </div>
           </div>
         </div>
-        <aside className="w-[380px] bg-white border-l border-slate-200 flex flex-col shrink-0 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
+        <aside id="right-panel" className="w-[380px] bg-white border-l border-slate-200 flex flex-col shrink-0 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
           {/* Tabs */}
           <div className="flex border-b border-slate-200 bg-white relative shrink-0">
             <button
@@ -1010,10 +1108,10 @@ export default function Workspace() {
                         const formData = new FormData();
                         formData.append('file', file);
                         try {
-                          await api.post(`/api/sources/upload?uploadedBy=${user.id}&projectId=${project.id}`, formData);
+                          await api.post('/api/sources', formData);
                           showToast(`${file.name} uploaded successfully.`);
                           const srcRes = await api.get(`/api/projects/${project.id}/sources`);
-                          setSources(srcRes.data);
+                          setSources(srcRes.data?.content || []);
                         } catch (err) {
                           console.error('Upload failed', err);
                           showToast(`Failed to upload ${file.name}`);
@@ -1084,6 +1182,37 @@ export default function Workspace() {
             {/* Danh sách Claims */}
             {activeTab === 'Claims' && (
             <div className="space-y-3">
+              {/* Thêm luận điểm mới */}
+              <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm">
+                <h4 className="text-[11px] font-bold text-slate-500 mb-2 uppercase tracking-wider">Thêm luận điểm</h4>
+                <div className="flex gap-2">
+                  <select
+                    value={selectedSectionId}
+                    onChange={(e) => setSelectedSectionId(e.target.value)}
+                    className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    {sections.length === 0 && <option value="">Chưa có section</option>}
+                    {sections.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.sectionTitle} {s.assignedUserId === currentUser?.id ? '(Của bạn)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={newClaimContent}
+                    onChange={(e) => setNewClaimContent(e.target.value)}
+                    placeholder="Nhập nội dung luận điểm..."
+                    className="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <button
+                    onClick={handleCreateClaim}
+                    disabled={!newClaimContent.trim() || !selectedSectionId}
+                    className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    Thêm
+                  </button>
+                </div>
+              </div>
               {claims.length === 0 ? (
                 <div className="text-xs text-slate-400 italic text-center py-8">Dự án này chưa có luận điểm nào. Hãy thêm ở trên.</div>
               ) : (
@@ -1123,22 +1252,24 @@ export default function Workspace() {
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                           AI phân tích
                         </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingClaim(claim);
-                            setEditClaimContent(claim.content);
-                          }}
-                          className="text-[10px] text-slate-500 hover:text-slate-700 flex items-center gap-0.5 ml-auto"
-                        >
-                          Sửa
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteClaim(claim.id); }}
-                          className="text-[10px] text-rose-500 hover:text-rose-700 flex items-center gap-0.5"
-                        >
-                          Xóa
-                        </button>
+                        {canEditClaim(claim) && <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingClaim(claim);
+                              setEditClaimContent(claim.content);
+                            }}
+                            className="text-[10px] text-slate-500 hover:text-slate-700 flex items-center gap-0.5 ml-auto"
+                          >
+                            Sửa
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteClaim(claim.id); }}
+                            className="text-[10px] text-rose-500 hover:text-rose-700 flex items-center gap-0.5"
+                          >
+                            Xóa
+                          </button>
+                        </>}
                       </div>
 
                       {/* Hiển thị danh sách Matches khi được chọn */}
@@ -1154,7 +1285,7 @@ export default function Workspace() {
                               {claimMatches.map((m, idx) => (
                                 <div key={idx} className="bg-slate-50 border border-slate-200 rounded p-2 text-[11px] hover:bg-indigo-50/30 transition-colors">
                                   <div className="flex justify-between items-center mb-1 text-[9px] font-medium text-slate-500">
-                                    <span className="truncate max-w-[150px] font-bold text-slate-700 flex items-center gap-1"><svg className="w-2.5 h-2.5 text-red-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>{m.filename}</span>
+                                    <span className="truncate max-w-[150px] font-bold text-slate-700 flex items-center gap-1"><svg className="w-2.5 h-2.5 text-red-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>{m.sourceFilename}</span>
                                     <span className="text-indigo-600 font-bold bg-indigo-50 px-1 rounded">{(m.score * 100).toFixed(0)}% khớp</span>
                                   </div>
                                   <p className="text-[10px] text-slate-600 line-clamp-3 italic leading-relaxed">"{m.excerpt}"</p>
@@ -1242,57 +1373,100 @@ export default function Workspace() {
             <div className="flex flex-col gap-4 animate-in fade-in duration-200">
               {graphData && graphData.claims && graphData.claims.length > 0 ? (
                 <div className="space-y-4">
-                  {/* Sơ đồ liên kết Claims -> Verdict -> Source */}
+                  {/* SVG Graph */}
                   <div className="bg-slate-900 rounded-xl p-4 border border-slate-800 text-slate-200">
                     <div className="flex justify-between items-center mb-3">
                       <h4 className="font-bold text-xs text-indigo-400 flex items-center gap-1">
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
                         Mạng lưới đối chiếu nguồn
                       </h4>
-                      <span className="text-[9px] text-slate-500">Mô hình liên kết thực tế</span>
+                      <div className="flex items-center gap-2">
+                        <button onClick={handleExportCsv} className="text-[9px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-medium" title="Tải xuống CSV">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                          CSV
+                        </button>
+                        <button onClick={handleExportJson} className="text-[9px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium" title="Tải xuống JSON">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                          JSON
+                        </button>
+                        <span className="text-[9px] text-slate-500">Mô hình liên kết thực tế</span>
+                      </div>
                     </div>
 
-                    {/* Biểu diễn trực quan hóa các mối liên kết */}
-                    <div className="space-y-3 max-h-72 overflow-y-auto custom-scrollbar pr-1">
-                      {graphData.claims.map((c, idx) => {
-                        const graphInfo = c.graphData || {};
-                        const hasEdge = graphInfo.status !== 'MISSING' && graphInfo.verdict;
+                    <svg width="100%" viewBox={`0 0 600 ${Math.max(graphData.claims.length, graphData.sources?.length || 0) * 80 + 100}`} className="overflow-visible">
+                      {graphData.claims.map((c, ci) => (
+                        (c.graphData?.matched_source_ids || []).map(sid => {
+                          const si = (graphData.sources || []).findIndex(s => s.id === sid);
+                          if (si < 0) return null;
+                          const y1 = ci * 80 + 50, y2 = si * 80 + 50;
+                          const color = c.graphData?.verdict === 'SUPPORTED' ? '#34d399' : c.graphData?.verdict === 'REFUTED' ? '#fb7185' : '#fbbf24';
+                          return (
+                            <path key={`e-${ci}-${si}`} d={`M 150 ${y1} Q 300 ${(y1 + y2) / 2}, 450 ${y2}`} stroke={color} strokeWidth="1.5" fill="none" opacity="0.5" />
+                          );
+                        })
+                      ))}
+                      {graphData.claims.map((c, ci) => {
+                        const verdict = c.graphData?.verdict;
+                        const borderColor = verdict === 'SUPPORTED' ? '#34d399' : verdict === 'REFUTED' ? '#fb7185' : verdict ? '#fbbf24' : '#334155';
+                        const g = c.graphData || {};
                         return (
-                          <div key={idx} className="bg-slate-800/80 border border-slate-700/60 rounded-lg p-2.5 text-xs">
-                            <div className="font-bold text-slate-300 truncate mb-1">C.{idx + 1}: {c.content}</div>
-                            {hasEdge ? (
-                              <div className="space-y-1.5 pl-2 border-l border-indigo-500/50 mt-2">
-                                <div className="flex justify-between items-center text-[10px]">
-                                  <span className="text-slate-400">Verdict:</span>
-                                  <span className={`font-black px-1.5 py-0.5 rounded text-[9px] ${graphInfo.verdict === 'SUPPORTED' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : graphInfo.verdict === 'REFUTED' ? 'bg-rose-950 text-rose-400 border border-rose-800' : 'bg-amber-950 text-amber-400 border border-amber-800'}`}>{graphInfo.verdict}</span>
-                                </div>
-                                <div className="flex justify-between text-[10px]">
-                                  <span className="text-slate-400">Confidence:</span>
-                                  <span className="text-indigo-400 font-bold">{(graphInfo.confidence * 100).toFixed(0)}%</span>
-                                </div>
-                                <div className="text-[10px] text-slate-400 mt-1">
-                                  <span className="block text-slate-500 font-bold">Giải thích:</span>
-                                  <p className="italic text-slate-300 pl-1 leading-relaxed">"{graphInfo.explanation}"</p>
-                                </div>
-                                {graphInfo.missing_evidence && graphInfo.missing_evidence.length > 0 && (
-                                  <div className="text-[10px] text-rose-400 mt-1">
-                                    <span className="block text-slate-500 font-bold">Chứng cứ thiếu:</span>
-                                    <ul className="list-disc pl-3 text-slate-300 space-y-0.5">
-                                      {graphInfo.missing_evidence.map((me, i) => <li key={i}>{me}</li>)}
-                                    </ul>
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="text-[10px] text-slate-500 italic mt-1 pl-2">Chưa chạy AI phân tích chứng cứ cho luận điểm này.</div>
-                            )}
-                          </div>
+                          <g key={`c-${ci}`} onClick={() => { setSelectedClaim(c); handleFetchMatches(c.id); }} style={{ cursor: 'pointer' }}>
+                            <rect x="10" y={ci * 80 + 10} width="140" height="80" rx="8" fill="#1e293b" stroke={borderColor} strokeWidth="1.5" />
+                            <foreignObject x="15" y={ci * 80 + 15} width="130" height="45">
+                              <div style={{ color: '#e2e8f0', fontSize: '10px', lineHeight: '1.3', overflow: 'hidden' }}>{c.content}</div>
+                            </foreignObject>
+                            <text x="80" y={ci * 80 + 75} fill={borderColor} fontSize="9" textAnchor="middle" fontWeight="bold">{verdict || 'Chưa phân tích'}{g.confidence ? ` (${(g.confidence * 100).toFixed(0)}%)` : ''}</text>
+                          </g>
                         );
                       })}
+                      {(graphData.sources || []).map((s, si) => (
+                        <g key={`s-${si}`}>
+                          <rect x="450" y={si * 80 + 10} width="140" height="80" rx="8" fill="#1e293b" stroke="#475569" />
+                          <text x="520" y={si * 80 + 35} fill="#94a3b8" fontSize="9" textAnchor="middle">{s.filename.slice(0, 22)}</text>
+                          <text x="520" y={si * 80 + 55} fill="#64748b" fontSize="8" textAnchor="middle">Được trích dẫn</text>
+                          <text x="520" y={si * 80 + 72} fill="#6366f1" fontSize="10" textAnchor="middle" fontWeight="bold">{s.referenceCount} lần</text>
+                        </g>
+                      ))}
+                    </svg>
+
+                    {/* Legend */}
+                    <div className="flex gap-4 mt-3 pt-2 border-t border-slate-800">
+                      <div className="flex items-center gap-1.5 text-[10px]"><div className="w-3 h-0.5 rounded bg-emerald-400" /><span className="text-slate-400">SUPPORTED</span></div>
+                      <div className="flex items-center gap-1.5 text-[10px]"><div className="w-3 h-0.5 rounded bg-amber-400" /><span className="text-slate-400">NEUTRAL</span></div>
+                      <div className="flex items-center gap-1.5 text-[10px]"><div className="w-3 h-0.5 rounded bg-rose-400" /><span className="text-slate-400">REFUTED</span></div>
                     </div>
                   </div>
 
-                  {/* Thông tin thống kê nguồn */}
+                  {/* Matches detail for selected claim */}
+                  {selectedClaim && (
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                      <h4 className="font-bold text-xs text-slate-700 mb-3 flex items-center gap-1">
+                        <svg className="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                        Chi tiết kết nối: "{selectedClaim.content.slice(0, 60)}..."
+                      </h4>
+                      {loadingMatches ? (
+                        <div className="text-xs text-slate-400 italic">Đang tải...</div>
+                      ) : claimMatches.length === 0 ? (
+                        <div className="text-xs text-slate-400 italic">Không có kết nối nào.</div>
+                      ) : (
+                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                          {claimMatches.map((m, i) => (
+                            <div key={i} className="flex items-start gap-2 p-2 bg-slate-50 rounded-lg text-xs">
+                              <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${m.score >= 0.7 ? 'bg-emerald-400' : m.score >= 0.4 ? 'bg-amber-400' : 'bg-rose-400'}`} />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-slate-700">{m.filename}{m.page ? ` (tr.${m.page})` : ''}</div>
+                                <div className="text-slate-500 text-[10px] mt-0.5 line-clamp-2">"{m.excerpt}"</div>
+                                {m.explanation && <div className="text-indigo-600 text-[10px] mt-0.5 italic">{m.explanation}</div>}
+                              </div>
+                              <span className="text-[10px] font-bold text-slate-500 shrink-0">{(m.score * 100).toFixed(0)}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Source summary */}
                   <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
                     <h4 className="font-bold text-xs text-slate-700 mb-3">Tóm tắt các Nguồn đối chiếu</h4>
                     <div className="space-y-2">
@@ -1374,6 +1548,32 @@ export default function Workspace() {
     )
   }
 
+  { /* CLAIM EDIT MODAL */ }
+  {
+    editingClaim && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 transform transition-all">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-bold text-slate-800">Sửa luận điểm</h2>
+            <button onClick={() => { setEditingClaim(null); setEditClaimContent(''); }} className="text-slate-400 hover:text-slate-600 transition-colors">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+          <textarea
+            value={editClaimContent}
+            onChange={(e) => setEditClaimContent(e.target.value)}
+            className="w-full border border-slate-200 rounded-lg p-3 text-sm outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+            rows={4}
+          />
+          <div className="flex justify-end gap-3 mt-4">
+            <button onClick={() => { setEditingClaim(null); setEditClaimContent(''); }} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">Hủy</button>
+            <button onClick={() => { handleUpdateClaim(); }} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors">Lưu</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   {
     viewerFile && (
       <FileViewerModal
@@ -1383,6 +1583,7 @@ export default function Workspace() {
       />
     )
   }
+      <TourLauncher steps={WORKSPACE_TOUR_STEPS} tourKey="workspace" />
     </div >
   );
 }

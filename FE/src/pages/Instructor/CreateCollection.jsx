@@ -1,396 +1,109 @@
-// import { useState, useEffect } from 'react';
-// import { useNavigate } from 'react-router-dom';
-// import api from '../../api.js';
-
-// export default function CreateCollection() {
-//   const navigate = useNavigate();
-  
-//   // States cho Form (Khớp chuẩn xác cấu trúc CollectionRequest)
-//   const [title, setTitle] = useState("");
-//   const [description, setDescription] = useState("");
-//   const [projectId, setProjectId] = useState(""); 
-  
-//   // States quản lý UI
-//   const [projects, setProjects] = useState([]);
-//   const [loading, setLoading] = useState(false);
-//   const [submitting, setSubmitting] = useState(false);
-//   const [errorMessage, setErrorMessage] = useState("");
-
-//   // Đọc danh sách các project active để hiển thị lựa chọn liên kết
-//   useEffect(() => {
-//     const fetchActiveProjects = async () => {
-//       setLoading(true);
-//       try {
-//         const response = await api.get('/api/projects?size=100&active=true');
-//         setProjects(response.data.content || []);
-//       } catch (error) {
-//         console.error("Error loading project mapping context:", error);
-//         setErrorMessage("Failed to load project reference keys from infrastructure backend.");
-//       } finally {
-//         setLoading(false);
-//       }
-//     };
-//     fetchActiveProjects();
-//   }, []);
-
-//   // Xử lý gửi API tạo mới
-//   const handleSubmit = async (e) => {
-//     e.preventDefault();
-//     if (!title.trim()) return;
-
-//     setSubmitting(true);
-//     setErrorMessage("");
-
-//     try {
-//       const payload = {
-//         title: title.trim(),
-//         description: description.trim() || null,
-//         projectId: projectId ? projectId : null // Map giá trị trống thành null để BE xử lý UUID đúng kiểu
-//       };
-
-//       await api.post('/api/collections', payload);
-//       navigate('/instructor/collections'); // Chuyển trang quay về danh sách sau khi tạo thành công
-//     } catch (error) {
-//       console.error("Create collection rejected:", error);
-//       setErrorMessage(error.response?.data?.message || "Validation error. Please verify input parameters syntax.");
-//     } finally {
-//       setSubmitting(false);
-//     }
-//   };
-
-//   return (
-//     <div className="min-h-screen bg-[#f8fafc] text-[#0f172a] p-8 font-sans">
-//       <div className="max-w-2xl mx-auto">
-        
-//         {/* Navigation Breadcrumb */}
-//         <button 
-//           type="button"
-//           onClick={() => navigate('/instructor/collections')}
-//           className="text-xs font-bold text-gray-400 hover:text-[#1e3a8a] transition flex items-center gap-1 mb-4"
-//         >
-//           ➔ Back to Library Index
-//         </button>
-
-//         {/* Header Block */}
-//         <div className="mb-8 border-b border-gray-200 pb-6">
-//           <h1 className="text-3xl font-black text-[#1e3a8a] tracking-tight">Create Evidence Collection</h1>
-//           <p className="text-xs text-gray-400 mt-1">
-//             Initialize a new blueprint master library to group, store, and cross-reference student compliance documents.
-//           </p>
-//         </div>
-
-//         {errorMessage && (
-//           <div className="p-4 mb-6 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700 text-xs font-bold">
-//             ⚠️ {errorMessage}
-//           </div>
-//         )}
-
-//         {/* Form Input Body */}
-//         <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-8">
-//           {loading ? (
-//             <div className="text-center py-8 text-xs text-gray-400 font-medium animate-pulse">
-//               Synchronizing infrastructure mapping configurations...
-//             </div>
-//           ) : (
-//             <form onSubmit={handleSubmit} className="space-y-6 text-xs">
-              
-//               {/* Field: Title */}
-//               <div className="space-y-1.5">
-//                 <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">
-//                   Collection Schema Title <span className="text-rose-500">*</span>
-//                 </label>
-//                 <input 
-//                   type="text"
-//                   required
-//                   value={title}
-//                   onChange={(e) => setTitle(e.target.value)}
-//                   placeholder="e.g., Autumn 2026 Software Architecture Core Metrics Template"
-//                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition"
-//                 />
-//               </div>
-
-//               {/* Field: Description */}
-//               <div className="space-y-1.5">
-//                 <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">
-//                   Boundary Specification & Scope Description
-//                 </label>
-//                 <textarea 
-//                   rows="5"
-//                   value={description}
-//                   onChange={(e) => setDescription(e.target.value)}
-//                   placeholder="Describe the checking rules layout context, expected proof documentation structures, or evaluation matrix requirements..."
-//                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition"
-//                 />
-//               </div>
-
-//               {/* Field: Project Relation Selection */}
-//               <div className="space-y-1.5">
-//                 <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">
-//                   Target Project Association Bound <span className="text-gray-400 font-normal">(Optional)</span>
-//                 </label>
-//                 <select 
-//                   value={projectId}
-//                   onChange={(e) => setProjectId(e.target.value)}
-//                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition"
-//                 >
-//                   {projects.map(p => (
-//                     <option key={p.id} value={p.id}>{p.title}</option>
-//                   ))}
-//                 </select>
-//                 <p className="text-[10px] text-gray-400 mt-1">
-//                   Associating this cluster makes the baseline constraints immediately reviewable inside that student workspace timeline.
-//                 </p>
-//               </div>
-
-//               {/* Operations Footer */}
-//               <div className="flex items-center gap-3 pt-4 border-t border-gray-100 font-bold">
-//                 <button 
-//                   type="button"
-//                   onClick={() => navigate('/instructor/collections')}
-//                   className="flex-1 py-3 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-xl transition text-center border border-gray-200/60"
-//                 >
-//                   Cancel
-//                 </button>
-//                 <button 
-//                   type="submit"
-//                   disabled={submitting}
-//                   className="flex-1 py-3 bg-[#1e3a8a] text-white rounded-xl hover:bg-blue-800 transition shadow-md disabled:opacity-50 text-center"
-//                 >
-//                   {submitting ? "Deploying Schema..." : "Create"}
-//                 </button>
-//               </div>
-
-//             </form>
-//           )}
-//         </div>
-
-//       </div>
-//     </div>
-//   );
-// }
-
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { initialMockData } from '../../mockData.js'; 
+import { useNavigate } from 'react-router-dom';
+import { LoadingSkeleton, TourLauncher, AppHeader } from '../../components';
+import { instructorText, commonText } from '../../locales';
+import { useLanguage } from '../../context/LanguageContext';
+import api from '../../api.js';
+
+const TOUR_STEPS = [
+  { element: '#collection-name', popover: { title: 'Collection Name', description: 'Give your evidence collection a descriptive name.', side: 'top', align: 'start' } },
+  { element: '#collection-desc', popover: { title: 'Description', description: 'Describe the purpose and scope of this collection.', side: 'top', align: 'center' } },
+  { element: '#collection-project', popover: { title: 'Project Association', description: 'Optionally link this collection to a student project.', side: 'top', align: 'end' } },
+];
 
 export default function CreateCollection() {
   const navigate = useNavigate();
-  
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [projectId, setProjectId] = useState(""); 
-  const [attachedFiles, setAttachedFiles] = useState([]); // Quản lý nhiều files PDF cùng lúc
+  const { language } = useLanguage();
+  const t = instructorText[language];
+  const ct = commonText[language];
 
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [projectId, setProjectId] = useState('');
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
-
-  // Lấy thông tin giảng viên để đưa lên Header đồng bộ hệ thống
-  const instructorName = `${initialMockData.userProfile?.firstName || 'Nguyen'} ${initialMockData.userProfile?.lastName || 'Van A'}`;
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
-    const fetchActiveProjects = () => {
+    const fetchActiveProjects = async () => {
       setLoading(true);
-      try {
-        // 🌟 ĐỌC DANH SÁCH PROJECTS ĐỘNG TỪ LOCALSTORAGE (NẾU CÓ) ĐỂ ĐỒNG BỘ CATEGORY TAB
-        const projectList = localStorage.getItem('projects')
-          ? JSON.parse(localStorage.getItem('projects'))
-          : (initialMockData.projects || []);
-          
-        setProjects(projectList);
-        if (projectList.length > 0) {
-          setProjectId(projectList[0].id);
-        }
-      } catch (error) {
-        console.error("Error loading project mapping:", error);
-        setErrorMessage("Failed to load project reference keys.");
-      } finally {
-        setLoading(false);
-      }
+      try { const res = await api.get('/api/projects?size=100'); setProjects(res.data?.content || []); }
+      catch { setErrorMessage('Failed to load projects.'); }
+      finally { setLoading(false); }
     };
     fetchActiveProjects();
   }, []);
 
-  // Xử lý nạp nhiều file vào hàng chờ
-  const handleFileChange = (e) => {
-    if (e.target.files) {
-      setAttachedFiles(prev => [...prev, ...Array.from(e.target.files)]);
-    }
-  };
-
-  // Xóa bớt file trong hàng chờ trước khi tạo
-  const handleRemoveFileQueue = (index) => {
-    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!title.trim()) return;
-
-    setSubmitting(true);
-    setErrorMessage("");
-
-    setTimeout(() => {
-      try {
-        const randomNum = Math.floor(100 + Math.random() * 900);
-        const newCollectionId = `col_${randomNum}`;
-        const finalProjectId = projectId || (projects.length > 0 ? projects[0].id : "proj_101");
-
-        // 1. Khởi tạo đối tượng bộ tiêu chuẩn mới
-        const newCollection = {
-          id: newCollectionId, 
-          title: title.trim(),
-          description: description.trim() || "No description provided.",
-          projectId: finalProjectId,
-          documentCount: attachedFiles.length, // Đếm số file đính kèm ngay từ đầu
-          createdAt: new Date().toISOString().split('T')[0]
-        };
-
-        // 🌟 LẤY DỮ LIỆU HIỆN TẠI TỪ LOCALSTORAGE HOẶC MOCKDATA GỐC
-        const localCollections = localStorage.getItem('collections')
-          ? JSON.parse(localStorage.getItem('collections'))
-          : (initialMockData.collections || []);
-
-        let localDocs = localStorage.getItem('referenceDocuments')
-          ? JSON.parse(localStorage.getItem('referenceDocuments'))
-          : (initialMockData.referenceDocuments || []);
-
-        // Đẩy bản ghi mới lên đầu danh sách collections
-        const updatedCollections = [newCollection, ...localCollections];
-
-        // 2. Nếu có đính kèm danh sách file PDF, map toàn bộ vào referenceDocuments
-        if (attachedFiles.length > 0) {
-          const newDocsMapped = attachedFiles.map((file, idx) => ({
-            id: `doc_${Date.now()}_${idx}`,
-            name: file.name,
-            collectionId: newCollectionId,
-            fileUrl: URL.createObjectURL(file), // Tạo luồng blob ảo trực quan
-            uploadedAt: new Date().toISOString().split('T')[0]
-          }));
-
-          localDocs = [...newDocsMapped, ...localDocs];
-        }
-
-        // 🌟 GHI TOÀN BỘ DỮ LIỆU MỚI VÀO LOCALSTORAGE TRƯỚC KHI CHUYỂN TRANG
-        localStorage.setItem('collections', JSON.stringify(updatedCollections));
-        localStorage.setItem('referenceDocuments', JSON.stringify(localDocs));
-
-        setSubmitting(false);
-        alert("Tạo bộ tiêu chuẩn master và đồng bộ danh sách file PDF thành công!");
-        navigate('/instructor/collections'); 
-      } catch (error) {
-        console.error("Error creating collection:", error);
-        setErrorMessage("Validation error. Please verify input parameters syntax.");
-        setSubmitting(false);
-      }
-    }, 300); 
+    if (!name.trim()) return;
+    setSubmitting(true); setErrorMessage('');
+    try {
+      await api.post('/api/collections', { name: name.trim(), description: description.trim() || null, projectId: projectId || null });
+      navigate('/instructor/collections');
+    } catch (err) {
+      setErrorMessage(err.response?.data?.message || 'Failed to create collection.');
+    } finally { setSubmitting(false); }
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-[#0f172a] p-8 font-sans">
-      <div className="max-w-2xl mx-auto">
-        
-        {/* PROFILE HEADER ĐỒNG BỘ */}
-        <div className="flex justify-between items-center mb-6 border-b border-gray-200 pb-5">
-          <button 
-            type="button"
-            onClick={() => navigate('/instructor/collections')}
-            className="text-xs font-bold text-gray-500 hover:text-[#1e3a8a] transition flex items-center gap-1.5"
-          >
-            ← Back to Library Index
-          </button>
+    <div className="min-h-screen bg-[#f8fafc] text-[#0f172a] font-sans">
+      <AppHeader />
+      <div className="max-w-2xl mx-auto p-8">
+        <button type="button" onClick={() => navigate('/instructor/collections')}
+          className="text-xs font-bold text-gray-400 hover:text-[#1e3a8a] transition flex items-center gap-1 mb-4">&larr; {ct.back}</button>
 
-          <div className="flex items-center space-x-4">
-            <Link 
-              to="/instructor/profile" 
-              className="flex items-center space-x-2 bg-white hover:bg-gray-50 border border-gray-200 px-4 py-2 rounded-xl text-xs font-black transition shadow-sm text-gray-700"
-            >
-              <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-[10px] text-white font-black">
-                INS
-              </div>
-              <span>{instructorName}</span>
-            </Link>
-            <span className="bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1 rounded-xl text-xs font-bold uppercase">
-              Instructor Mode
-            </span>
-          </div>
-        </div>
-
-        <div className="mb-8">
-          <h1 className="text-3xl font-extrabold text-[#1e3a8a] tracking-tight">Create Evidence Collection</h1>
-          <p className="text-sm text-gray-500 mt-1">Initialize a new blueprint master library and attach initial reference documentation.</p>
+        <div className="mb-8 border-b border-gray-200 pb-6">
+          <h1 className="text-3xl font-black text-[#1e3a8a] tracking-tight">{t.createCollection}</h1>
+          <p className="text-xs text-gray-400 mt-1">{t.collectionDescription}</p>
         </div>
 
         {errorMessage && (
-          <div className="p-4 mb-6 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700 text-xs font-bold">⚠️ {errorMessage}</div>
+          <div className="p-4 mb-6 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700 text-xs font-bold">{errorMessage}</div>
         )}
 
         <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-8">
           {loading ? (
-            <div className="text-center py-8 text-xs text-gray-400 font-medium animate-pulse">Synchronizing infrastructure mapping configurations...</div>
+            <LoadingSkeleton count={4} height="h-12" />
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6 text-xs">
-              
               <div className="space-y-1.5">
-                <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">Collection Schema Title <span className="text-rose-500">*</span></label>
-                <input type="text" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., Autumn 2026 Software Architecture Core Metrics Template" className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition" />
+                <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">{ct.name} <span className="text-rose-500">*</span></label>
+                <input id="collection-name" type="text" required value={name} onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g., Autumn 2026 Research Collection"
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition" />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">Boundary Specification & Scope Description</label>
-                <textarea rows="4" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe the checking rules layout context..." className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition" />
+                <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">{ct.description}</label>
+                <textarea id="collection-desc" rows="5" value={description} onChange={(e) => setDescription(e.target.value)}
+                  placeholder={t.collectionDescription}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition" />
               </div>
 
-              {/* CATEGORY TAB */}
               <div className="space-y-1.5">
-                <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">Category Tab Selection</label>
-                <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition">
+                <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">{t.project} <span className="text-gray-400 font-normal">({ct.no})</span></label>
+                <select id="collection-project" value={projectId} onChange={(e) => setProjectId(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition">
+                  <option value="">-- {ct.no} --</option>
                   {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
                 </select>
               </div>
 
-              {/* CHỌN NHIỀU FILE BIỂU MẪU PDF */}
-              <div className="space-y-2 border-t border-gray-100 pt-4">
-                <label className="text-gray-500 font-black uppercase tracking-wide text-[10px] block">Reference Document Assets (Multiple PDFs)</label>
-                <div className="border-2 border-dashed border-gray-200 rounded-xl p-5 bg-gray-50/50 flex flex-col items-center justify-center space-y-2">
-                  <label className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-700 font-bold shadow-sm cursor-pointer hover:bg-gray-100 text-xs inline-block">
-                    📎 Browse Files (.pdf)
-                    <input type="file" accept=".pdf" multiple onChange={handleFileChange} className="hidden" />
-                  </label>
-                  <span className="text-[10px] text-gray-400">You can hold Ctrl/Cmd to pick multiple reference frameworks</span>
-                </div>
-
-                {/* Hàng chờ in ra màn hình các file đã chọn */}
-                {attachedFiles.length > 0 && (
-                  <div className="mt-3 space-y-1.5">
-                    <span className="text-[10px] font-bold text-blue-600 block">Queue to upload ({attachedFiles.length}):</span>
-                    {attachedFiles.map((file, index) => (
-                      <div key={index} className="flex justify-between items-center bg-blue-50/50 border border-blue-100 px-3 py-2 rounded-xl text-blue-900 text-xs">
-                        <span className="font-medium truncate max-w-[420px]">✨ {file.name}</span>
-                        <button 
-                          type="button" 
-                          onClick={() => handleRemoveFileQueue(index)}
-                          className="text-gray-400 hover:text-rose-600 font-bold transition px-1"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
               <div className="flex items-center gap-3 pt-4 border-t border-gray-100 font-bold">
-                <button type="button" onClick={() => navigate('/instructor/collections')} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl text-center hover:bg-gray-200 transition">Cancel</button>
-                <button type="submit" disabled={submitting} className="flex-1 py-3 bg-[#1e3a8a] text-white rounded-xl hover:bg-blue-800 transition shadow-md disabled:opacity-50 text-center">
-                  {submitting ? "Deploying..." : "Create Master"}
+                <button type="button" onClick={() => navigate('/instructor/collections')}
+                  className="flex-1 py-3 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-xl transition text-center border border-gray-200/60">{ct.cancel}</button>
+                <button type="submit" disabled={submitting}
+                  className="flex-1 py-3 bg-[#1e3a8a] text-white rounded-xl hover:bg-blue-800 transition shadow-md disabled:opacity-50 text-center">
+                  {submitting ? ct.saving : ct.create}
                 </button>
               </div>
             </form>
           )}
         </div>
       </div>
+      <TourLauncher steps={TOUR_STEPS} tourKey="instructor-create-collection" />
     </div>
   );
 }

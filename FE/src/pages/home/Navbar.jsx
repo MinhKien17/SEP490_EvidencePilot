@@ -32,7 +32,10 @@ export default function Navbar({ t }) {
           <Link to="/privacy" className="text-gray-600 hover:text-[#1e3a8a] font-medium transition">{t.nav.privacy}</Link>
           <button onClick={toggleLanguage} className="text-xs font-bold text-gray-400 hover:text-[#1e3a8a] transition px-2 py-1 border border-gray-200 rounded-lg">{t.nav.lang}</button>
           {isAuthenticated ? (
-            <button onClick={logout} className="text-xs font-bold text-gray-500 hover:text-rose-600 transition px-3 py-1.5 border border-gray-200 rounded-lg">{t.nav.signOut}</button>
+            <>
+              <Link to="/profile" className="text-xs font-bold text-gray-500 hover:text-[#1e3a8a] transition px-3 py-1.5 border border-gray-200 rounded-lg">{t.nav.profile}</Link>
+              <button onClick={logout} className="text-xs font-bold text-gray-500 hover:text-rose-600 transition px-3 py-1.5 border border-gray-200 rounded-lg">{t.nav.signOut}</button>
+            </>
           ) : (
             <Link to="/register" className="text-xs font-bold text-white bg-[#1e3a8a] hover:bg-[#1e40af] transition px-4 py-1.5 rounded-lg shadow-sm">{t.nav.register}</Link>
           )}
@@ -57,7 +60,10 @@ export default function Navbar({ t }) {
           </div>
           <button onClick={() => { toggleLanguage(); setMenuOpen(false); }} className="block text-xs font-bold text-gray-400 border border-gray-200 rounded-lg px-3 py-1.5">{t.nav.lang}</button>
           {isAuthenticated ? (
-            <button onClick={() => { logout(); setMenuOpen(false); }} className="block text-xs font-bold text-rose-600 border border-gray-200 rounded-lg px-3 py-1.5">{t.nav.signOut}</button>
+            <>
+              <Link to="/profile" className="block text-xs font-bold text-gray-500 border border-gray-200 rounded-lg px-3 py-1.5" onClick={() => setMenuOpen(false)}>{t.nav.profile}</Link>
+              <button onClick={() => { logout(); setMenuOpen(false); }} className="block text-xs font-bold text-rose-600 border border-gray-200 rounded-lg px-3 py-1.5">{t.nav.signOut}</button>
+            </>
           ) : (
             <div className="flex gap-2">
               <Link to="/login" className="flex-1 text-center text-xs font-bold text-gray-600 border border-gray-200 rounded-lg px-3 py-1.5" onClick={() => setMenuOpen(false)}>{t.nav.login}</Link>
