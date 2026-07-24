@@ -149,10 +149,13 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     public PaperSectionResponse updateSection(UUID documentId, UUID sectionId,
             String title, Integer order, UUID mergeIntoId) {
         requireDocumentWriteAccess(documentId);
+        User currentUser = currentUserService.requireCurrentUser();
 
         if (mergeIntoId != null) {
             PaperSection target = requireSectionInDocument(mergeIntoId, documentId);
             PaperSection source = requireSectionInDocument(sectionId, documentId);
+            currentUserService.requireSectionAssignment(currentUser, source);
+            currentUserService.requireSectionAssignment(currentUser, target);
             target.setContentTex(
                     (target.getContentTex() != null ? target.getContentTex() : "")
                     + "\n\n" + (source.getContentTex() != null ? source.getContentTex() : ""));
@@ -165,6 +168,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         }
 
         PaperSection section = requireSectionInDocument(sectionId, documentId);
+        currentUserService.requireSectionAssignment(currentUser, section);
         if (title != null && !title.isBlank()) {
             section.setSectionTitle(title);
         }

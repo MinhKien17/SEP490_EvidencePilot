@@ -1,6 +1,7 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.model.Claim;
+import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.User;
@@ -172,5 +173,17 @@ public class CurrentUserServiceImpl implements CurrentUserService {
     @Override
     public void requireClaimAccess(User currentUser, Claim claim) {
         requireProjectAccess(currentUser, claim.getProject());
+    }
+
+    @Override
+    public void requireSectionAssignment(User currentUser, PaperSection section) {
+        if (isAdmin(currentUser)) return;
+        if (isInstructor(currentUser)) return;
+        if (section.getAssignedUser() == null) return;
+        if (!currentUser.getId().equals(section.getAssignedUser().getId())) {
+            throw new ResponseStatusException(
+                    org.springframework.http.HttpStatus.FORBIDDEN,
+                    "You are not assigned to this section");
+        }
     }
 }

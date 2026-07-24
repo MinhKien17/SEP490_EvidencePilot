@@ -9,6 +9,7 @@ import com.evidencepilot.mapper.DocumentMapper;
 import com.evidencepilot.model.Collection;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
+import com.evidencepilot.model.DocumentText;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.model.User;
@@ -393,6 +394,23 @@ public class DocumentServiceImpl implements DocumentService {
         if (text == null) {
             throw new ResourceNotFoundException("Document text not found for document " + documentId);
         }
+        return documentMapper.toDocumentTextResponse(text);
+    }
+
+    @Override
+    @Transactional
+    public DocumentTextResponse saveDraft(UUID documentId, String extractedText) {
+        var currentUser = currentUserService.requireCurrentUser();
+        Document doc = findDocument(documentId);
+        requireDocumentAccess(currentUser, doc);
+        var text = documentTextRepository.findByDocumentId(documentId);
+        if (text == null) {
+            text = new DocumentText();
+            text.setDocument(doc);
+            text.setExtractionMethod("manual");
+        }
+        text.setExtractedText(extractedText);
+        documentTextRepository.save(text);
         return documentMapper.toDocumentTextResponse(text);
     }
 

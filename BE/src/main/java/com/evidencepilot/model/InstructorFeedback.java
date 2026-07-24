@@ -45,6 +45,15 @@ public class InstructorFeedback {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    @Column(name = "answered")
+    private boolean answered;
+
+    @Column(name = "answer_content", columnDefinition = "TEXT")
+    private String answerContent;
+
+    @Column(name = "answered_at")
+    private LocalDateTime answeredAt;
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

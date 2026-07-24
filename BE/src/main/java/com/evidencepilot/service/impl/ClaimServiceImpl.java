@@ -148,7 +148,7 @@ public class ClaimServiceImpl implements ClaimService {
                 .orElseThrow(() -> new ResourceNotFoundException(request.sectionId(), "PaperSection"));
         Project project = section.getDocument().getProject();
 
-        requireProjectContentWriteAccess(currentUser, project);
+        requireSectionWriteAccess(currentUser, section);
 
         Claim claim = new Claim();
         claim.setProject(project);
@@ -167,7 +167,11 @@ public class ClaimServiceImpl implements ClaimService {
     public ClaimResponse updateClaim(UUID id, String content, Float aiConfidenceScore) {
         Claim claim = findActiveClaim(id);
         User currentUser = currentUserService.requireCurrentUser();
-        requireProjectContentWriteAccess(currentUser, claim.getProject());
+        if (claim.getSection() != null) {
+            requireSectionWriteAccess(currentUser, claim.getSection());
+        } else {
+            requireProjectContentWriteAccess(currentUser, claim.getProject());
+        }
 
         claim.setContent(content);
         if (aiConfidenceScore != null) {
@@ -183,7 +187,11 @@ public class ClaimServiceImpl implements ClaimService {
     public void deleteClaim(UUID id) {
         Claim claim = findActiveClaim(id);
         User currentUser = currentUserService.requireCurrentUser();
-        requireProjectContentWriteAccess(currentUser, claim.getProject());
+        if (claim.getSection() != null) {
+            requireSectionWriteAccess(currentUser, claim.getSection());
+        } else {
+            requireProjectContentWriteAccess(currentUser, claim.getProject());
+        }
         claim.setActive(false);
         claimRepository.save(claim);
     }
@@ -356,6 +364,11 @@ public class ClaimServiceImpl implements ClaimService {
 
     private void requireProjectContentWriteAccess(User currentUser, Project project) {
         currentUserService.requireProjectWriteAccess(currentUser, project);
+    }
+
+    private void requireSectionWriteAccess(User currentUser, PaperSection section) {
+        requireProjectContentWriteAccess(currentUser, section.getDocument().getProject());
+        currentUserService.requireSectionAssignment(currentUser, section);
     }
 
     private Claim findActiveClaim(UUID id) {

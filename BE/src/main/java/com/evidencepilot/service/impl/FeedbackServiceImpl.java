@@ -163,6 +163,46 @@ public class FeedbackServiceImpl implements FeedbackService {
 
     @Override
     @Transactional
+    public InstructorFeedbackResponseDto answerFeedback(UUID feedbackItemId, String answerContent) {
+        User currentUser = currentUserService.requireCurrentUser();
+        InstructorFeedback feedback = instructorFeedbackRepository.findById(feedbackItemId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Instructor feedback not found: " + feedbackItemId));
+        FeedbackRequest request = feedback.getRequest();
+        if (request.getStudent() == null || !currentUser.getId().equals(request.getStudent().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the assigned student can answer feedback.");
+        }
+        if (feedback.isAnswered()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Feedback already answered.");
+        }
+        if (request.getStatus() != FeedbackStatus.RETURNED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Feedback can only be answered when the request is RETURNED.");
+        }
+        PaperSection section = feedback.getSection();
+        if (section != null && section.getAssignedUser() != null
+                && !currentUser.getId().equals(section.getAssignedUser().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You are not assigned to this section.");
+        }
+
+        feedback.setAnswered(true);
+        feedback.setAnswerContent(answerContent);
+        feedback.setAnsweredAt(LocalDateTime.now());
+        InstructorFeedback saved = instructorFeedbackRepository.save(feedback);
+
+        long unanswered = instructorFeedbackRepository.countByRequestIdAndAnsweredFalse(request.getId());
+        if (unanswered == 0) {
+            request.setStatus(FeedbackStatus.REVIEWED);
+            feedbackRequestRepository.save(request);
+        }
+
+        return InstructorFeedbackResponseDto.fromEntity(saved);
+    }
+
+    @Override
+    @Transactional
     public FeedbackRequestResponseDto updateStatus(UUID feedbackRequestId, String status) {
         User currentUser = currentUserService.requireCurrentUser();
         FeedbackStatus newStatus;

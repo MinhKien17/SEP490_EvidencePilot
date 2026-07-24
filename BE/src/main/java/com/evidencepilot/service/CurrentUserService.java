@@ -1,6 +1,7 @@
 package com.evidencepilot.service;
 
 import com.evidencepilot.model.Claim;
+import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.UserRole;
@@ -32,4 +33,6 @@ public interface CurrentUserService {
     void requireCollectionAccess(User currentUser, com.evidencepilot.model.Collection collection);
 
     void requireClaimAccess(User currentUser, Claim claim);
+
+    void requireSectionAssignment(User currentUser, PaperSection section);
 }

@@ -134,7 +134,7 @@ class ProjectServiceImplLifecycleTest {
 
         var response = service().unarchiveProject(project.getId());
 
-        verify(currentUserService).requireProjectManageAccess(user, project);
+        verify(currentUserService).requireRole(user, UserRole.ADMIN);
         assertThat(response.status()).isEqualTo(ProjectStatus.APPROVED);
         assertThat(project.isActive()).isTrue();
         verify(auditService).record(

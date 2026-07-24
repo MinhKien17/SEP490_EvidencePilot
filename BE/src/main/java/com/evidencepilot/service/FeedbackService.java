@@ -12,4 +12,5 @@ public interface FeedbackService {
     FeedbackRequestResponseDto submitForReview(UUID projectId, SubmitReviewRequest request);
     InstructorFeedbackResponseDto comment(UUID feedbackRequestId, InstructorFeedbackRequest request);
     FeedbackRequestResponseDto updateStatus(UUID feedbackRequestId, String status);
+    InstructorFeedbackResponseDto answerFeedback(UUID feedbackItemId, String answerContent);
 }

@@ -51,6 +51,7 @@ public interface DocumentService {
     void removeSharedDocument(UUID projectId, UUID sourceId);
     List<DocumentChunkResponse> getDocumentChunks(UUID documentId);
     DocumentTextResponse getDocumentText(UUID documentId);
+    DocumentTextResponse saveDraft(UUID documentId, String extractedText);
     void deleteDocument(UUID id);
     Document getDocumentForDownload(UUID id, String token);
 }
