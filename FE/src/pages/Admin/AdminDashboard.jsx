@@ -76,10 +76,10 @@ const t = {
     guideProjectsDesc: 'View and manage all projects in the system.',
     guideProjectsTable: 'Each row shows project title, status, and creation date. Admins can delete projects.',
     guideProjectsDone: 'Projects walkthrough complete.',
-    sourceCategories: 'Source Categories', categoryName: 'Name', categoryDescription: 'Description',
+    collectionCategories: 'Collection Categories', categoryName: 'Name', categoryDescription: 'Description',
     addCategory: 'Add Category', editCategory: 'Edit Category',
     noCategories: 'No categories', categorySaved: 'Category saved', categoryDeleted: 'Category deleted',
-    guideCategoriesDesc: 'Manage source categories used to classify documents.',
+    guideCategoriesDesc: 'Manage collection categories used to organize evidence collections.',
     guideCategoriesList: 'List of all categories. Each shows name, description, and active status.',
     guideCategoriesForm: 'Add or edit a category. Name is required, description is optional.',
     guideCategoriesDone: 'Categories walkthrough complete.',
@@ -173,10 +173,10 @@ const t = {
     guideProjectsDesc: 'Xem và quản lý tất cả dự án trong hệ thống.',
     guideProjectsTable: 'Mỗi dòng hiển thị tiêu đề, trạng thái và ngày tạo. Quản trị viên có thể xóa dự án.',
     guideProjectsDone: 'Đã hoàn thành hướng dẫn dự án.',
-    sourceCategories: 'Danh mục nguồn', categoryName: 'Tên', categoryDescription: 'Mô tả',
+    collectionCategories: 'Danh mục bộ sưu tập', categoryName: 'Tên', categoryDescription: 'Mô tả',
     addCategory: 'Thêm danh mục', editCategory: 'Sửa danh mục',
     noCategories: 'Không có danh mục', categorySaved: 'Đã lưu danh mục', categoryDeleted: 'Đã xóa danh mục',
-    guideCategoriesDesc: 'Quản lý danh mục nguồn dùng để phân loại tài liệu.',
+    guideCategoriesDesc: 'Quản lý danh mục bộ sưu tập dùng để phân loại bộ sưu tập bằng chứng.',
     guideCategoriesList: 'Danh sách tất cả danh mục. Mỗi danh mục hiển thị tên, mô tả và trạng thái.',
     guideCategoriesForm: 'Thêm hoặc sửa danh mục. Tên là bắt buộc, mô tả không bắt buộc.',
     guideCategoriesDone: 'Đã hoàn thành hướng dẫn danh mục.',
@@ -311,7 +311,7 @@ function DashboardSection({ lang, api }) {
         <div data-guide="stat-totalUsers"><StatCard label={lang.totalUsers} value={display.totalUsers}
           sub={<>{display.usersByRole?.STUDENT || 0} {lang.students} &middot; {display.usersByRole?.INSTRUCTOR || 0} {lang.instructors} &middot; {display.usersByRole?.ADMIN || 0} {lang.admins}</>} /></div>
         <div data-guide="stat-projects"><StatCard label={lang.activeProjects} value={display.activeProjects} color="text-indigo-600"
-          sub={<>{display.activeSourceCategories} {lang.categories} &middot; {display.activeCollections} {lang.collections}</>} /></div>
+          sub={<>{display.activeCollectionCategories} {lang.categories} &middot; {display.activeCollections} {lang.collections}</>} /></div>
         <div data-guide="stat-documents"><StatCard label={lang.activeDocuments} value={(display.activeSourceDocuments || 0) + (display.activePaperDocuments || 0)} color="text-amber-600"
           sub={<>{display.activeSourceDocuments || 0} {lang.sourceFiles} &middot; {display.activePaperDocuments || 0} {lang.paperDocs}</>} /></div>
       </div>
@@ -1121,7 +1121,7 @@ function SettingsSection({ lang, api }) {
 
   const fetchCats = useCallback(async (signal) => {
     setCatsLoading(true);
-    try { const r = await api.get('/api/admin/source-categories?active=true', { signal }); setCats(r.data); }
+    try { const r = await api.get('/api/admin/collection-categories?active=true', { signal }); setCats(r.data); }
     catch (e) { /* silent */ }
     finally { setCatsLoading(false); }
   }, [api]);
@@ -1144,15 +1144,15 @@ function SettingsSection({ lang, api }) {
   const doCatSave = async (e) => {
     e.preventDefault(); setCatErr('');
     try {
-      if (catForm.id) { await api.put(`/api/admin/source-categories/${catForm.id}`, { name: catForm.name, description: catForm.description }); }
-      else { await api.post('/api/admin/source-categories', { name: catForm.name, description: catForm.description }); }
+      if (catForm.id) { await api.put(`/api/admin/collection-categories/${catForm.id}`, { name: catForm.name, description: catForm.description }); }
+      else { await api.post('/api/admin/collection-categories', { name: catForm.name, description: catForm.description }); }
       setShowCatForm(false); setCatForm({ id: null, name: '', description: '' }); fetchCats(new AbortController().signal);
     } catch (err) { setCatErr(err.response?.data?.message || err.message); }
   };
 
   const doCatDelete = async (id) => {
     if (!confirm(lang.confirmDelete)) return;
-    try { await api.delete(`/api/admin/source-categories/${id}`); fetchCats(new AbortController().signal); }
+    try { await api.delete(`/api/admin/collection-categories/${id}`); fetchCats(new AbortController().signal); }
     catch (e) { /* silent */ }
   };
 
@@ -1164,7 +1164,7 @@ function SettingsSection({ lang, api }) {
         steps: [
           { popover: { title: lang.processGuide, description: lang.guideSettingsDesc, side: 'center' } },
           { element: '[data-guide="settings-form"]', popover: { title: lang.settings, description: lang.guideSettingsForm, side: 'bottom' } },
-          { element: '[data-guide="settings-categories"]', popover: { title: lang.sourceCategories, description: lang.guideCategoriesDesc, side: 'top' } },
+          { element: '[data-guide="settings-categories"]', popover: { title: lang.collectionCategories, description: lang.guideCategoriesDesc, side: 'top' } },
           { element: '[data-guide="settings-config"]', popover: { title: lang.systemConfig, description: lang.guideConfigDesc, side: 'top' } },
           { popover: { title: lang.done, description: lang.guideSettingsDone, side: 'center' } },
         ],
@@ -1197,7 +1197,7 @@ function SettingsSection({ lang, api }) {
 
         <div data-guide="settings-categories" className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <div className="flex items-center justify-between mb-4">
-          <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{lang.sourceCategories}</span>
+          <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{lang.collectionCategories}</span>
           <button onClick={() => { setCatForm({ id: null, name: '', description: '' }); setShowCatForm(true); }} className="px-2.5 py-1 text-xs font-bold bg-[#1e3a8a] text-white rounded-lg hover:bg-[#1e40af] transition">{lang.addCategory}</button>
         </div>
         {catsLoading ? (

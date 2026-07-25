@@ -19,6 +19,8 @@
     "driver.js": "^1.8.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-router-dom": "^7.18.0"
+    "react-router-dom": "^7.18.0",
+    "vis-data": "^8.0.4",
+    "vis-network": "^10.1.0"
   }
 }

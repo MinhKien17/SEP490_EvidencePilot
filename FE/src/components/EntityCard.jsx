@@ -1,6 +1,6 @@
 import StatusBadge from './StatusBadge';
 
-export default function EntityCard({ title, subtitle, status, onClick, onDelete, children }) {
+export default function EntityCard({ title, subtitle, status, onClick, onEdit, onDelete, children }) {
   return (
     <div
       onClick={onClick}
@@ -16,14 +16,24 @@ export default function EntityCard({ title, subtitle, status, onClick, onDelete,
         {status && <StatusBadge status={status} className="shrink-0" />}
       </div>
       {children && <div className="mt-2 text-xs text-slate-600">{children}</div>}
-      {onDelete && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="mt-2 text-[10px] text-rose-500 hover:text-rose-700 font-semibold opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          Delete
-        </button>
-      )}
+      <div className="flex gap-3 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        {onEdit && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit(); }}
+            className="text-[10px] text-indigo-500 hover:text-indigo-700 font-semibold"
+          >
+            Edit
+          </button>
+        )}
+        {onDelete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="text-[10px] text-rose-500 hover:text-rose-700 font-semibold"
+          >
+            Delete
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -28,7 +28,9 @@ export default function AppHeader() {
         <span className="font-bold text-sm tracking-wider truncate">Evidence Pilot</span>
         <nav className="hidden md:flex items-center gap-1 ml-4">
           {roleLinks.map(link => {
-            const active = location.pathname === link.path;
+            const active = link.path === '/instructor/collections'
+              ? location.pathname.startsWith('/instructor/collections')
+              : location.pathname === link.path;
             return (
               <button key={link.path} onClick={() => navigate(link.path)}
                 className={`text-xs font-medium px-2 py-1 rounded transition relative ${active ? 'text-white' : 'text-blue-200 hover:text-white'}`}>

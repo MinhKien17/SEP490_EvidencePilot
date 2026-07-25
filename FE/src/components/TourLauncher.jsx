@@ -4,7 +4,7 @@ import 'driver.js/dist/driver.css';
 
 const STORAGE_KEY = 'tour_seen';
 
-export default function TourLauncher({ steps, tourKey, autoLaunch = false }) {
+export default function TourLauncher({ steps, tourKey, autoLaunch = false, className }) {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
@@ -31,7 +31,7 @@ export default function TourLauncher({ steps, tourKey, autoLaunch = false }) {
   return (
     <button
       onClick={() => setShow(true)}
-      className="fixed bottom-4 left-4 z-40 w-9 h-9 rounded-full bg-white border border-slate-300 shadow-md flex items-center justify-center text-sm font-bold text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-300 transition-all"
+      className={className || "fixed bottom-4 left-4 z-40 w-9 h-9 rounded-full bg-white border border-slate-300 shadow-md flex items-center justify-center text-sm font-bold text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-300 transition-all"}
       title="Guide"
     >
       ?
