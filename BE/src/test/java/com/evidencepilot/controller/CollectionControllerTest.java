@@ -3,6 +3,7 @@ package com.evidencepilot.controller;
 import com.evidencepilot.dto.request.CollectionRequest;
 import com.evidencepilot.service.CollectionService;
 import com.evidencepilot.service.DocumentService;
+import com.evidencepilot.service.OpenAlexIngestionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -20,11 +21,12 @@ class CollectionControllerTest {
 
     private final CollectionService collectionService = mock(CollectionService.class);
     private final DocumentService documentService = mock(DocumentService.class);
+    private final OpenAlexIngestionService openAlexIngestionService = mock(OpenAlexIngestionService.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = standaloneSetup(new CollectionController(collectionService, documentService))
+        mockMvc = standaloneSetup(new CollectionController(collectionService, documentService, openAlexIngestionService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -46,21 +48,30 @@ class CollectionControllerTest {
     }
 
     @Test
-    void getCollectionSources_bindsOptionalCategory() throws Exception {
-        UUID id = UUID.randomUUID();
-        UUID categoryId = UUID.randomUUID();
-        mockMvc.perform(get("/api/collections/{id}/sources", id)
-                        .param("sourceCategoryId", categoryId.toString()))
+    void getMyCollections_delegates() throws Exception {
+        mockMvc.perform(get("/api/collections")
+                        .param("page", "1")
+                        .param("size", "5"))
                 .andExpect(status().isOk());
-        verify(documentService).getSourcesByCollection(id, categoryId);
+        verify(collectionService).getMyCollections(1, 5, null, null, null);
     }
 
     @Test
-    void getCollectionSources_rejectsInvalidCategoryId() throws Exception {
-        mockMvc.perform(get("/api/collections/{id}/sources", UUID.randomUUID())
-                        .param("sourceCategoryId", "not-a-uuid"))
-                .andExpect(status().isBadRequest());
-        verifyNoInteractions(documentService);
+    void updateCollection_delegates() throws Exception {
+        mockMvc.perform(put("/api/collections/{id}", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Updated\",\"description\":\"New desc\"}"))
+                .andExpect(status().isOk());
+        verify(collectionService).updateCollection(any(UUID.class), any(CollectionRequest.class));
+    }
+
+    @Test
+    void addSourceToCollection_returns200() throws Exception {
+        UUID collectionId = UUID.randomUUID();
+        UUID sourceId = UUID.randomUUID();
+        mockMvc.perform(post("/api/collections/{collectionId}/sources/{sourceId}", collectionId, sourceId))
+                .andExpect(status().isOk());
+        verify(documentService).addSourceToCollection(collectionId, sourceId);
     }
 
     @Test

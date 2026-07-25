@@ -207,20 +207,6 @@ public class ProjectController {
         return claimService.getClaimsByProject(projectId, page, size, sort, q, active);
     }
 
-    @Operation(summary = "List project collections",
-            description = "Returns paged collections in a project with optional search and active filtering.")
-    @GetMapping("/{projectId}/collections")
-    public PagedResponse<CollectionResponse> getProjectCollections(
-            @Parameter(description = "Project UUID") @PathVariable UUID projectId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "createdAt,desc") String sort,
-            @RequestParam(required = false) String q,
-            @RequestParam(required = false) Boolean active) {
-        return collectionService.getCollectionsByProjectId(
-                projectId, page, size, sort, q, active);
-    }
-
     @Operation(summary = "Add a member to a project",
             description = "Adds a student to the project as EDITOR. Requires project management access.")
     @ApiResponses({

@@ -59,24 +59,14 @@ class SourceControllerTest {
     void upload_bindsAllOptionalScopes() throws Exception {
         UUID projectId = UUID.randomUUID();
         UUID collectionId = UUID.randomUUID();
-        UUID categoryId = UUID.randomUUID();
         MockMultipartFile file = new MockMultipartFile("file", "source.pdf", "application/pdf", "pdf".getBytes());
 
         mockMvc.perform(multipart("/api/sources").file(file)
                         .param("projectId", projectId.toString())
-                        .param("collectionId", collectionId.toString())
-                        .param("sourceCategoryId", categoryId.toString()))
+                        .param("collectionId", collectionId.toString()))
                 .andExpect(status().isCreated());
 
         verify(service).uploadDocument(
-                eq(projectId), eq(collectionId), eq(categoryId), any(), eq(DocumentType.SOURCE));
-    }
-
-    @Test
-    void upload_rejectsInvalidCategoryId() throws Exception {
-        MockMultipartFile file = new MockMultipartFile("file", "source.pdf", "application/pdf", "pdf".getBytes());
-        mockMvc.perform(multipart("/api/sources").file(file).param("sourceCategoryId", "bad"))
-                .andExpect(status().isBadRequest());
-        verifyNoInteractions(service);
+                eq(projectId), eq(collectionId), any(), eq(DocumentType.SOURCE));
     }
 }

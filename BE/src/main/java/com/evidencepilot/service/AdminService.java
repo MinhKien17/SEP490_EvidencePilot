@@ -21,7 +21,7 @@ import com.evidencepilot.repository.AuditLogRepository;
 import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
-import com.evidencepilot.repository.SourceCategoryRepository;
+import com.evidencepilot.repository.CollectionCategoryRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -52,7 +52,7 @@ public class AdminService {
 
     private final UserRepository users;
     private final ProjectRepository projects;
-    private final SourceCategoryRepository categories;
+    private final CollectionCategoryRepository collectionCategories;
     private final CollectionRepository collections;
     private final DocumentRepository documents;
     private final AuditLogRepository auditLogs;
@@ -190,7 +190,7 @@ public class AdminService {
         return new AdminDashboardResponse(
                 users.count(), usersByRole, usersByStatus,
                 projects.countByActiveTrue(), projectsByStatus,
-                categories.countByActiveTrue(), collections.countByActiveTrue(),
+                collectionCategories.countByActiveTrue(), collections.countByActiveTrue(),
                 documents.countByActiveTrueAndDocType(DocumentType.SOURCE),
                 documents.countByActiveTrueAndDocType(DocumentType.PAPER),
                 health.checkReadiness());

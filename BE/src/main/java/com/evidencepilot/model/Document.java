@@ -32,10 +32,6 @@ public class Document {
     private Collection collection;
 
     @ManyToOne
-    @JoinColumn(name = "source_category_id", columnDefinition = "BINARY(16)", referencedColumnName = "id")
-    private SourceCategory sourceCategory;
-
-    @ManyToOne
     @JoinColumn(name = "uploaded_by", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     private User uploadedBy;
 
@@ -87,6 +83,21 @@ public class Document {
     private Integer publicationYear;
 
     private String publisher;
+
+    @Column(name = "openalex_topic")
+    private String openAlexTopic;
+
+    @Column(name = "openalex_subfield")
+    private String openAlexSubfield;
+
+    @Column(name = "openalex_field")
+    private String openAlexField;
+
+    @Column(name = "openalex_domain")
+    private String openAlexDomain;
+
+    @Column(name = "cited_by_count")
+    private Integer citedByCount;
 
     @Column(name = "download_token", length = 36)
     private String downloadToken;

@@ -4,7 +4,7 @@ import com.evidencepilot.mapper.DocumentMapper;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentText;
 import com.evidencepilot.model.Project;
-import com.evidencepilot.model.SourceCategory;
+
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProjectStatus;
@@ -16,7 +16,6 @@ import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.DocumentTextRepository;
 import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
-import com.evidencepilot.repository.SourceCategoryRepository;
 import com.evidencepilot.service.impl.DocumentPersistenceService;
 import com.evidencepilot.service.impl.DocumentServiceImpl;
 import io.minio.MinioClient;
@@ -64,9 +63,6 @@ class DocumentServiceImplAccessTest {
 
     @Mock
     private CollectionRepository collectionRepository;
-
-    @Mock
-    private SourceCategoryRepository sourceCategoryRepository;
 
     @Mock
     private ProjectDocumentRepository projectDocumentRepository;
@@ -333,110 +329,6 @@ class DocumentServiceImplAccessTest {
     }
 
     @Test
-    void uploadSourceWithCategoryPersistsCategory() throws Exception {
-        User user = user();
-        com.evidencepilot.model.Collection collection = collection();
-        SourceCategory category = category(true);
-        Document persisted = document(null);
-        persisted.setDocType(DocumentType.SOURCE);
-        persisted.setId(UUID.randomUUID());
-        persisted.setCollection(collection);
-        persisted.setSourceCategory(category);
-        MockMultipartFile file = new MockMultipartFile(
-                "file", "source.pdf", "application/pdf", "content".getBytes());
-
-        when(currentUserService.requireCurrentUser()).thenReturn(user);
-        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
-        when(sourceCategoryRepository.findByIdAndActiveTrue(category.getId())).thenReturn(Optional.of(category));
-        when(documentPersistenceService.savePendingDocument(
-                any(), eq(collection), eq(user), eq(DocumentType.SOURCE),
-                eq("source.pdf"), eq("application/pdf"), eq(7L)))
-                .thenReturn(persisted);
-        when(documentPersistenceService.markDocumentAsUploaded(
-                eq(persisted.getId()), anyString()))
-                .thenReturn(persisted);
-        when(minioClient.putObject(any(PutObjectArgs.class))).thenReturn(null);
-
-        var response = service().uploadDocument(
-                null, collection.getId(), category.getId(), file, DocumentType.SOURCE);
-
-        assertThat(response.sourceCategoryId()).isEqualTo(category.getId());
-        assertThat(response.sourceCategoryName()).isEqualTo(category.getName());
-    }
-
-    @Test
-    void uploadSourceWithoutCategoryStoresNull() throws Exception {
-        User user = user();
-        com.evidencepilot.model.Collection collection = collection();
-        Document persisted = document(null);
-        persisted.setDocType(DocumentType.SOURCE);
-        persisted.setId(UUID.randomUUID());
-        persisted.setCollection(collection);
-        MockMultipartFile file = new MockMultipartFile(
-                "file", "source.pdf", "application/pdf", "content".getBytes());
-
-        when(currentUserService.requireCurrentUser()).thenReturn(user);
-        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
-        when(documentPersistenceService.savePendingDocument(
-                any(), eq(collection), eq(user), eq(DocumentType.SOURCE),
-                eq("source.pdf"), eq("application/pdf"), eq(7L)))
-                .thenReturn(persisted);
-        when(documentPersistenceService.markDocumentAsUploaded(
-                eq(persisted.getId()), anyString()))
-                .thenReturn(persisted);
-        when(minioClient.putObject(any(PutObjectArgs.class))).thenReturn(null);
-
-        var response = service().uploadDocument(
-                null, collection.getId(), null, file, DocumentType.SOURCE);
-
-        assertThat(response.sourceCategoryId()).isNull();
-        assertThat(response.sourceCategoryName()).isNull();
-    }
-
-    @Test
-    void uploadSourceRejectsInactiveCategory() {
-        User user = user();
-        com.evidencepilot.model.Collection collection = collection();
-        SourceCategory category = category(false);
-        MockMultipartFile file = new MockMultipartFile(
-                "file", "source.pdf", "application/pdf", "content".getBytes());
-
-        when(currentUserService.requireCurrentUser()).thenReturn(user);
-        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
-        when(sourceCategoryRepository.findByIdAndActiveTrue(category.getId())).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> service().uploadDocument(
-                null, collection.getId(), category.getId(), file, DocumentType.SOURCE))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Source category not found");
-    }
-
-    @Test
-    void getSourcesByCollectionChecksCollectionAccessAndFiltersCategory() {
-        User user = user();
-        com.evidencepilot.model.Collection collection = collection();
-        SourceCategory category = category(true);
-        Document matched = document(null);
-        matched.setDocType(DocumentType.SOURCE);
-        matched.setCollection(collection);
-        matched.setSourceCategory(category);
-        Document otherCategory = document(null);
-        otherCategory.setDocType(DocumentType.SOURCE);
-        otherCategory.setCollection(collection);
-        otherCategory.setSourceCategory(category(true));
-
-        when(currentUserService.requireCurrentUser()).thenReturn(user);
-        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
-        when(documentRepository.findByCollectionId(collection.getId())).thenReturn(List.of(matched, otherCategory));
-
-        var results = service().getSourcesByCollection(collection.getId(), category.getId());
-
-        assertThat(results).hasSize(1);
-        assertThat(results.get(0).id()).isEqualTo(matched.getId());
-        verify(currentUserService).requireCollectionAccess(user, collection);
-    }
-
-    @Test
     void getSourceByIdRequiresAccessAndSourceType() {
         User user = user();
         Project project = project();
@@ -510,7 +402,6 @@ class DocumentServiceImplAccessTest {
                 documentTextRepository,
                 projectRepository,
                 collectionRepository,
-                sourceCategoryRepository,
                 projectDocumentRepository,
                 claimEvidenceMappingRepository,
                 currentUserService,
@@ -543,14 +434,6 @@ class DocumentServiceImplAccessTest {
         collection.setId(UUID.randomUUID());
         collection.setActive(true);
         return collection;
-    }
-
-    private SourceCategory category(boolean active) {
-        SourceCategory category = new SourceCategory();
-        category.setId(UUID.randomUUID());
-        category.setName(active ? "Journal" : "Inactive");
-        category.setActive(active);
-        return category;
     }
 
     private Document document(Project project) {

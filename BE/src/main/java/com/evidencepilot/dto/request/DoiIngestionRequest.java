@@ -5,5 +5,6 @@ import java.util.UUID;
 
 public record DoiIngestionRequest(
         @NotBlank String doi,
-        UUID projectId
+        UUID projectId,
+        UUID collectionId
 ) {}

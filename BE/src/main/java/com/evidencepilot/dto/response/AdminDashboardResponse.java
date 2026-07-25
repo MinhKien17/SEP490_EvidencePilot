@@ -12,7 +12,7 @@ public record AdminDashboardResponse(
         Map<AccountStatus, Long> usersByStatus,
         long activeProjects,
         Map<ProjectStatus, Long> activeProjectsByStatus,
-        long activeSourceCategories,
+        long activeCollectionCategories,
         long activeCollections,
         long activeSourceDocuments,
         long activePaperDocuments,

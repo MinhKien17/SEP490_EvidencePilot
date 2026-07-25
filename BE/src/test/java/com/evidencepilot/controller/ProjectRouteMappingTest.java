@@ -34,7 +34,7 @@ class ProjectRouteMappingTest {
             PaperController.class,
             ProjectController.class,
             RagController.class,
-            SourceCategoryController.class,
+            CollectionCategoryController.class,
             SourceController.class,
             SystemNotificationController.class,
             TraceabilityExportController.class,
@@ -68,12 +68,15 @@ class ProjectRouteMappingTest {
                 "GET /api/projects/{projectId}/documents",
                 "GET /api/projects/{projectId}/sources",
                 "GET /api/projects/{projectId}/claims",
-                "GET /api/projects/{projectId}/collections",
                 "POST /api/projects/{id}/members",
                 "DELETE /api/projects/{id}/members/{userId}",
+                "GET /api/collections",
                 "POST /api/collections",
                 "GET /api/collections/{id}",
+                "PUT /api/collections/{id}",
                 "GET /api/collections/{id}/sources",
+                "GET /api/collections/{id}/citation-graph",
+                "POST /api/collections/{collectionId}/sources/{sourceId}",
                 "POST /api/collections/{collectionId}/sources/{sourceId}/share-to-project/{projectId}",
                 "DELETE /api/collections/{id}",
                 "GET /api/documents/{id}",
@@ -102,11 +105,11 @@ class ProjectRouteMappingTest {
                 "DELETE /api/sources/{id}",
                 "POST /api/sources",
                 "DELETE /api/sources/projects/{projectId}/sources/{sourceId}",
-                "GET /api/source-categories",
-                "GET /api/admin/source-categories",
-                "POST /api/admin/source-categories",
-                "PUT /api/admin/source-categories/{id}",
-                "DELETE /api/admin/source-categories/{id}",
+                "GET /api/collection-categories",
+                "GET /api/admin/collection-categories",
+                "POST /api/admin/collection-categories",
+                "PUT /api/admin/collection-categories/{id}",
+                "DELETE /api/admin/collection-categories/{id}",
                 "GET /api/admin/users",
                 "POST /api/admin/users",
                 "PATCH /api/admin/users/{id}/role",
@@ -145,7 +148,7 @@ class ProjectRouteMappingTest {
                 "GET /api/admin/notifications/broadcast-history",
                 "GET /api/admin/documents/extraction-queue",
                 "GET /api/admin/config"));
-        assertThat(routes).hasSize(97);
+        assertThat(routes).hasSize(100);
     }
 
     @Test
@@ -166,14 +169,12 @@ class ProjectRouteMappingTest {
                 "/api/projects/{projectId}/papers",
                 "/api/projects/{projectId}/documents",
                 "/api/projects/{projectId}/sources",
-                "/api/projects/{projectId}/claims",
-                "/api/projects/{projectId}/collections");
+                "/api/projects/{projectId}/claims");
         assertThat(paths).doesNotContain(
                 "/api/papers/api/projects/{projectId}/papers",
                 "/api/documents/api/projects/{projectId}/documents",
                 "/api/sources/api/projects/{projectId}/sources",
-                "/api/claims/api/projects/{projectId}/claims",
-                "/api/collections/api/projects/{projectId}/collections");
+                "/api/claims/api/projects/{projectId}/claims");
     }
 
     @Test

@@ -2,12 +2,10 @@ package com.evidencepilot.service;
 
 import com.evidencepilot.dto.request.CollectionRequest;
 import com.evidencepilot.model.Collection;
-import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.UserRole;
-import com.evidencepilot.model.enums.ProjectStatus;
+import com.evidencepilot.repository.CollectionCategoryRepository;
 import com.evidencepilot.repository.CollectionRepository;
-import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.impl.CollectionServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,14 +13,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
-import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,20 +27,17 @@ class CollectionServiceImplTest {
     private CollectionRepository collectionRepository;
 
     @Mock
-    private ProjectRepository projectRepository;
+    private CollectionCategoryRepository collectionCategoryRepository;
 
     @Mock
     private CurrentUserService currentUserService;
 
     @Test
-    void createCollectionRequiresInstructorRoleAndProjectAccess() {
+    void createCollectionRequiresInstructorRole() {
         User instructor = user(UserRole.INSTRUCTOR);
-        Project project = new Project();
-        project.setId(UUID.randomUUID());
-        CollectionRequest request = new CollectionRequest("Evidence", "Notes", project.getId());
+        CollectionRequest request = new CollectionRequest("Evidence", "Notes", null);
 
         when(currentUserService.requireCurrentUser()).thenReturn(instructor);
-        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
         when(collectionRepository.save(any(Collection.class))).thenAnswer(invocation -> {
             Collection collection = invocation.getArgument(0);
             collection.setId(UUID.randomUUID());
@@ -57,7 +48,6 @@ class CollectionServiceImplTest {
 
         assertThat(response.name()).isEqualTo("Evidence");
         verify(currentUserService).requireRole(instructor, UserRole.INSTRUCTOR);
-        verify(currentUserService).requireProjectWriteAccess(instructor, project);
     }
 
     @Test
@@ -74,23 +64,6 @@ class CollectionServiceImplTest {
     }
 
     @Test
-    void getCollectionsByProjectIdChecksProjectAccess() {
-        User instructor = user(UserRole.INSTRUCTOR);
-        Project project = new Project();
-        project.setId(UUID.randomUUID());
-        project.setStatus(ProjectStatus.ARCHIVED);
-
-        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
-        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
-        when(collectionRepository.findByProjectId(project.getId()))
-                .thenReturn(List.of(collection(instructor)));
-
-        service().getCollectionsByProjectId(project.getId());
-
-        verify(currentUserService).requireProjectAccess(instructor, project);
-    }
-
-    @Test
     void deleteCollectionChecksCollectionAccess() {
         User instructor = user(UserRole.INSTRUCTOR);
         Collection collection = collection(instructor);
@@ -103,32 +76,8 @@ class CollectionServiceImplTest {
         verify(currentUserService).requireCollectionAccess(instructor, collection);
     }
 
-    @Test
-    void archivedProjectRejectsCollectionCreateAndDelete() {
-        User instructor = user(UserRole.INSTRUCTOR);
-        Project project = new Project();
-        project.setId(UUID.randomUUID());
-        project.setStatus(ProjectStatus.ARCHIVED);
-        Collection collection = collection(instructor);
-        collection.setProject(project);
-        CollectionRequest request = new CollectionRequest("Evidence", "Notes", project.getId());
-
-        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
-        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
-        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
-        doThrow(new org.springframework.web.server.ResponseStatusException(
-                org.springframework.http.HttpStatus.CONFLICT, "Project is read-only."))
-                .when(currentUserService).requireProjectWriteAccess(instructor, project);
-
-        assertThatThrownBy(() -> service().createCollection(request))
-                .hasMessageContaining("Project is read-only.");
-        assertThatThrownBy(() -> service().deleteCollection(collection.getId()))
-                .hasMessageContaining("Project is read-only.");
-        verify(collectionRepository, never()).save(any());
-    }
-
     private CollectionServiceImpl service() {
-        return new CollectionServiceImpl(collectionRepository, projectRepository, currentUserService);
+        return new CollectionServiceImpl(collectionRepository, collectionCategoryRepository, currentUserService);
     }
 
     private User user(UserRole role) {

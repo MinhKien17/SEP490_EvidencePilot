@@ -14,10 +14,10 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "source_categories")
+@Table(name = "collection_categories")
 @Getter
 @Setter
-public class SourceCategory {
+public class CollectionCategory {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", columnDefinition = "BINARY(16)")

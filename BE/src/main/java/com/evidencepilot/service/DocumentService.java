@@ -34,17 +34,12 @@ public interface DocumentService {
             String q,
             ProcessingStatus processingStatus,
             Boolean active);
-    List<DocumentResponse> getSourcesByCollection(UUID collectionId, UUID sourceCategoryId);
+    List<DocumentResponse> getSourcesByCollection(UUID collectionId);
+    PagedResponse<DocumentResponse> getSourcesByCollection(UUID collectionId, int page, int size, String sort, String q);
+    DocumentResponse addSourceToCollection(UUID collectionId, UUID sourceId);
     DocumentResponse uploadDocument(UUID projectId, MultipartFile file, DocumentType docType);
 
     DocumentResponse uploadDocument(UUID projectId, UUID collectionId, MultipartFile file, DocumentType docType);
-
-    DocumentResponse uploadDocument(
-            UUID projectId,
-            UUID collectionId,
-            UUID sourceCategoryId,
-            MultipartFile file,
-            DocumentType docType);
 
     DocumentResponse attachFileToDocument(UUID documentId, MultipartFile file);
     Map<String, Object> shareToProject(UUID collectionId, UUID sourceId, UUID projectId);

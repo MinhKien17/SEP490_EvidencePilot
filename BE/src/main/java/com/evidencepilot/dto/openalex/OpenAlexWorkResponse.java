@@ -25,7 +25,16 @@ public record OpenAlexWorkResponse(
         OpenAlexContentUrls contentUrls,
 
         @JsonProperty("publication_year")
-        Integer publicationYear
+        Integer publicationYear,
+
+        @JsonProperty("primary_topic")
+        OpenAlexTopic primaryTopic,
+
+        @JsonProperty("referenced_works")
+        List<String> referencedWorks,
+
+        @JsonProperty("cited_by_count")
+        Integer citedByCount
 ) {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record OpenAlexAuthor(Author author) {}
@@ -62,6 +71,33 @@ public record OpenAlexWorkResponse(
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record OpenAlexContentUrls(
             String pdf
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record OpenAlexTopic(
+            String id,
+            @JsonProperty("display_name") String displayName,
+            OpenAlexSubfield subfield,
+            OpenAlexField field,
+            OpenAlexDomain domain
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record OpenAlexSubfield(
+            String id,
+            @JsonProperty("display_name") String displayName
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record OpenAlexField(
+            String id,
+            @JsonProperty("display_name") String displayName
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record OpenAlexDomain(
+            String id,
+            @JsonProperty("display_name") String displayName
     ) {}
 
     public String oaUrl() {

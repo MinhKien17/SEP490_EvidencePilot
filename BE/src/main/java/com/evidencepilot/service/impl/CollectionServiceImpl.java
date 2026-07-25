@@ -5,11 +5,11 @@ import com.evidencepilot.dto.response.CollectionResponse;
 import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Collection;
-import com.evidencepilot.model.Project;
+import com.evidencepilot.model.CollectionCategory;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.UserRole;
+import com.evidencepilot.repository.CollectionCategoryRepository;
 import com.evidencepilot.repository.CollectionRepository;
-import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.CollectionService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.dto.request.PagingRequest;
@@ -17,7 +17,9 @@ import jakarta.persistence.criteria.Predicate;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -33,7 +35,7 @@ public class CollectionServiceImpl implements CollectionService {
     private static final Set<String> COLLECTION_SORT_FIELDS = Set.of("title", "createdAt");
 
     private final CollectionRepository collectionRepository;
-    private final ProjectRepository projectRepository;
+    private final CollectionCategoryRepository collectionCategoryRepository;
     private final CurrentUserService currentUserService;
 
     @Override
@@ -42,17 +44,10 @@ public class CollectionServiceImpl implements CollectionService {
         User currentUser = currentUserService.requireCurrentUser();
         currentUserService.requireRole(currentUser, UserRole.INSTRUCTOR);
 
-        Project project = null;
-        if (request.projectId() != null) {
-            project = projectRepository.findById(request.projectId())
-                    .orElseThrow(() -> new ResourceNotFoundException(request.projectId(), "Project"));
-            currentUserService.requireProjectWriteAccess(currentUser, project);
-        }
-
         Collection collection = new Collection();
         collection.setTitle(request.name());
         collection.setDescription(request.description());
-        collection.setProject(project);
+        collection.setCategory(resolveCategory(request.categoryId()));
         collection.setInstructor(currentUser);
         collection.setActive(true);
         collection.setCreatedAt(LocalDateTime.now());
@@ -71,34 +66,25 @@ public class CollectionServiceImpl implements CollectionService {
     }
 
     @Override
-    public List<CollectionResponse> getCollectionsByProjectId(UUID projectId) {
+    @Transactional
+    public CollectionResponse updateCollection(UUID id, CollectionRequest request) {
         User currentUser = currentUserService.requireCurrentUser();
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
-        currentUserService.requireProjectAccess(currentUser, project);
-        return collectionRepository.findByProjectId(projectId).stream()
-                .map(this::toResponse)
-                .toList();
+        Collection collection = collectionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException(id, "Collection"));
+        currentUserService.requireCollectionAccess(currentUser, collection);
+        collection.setTitle(request.name());
+        collection.setDescription(request.description());
+        collection.setCategory(resolveCategory(request.categoryId()));
+        return toResponse(collectionRepository.save(collection));
     }
 
     @Override
-    public PagedResponse<CollectionResponse> getCollectionsByProjectId(
-            UUID projectId,
-            int page,
-            int size,
-            String sort,
-            String q,
-            Boolean active) {
+    public PagedResponse<CollectionResponse> getMyCollections(int page, int size, String sort, String q, UUID categoryId) {
         User currentUser = currentUserService.requireCurrentUser();
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
-        currentUserService.requireProjectAccess(currentUser, project);
-
         var pageable = PagingRequest.pageable(
                 page, size, sort, COLLECTION_SORT_FIELDS, "createdAt,desc");
         var results = collectionRepository.findAll(
-                collectionSpec(projectId, active, q),
-                pageable);
+                myCollectionSpec(currentUser.getId(), q, categoryId), pageable);
         return PagedResponse.from(results.map(this::toResponse));
     }
 
@@ -109,9 +95,6 @@ public class CollectionServiceImpl implements CollectionService {
         Collection collection = collectionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(id, "Collection"));
         currentUserService.requireCollectionAccess(currentUser, collection);
-        if (collection.getProject() != null) {
-            currentUserService.requireProjectWriteAccess(currentUser, collection.getProject());
-        }
         collection.setActive(false);
         collectionRepository.save(collection);
     }
@@ -121,15 +104,17 @@ public class CollectionServiceImpl implements CollectionService {
                 collection.getId(),
                 collection.getTitle(),
                 collection.getDescription(),
-                collection.getProject() != null ? collection.getProject().getId() : null,
+                collection.getCategory() != null ? collection.getCategory().getId() : null,
+                collection.getCategory() != null ? collection.getCategory().getName() : null,
+                null,
                 collection.getCreatedAt());
     }
 
-    private Specification<Collection> collectionSpec(UUID projectId, Boolean active, String q) {
+    private Specification<Collection> myCollectionSpec(UUID instructorId, String q, UUID categoryId) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("project").get("id"), projectId));
-            predicates.add(cb.equal(root.get("active"), active != null ? active : true));
+            predicates.add(cb.equal(root.get("instructor").get("id"), instructorId));
+            predicates.add(cb.equal(root.get("active"), true));
 
             if (q != null && !q.isBlank()) {
                 String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
@@ -138,7 +123,17 @@ public class CollectionServiceImpl implements CollectionService {
                         cb.like(cb.lower(root.get("description")), like)));
             }
 
+            if (categoryId != null) {
+                predicates.add(cb.equal(root.get("category").get("id"), categoryId));
+            }
+
             return cb.and(predicates.toArray(Predicate[]::new));
         };
+    }
+
+    private CollectionCategory resolveCategory(UUID categoryId) {
+        if (categoryId == null) return null;
+        return collectionCategoryRepository.findByIdAndActiveTrue(categoryId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Collection category not found"));
     }
 }

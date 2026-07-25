@@ -10,8 +10,6 @@ public record DocumentResponse(
     UUID id,
     UUID projectId,
     UUID collectionId,
-    UUID sourceCategoryId,
-    String sourceCategoryName,
     UUID uploadedBy,
     DocumentType docType,
     String fileUrl,
@@ -21,15 +19,17 @@ public record DocumentResponse(
     String fileHashSha256,
     ProcessingStatus processingStatus,
     boolean active,
-    LocalDateTime createdAt
+    LocalDateTime createdAt,
+    String openAlexTopic,
+    String openAlexSubfield,
+    String openAlexField,
+    String openAlexDomain
 ) {
     public static DocumentResponse from(Document doc) {
         return new DocumentResponse(
             doc.getId(),
             doc.getProject() != null ? doc.getProject().getId() : null,
             doc.getCollection() != null ? doc.getCollection().getId() : null,
-            doc.getSourceCategory() != null ? doc.getSourceCategory().getId() : null,
-            doc.getSourceCategory() != null ? doc.getSourceCategory().getName() : null,
             doc.getUploadedBy().getId(),
             doc.getDocType(),
             doc.getFileUrl(),
@@ -39,7 +39,11 @@ public record DocumentResponse(
             doc.getFileHashSha256(),
             doc.getProcessingStatus(),
             doc.isActive(),
-            doc.getCreatedAt()
+            doc.getCreatedAt(),
+            doc.getOpenAlexTopic(),
+            doc.getOpenAlexSubfield(),
+            doc.getOpenAlexField(),
+            doc.getOpenAlexDomain()
         );
     }
 }

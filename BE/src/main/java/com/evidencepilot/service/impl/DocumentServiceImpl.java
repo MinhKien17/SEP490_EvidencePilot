@@ -23,7 +23,7 @@ import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.DocumentTextRepository;
 import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
-import com.evidencepilot.repository.SourceCategoryRepository;
+
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.dto.request.PagingRequest;
@@ -66,7 +66,6 @@ public class DocumentServiceImpl implements DocumentService {
     private final DocumentTextRepository documentTextRepository;
     private final ProjectRepository projectRepository;
     private final CollectionRepository collectionRepository;
-    private final SourceCategoryRepository sourceCategoryRepository;
     private final ProjectDocumentRepository projectDocumentRepository;
     private final ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
     private final CurrentUserService currentUserService;
@@ -153,16 +152,42 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
-    public List<DocumentResponse> getSourcesByCollection(UUID collectionId, UUID sourceCategoryId) {
+    public PagedResponse<DocumentResponse> getSourcesByCollection(
+            UUID collectionId, int page, int size, String sort, String q) {
+        var currentUser = currentUserService.requireCurrentUser();
+        var collection = collectionRepository.findById(collectionId)
+                .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
+        currentUserService.requireCollectionAccess(currentUser, collection);
+        var pageable = PagingRequest.pageable(
+                page, size, sort, DOCUMENT_SORT_FIELDS, "createdAt,desc");
+        var results = documentRepository.findAll(
+                collectionSourceSpec(collectionId, q), pageable);
+        return PagedResponse.from(results.map(DocumentResponse::from));
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse addSourceToCollection(UUID collectionId, UUID sourceId) {
+        var currentUser = currentUserService.requireCurrentUser();
+        var collection = collectionRepository.findById(collectionId)
+                .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
+        currentUserService.requireCollectionAccess(currentUser, collection);
+        Document doc = findDocument(sourceId);
+        if (doc.getDocType() != DocumentType.SOURCE || !doc.isActive()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source not found or inactive");
+        }
+        doc.setCollection(collection);
+        return DocumentResponse.from(documentRepository.save(doc));
+    }
+
+    @Override
+    public List<DocumentResponse> getSourcesByCollection(UUID collectionId) {
         var currentUser = currentUserService.requireCurrentUser();
         var collection = collectionRepository.findById(collectionId)
                 .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
         currentUserService.requireCollectionAccess(currentUser, collection);
         return documentRepository.findByCollectionId(collectionId).stream()
                 .filter(doc -> doc.getDocType() == DocumentType.SOURCE)
-                .filter(doc -> sourceCategoryId == null
-                        || (doc.getSourceCategory() != null
-                                && doc.getSourceCategory().getId().equals(sourceCategoryId)))
                 .map(DocumentResponse::from)
                 .toList();
     }
@@ -212,17 +237,6 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     public DocumentResponse uploadDocument(UUID projectId, UUID collectionId, MultipartFile file, DocumentType docType) {
-        return uploadDocument(projectId, collectionId, null, file, docType);
-    }
-
-    @Override
-    @Transactional
-    public DocumentResponse uploadDocument(
-            UUID projectId,
-            UUID collectionId,
-            UUID sourceCategoryId,
-            MultipartFile file,
-            DocumentType docType) {
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File is empty");
         }
@@ -244,13 +258,6 @@ public class DocumentServiceImpl implements DocumentService {
             if (collection.getProject() != null) {
                 currentUserService.requireProjectWriteAccess(currentUser, collection.getProject());
             }
-        }
-
-        var sourceCategory = sourceCategoryId == null ? null
-                : sourceCategoryRepository.findByIdAndActiveTrue(sourceCategoryId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Source category not found"));
-        if (sourceCategory != null && docType != DocumentType.SOURCE) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source category applies only to sources");
         }
 
         String originalName = file.getOriginalFilename();
@@ -543,6 +550,24 @@ public class DocumentServiceImpl implements DocumentService {
             project.setStatus(status);
             projectRepository.save(project);
         }
+    }
+
+    private Specification<Document> collectionSourceSpec(UUID collectionId, String q) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("collection").get("id"), collectionId));
+            predicates.add(cb.equal(root.get("docType"), DocumentType.SOURCE));
+            predicates.add(cb.equal(root.get("active"), true));
+
+            if (q != null && !q.isBlank()) {
+                String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("originalFilename")), like),
+                        cb.like(cb.lower(root.get("fileUrl")), like)));
+            }
+
+            return cb.and(predicates.toArray(Predicate[]::new));
+        };
     }
 
     private Specification<Document> documentSpec(

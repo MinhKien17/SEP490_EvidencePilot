@@ -14,7 +14,7 @@ import com.evidencepilot.repository.AuditLogRepository;
 import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
-import com.evidencepilot.repository.SourceCategoryRepository;
+import com.evidencepilot.repository.CollectionCategoryRepository;
 import com.evidencepilot.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -48,7 +48,7 @@ class AdminServiceTest {
 
     @Mock UserRepository users;
     @Mock ProjectRepository projects;
-    @Mock SourceCategoryRepository categories;
+    @Mock CollectionCategoryRepository collectionCategories;
     @Mock CollectionRepository collections;
     @Mock DocumentRepository documents;
     @Mock AuditLogRepository auditLogs;
@@ -211,7 +211,7 @@ class AdminServiceTest {
         when(users.countByAccountStatus()).thenReturn(List.<Object[]>of(new Object[]{AccountStatus.ACTIVE, 4L}));
         when(projects.countByActiveTrue()).thenReturn(3L);
         when(projects.countActiveByStatus()).thenReturn(List.<Object[]>of(new Object[]{ProjectStatus.ASSIGNED, 2L}));
-        when(categories.countByActiveTrue()).thenReturn(7L);
+        when(collectionCategories.countByActiveTrue()).thenReturn(7L);
         when(collections.countByActiveTrue()).thenReturn(6L);
         when(documents.countByActiveTrueAndDocType(DocumentType.SOURCE)).thenReturn(11L);
         when(documents.countByActiveTrueAndDocType(DocumentType.PAPER)).thenReturn(12L);

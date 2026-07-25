@@ -7,6 +7,8 @@ public record CollectionResponse(
     UUID id,
     String name,
     String description,
+    UUID categoryId,
+    String categoryName,
     UUID projectId,
     LocalDateTime createdAt
 ) {}

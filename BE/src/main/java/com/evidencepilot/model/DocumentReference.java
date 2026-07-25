@@ -33,6 +33,9 @@ public class DocumentReference {
     @Column(name = "publication_year")
     private Integer publicationYear;
 
+    @Column(name = "cited_by_count")
+    private Integer citedByCount;
+
     private String doi;
 
     @Enumerated(EnumType.STRING)

@@ -128,13 +128,6 @@ class ProjectControllerTest {
     }
 
     @Test
-    void getProjectCollections_bindsDefaultPaging() throws Exception {
-        UUID id = UUID.randomUUID();
-        mockMvc.perform(get("/api/projects/{id}/collections", id)).andExpect(status().isOk());
-        verify(collectionService).getCollectionsByProjectId(id, 0, 20, "createdAt,desc", null, null);
-    }
-
-    @Test
     void addMember_returns201AndBindsRole() throws Exception {
         UUID projectId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();

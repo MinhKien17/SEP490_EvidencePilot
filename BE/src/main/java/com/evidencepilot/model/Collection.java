@@ -32,6 +32,10 @@ public class Collection {
 
     private String description;
 
+    @ManyToOne
+    @JoinColumn(name = "category_id", columnDefinition = "BINARY(16)", referencedColumnName = "id")
+    private CollectionCategory category;
+
     private boolean active = true;
 
     @Column(name = "created_at")

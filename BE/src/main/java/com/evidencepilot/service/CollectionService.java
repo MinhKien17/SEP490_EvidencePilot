@@ -4,7 +4,6 @@ import com.evidencepilot.dto.request.CollectionRequest;
 import com.evidencepilot.dto.response.CollectionResponse;
 import com.evidencepilot.dto.response.PagedResponse;
 
-import java.util.List;
 import java.util.UUID;
 
 public interface CollectionService {
@@ -13,14 +12,9 @@ public interface CollectionService {
 
     CollectionResponse getCollectionById(UUID id);
 
-    List<CollectionResponse> getCollectionsByProjectId(UUID projectId);
-    PagedResponse<CollectionResponse> getCollectionsByProjectId(
-            UUID projectId,
-            int page,
-            int size,
-            String sort,
-            String q,
-            Boolean active);
+    CollectionResponse updateCollection(UUID id, CollectionRequest request);
+
+    PagedResponse<CollectionResponse> getMyCollections(int page, int size, String sort, String q, UUID categoryId);
 
     void deleteCollection(UUID id);
 }

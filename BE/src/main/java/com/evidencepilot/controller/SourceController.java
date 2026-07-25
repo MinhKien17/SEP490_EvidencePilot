@@ -23,8 +23,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.util.List;
 import java.util.UUID;
 
@@ -121,22 +119,10 @@ public class SourceController {
     public ResponseEntity<DocumentResponse> upload(
             @Parameter(description = "File to upload") @RequestParam("file") MultipartFile file,
             @Parameter(description = "Project UUID (optional for project-scoped sources)") @RequestParam(value = "projectId", required = false) UUID projectId,
-            @Parameter(description = "Collection UUID (optional for collection-scoped sources)") @RequestParam(value = "collectionId", required = false) UUID collectionId,
-            @Parameter(description = "Source category UUID (optional)") @RequestParam(value = "sourceCategoryId", required = false) String sourceCategoryId) {
+            @Parameter(description = "Collection UUID (optional for collection-scoped sources)") @RequestParam(value = "collectionId", required = false) UUID collectionId) {
 
         DocumentResponse response = documentService.uploadDocument(
-                projectId, collectionId, parseOptionalUuid(sourceCategoryId), file, DocumentType.SOURCE);
+                projectId, collectionId, file, DocumentType.SOURCE);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
-
-    private UUID parseOptionalUuid(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        try {
-            return UUID.fromString(value);
-        } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid sourceCategoryId");
-        }
     }
 }
