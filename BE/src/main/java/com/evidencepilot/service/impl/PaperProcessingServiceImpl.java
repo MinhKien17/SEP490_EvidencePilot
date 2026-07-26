@@ -11,10 +11,13 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
+import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.PaperStandardService;
+import com.evidencepilot.service.SystemNotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -22,6 +25,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -31,6 +37,8 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +53,9 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     private final ProjectMapper projectMapper;
     private final CurrentUserService currentUserService;
     private final PaperStandardService paperStandardService;
+    private final UserRepository userRepository;
+    private final ProjectRepository projectRepository;
+    private final SystemNotificationService systemNotificationService;
 
     @Override
     public List<PaperSectionResponse> getPaperSections(UUID documentId) {
@@ -147,7 +158,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     @Override
     @Transactional
     public PaperSectionResponse updateSection(UUID documentId, UUID sectionId,
-            String title, Integer order, UUID mergeIntoId) {
+            String title, Integer order, UUID mergeIntoId, String content) {
         requireDocumentWriteAccess(documentId);
         User currentUser = currentUserService.requireCurrentUser();
 
@@ -175,6 +186,55 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         if (order != null) {
             section.setSectionOrder(order);
         }
+        if (content != null) {
+            section.setPreviousContentTex(section.getContentTex());
+            section.setContentTex(content);
+            section.setVersion(section.getVersion() != null ? section.getVersion() + 1 : 2);
+        }
+        section.setUpdatedAt(LocalDateTime.now());
+        return projectMapper.toPaperSectionResponse(paperSectionRepository.save(section));
+    }
+
+    @Override
+    @Transactional
+    public PaperSectionResponse assignSection(UUID documentId, UUID sectionId, UUID assignedUserId) {
+        requireDocumentWriteAccess(documentId);
+        User currentUser = currentUserService.requireCurrentUser();
+        PaperSection section = requireSectionInDocument(sectionId, documentId);
+        if (assignedUserId != null) {
+            User user = userRepository.findById(assignedUserId)
+                    .orElseThrow(() -> new ResourceNotFoundException(assignedUserId, "User"));
+            section.setAssignedUser(user);
+        } else {
+            section.setAssignedUser(null);
+        }
+        section.setUpdatedAt(LocalDateTime.now());
+        PaperSectionResponse response = projectMapper.toPaperSectionResponse(paperSectionRepository.save(section));
+        if (assignedUserId != null) {
+            systemNotificationService.createNotification(
+                    section.getAssignedUser(),
+                    currentUser,
+                    "SECTION_ASSIGNED",
+                    sectionId,
+                    currentUser.getEmail() + " assigned you to section \"" + section.getSectionTitle() + "\".");
+        }
+        return response;
+    }
+
+    @Override
+    @Transactional
+    public PaperSectionResponse rollbackSection(UUID documentId, UUID sectionId) {
+        requireDocumentWriteAccess(documentId);
+        User currentUser = currentUserService.requireCurrentUser();
+        PaperSection section = requireSectionInDocument(sectionId, documentId);
+        currentUserService.requireSectionAssignment(currentUser, section);
+        if (section.getPreviousContentTex() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "No previous version to rollback to.");
+        }
+        String current = section.getContentTex();
+        section.setContentTex(section.getPreviousContentTex());
+        section.setPreviousContentTex(current);
+        section.setVersion(section.getVersion() != null ? section.getVersion() - 1 : 0);
         section.setUpdatedAt(LocalDateTime.now());
         return projectMapper.toPaperSectionResponse(paperSectionRepository.save(section));
     }
@@ -202,6 +262,45 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             section.setSectionOrder(parent.getSectionOrder() + 1);
         }
         return projectMapper.toPaperSectionResponse(paperSectionRepository.save(section));
+    }
+
+    @Override
+    @Transactional
+    public List<PaperSectionResponse> createSectionsFromStandard(UUID documentId, String standard) {
+        Document document = requireDocumentWriteAccess(documentId);
+        PaperStandard paperStandard;
+        try {
+            paperStandard = PaperStandard.valueOf(standard);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown standard: " + standard);
+        }
+
+        List<String> requiredSections = paperStandardService.getRequiredSections(paperStandard);
+        if (requiredSections.isEmpty()) {
+            return List.of();
+        }
+
+        List<PaperSection> existing = paperSectionRepository
+                .findByDocumentIdOrderBySectionOrderAsc(documentId);
+        int startOrder = existing.stream()
+                .mapToInt(PaperSection::getSectionOrder)
+                .max()
+                .orElse(-1) + 1;
+
+        List<PaperSection> sections = new ArrayList<>();
+        for (int i = 0; i < requiredSections.size(); i++) {
+            PaperSection section = new PaperSection();
+            section.setDocument(document);
+            section.setSectionTitle(requiredSections.get(i));
+            section.setSectionOrder(startOrder + i);
+            section.setContentTex("");
+            section.setUpdatedAt(LocalDateTime.now());
+            sections.add(section);
+        }
+
+        return paperSectionRepository.saveAll(sections).stream()
+                .map(projectMapper::toPaperSectionResponse)
+                .toList();
     }
 
     private PaperSection requireSectionInDocument(UUID sectionId, UUID documentId) {
@@ -274,5 +373,60 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
                     currentUserService.requireCurrentUser(), document.getProject());
         }
         return document;
+    }
+
+    @Override
+    public byte[] exportTexArchive(UUID projectId) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
+        currentUserService.requireProjectAccess(currentUser, project);
+
+        List<Document> docs = documentRepository.findByProjectId(projectId);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (ZipOutputStream zos = new ZipOutputStream(baos, StandardCharsets.UTF_8)) {
+            for (Document doc : docs) {
+                String filename = (doc.getOriginalFilename() != null
+                        ? doc.getOriginalFilename().replaceAll("\\.[^.]+$", "")
+                        : "paper-" + doc.getId()) + ".tex";
+                List<PaperSection> sections = paperSectionRepository
+                        .findByDocumentIdOrderBySectionOrderAsc(doc.getId());
+                StringBuilder tex = new StringBuilder();
+                String title = doc.getTitle() != null ? doc.getTitle() : (doc.getOriginalFilename() != null ? doc.getOriginalFilename() : "Untitled");
+                tex.append("\\documentclass{article}\n")
+                        .append("\\usepackage[utf8]{inputenc}\n")
+                        .append("\\usepackage{xcolor}\n")
+                        .append("\\usepackage{soul}\n\n")
+                        .append("\\title{").append(escapeLatex(title)).append("}\n")
+                        .append("\\author{").append(escapeLatex(project.getTitle())).append("}\n")
+                        .append("\\date{\\today}\n\n")
+                        .append("\\begin{document}\n\n")
+                        .append("\\maketitle\n\n");
+                for (PaperSection section : sections) {
+                    if (section.getContentTex() != null && !section.getContentTex().isBlank()) {
+                        tex.append("\\section{").append(escapeLatex(section.getSectionTitle())).append("}\n\n");
+                        tex.append(section.getContentTex()).append("\n\n");
+                    }
+                }
+                tex.append("\\end{document}\n");
+                ZipEntry entry = new ZipEntry(filename);
+                entry.setTime(System.currentTimeMillis());
+                zos.putNextEntry(entry);
+                zos.write(tex.toString().getBytes(StandardCharsets.UTF_8));
+                zos.closeEntry();
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to create export archive", e);
+        }
+        return baos.toByteArray();
+    }
+
+    private static String escapeLatex(String s) {
+        return s.replace("\\", "\\textbackslash{}")
+                .replace("&", "\\&").replace("%", "\\%")
+                .replace("$", "\\$").replace("#", "\\#")
+                .replace("_", "\\_").replace("{", "\\{")
+                .replace("}", "\\}").replace("~", "\\textasciitilde{}")
+                .replace("^", "\\textasciicircum{}");
     }
 }

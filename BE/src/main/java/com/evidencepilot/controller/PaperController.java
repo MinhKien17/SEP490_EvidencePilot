@@ -3,7 +3,14 @@ package com.evidencepilot.controller;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.PaperSectionResponse;
 import com.evidencepilot.dto.response.PaperValidationResponse;
+import com.evidencepilot.exception.ResourceNotFoundException;
+import com.evidencepilot.model.Document;
+import com.evidencepilot.model.Project;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.ProcessingStatus;
+import com.evidencepilot.repository.DocumentRepository;
+import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.PaperProcessingService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -40,6 +47,9 @@ public class PaperController {
 
     private final DocumentService documentService;
     private final PaperProcessingService paperProcessingService;
+    private final ProjectRepository projectRepository;
+    private final DocumentRepository documentRepository;
+    private final CurrentUserService currentUserService;
 
     @Operation(summary = "List all papers",
             description = "Returns all active paper documents. "
@@ -117,8 +127,9 @@ public class PaperController {
     }
 
     @Operation(summary = "Update a paper section",
-            description = "Rename, reorder, or merge a paper section. "
-                    + "Set mergeIntoId to merge this section into another.")
+            description = "Rename, reorder, merge, or edit content of a paper section. "
+                    + "Set mergeIntoId to merge this section into another. "
+                    + "Set content to save LaTeX content with version tracking.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Section updated"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
@@ -131,15 +142,50 @@ public class PaperController {
             @Parameter(description = "Section UUID") @PathVariable UUID sectionId,
             @RequestParam(required = false) String title,
             @RequestParam(required = false) Integer order,
-            @RequestParam(required = false) UUID mergeIntoId) {
-        return paperProcessingService.updateSection(documentId, sectionId, title, order, mergeIntoId);
+            @RequestParam(required = false) UUID mergeIntoId,
+            @RequestParam(required = false) String content) {
+        return paperProcessingService.updateSection(documentId, sectionId, title, order, mergeIntoId, content);
+    }
+
+    @Operation(summary = "Assign a student to a paper section",
+            description = "Sets the assigned user for a section. Only instructors and admins can call this.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Section assignment updated"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Section or user not found")
+    })
+    @PutMapping("/papers/{documentId}/sections/{sectionId}/assign")
+    public PaperSectionResponse assignSection(
+            @Parameter(description = "Paper document UUID") @PathVariable UUID documentId,
+            @Parameter(description = "Section UUID") @PathVariable UUID sectionId,
+            @Parameter(description = "User UUID to assign, or null to unassign") @RequestParam(required = false) UUID assignedUserId) {
+        return paperProcessingService.assignSection(documentId, sectionId, assignedUserId);
+    }
+
+    @Operation(summary = "Rollback a paper section to its previous version",
+            description = "Swaps the current content with the previous version. "
+                    + "Only the assigned student or an instructor can rollback.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Section rolled back"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Section not found"),
+            @ApiResponse(responseCode = "409", description = "No previous version to rollback to")
+    })
+    @PostMapping("/papers/{documentId}/sections/{sectionId}/rollback")
+    public PaperSectionResponse rollbackSection(
+            @Parameter(description = "Paper document UUID") @PathVariable UUID documentId,
+            @Parameter(description = "Section UUID") @PathVariable UUID sectionId) {
+        return paperProcessingService.rollbackSection(documentId, sectionId);
     }
 
     @Operation(summary = "Create a new paper section",
             description = "Adds a new section to a paper document. "
-                    + "Optionally specify a parent section ID for ordering.")
+                    + "Optionally specify a parent section ID for ordering. "
+                    + "If standard is provided, creates all required sections for that standard.")
     @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Section created"),
+            @ApiResponse(responseCode = "201", description = "Section(s) created"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
             @ApiResponse(responseCode = "403", description = "Access denied"),
             @ApiResponse(responseCode = "404", description = "Paper not found")
@@ -149,7 +195,12 @@ public class PaperController {
     public PaperSectionResponse createSection(
             @Parameter(description = "Paper document UUID") @PathVariable UUID documentId,
             @RequestParam String title,
-            @RequestParam(required = false) UUID parentSectionId) {
+            @RequestParam(required = false) UUID parentSectionId,
+            @RequestParam(required = false) String standard) {
+        if (standard != null) {
+            List<PaperSectionResponse> created = paperProcessingService.createSectionsFromStandard(documentId, standard);
+            return created.isEmpty() ? null : created.get(0);
+        }
         return paperProcessingService.createSection(documentId, title, parentSectionId);
     }
 
@@ -182,6 +233,47 @@ public class PaperController {
             @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
         documentService.deleteDocument(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Init paper sections from standard",
+            description = "Creates a stub paper document with sections derived from the project's targetStandard. "
+                    + "Idempotent — no-op if the project already has papers.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Stub paper created with standard sections"),
+            @ApiResponse(responseCode = "200", description = "Project already has papers"),
+            @ApiResponse(responseCode = "400", description = "No standard set on project"),
+            @ApiResponse(responseCode = "404", description = "Project not found")
+    })
+    @PostMapping("/projects/{projectId}/papers/init")
+    @Transactional
+    public ResponseEntity<DocumentResponse> initPaperSections(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
+        if (project.getTargetStandard() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        var existing = documentRepository.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER);
+        if (!existing.isEmpty()) {
+            return ResponseEntity.ok(DocumentResponse.from(existing.getFirst()));
+        }
+        var currentUser = currentUserService.requireCurrentUser();
+        currentUserService.requireProjectWriteAccess(currentUser, project);
+        Document stub = new Document();
+        stub.setProject(project);
+        stub.setUploadedBy(currentUser);
+        stub.setDocType(DocumentType.PAPER);
+        stub.setFileUrl("placeholder");
+        stub.setOriginalFilename("_standard_" + project.getTargetStandard().name() + ".tex");
+        stub.setContentType("text/plain");
+        stub.setFileSizeBytes(0L);
+        stub.setProcessingStatus(ProcessingStatus.READY);
+        stub.setActive(true);
+        stub.setCreatedAt(java.time.LocalDateTime.now());
+        stub.setDownloadToken(UUID.randomUUID().toString());
+        stub = documentRepository.save(stub);
+        paperProcessingService.createSectionsFromStandard(stub.getId(), project.getTargetStandard().name());
+        return ResponseEntity.status(HttpStatus.CREATED).body(DocumentResponse.from(stub));
     }
 
     @Operation(summary = "Upload a paper",

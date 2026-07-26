@@ -33,6 +33,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -96,7 +97,7 @@ public class ProjectServiceImpl implements ProjectService {
         project.setTitle(request.title());
         project.setDescription(request.description());
         project.setTargetStandard(request.targetStandard());
-        project.setStatus(ProjectStatus.ASSIGNED);
+        project.setStatus(ProjectStatus.CREATED);
         project.setCreatedAt(LocalDateTime.now());
 
         Project saved = projectRepository.save(project);
@@ -110,6 +111,14 @@ public class ProjectServiceImpl implements ProjectService {
         owner.setJoinedAt(LocalDateTime.now());
         projectMemberRepository.save(owner);
 
+        auditService.record("PROJECT_CREATED", "PROJECT", saved.getId(), currentUser, null, saved.getStatus());
+        systemNotificationService.createNotification(
+                currentUser,
+                currentUser,
+                "PROJECT_CREATED",
+                saved.getId(),
+                "Project \"" + saved.getTitle() + "\" has been created.");
+
         return ProjectResponse.from(saved);
     }
 
@@ -121,12 +130,20 @@ public class ProjectServiceImpl implements ProjectService {
         currentUserService.requireProjectManageAccess(currentUser, project);
         currentUserService.requireProjectWriteAccess(currentUser, project);
 
+        String oldTitle = project.getTitle();
+        String oldDescription = project.getDescription();
+        PaperStandard oldTarget = project.getTargetStandard();
+
         project.setTitle(request.title());
         project.setDescription(request.description());
         project.setTargetStandard(request.targetStandard());
         project.setUpdatedAt(LocalDateTime.now());
 
-        return ProjectResponse.from(projectRepository.save(project));
+        Project saved = projectRepository.save(project);
+        auditService.record("PROJECT_UPDATED", "PROJECT", saved.getId(), currentUser,
+                "title=" + oldTitle + ",description=" + oldDescription + ",targetStandard=" + oldTarget,
+                "title=" + saved.getTitle() + ",description=" + saved.getDescription() + ",targetStandard=" + saved.getTargetStandard());
+        return ProjectResponse.from(saved);
     }
 
     @Override
@@ -141,9 +158,19 @@ public class ProjectServiceImpl implements ProjectService {
                 && project.getStatus() != ProjectStatus.RETURNED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project cannot be completed in its current state.");
         }
+        ProjectStatus oldStatus = project.getStatus();
         project.setStatus(ProjectStatus.APPROVED);
         project.setUpdatedAt(LocalDateTime.now());
-        return ProjectResponse.from(projectRepository.save(project));
+        Project saved = projectRepository.save(project);
+        auditService.record("PROJECT_COMPLETED", "PROJECT", saved.getId(), currentUser,
+                oldStatus, ProjectStatus.APPROVED);
+        systemNotificationService.createNotification(
+                currentUser,
+                currentUser,
+                "PROJECT_COMPLETED",
+                saved.getId(),
+                "Project \"" + saved.getTitle() + "\" has been completed.");
+        return ProjectResponse.from(saved);
     }
 
     @Override
@@ -191,6 +218,7 @@ public class ProjectServiceImpl implements ProjectService {
         currentUserService.requireProjectWriteAccess(currentUser, project);
         project.setActive(false);
         projectRepository.save(project);
+        auditService.record("PROJECT_DELETED", "PROJECT", project.getId(), currentUser, null, null);
     }
 
     @Override
@@ -235,6 +263,13 @@ public class ProjectServiceImpl implements ProjectService {
         member.setRole(memberRole);
         member.setJoinedAt(LocalDateTime.now());
         projectMemberRepository.save(member);
+
+        if (project.getStatus() == ProjectStatus.CREATED) {
+            project.setStatus(ProjectStatus.ASSIGNED);
+            project.setUpdatedAt(LocalDateTime.now());
+            projectRepository.save(project);
+        }
+
         systemNotificationService.createNotification(
                 user,
                 currentUser,

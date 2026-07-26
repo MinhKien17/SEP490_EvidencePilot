@@ -18,6 +18,10 @@ public interface ProjectMapper {
     @Mapping(target = "projectId", source = "project.id")
     @Mapping(target = "userId", source = "user.id")
     @Mapping(target = "role", source = "role")
+    @Mapping(target = "firstName", source = "user.firstName")
+    @Mapping(target = "lastName", source = "user.lastName")
+    @Mapping(target = "email", source = "user.email")
+    @Mapping(target = "userRole", source = "user.role")
     ProjectMemberResponse toProjectMemberResponse(ProjectMember entity);
 
     @Mapping(target = "documentId", source = "document.id")

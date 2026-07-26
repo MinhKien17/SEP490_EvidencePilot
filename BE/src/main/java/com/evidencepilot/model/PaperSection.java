@@ -38,6 +38,12 @@ public class PaperSection {
     @Column(name = "content_tex", nullable = false, columnDefinition = "LONGTEXT")
     private String contentTex;
 
+    @Column(name = "previous_content_tex", columnDefinition = "LONGTEXT")
+    private String previousContentTex;
+
+    @Column(name = "version")
+    private Integer version = 1;
+
     @Column(name = "content_md_cache", columnDefinition = "LONGTEXT")
     private String contentMdCache;
 

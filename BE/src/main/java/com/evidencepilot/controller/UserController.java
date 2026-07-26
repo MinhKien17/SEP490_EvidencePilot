@@ -3,6 +3,7 @@ package com.evidencepilot.controller;
 import com.evidencepilot.dto.request.UserProfileUpdateRequest;
 import com.evidencepilot.dto.response.UserResponse;
 import com.evidencepilot.mapper.UserMapper;
+import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -18,8 +19,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -42,6 +45,18 @@ public class UserController {
     public ResponseEntity<UserResponse> findById(
             @Parameter(description = "User UUID") @PathVariable UUID id) {
         return ResponseEntity.ok(userService.findUserById(id));
+    }
+
+    @Operation(summary = "List users by role",
+            description = "Returns all users with a given role (STUDENT, INSTRUCTOR, ADMIN). Optional ?q= search filters by name/email.")
+    @GetMapping
+    public ResponseEntity<List<UserResponse>> findByRole(
+            @Parameter(description = "Filter by role") @RequestParam UserRole role,
+            @Parameter(description = "Search query (name/email)") @RequestParam(required = false) String q) {
+        if (q != null && !q.isBlank()) {
+            return ResponseEntity.ok(userService.searchUsersByRole(role, q));
+        }
+        return ResponseEntity.ok(userService.findUsersByRole(role));
     }
 
     @Operation(summary = "Get current user profile",

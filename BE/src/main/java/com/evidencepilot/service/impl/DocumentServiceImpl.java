@@ -536,7 +536,7 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     private void refreshProjectStatus(Project project) {
-        if (project.getStatus() != ProjectStatus.ASSIGNED && project.getStatus() != ProjectStatus.IN_PROGRESS) {
+        if (project.getStatus() != ProjectStatus.CREATED && project.getStatus() != ProjectStatus.ASSIGNED && project.getStatus() != ProjectStatus.IN_PROGRESS) {
             return;
         }
         boolean hasPaper = !documentRepository
@@ -545,7 +545,14 @@ public class DocumentServiceImpl implements DocumentService {
         boolean hasSource = !documentRepository
                 .findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.SOURCE)
                 .isEmpty();
-        ProjectStatus status = hasPaper && hasSource ? ProjectStatus.IN_PROGRESS : ProjectStatus.ASSIGNED;
+        ProjectStatus status;
+        if (hasPaper && hasSource) {
+            status = ProjectStatus.IN_PROGRESS;
+        } else if (hasPaper || hasSource) {
+            status = ProjectStatus.ASSIGNED;
+        } else {
+            status = ProjectStatus.CREATED;
+        }
         if (project.getStatus() != status) {
             project.setStatus(status);
             projectRepository.save(project);

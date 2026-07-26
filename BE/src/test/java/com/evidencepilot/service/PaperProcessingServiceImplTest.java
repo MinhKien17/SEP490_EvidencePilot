@@ -11,6 +11,8 @@ import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
+import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.impl.PaperProcessingServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -50,6 +52,15 @@ class PaperProcessingServiceImplTest {
 
     @Mock
     private PaperStandardService paperStandardService;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private ProjectRepository projectRepository;
+
+    @Mock
+    private SystemNotificationService systemNotificationService;
 
     @Test
     void getPaperSectionsRequiresProjectAccess() {
@@ -166,7 +177,7 @@ class PaperProcessingServiceImplTest {
         when(paperSectionRepository.findById(foreign.getId())).thenReturn(Optional.of(foreign));
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().updateSection(
-                authorized.getId(), foreign.getId(), "Changed", null, null))
+                authorized.getId(), foreign.getId(), "Changed", null, null, null))
                 .isInstanceOf(ResourceNotFoundException.class);
 
         verify(paperSectionRepository, never()).save(any(PaperSection.class));
@@ -183,7 +194,7 @@ class PaperProcessingServiceImplTest {
         when(paperSectionRepository.findById(foreignTarget.getId())).thenReturn(Optional.of(foreignTarget));
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().updateSection(
-                authorized.getId(), source.getId(), null, null, foreignTarget.getId()))
+                authorized.getId(), source.getId(), null, null, foreignTarget.getId(), null))
                 .isInstanceOf(ResourceNotFoundException.class);
 
         verify(paperSectionRepository, never()).save(any(PaperSection.class));
@@ -214,7 +225,10 @@ class PaperProcessingServiceImplTest {
                 documentRepository,
                 projectMapper,
                 currentUserService,
-                paperStandardService);
+                paperStandardService,
+                userRepository,
+                projectRepository,
+                systemNotificationService);
     }
 
     private User user() {

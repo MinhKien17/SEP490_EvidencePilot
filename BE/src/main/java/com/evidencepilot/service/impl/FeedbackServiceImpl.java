@@ -198,6 +198,14 @@ public class FeedbackServiceImpl implements FeedbackService {
             feedbackRequestRepository.save(request);
         }
 
+        systemNotificationService.createNotification(
+                feedback.getInstructor(),
+                currentUser,
+                "FEEDBACK_ANSWERED",
+                request.getId(),
+                currentUser.getEmail() + " answered feedback on project \""
+                        + request.getProject().getTitle() + "\".");
+
         return InstructorFeedbackResponseDto.fromEntity(saved);
     }
 
@@ -214,7 +222,13 @@ public class FeedbackServiceImpl implements FeedbackService {
         if (newStatus == FeedbackStatus.PENDING) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status: " + status);
         }
-        FeedbackRequest feedbackRequest = transition(feedbackRequestId, newStatus, ProjectStatus.RETURNED, currentUser);
+        ProjectStatus projectStatus = switch (newStatus) {
+            case REVIEWED -> ProjectStatus.APPROVED;
+            case REJECTED -> ProjectStatus.SUBMITTED_FOR_REVIEW;
+            case RETURNED -> ProjectStatus.RETURNED;
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status: " + status);
+        };
+        FeedbackRequest feedbackRequest = transition(feedbackRequestId, newStatus, projectStatus, currentUser);
         systemNotificationService.createNotification(
                 feedbackRequest.getStudent(),
                 currentUser,
@@ -231,8 +245,10 @@ public class FeedbackServiceImpl implements FeedbackService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
         }
         feedbackRequest.setStatus(status);
-        feedbackRequest.getProject().setStatus(projectStatus);
-        projectRepository.save(feedbackRequest.getProject());
+        Project project = feedbackRequest.getProject();
+        project.setStatus(projectStatus);
+        project.setUpdatedAt(LocalDateTime.now());
+        projectRepository.save(project);
         return feedbackRequestRepository.save(feedbackRequest);
     }
 

@@ -34,6 +34,21 @@ public class SourceController {
 
     private final DocumentService documentService;
 
+    @Operation(summary = "List sources by project",
+            description = "Returns all active source documents belonging to a project.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Source list returned"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "404", description = "Project not found")
+    })
+    @GetMapping("/projects/{projectId}")
+    public List<DocumentResponse> findByProject(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
+        return documentService.getDocumentsByProject(projectId).stream()
+                .filter(d -> d.docType() == DocumentType.SOURCE && d.active())
+                .toList();
+    }
+
     @Operation(summary = "Get source by ID", description = "Returns metadata for a single active source document.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Source metadata returned"),

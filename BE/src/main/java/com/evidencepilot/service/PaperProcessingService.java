@@ -17,7 +17,15 @@ public interface PaperProcessingService {
 
     PaperValidationResponse validateSections(UUID documentId);
 
-    PaperSectionResponse updateSection(UUID documentId, UUID sectionId, String title, Integer order, UUID mergeIntoId);
+    PaperSectionResponse updateSection(UUID documentId, UUID sectionId, String title, Integer order, UUID mergeIntoId, String content);
 
     PaperSectionResponse createSection(UUID documentId, String title, UUID parentSectionId);
+
+    List<PaperSectionResponse> createSectionsFromStandard(UUID documentId, String standard);
+
+    PaperSectionResponse assignSection(UUID documentId, UUID sectionId, UUID assignedUserId);
+
+    PaperSectionResponse rollbackSection(UUID documentId, UUID sectionId);
+
+    byte[] exportTexArchive(UUID projectId);
 }

@@ -256,7 +256,7 @@ class FeedbackServiceImplTest {
         service().updateStatus(request.getId(), "REVIEWED");
 
         assertThat(request.getStatus()).isEqualTo(FeedbackStatus.REVIEWED);
-        assertThat(project.getStatus()).isEqualTo(ProjectStatus.RETURNED);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.APPROVED);
         verify(systemNotificationService).createNotification(
                 student, instructor, "REVIEW_STATUS_CHANGED", request.getId(),
                 "Review status for project \"Capstone\" changed to REVIEWED.");

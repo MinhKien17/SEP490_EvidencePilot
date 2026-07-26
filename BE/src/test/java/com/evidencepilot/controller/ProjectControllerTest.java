@@ -7,6 +7,7 @@ import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.service.ClaimService;
 import com.evidencepilot.service.CollectionService;
 import com.evidencepilot.service.DocumentService;
+import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.ProjectService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,12 +28,13 @@ class ProjectControllerTest {
     private final DocumentService documentService = mock(DocumentService.class);
     private final ClaimService claimService = mock(ClaimService.class);
     private final CollectionService collectionService = mock(CollectionService.class);
+    private final PaperProcessingService paperProcessingService = mock(PaperProcessingService.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         mockMvc = standaloneSetup(new ProjectController(
-                projectService, documentService, claimService, collectionService)).build();
+                projectService, documentService, claimService, collectionService, paperProcessingService)).build();
     }
 
     @Test

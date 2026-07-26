@@ -53,6 +53,7 @@ class ProjectRouteMappingTest {
                 "POST /api/auth/login",
                 "POST /api/auth/password-reset/request",
                 "POST /api/auth/password-reset/confirm",
+                "GET /api/users",
                 "GET /api/users/{id}",
                 "GET /api/users/profile",
                 "PUT /api/users/profile",
@@ -69,6 +70,7 @@ class ProjectRouteMappingTest {
                 "GET /api/projects/{projectId}/sources",
                 "GET /api/projects/{projectId}/claims",
                 "POST /api/projects/{id}/members",
+                "GET /api/projects/{projectId}/export",
                 "DELETE /api/projects/{id}/members/{userId}",
                 "GET /api/collections",
                 "POST /api/collections",
@@ -99,6 +101,7 @@ class ProjectRouteMappingTest {
                 "POST /api/papers/{id}/reviews",
                 "DELETE /api/papers/{id}",
                 "POST /api/papers",
+                "GET /api/sources/projects/{projectId}",
                 "GET /api/sources/{id}",
                 "GET /api/sources/{id}/chunks",
                 "GET /api/sources/{id}/text",
@@ -147,8 +150,11 @@ class ProjectRouteMappingTest {
                 "GET /api/admin/collections",
                 "GET /api/admin/notifications/broadcast-history",
                 "GET /api/admin/documents/extraction-queue",
-                "GET /api/admin/config"));
-        assertThat(routes).hasSize(100);
+                "GET /api/admin/config",
+                "PUT /api/papers/{documentId}/sections/{sectionId}/assign",
+                "POST /api/papers/{documentId}/sections/{sectionId}/rollback",
+                "POST /api/projects/{projectId}/papers/init"));
+        assertThat(routes).hasSize(106);
     }
 
     @Test
