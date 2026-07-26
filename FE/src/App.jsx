@@ -111,10 +111,11 @@ import CollectionDetail from './pages/Instructor/CollectionDetail.jsx';
 import ReviewRequests from './pages/Instructor/ReviewRequests.jsx';
 import InstructorDashboard from './pages/Instructor/Dashboard.jsx';
 import ProjectManagement from './pages/Instructor/ProjectManagement.jsx';
+import ProjectDetail from './pages/Instructor/ProjectDetail.jsx';
 
 // STUDENT SUB-SYSTEM IMPORTS
 import StudentProjects from './pages/Student/Projects.jsx';
-import Workspace from './pages/Student/Workspace.jsx';
+import WorkspaceLayout from './pages/Student/WorkspaceLayout.jsx';
 
 function App() {
   return (
@@ -141,6 +142,7 @@ function App() {
             <Route path="/admin/profile" element={<Profile />} />
             <Route path="/instructor/dashboard" element={<InstructorDashboard />} />
             <Route path="/instructor/projects" element={<ProjectManagement />} />
+            <Route path="/instructor/projects/:id" element={<ProjectDetail />} />
             <Route path="/instructor/requests" element={<ReviewRequests />} />
             <Route path="/instructor/collections" element={<CollectionList />} />
             <Route path="/instructor/collections/:id" element={<CollectionDetail />} />           
@@ -149,7 +151,7 @@ function App() {
               <ProtectedRoute allowedRoles={['STUDENT']}><StudentProjects /></ProtectedRoute>
             } />
             <Route path="/student/projects/:projectId" element={
-              <ProtectedRoute allowedRoles={['STUDENT']}><Workspace /></ProtectedRoute>
+              <ProtectedRoute allowedRoles={['STUDENT']}><WorkspaceLayout /></ProtectedRoute>
             } />
             
           </Routes>

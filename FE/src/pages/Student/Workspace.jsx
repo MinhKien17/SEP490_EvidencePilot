@@ -7,32 +7,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { UI_TEXT } from '../../constants/uiText';
 import { TourLauncher, StatusBadge, Modal, EmptyState, LoadingSkeleton } from '../../components';
 
-const DEFAULT_SAMPLE_LATEX = `\\documentclass{article}
-\\usepackage[utf-8]{inputenc}
-\\usepackage{xcolor}
-\\usepackage{soul}
-
-\\title{Evidence Traceability in Modern Agile Environments}
-\\author{Minh Nguyen}
-\\date{\\today}
-
-\\begin{document}
-
-\\maketitle
-
-\\section{Introduction}
-
-Agile software development depends on fast communication between stakeholders, product owners, and delivery teams. However, project risk increases when feedback loops are informal or delayed.
-
-\\section{Communication Protocols and Risk Reduction}
-
-Clear communication protocols reduce project risk \\hl{because teams can identify blockers earlier and align decisions before sprint goals are missed}.
-
-Risk management in agile projects should combine lightweight documentation, frequent review meetings, and traceable evidence for important project claims.
-
-\\section{Addressing Common Assumptions}
-
-Some teams assume daily meetings alone are enough to control project uncertainty, but this claim still needs stronger evidence from the uploaded sources.`;
+const DEFAULT_SAMPLE_LATEX = `% Select a paper from the file panel to start editing.`;
 
 const RichTextEditor = React.memo(({ initialHtml, onHtmlChange }) => {
   return (
@@ -405,7 +380,7 @@ export default function Workspace() {
 
         // Lấy danh sách dự án
         const listRes = await api.get('/api/projects');
-        const activeProjects = listRes.data || [];
+        const activeProjects = listRes.data?.content || [];
         setProjects(activeProjects);
 
         // Nếu không có projectId trên URL, chọn cái đầu tiên

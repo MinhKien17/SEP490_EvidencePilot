@@ -9,3 +9,7 @@ export { default as SplitPanel } from './SplitPanel';
 export { default as UploadZone } from './UploadZone';
 export { default as TourLauncher } from './TourLauncher';
 export { default as AppHeader } from './AppHeader';
+export { default as LatexEditor } from './LatexEditor';
+export { default as PreviewPane } from './PreviewPane';
+export { default as SectionTree } from './SectionTree';
+export { default as EvidenceGraph } from './EvidenceGraph';
