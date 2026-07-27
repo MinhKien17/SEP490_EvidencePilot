@@ -185,6 +185,29 @@ public class QdrantClientImpl implements QdrantClient {
         }
     }
 
+    @Override
+    public Map<String, Object> health() {
+        Map<String, Object> info = new LinkedHashMap<>();
+        long start = System.currentTimeMillis();
+        try {
+            restClient.get()
+                    .uri(baseUrl + "/collections/" + COLLECTION)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, (req, res) -> {
+                        throw new QdrantException("Health check failed", res.getStatusCode().value());
+                    })
+                    .toBodilessEntity();
+            info.put("status", "UP");
+            info.put("latencyMs", System.currentTimeMillis() - start);
+            info.put("collection", COLLECTION);
+        } catch (Exception e) {
+            info.put("status", "DOWN");
+            info.put("latencyMs", System.currentTimeMillis() - start);
+            info.put("error", e.getMessage());
+        }
+        return info;
+    }
+
     // ── Collection bootstrap ───────────────────────────────────────────────────
 
     @SuppressWarnings("unchecked")

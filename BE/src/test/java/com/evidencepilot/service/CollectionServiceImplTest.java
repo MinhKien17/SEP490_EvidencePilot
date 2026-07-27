@@ -2,11 +2,10 @@ package com.evidencepilot.service;
 
 import com.evidencepilot.dto.request.CollectionRequest;
 import com.evidencepilot.model.Collection;
-import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.UserRole;
+import com.evidencepilot.repository.CollectionCategoryRepository;
 import com.evidencepilot.repository.CollectionRepository;
-import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.impl.CollectionServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,7 +13,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
-import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -29,20 +27,17 @@ class CollectionServiceImplTest {
     private CollectionRepository collectionRepository;
 
     @Mock
-    private ProjectRepository projectRepository;
+    private CollectionCategoryRepository collectionCategoryRepository;
 
     @Mock
     private CurrentUserService currentUserService;
 
     @Test
-    void createCollectionRequiresInstructorRoleAndProjectAccess() {
+    void createCollectionRequiresInstructorRole() {
         User instructor = user(UserRole.INSTRUCTOR);
-        Project project = new Project();
-        project.setId(UUID.randomUUID());
-        CollectionRequest request = new CollectionRequest("Evidence", "Notes", project.getId());
+        CollectionRequest request = new CollectionRequest("Evidence", "Notes", null);
 
         when(currentUserService.requireCurrentUser()).thenReturn(instructor);
-        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
         when(collectionRepository.save(any(Collection.class))).thenAnswer(invocation -> {
             Collection collection = invocation.getArgument(0);
             collection.setId(UUID.randomUUID());
@@ -53,7 +48,6 @@ class CollectionServiceImplTest {
 
         assertThat(response.name()).isEqualTo("Evidence");
         verify(currentUserService).requireRole(instructor, UserRole.INSTRUCTOR);
-        verify(currentUserService).requireProjectAccess(instructor, project);
     }
 
     @Test
@@ -70,22 +64,6 @@ class CollectionServiceImplTest {
     }
 
     @Test
-    void getCollectionsByProjectIdChecksProjectAccess() {
-        User instructor = user(UserRole.INSTRUCTOR);
-        Project project = new Project();
-        project.setId(UUID.randomUUID());
-
-        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
-        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
-        when(collectionRepository.findByProjectId(project.getId()))
-                .thenReturn(List.of(collection(instructor)));
-
-        service().getCollectionsByProjectId(project.getId());
-
-        verify(currentUserService).requireProjectAccess(instructor, project);
-    }
-
-    @Test
     void deleteCollectionChecksCollectionAccess() {
         User instructor = user(UserRole.INSTRUCTOR);
         Collection collection = collection(instructor);
@@ -99,7 +77,7 @@ class CollectionServiceImplTest {
     }
 
     private CollectionServiceImpl service() {
-        return new CollectionServiceImpl(collectionRepository, projectRepository, currentUserService);
+        return new CollectionServiceImpl(collectionRepository, collectionCategoryRepository, currentUserService);
     }
 
     private User user(UserRole role) {

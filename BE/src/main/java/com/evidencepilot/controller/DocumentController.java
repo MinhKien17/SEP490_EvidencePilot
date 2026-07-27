@@ -22,6 +22,8 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -69,6 +71,22 @@ public class DocumentController {
         return documentService.uploadDocument(projectId, file, DocumentType.SOURCE);
     }
 
+    @Operation(summary = "Attach file to metadata-only document",
+            description = "Uploads a PDF file to an existing metadata-only document "
+                    + "(status = METADATA_FETCHED). Triggers the extraction pipeline after upload.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "File attached, extraction queued"),
+            @ApiResponse(responseCode = "400", description = "Document is not in METADATA_FETCHED status"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "404", description = "Document not found")
+    })
+    @PostMapping("/{documentId}/file")
+    public DocumentResponse attachFileToDocument(
+            @Parameter(description = "Document UUID") @PathVariable UUID documentId,
+            @Parameter(description = "PDF file to attach") @RequestParam("file") MultipartFile file) {
+        return documentService.attachFileToDocument(documentId, file);
+    }
+
     @Operation(summary = "Get document chunks",
             description = "Returns all text chunks for the specified document.")
     @ApiResponses({
@@ -93,6 +111,21 @@ public class DocumentController {
     public DocumentTextResponse getDocumentText(
             @Parameter(description = "Document UUID") @PathVariable UUID id) {
         return documentService.getDocumentText(id);
+    }
+
+    @Operation(summary = "Save draft text",
+            description = "Saves the extracted text draft for a document. "
+                    + "Creates the DocumentText row if it doesn't exist yet.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Draft saved"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "404", description = "Document not found")
+    })
+    @PutMapping("/{id}/text")
+    public DocumentTextResponse saveDraft(
+            @Parameter(description = "Document UUID") @PathVariable UUID id,
+            @RequestBody String extractedText) {
+        return documentService.saveDraft(id, extractedText);
     }
 
     @Operation(summary = "Download a document PDF",

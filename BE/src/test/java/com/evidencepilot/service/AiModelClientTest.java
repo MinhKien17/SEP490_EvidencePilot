@@ -63,7 +63,7 @@ class AiModelClientTest {
                           "filename":"source.pdf",
                           "download_url":"https://storage.test/source.pdf"
                         }
-                        """))
+                        """, true))
                 .andRespond(withSuccess(
                         """
                         {

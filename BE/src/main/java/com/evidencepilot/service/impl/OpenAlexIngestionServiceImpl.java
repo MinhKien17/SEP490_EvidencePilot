@@ -1,16 +1,22 @@
 package com.evidencepilot.service.impl;
 
+import com.evidencepilot.client.openalex.DoiUtils;
 import com.evidencepilot.client.openalex.OpenAlexClient;
 import com.evidencepilot.dto.openalex.OpenAlexWorkResponse;
+import com.evidencepilot.dto.response.CitationGraphResponse;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.OpenAlexPreview;
 import com.evidencepilot.exception.ResourceNotFoundException;
+import com.evidencepilot.model.Collection;
 import com.evidencepilot.model.Document;
+import com.evidencepilot.model.DocumentReference;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.EdgeType;
 import com.evidencepilot.model.enums.ProcessingStatus;
-import com.evidencepilot.model.enums.ProjectStatus;
+import com.evidencepilot.repository.CollectionRepository;
+import com.evidencepilot.repository.DocumentReferenceRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.CurrentUserService;
@@ -26,6 +32,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -36,14 +46,20 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
     private final OpenAlexClient openAlexClient;
     private final DocumentRepository documentRepository;
     private final ProjectRepository projectRepository;
+    private final CollectionRepository collectionRepository;
     private final CurrentUserService currentUserService;
     private final DocumentObjectStorage documentObjectStorage;
     private final DocumentPersistenceService documentPersistenceService;
+    private final DocumentReferenceRepository documentReferenceRepository;
     private final ObjectMapper objectMapper;
 
     @Override
     public OpenAlexPreview lookupByDoi(String doi) {
-        OpenAlexWorkResponse work = openAlexClient.fetchWork(doi);
+        String normalizedDoi = DoiUtils.normalize(doi);
+        if (normalizedDoi == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid DOI: " + doi);
+        }
+        OpenAlexWorkResponse work = openAlexClient.fetchWork(normalizedDoi);
         String oaUrl = work.oaUrl();
         boolean hasPdf = oaUrl != null && urlIsReachable(oaUrl);
         return new OpenAlexPreview(
@@ -58,34 +74,65 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
 
     @Override
     @Transactional
-    public DocumentResponse ingestByDoi(UUID projectId, String doi) {
+    public DocumentResponse ingestByDoi(UUID projectId, UUID collectionId, String doi) {
         User currentUser = currentUserService.requireCurrentUser();
-        Project project = validateProject(projectId, currentUser);
-
-        OpenAlexWorkResponse work = openAlexClient.fetchWork(doi);
-        String oaUrl = work.oaUrl();
-        if (oaUrl == null || oaUrl.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "No open-access PDF URL available for DOI: " + doi);
-        }
 
         Document document = new Document();
-        document.setProject(project);
         document.setUploadedBy(currentUser);
         document.setDocType(DocumentType.SOURCE);
         document.setFileUrl("pending");
-        document.setOriginalFilename(work.title() != null ? work.title() + ".pdf" : doi + ".pdf");
         document.setContentType("application/pdf");
         document.setFileSizeBytes(0L);
-        document.setProcessingStatus(ProcessingStatus.METADATA_FETCHED);
         document.setActive(true);
         document.setCreatedAt(LocalDateTime.now());
         document.setDownloadToken(UUID.randomUUID().toString());
-        document.setDoi(doi);
+
+        if (collectionId != null) {
+            Collection collection = collectionRepository.findById(collectionId)
+                    .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
+            currentUserService.requireCollectionAccess(currentUser, collection);
+            document.setCollection(collection);
+        } else if (projectId != null) {
+            Project project = projectRepository.findById(projectId)
+                    .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
+            currentUserService.requireProjectWriteAccess(currentUser, project);
+            document.setProject(project);
+        } else {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Either projectId or collectionId is required");
+        }
+
+        OpenAlexWorkResponse work = openAlexClient.fetchWork(doi);
+        String oaUrl = work.oaUrl();
+
+        document.setOriginalFilename(work.title() != null ? work.title() + ".pdf" : DoiUtils.normalize(doi) + ".pdf");
+        document.setDoi(DoiUtils.normalize(doi));
         document.setTitle(work.title());
         document.setAuthors(toJson(work.authorNames()));
         document.setPublicationYear(work.publicationYear());
         document.setPublisher(work.publisher());
+        document.setCitedByCount(work.citedByCount());
+
+        if (work.primaryTopic() != null) {
+            document.setOpenAlexTopic(work.primaryTopic().displayName());
+            if (work.primaryTopic().subfield() != null) {
+                document.setOpenAlexSubfield(work.primaryTopic().subfield().displayName());
+            }
+            if (work.primaryTopic().field() != null) {
+                document.setOpenAlexField(work.primaryTopic().field().displayName());
+            }
+            if (work.primaryTopic().domain() != null) {
+                document.setOpenAlexDomain(work.primaryTopic().domain().displayName());
+            }
+        }
+
+        if (oaUrl == null || oaUrl.isBlank()) {
+            document.setProcessingStatus(ProcessingStatus.METADATA_FETCHED);
+            document.setProcessingError("No open-access PDF available for this DOI");
+            document = documentRepository.save(document);
+            return DocumentResponse.from(document);
+        }
+
+        document.setProcessingStatus(ProcessingStatus.METADATA_FETCHED);
         document = documentRepository.save(document);
 
         String objectKey = "sources/raw/" + document.getId() + ".pdf";
@@ -93,27 +140,187 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
             byte[] pdfBytes = pdfStream.readAllBytes();
             documentObjectStorage.write(objectKey, pdfBytes, "application/pdf");
             document.setFileSizeBytes((long) pdfBytes.length);
+            document = documentPersistenceService.markDocumentAsUploaded(document.getId(), objectKey);
         } catch (Exception e) {
-            log.error("Failed to download PDF from {} for document {}", oaUrl, document.getId(), e);
-            document.setProcessingStatus(ProcessingStatus.FAILED);
-            document.setProcessingError("PDF download failed: " + e.getMessage());
+            log.warn("Failed to download PDF from {} for document {}: {}. Metadata saved, user can attach file later.",
+                    oaUrl, document.getId(), e.getMessage());
+            document.setProcessingStatus(ProcessingStatus.METADATA_FETCHED);
+            document.setProcessingError("PDF download not completed: " + e.getMessage() + ". Metadata saved.");
             documentRepository.save(document);
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Failed to download PDF from " + oaUrl, e);
         }
 
-        document = documentPersistenceService.markDocumentAsUploaded(document.getId(), objectKey);
+        persistReferences(document, work);
+        persistCitedBy(document, work);
+
         return DocumentResponse.from(document);
     }
 
-    private Project validateProject(UUID projectId, User currentUser) {
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
-        currentUserService.requireProjectAccess(currentUser, project);
-        if (project.getStatus() == ProjectStatus.APPROVED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
+    @Override
+    @Transactional
+    public void persistReferences(UUID documentId) {
+        Document document = documentRepository.findById(documentId).orElse(null);
+        if (document == null || document.getDoi() == null) return;
+        try {
+            OpenAlexWorkResponse work = openAlexClient.fetchWork(document.getDoi());
+            persistReferences(document, work);
+        } catch (Exception e) {
+            log.warn("Failed to fetch references for document {}: {}", documentId, e.getMessage());
         }
-        return project;
+    }
+
+    private void persistReferences(Document document, OpenAlexWorkResponse work) {
+        if (work.referencedWorks() == null || work.referencedWorks().isEmpty()) return;
+
+        UUID documentId = document.getId();
+        List<String> collectionDois = List.of();
+        if (document.getCollection() != null) {
+            collectionDois = documentRepository.findByCollectionId(document.getCollection().getId()).stream()
+                    .map(Document::getDoi).filter(java.util.Objects::nonNull).toList();
+        }
+
+        List<String> refIds = work.referencedWorks().stream()
+                .filter(r -> r != null && !r.isBlank())
+                .distinct().toList();
+        if (refIds.isEmpty()) return;
+
+        List<OpenAlexWorkResponse> batchResults = openAlexClient.fetchWorksByIds(refIds, "id,doi,title,publication_year,cited_by_count");
+        Map<String, OpenAlexWorkResponse> resolved = new LinkedHashMap<>();
+        for (OpenAlexWorkResponse r : batchResults) {
+            resolved.put(r.id(), r);
+        }
+
+        int index = 0;
+        for (String refId : refIds) {
+            boolean exists = documentReferenceRepository.findByDocumentIdAndEdgeTypeOrderByReferenceIndexAsc(documentId, EdgeType.REFERENCES)
+                    .stream().anyMatch(r -> refId.equals(r.getRawText()));
+            if (exists) continue;
+
+            OpenAlexWorkResponse refWork = resolved.get(refId);
+            if (refWork == null) {
+                DocumentReference ref = new DocumentReference();
+                ref.setDocument(document);
+                ref.setReferenceIndex(index++);
+                ref.setRawText(refId);
+                ref.setEdgeType(EdgeType.REFERENCES);
+                documentReferenceRepository.save(ref);
+                continue;
+            }
+
+            if (refWork.doi() != null && collectionDois.contains(refWork.doi())) continue;
+
+            DocumentReference ref = new DocumentReference();
+            ref.setDocument(document);
+            ref.setReferenceIndex(index++);
+            ref.setRawText(refId);
+            ref.setTitle(refWork.title());
+            ref.setPublicationYear(refWork.publicationYear());
+            ref.setDoi(refWork.doi() != null ? refWork.doi() : null);
+            ref.setCitedByCount(refWork.citedByCount());
+            ref.setEdgeType(EdgeType.REFERENCES);
+            documentReferenceRepository.save(ref);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void persistCitedBy(UUID documentId) {
+        Document document = documentRepository.findById(documentId).orElse(null);
+        if (document == null || document.getDoi() == null) return;
+        try {
+            OpenAlexWorkResponse work = openAlexClient.fetchWork(document.getDoi());
+            persistCitedBy(document, work);
+        } catch (Exception e) {
+            log.warn("Failed to fetch work for cited-by on document {}: {}", documentId, e.getMessage());
+        }
+    }
+
+    private void persistCitedBy(Document document, OpenAlexWorkResponse work) {
+        String openAlexId = work.id();
+        if (openAlexId == null) return;
+
+        UUID documentId = document.getId();
+        List<String> collectionDois = List.of();
+        if (document.getCollection() != null) {
+            collectionDois = documentRepository.findByCollectionId(document.getCollection().getId()).stream()
+                    .map(Document::getDoi).filter(java.util.Objects::nonNull).toList();
+        }
+
+        List<OpenAlexWorkResponse> citingWorks;
+        try {
+            citingWorks = openAlexClient.fetchCitedByWorks(openAlexId, 5);
+        } catch (Exception e) {
+            log.warn("Failed to fetch cited-by works for {}: {}", openAlexId, e.getMessage());
+            return;
+        }
+
+        int index = 0;
+        for (OpenAlexWorkResponse citing : citingWorks) {
+            if (citing.doi() != null && collectionDois.contains(citing.doi())) continue;
+
+            boolean exists = documentReferenceRepository.findByDocumentIdAndEdgeTypeOrderByReferenceIndexAsc(documentId, EdgeType.CITED_BY)
+                    .stream().anyMatch(r -> citing.id() != null && citing.id().equals(r.getRawText()));
+            if (exists) continue;
+
+            DocumentReference ref = new DocumentReference();
+            ref.setDocument(document);
+            ref.setReferenceIndex(index++);
+            ref.setRawText(citing.id());
+            ref.setTitle(citing.title());
+            ref.setPublicationYear(citing.publicationYear());
+            ref.setDoi(citing.doi());
+            ref.setCitedByCount(citing.citedByCount());
+            ref.setEdgeType(EdgeType.CITED_BY);
+            documentReferenceRepository.save(ref);
+        }
+    }
+
+    @Override
+    public CitationGraphResponse getCitationGraph(UUID collectionId, boolean includeFailed) {
+        List<Document> docs;
+        if (includeFailed) {
+            docs = documentRepository.findByCollectionId(collectionId);
+        } else {
+            docs = documentRepository.findByCollectionId(collectionId).stream()
+                    .filter(d -> d.getProcessingStatus() != ProcessingStatus.FAILED)
+                    .toList();
+        }
+
+        List<CitationGraphResponse.GraphNode> nodes = new ArrayList<>();
+        List<CitationGraphResponse.GraphEdge> edges = new ArrayList<>();
+        java.util.Map<String, CitationGraphResponse.GraphNode> externalNodes = new LinkedHashMap<>();
+
+        int maxPerDoc = 20;
+
+        for (Document doc : docs) {
+            String docId = doc.getId().toString();
+            nodes.add(new CitationGraphResponse.GraphNode(
+                    docId, doc.getDoi(), doc.getTitle(), doc.getAuthors(),
+                    doc.getPublicationYear(), true,
+                    doc.getCitedByCount(), doc.getDoi() != null));
+
+            for (EdgeType edgeType : List.of(EdgeType.REFERENCES, EdgeType.CITED_BY)) {
+                List<DocumentReference> refs = documentReferenceRepository
+                        .findByDocumentIdAndEdgeTypeOrderByReferenceIndexAsc(doc.getId(), edgeType);
+
+                int count = 0;
+                for (DocumentReference ref : refs) {
+                    if (count++ >= maxPerDoc) break;
+                    String refId = ref.getRawText();
+                    String edgeLabel = edgeType.name();
+                    edges.add(new CitationGraphResponse.GraphEdge(docId, refId, edgeLabel));
+
+                    if (!externalNodes.containsKey(refId)) {
+                        externalNodes.put(refId, new CitationGraphResponse.GraphNode(
+                                refId, ref.getDoi(), ref.getTitle(), null,
+                                ref.getPublicationYear(), false,
+                                ref.getCitedByCount(), ref.getDoi() != null));
+                    }
+                }
+            }
+        }
+
+        nodes.addAll(externalNodes.values());
+        return new CitationGraphResponse(nodes, edges);
     }
 
     protected boolean urlIsReachable(String url) {

@@ -1,5 +1,6 @@
 package com.evidencepilot.controller;
 
+import com.evidencepilot.dto.request.AnswerFeedbackRequest;
 import com.evidencepilot.dto.request.InstructorFeedbackRequest;
 import com.evidencepilot.dto.request.SubmitReviewRequest;
 import com.evidencepilot.dto.response.FeedbackRequestResponseDto;
@@ -78,6 +79,23 @@ public class FeedbackController {
             @Parameter(description = "Feedback request UUID") @PathVariable UUID id,
             @Valid @RequestBody InstructorFeedbackRequest request) {
         return feedbackService.comment(id, request);
+    }
+
+    @Operation(summary = "Answer a feedback item",
+            description = "Student marks an instructor feedback item as answered, with an optional explanation. "
+                    + "When all feedback items on a request are answered, the request auto-transitions to REVIEWED.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Feedback answered"),
+            @ApiResponse(responseCode = "400", description = "Invalid request"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Not the assigned student"),
+            @ApiResponse(responseCode = "404", description = "Feedback item not found")
+    })
+    @PostMapping("/instructor-feedback/{id}/answer")
+    public InstructorFeedbackResponseDto answerFeedback(
+            @Parameter(description = "Instructor feedback item UUID") @PathVariable UUID id,
+            @Valid @RequestBody AnswerFeedbackRequest request) {
+        return feedbackService.answerFeedback(id, request.content());
     }
 
     @Operation(summary = "Update feedback request status",

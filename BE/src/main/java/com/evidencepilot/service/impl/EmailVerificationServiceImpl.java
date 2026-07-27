@@ -1,6 +1,7 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.EmailVerificationService;
 import lombok.extern.slf4j.Slf4j;
@@ -103,6 +104,9 @@ public class EmailVerificationServiceImpl implements EmailVerificationService {
         }
 
         user.setEmailVerified(true);
+        if (user.getAccountStatus() == AccountStatus.PENDING) {
+            user.setAccountStatus(AccountStatus.ACTIVE);
+        }
         user.setEmailVerificationTokenHash(null);
         user.setEmailVerificationTokenExpiresAt(null);
         userRepository.save(user);

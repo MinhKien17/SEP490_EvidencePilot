@@ -10,9 +10,14 @@ CREATE TABLE users (
     email VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL CHECK (role IN ('STUDENT', 'INSTRUCTOR', 'ADMIN')),
+    account_status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (account_status IN ('PENDING', 'ACTIVE', 'BANNED', 'DELETED')),
     email_verified BOOLEAN NOT NULL DEFAULT TRUE,
     email_verification_token_hash VARCHAR(255) UNIQUE,
     email_verification_token_expires_at DATETIME,
+    password_reset_token_hash VARCHAR(255) UNIQUE,
+    password_reset_token_expires_at DATETIME,
+    password_reset_requested_at DATETIME,
+    token_version INT NOT NULL DEFAULT 0,
     first_name VARCHAR(100),
     last_name VARCHAR(100),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -25,7 +30,7 @@ CREATE TABLE projects (
     id BINARY(16) NOT NULL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     description TEXT,
-    status VARCHAR(50) NOT NULL CHECK (status IN ('ASSIGNED', 'IN_PROGRESS', 'SUBMITTED_FOR_REVIEW', 'RETURNED', 'APPROVED')),
+    status VARCHAR(50) NOT NULL CHECK (status IN ('CREATED', 'ASSIGNED', 'IN_PROGRESS', 'SUBMITTED_FOR_REVIEW', 'RETURNED', 'APPROVED', 'ARCHIVED')),
     target_standard VARCHAR(50),
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -46,19 +51,7 @@ CREATE TABLE project_members (
 -- ==========================================
 -- 3. COLLECTIONS & DOCUMENTS
 -- ==========================================
-CREATE TABLE collections (
-    id BINARY(16) NOT NULL PRIMARY KEY,
-    project_id BINARY(16),
-    instructor_id BINARY(16) NOT NULL,
-    title VARCHAR(255),
-    description TEXT,
-    active BOOLEAN DEFAULT TRUE,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-    FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE source_categories (
+CREATE TABLE collection_categories (
     id BINARY(16) NOT NULL PRIMARY KEY,
     name VARCHAR(100) NOT NULL UNIQUE,
     description TEXT,
@@ -66,11 +59,24 @@ CREATE TABLE source_categories (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE collections (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    project_id BINARY(16),
+    instructor_id BINARY(16) NOT NULL,
+    title VARCHAR(255),
+    description TEXT,
+    category_id BINARY(16),
+    active BOOLEAN DEFAULT TRUE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (category_id) REFERENCES collection_categories(id) ON DELETE SET NULL
+);
+
 CREATE TABLE documents (
     id BINARY(16) NOT NULL PRIMARY KEY,
     project_id BINARY(16),
     collection_id BINARY(16),
-    source_category_id BINARY(16),
     uploaded_by BINARY(16) NOT NULL,
     doc_type VARCHAR(50) NOT NULL CHECK (doc_type IN ('PAPER', 'SOURCE')),
     file_url VARCHAR(500) NOT NULL,
@@ -78,21 +84,28 @@ CREATE TABLE documents (
     content_type VARCHAR(255),
     file_size_bytes BIGINT,
     file_hash_sha256 VARCHAR(64),
-    processing_status VARCHAR(50) NOT NULL CHECK (processing_status IN ('PENDING_UPLOAD', 'UPLOADED', 'METADATA_FETCHED', 'PDF_DOWNLOADED', 'QUEUED', 'PROCESSING', 'RAW_EXTRACTED', 'READY', 'COMPLETED', 'FAILED')),
+    processing_status VARCHAR(50) NOT NULL CHECK (processing_status IN ('PENDING_UPLOAD', 'UPLOADED', 'METADATA_FETCHED', 'PDF_DOWNLOADED', 'QUEUED', 'PROCESSING', 'RAW_EXTRACTED', 'PARTIAL', 'READY', 'COMPLETED', 'FAILED')),
     processing_error TEXT,
     chunk_count INT DEFAULT 0,
     processed_at DATETIME,
     published_at DATETIME,
     active BOOLEAN NOT NULL DEFAULT TRUE,
     doi VARCHAR(255),
+    title VARCHAR(500),
+    authors TEXT,
+    publication_year INT,
+    publisher VARCHAR(255),
+    openalex_topic VARCHAR(255),
+    openalex_subfield VARCHAR(255),
+    openalex_field VARCHAR(255),
+    openalex_domain VARCHAR(255),
+    download_token VARCHAR(36),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_documents_project_id (project_id),
     INDEX idx_documents_collection_id (collection_id),
-    INDEX idx_documents_source_category_id (source_category_id),
     INDEX idx_documents_file_hash_sha256 (file_hash_sha256),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE SET NULL,
-    FOREIGN KEY (source_category_id) REFERENCES source_categories(id) ON DELETE SET NULL,
     FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -124,6 +137,8 @@ CREATE TABLE document_references (
     raw_text TEXT NOT NULL,
     title VARCHAR(255),
     publication_year INT,
+    doi VARCHAR(255),
+    edge_type VARCHAR(50),
     FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
 );
 
@@ -269,5 +284,43 @@ CREATE TABLE system_notifications (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- ==========================================
+-- 9. EXPORT JOBS
+-- ==========================================
+CREATE TABLE export_jobs (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    project_id BINARY(16) NOT NULL,
+    user_id BINARY(16) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    format VARCHAR(20) NOT NULL DEFAULT 'TEX',
+    download_url VARCHAR(1024),
+    error_message TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_export_project (project_id),
+    INDEX idx_export_user (user_id),
+    INDEX idx_export_status (status),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- ==========================================
+-- 10. AUDIT TRAIL
+-- ==========================================
+CREATE TABLE audit_logs (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    actor_id BINARY(16) NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    entity_type VARCHAR(50) NOT NULL,
+    entity_id BINARY(16),
+    old_value JSON,
+    new_value JSON,
+    occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_audit_entity (entity_type, entity_id),
+    INDEX idx_audit_actor (actor_id),
+    INDEX idx_audit_occurred (occurred_at),
+    FOREIGN KEY (actor_id) REFERENCES users(id)
 );
 

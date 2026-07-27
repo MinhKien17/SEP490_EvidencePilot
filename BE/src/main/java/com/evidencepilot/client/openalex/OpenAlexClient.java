@@ -3,10 +3,17 @@ package com.evidencepilot.client.openalex;
 import com.evidencepilot.dto.openalex.OpenAlexWorkResponse;
 
 import java.io.InputStream;
+import java.util.List;
 
 public interface OpenAlexClient {
 
     OpenAlexWorkResponse fetchWork(String doi);
+
+    OpenAlexWorkResponse fetchWorkById(String openAlexId);
+
+    List<OpenAlexWorkResponse> fetchCitedByWorks(String openAlexId, int limit);
+
+    List<OpenAlexWorkResponse> fetchWorksByIds(List<String> openAlexIds, String selectFields);
 
     InputStream downloadPdf(String oaUrl);
 

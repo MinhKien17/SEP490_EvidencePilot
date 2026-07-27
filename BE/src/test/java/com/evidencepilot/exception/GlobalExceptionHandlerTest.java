@@ -7,6 +7,7 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.AiModelClient;
+import com.evidencepilot.service.HealthService;
 import io.minio.MinioClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -65,6 +66,9 @@ class GlobalExceptionHandlerTest {
     @MockBean
     private AiModelClient aiModelClient;
 
+    @MockBean
+    private HealthService healthService;
+
     private String bearerToken;
 
     @BeforeEach
@@ -80,6 +84,7 @@ class GlobalExceptionHandlerTest {
 
         bearerToken = "Bearer " + jwtUtils.generateToken(user);
         when(aiModelClient.health()).thenReturn(Map.of("status", "ok"));
+        when(healthService.checkReadiness()).thenReturn(Map.of("status", "UP"));
     }
 
     @Test

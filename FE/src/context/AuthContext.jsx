@@ -15,7 +15,7 @@ export function AuthProvider({ children }) {
     if (storedToken) {
       setToken(storedToken);
       setRole(storedRole || '');
-      api.get('/api/users/me')
+      api.get('/api/users/profile')
         .then((res) => setUser(res.data))
         .catch(() => {
           localStorage.removeItem('token');
@@ -36,7 +36,7 @@ export function AuthProvider({ children }) {
     }
     setToken(newToken);
     setRole(newRole || '');
-    api.get('/api/users/me')
+    api.get('/api/users/profile')
       .then((res) => setUser(res.data))
       .catch(() => {});
   }, []);

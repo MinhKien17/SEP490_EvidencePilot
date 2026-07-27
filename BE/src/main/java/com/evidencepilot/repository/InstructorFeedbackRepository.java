@@ -13,4 +13,6 @@ public interface InstructorFeedbackRepository extends JpaRepository<InstructorFe
     List<InstructorFeedback> findByRequestId(UUID requestId);
 
     List<InstructorFeedback> findByInstructorId(UUID instructorId);
+
+    long countByRequestIdAndAnsweredFalse(UUID requestId);
 }

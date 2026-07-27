@@ -45,7 +45,10 @@ public class SecurityConfig {
                                 "/api/auth/login",
                                 "/api/auth/register",
                                 "/api/auth/verify-email",
+                                "/api/auth/password-reset/request",
+                                "/api/auth/password-reset/confirm",
                                 "/api/health",
+                                "/api/public/**",
                                 "/error",
                                 "/v3/api-docs",
                                 "/v3/api-docs/**",
@@ -57,6 +60,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/documents/*/download").permitAll()
                         .requestMatchers("/api/auth/update-password").authenticated()
                         .requestMatchers("/api/users/profile").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/users").hasAnyRole("ADMIN", "INSTRUCTOR")
                         .requestMatchers("/api/users/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
@@ -69,8 +73,10 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(List.of(
                 "http://localhost:5173",
+                "http://localhost:5175",
                 "http://localhost:3000",
                 "http://127.0.0.1:5173",
+                "http://127.0.0.1:5175",
                 "http://127.0.0.1:3000",
                 "https://*.ngrok-free.app",
                 "https://*.ngrok.app",

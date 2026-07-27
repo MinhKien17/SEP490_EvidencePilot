@@ -11,6 +11,7 @@ import java.io.ByteArrayInputStream;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,7 +58,10 @@ class OpenAlexClientImplTest {
             null,
             new OpenAlexWorkResponse.OpenAlexOpenAccess(true, "green", "https://example.com/paper.pdf", true),
             null,
-            2024
+            2024,
+            null,
+            List.of(),
+            null
     );
 
     private static final String BASE = "https://api.openalex.org";
@@ -69,7 +73,7 @@ class OpenAlexClientImplTest {
         when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.body(OpenAlexWorkResponse.class)).thenReturn(sampleWork);
 
-        OpenAlexClientImpl client = new OpenAlexClientImpl(restClient, BASE);
+        OpenAlexClientImpl client = new OpenAlexClientImpl(restClient, BASE, "");
         OpenAlexWorkResponse result = client.fetchWork("10.1000/xyz123");
 
         assertThat(result.title()).isEqualTo("Test Paper Title");
@@ -85,7 +89,7 @@ class OpenAlexClientImplTest {
         when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.body(OpenAlexWorkResponse.class)).thenReturn(null);
 
-        OpenAlexClientImpl client = new OpenAlexClientImpl(restClient, BASE);
+        OpenAlexClientImpl client = new OpenAlexClientImpl(restClient, BASE, "");
 
         assertThatThrownBy(() -> client.fetchWork("10.1000/bad-doi"))
                 .isInstanceOf(OpenAlexClient.OpenAlexApiException.class)
@@ -99,7 +103,7 @@ class OpenAlexClientImplTest {
         when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.body(OpenAlexWorkResponse.class)).thenReturn(sampleWork);
 
-        OpenAlexClientImpl client = new OpenAlexClientImpl(restClient, BASE);
+        OpenAlexClientImpl client = new OpenAlexClientImpl(restClient, BASE, "");
         OpenAlexWorkResponse result = client.fetchWork("10.1000/xyz");
 
         assertThat(result).isNotNull();
@@ -112,7 +116,7 @@ class OpenAlexClientImplTest {
         when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.body(OpenAlexWorkResponse.class)).thenReturn(sampleWork);
 
-        OpenAlexClientImpl client = new OpenAlexClientImpl(restClient, BASE);
+        OpenAlexClientImpl client = new OpenAlexClientImpl(restClient, BASE, "");
         OpenAlexWorkResponse result = client.fetchWork("doi:10.1000/xyz");
 
         assertThat(result).isNotNull();
@@ -130,7 +134,7 @@ class OpenAlexClientImplTest {
         when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
                 .thenReturn(httpResponse);
 
-        OpenAlexClientImpl client = new OpenAlexClientImpl(restClient, BASE, httpClient);
+        OpenAlexClientImpl client = new OpenAlexClientImpl(restClient, BASE, "", httpClient, new ObjectMapper());
         try (var result = client.downloadPdf("https://example.com/file.pdf")) {
             assertThat(result).isNotNull();
             assertThat(result.readAllBytes()).isEqualTo(pdfBytes);

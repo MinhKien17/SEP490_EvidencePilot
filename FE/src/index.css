@@ -1,1 +1,55 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --surface: #ffffff;
+  --surface-secondary: #f8fafc;
+  --surface-tertiary: #f1f5f9;
+  --surface-raised: #ffffff;
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --text-tertiary: #94a3b8;
+  --border: #e2e8f0;
+  --border-light: #f1f5f9;
+  --header-bg: #ffffff;
+  --header-border: #e2e8f0;
+  --accent-bar: #1e1b4b;
+}
+
+.dark {
+  --surface: #0f172a;
+  --surface-secondary: #1e293b;
+  --surface-tertiary: #334155;
+  --surface-raised: #1e293b;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  --border: #334155;
+  --border-light: #1e293b;
+  --header-bg: #0f172a;
+  --header-border: #334155;
+  --accent-bar: #0f172a;
+}
+
+@layer utilities {
+  .duration-600 {
+    transition-duration: 600ms;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transition-all,
+  .transition-opacity,
+  .transition-transform,
+  .animate-pulse,
+  .animate-spin,
+  .animate-ping {
+    transition: none !important;
+    animation: none !important;
+  }
+}

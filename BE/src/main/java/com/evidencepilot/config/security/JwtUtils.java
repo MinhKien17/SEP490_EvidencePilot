@@ -34,6 +34,7 @@ public class JwtUtils {
                 .subject(user.getId().toString())
                 .claim("email", user.getEmail())
                 .claim("role", user.getRole().name())
+                .claim("tokenVersion", user.getTokenVersion())
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(signingKey)
@@ -50,6 +51,10 @@ public class JwtUtils {
 
     public String extractRole(String token) {
         return parseClaims(token).get("role", String.class);
+    }
+
+    public Integer extractTokenVersion(String token) {
+        return parseClaims(token).get("tokenVersion", Integer.class);
     }
 
     public boolean validateToken(String token) {

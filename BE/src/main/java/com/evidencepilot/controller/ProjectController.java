@@ -15,6 +15,7 @@ import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.service.ClaimService;
 import com.evidencepilot.service.CollectionService;
 import com.evidencepilot.service.DocumentService;
+import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.ProjectService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -23,7 +24,10 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -49,6 +53,7 @@ public class ProjectController {
     private final DocumentService documentService;
     private final ClaimService claimService;
     private final CollectionService collectionService;
+    private final PaperProcessingService paperProcessingService;
 
     @Operation(summary = "List all projects",
             description = "Returns all active projects accessible to the current user. "
@@ -120,11 +125,19 @@ public class ProjectController {
     }
 
     @Operation(summary = "Archive a project",
-            description = "Marks a COMPLETED project as ARCHIVED.")
+            description = "Transitions an APPROVED project to ARCHIVED.")
     @PatchMapping("/{id}/archive")
     public ProjectResponse archiveProject(
             @Parameter(description = "Project UUID") @PathVariable UUID id) {
         return projectService.archiveProject(id);
+    }
+
+    @Operation(summary = "Unarchive a project",
+            description = "Restores an ARCHIVED project to APPROVED.")
+    @PatchMapping("/{id}/unarchive")
+    public ProjectResponse unarchiveProject(
+            @Parameter(description = "Project UUID") @PathVariable UUID id) {
+        return projectService.unarchiveProject(id);
     }
 
     @Operation(summary = "Soft-delete a project",
@@ -199,18 +212,17 @@ public class ProjectController {
         return claimService.getClaimsByProject(projectId, page, size, sort, q, active);
     }
 
-    @Operation(summary = "List project collections",
-            description = "Returns paged collections in a project with optional search and active filtering.")
-    @GetMapping("/{projectId}/collections")
-    public PagedResponse<CollectionResponse> getProjectCollections(
+    @Operation(summary = "Export project as .tex archive",
+            description = "Returns a ZIP of .tex files for all papers in the project.")
+    @GetMapping("/{projectId}/export")
+    public ResponseEntity<byte[]> exportProject(
             @Parameter(description = "Project UUID") @PathVariable UUID projectId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "createdAt,desc") String sort,
-            @RequestParam(required = false) String q,
-            @RequestParam(required = false) Boolean active) {
-        return collectionService.getCollectionsByProjectId(
-                projectId, page, size, sort, q, active);
+            @RequestParam(defaultValue = "tex") String format) {
+        byte[] archive = paperProcessingService.exportTexArchive(projectId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"export.zip\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(archive);
     }
 
     @Operation(summary = "Add a member to a project",

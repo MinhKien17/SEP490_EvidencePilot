@@ -21,7 +21,11 @@ public record TraceabilityExportResponse(
         String content,
         Float aiConfidenceScore,
         Map<String, Object> graphData,
-        List<TraceabilityMatch> matches
+        List<TraceabilityMatch> matches,
+        boolean unsupported,
+        boolean weak,
+        boolean contradicted,
+        boolean pendingSuggestions
     ) {}
 
     public record TraceabilityMatch(

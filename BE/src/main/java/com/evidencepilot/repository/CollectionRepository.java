@@ -9,4 +9,5 @@ import java.util.UUID;
 public interface CollectionRepository extends JpaRepository<Collection, UUID>, JpaSpecificationExecutor<Collection> {
 
     List<Collection> findByProjectId(UUID projectId);
+    long countByActiveTrue();
 }

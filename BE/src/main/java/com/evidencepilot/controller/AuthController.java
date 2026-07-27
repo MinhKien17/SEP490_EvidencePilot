@@ -1,9 +1,13 @@
 package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.request.LoginRequest;
+import com.evidencepilot.dto.request.PasswordResetConfirmRequest;
+import com.evidencepilot.dto.request.PasswordResetRequest;
 import com.evidencepilot.dto.request.RegisterRequest;
 import com.evidencepilot.dto.response.AuthResponse;
 import com.evidencepilot.service.AuthService;
+import com.evidencepilot.service.PasswordResetService;
+import lombok.extern.slf4j.Slf4j;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -23,10 +27,15 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
-@Tag(name = "Authentication", description = "Public registration and login endpoints")
+@Slf4j
+@Tag(name = "Authentication", description = "Public registration, login, verification, and password recovery")
 public class AuthController {
 
     private final AuthService authService;
+    private final PasswordResetService passwordResetService;
+
+    private static final Map<String, String> RESET_REQUEST_RESPONSE = Map.of(
+            "message", "If the account is eligible, a password reset email will be sent");
 
     @Operation(summary = "Register a new user", description = "Creates a new student account and sends an email verification link. Public endpoint.")
     @ApiResponses({
@@ -61,5 +70,23 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(authService.login(request));
+    }
+
+    @PostMapping("/password-reset/request")
+    public ResponseEntity<Map<String, String>> requestPasswordReset(
+            @Valid @RequestBody PasswordResetRequest request) {
+        try {
+            passwordResetService.requestReset(request.getEmail());
+        } catch (RuntimeException exception) {
+            log.warn("Public password reset request failed", exception);
+        }
+        return ResponseEntity.accepted().body(RESET_REQUEST_RESPONSE);
+    }
+
+    @PostMapping("/password-reset/confirm")
+    public ResponseEntity<Map<String, String>> confirmPasswordReset(
+            @Valid @RequestBody PasswordResetConfirmRequest request) {
+        passwordResetService.confirmReset(request.getToken(), request.getNewPassword());
+        return ResponseEntity.ok(Map.of("message", "Password reset successfully"));
     }
 }

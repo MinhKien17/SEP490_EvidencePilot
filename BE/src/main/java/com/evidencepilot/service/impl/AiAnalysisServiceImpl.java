@@ -5,10 +5,8 @@ import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.ClaimMapper;
 import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.DocumentChunk;
-import com.evidencepilot.model.EvidenceEdge;
 import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
-import com.evidencepilot.repository.EvidenceEdgeRepository;
 import com.evidencepilot.service.AiAnalysisService;
 import com.evidencepilot.service.ClaimMatchingService;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +26,6 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
     private final ClaimMatchingService claimMatchingService;
     private final ClaimRepository claimRepository;
     private final DocumentChunkRepository documentChunkRepository;
-    private final EvidenceEdgeRepository evidenceEdgeRepository;
     private final ClaimMapper claimMapper;
 
     @Override
@@ -50,19 +47,20 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         claim.setAiConfidenceScore((float) avgScore);
         Claim saved = claimRepository.save(claim);
 
-        for (AiSuggestionResponse suggestion : suggestions) {
-            EvidenceEdge edge = new EvidenceEdge();
-edge.setClaim(saved);
-            if (suggestion.documentChunkId() != null) {
-                DocumentChunk chunk = documentChunkRepository.findById(suggestion.documentChunkId()).orElse(null);
-                edge.setDocumentChunk(chunk);
-            }
-            edge.setVerdict("SUPPORTIVE");
-            edge.setConfidenceScore(suggestion.score());
-            edge.setExplanation(suggestion.explanation());
-            edge.setCreatedAt(LocalDateTime.now());
-            evidenceEdgeRepository.save(edge);
-        }
+        // EvidenceEdge creation removed in Phase 5 - using ClaimEvidenceMapping + AiSuggestion instead
+        // for (AiSuggestionResponse suggestion : suggestions) {
+        //     EvidenceEdge edge = new EvidenceEdge();
+        //     edge.setClaim(saved);
+        //     if (suggestion.documentChunkId() != null) {
+        //         DocumentChunk chunk = documentChunkRepository.findById(suggestion.documentChunkId()).orElse(null);
+        //         edge.setDocumentChunk(chunk);
+        //     }
+        //     edge.setVerdict("SUPPORTIVE");
+        //     edge.setConfidenceScore(suggestion.score());
+        //     edge.setExplanation(suggestion.explanation());
+        //     edge.setCreatedAt(LocalDateTime.now());
+        //     evidenceEdgeRepository.save(edge);
+        // }
 
         log.info("Analysis completed for claim {} (score={})", claim.getId(), avgScore);
         return saved;
@@ -84,14 +82,15 @@ edge.setClaim(saved);
             throw new ResourceNotFoundException("DocumentChunk not found for sourceId: " + sourceId);
         }
 
-        EvidenceEdge edge = new EvidenceEdge();
-edge.setClaim(claim);
-        edge.setDocumentChunk(chunk);
-        edge.setVerdict("SUPPORTIVE");
-        edge.setConfidenceScore(0.75f);
-        edge.setExplanation(excerpt);
-        edge.setCreatedAt(LocalDateTime.now());
-        evidenceEdgeRepository.save(edge);
+        // EvidenceEdge creation removed in Phase 5 - using ClaimEvidenceMapping + AiSuggestion instead
+        // EvidenceEdge edge = new EvidenceEdge();
+        // edge.setClaim(claim);
+        // edge.setDocumentChunk(chunk);
+        // edge.setVerdict("SUPPORTIVE");
+        // edge.setConfidenceScore(0.75f);
+        // edge.setExplanation(excerpt);
+        // edge.setCreatedAt(LocalDateTime.now());
+        // evidenceEdgeRepository.save(edge);
 
         claim.setAiConfidenceScore(0.75f);
         Claim saved = claimRepository.save(claim);

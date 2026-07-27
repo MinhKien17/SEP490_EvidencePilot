@@ -11,10 +11,16 @@ public class RabbitMQConfig {
 
     // ponytail: one work queue; add a DLQ only when failed-job replay is required.
     public static final String EXTRACTION_QUEUE = "extraction.queue";
+    public static final String EXPORT_QUEUE = "export.queue";
 
     @Bean
     public Queue extractionQueue() {
         return QueueBuilder.durable(EXTRACTION_QUEUE).build();
+    }
+
+    @Bean
+    public Queue exportQueue() {
+        return QueueBuilder.durable(EXPORT_QUEUE).build();
     }
 
     @Bean

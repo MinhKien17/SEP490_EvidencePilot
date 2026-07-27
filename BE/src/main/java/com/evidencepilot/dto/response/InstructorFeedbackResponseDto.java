@@ -11,7 +11,10 @@ public record InstructorFeedbackResponseDto(
     UUID instructorId,
     String lineReference,
     String content,
-    LocalDateTime createdAt
+    LocalDateTime createdAt,
+    boolean answered,
+    String answerContent,
+    LocalDateTime answeredAt
 ) {
     public static InstructorFeedbackResponseDto fromEntity(InstructorFeedback feedback) {
         return new InstructorFeedbackResponseDto(
@@ -21,7 +24,10 @@ public record InstructorFeedbackResponseDto(
             feedback.getInstructor() != null ? feedback.getInstructor().getId() : null,
             feedback.getLineReference(),
             feedback.getContent(),
-            feedback.getCreatedAt()
+            feedback.getCreatedAt(),
+            feedback.isAnswered(),
+            feedback.getAnswerContent(),
+            feedback.getAnsweredAt()
         );
     }
 }

@@ -1,6 +1,8 @@
 package com.evidencepilot.config.security;
 
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.AccountStatus;
+import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.AfterEach;
@@ -61,14 +63,18 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    void validToken_setsUserAndNormalizedAuthority() throws Exception {
+    void validToken_setsUserAndAuthorityFromDatabaseRole() throws Exception {
         UUID userId = UUID.randomUUID();
         User user = new User();
         user.setId(userId);
+        user.setRole(UserRole.INSTRUCTOR);
+        user.setAccountStatus(AccountStatus.ACTIVE);
+        user.setTokenVersion(3);
         var request = request("valid");
         when(jwtUtils.validateToken("valid")).thenReturn(true);
         when(jwtUtils.extractUserId("valid")).thenReturn(userId);
-        when(jwtUtils.extractRole("valid")).thenReturn("instructor");
+        when(jwtUtils.extractRole("valid")).thenReturn("ADMIN");
+        when(jwtUtils.extractTokenVersion("valid")).thenReturn(3);
         when(users.findById(userId)).thenReturn(Optional.of(user));
 
         filter.doFilter(request, new MockHttpServletResponse(), chain);
@@ -76,6 +82,66 @@ class JwtAuthenticationFilterTest {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         assertThat(authentication.getPrincipal()).isSameAs(user);
         assertThat(authentication.getAuthorities()).extracting("authority").containsExactly("ROLE_INSTRUCTOR");
+    }
+
+    @Test
+    void inactiveOrStaleToken_returnsForbiddenWithoutAuthentication() throws Exception {
+        UUID userId = UUID.randomUUID();
+        User user = new User();
+        user.setId(userId);
+        user.setRole(UserRole.STUDENT);
+        user.setAccountStatus(AccountStatus.ACTIVE);
+        user.setTokenVersion(4);
+        when(jwtUtils.validateToken("valid")).thenReturn(true);
+        when(jwtUtils.extractUserId("valid")).thenReturn(userId);
+        when(jwtUtils.extractTokenVersion("valid")).thenReturn(3);
+        when(users.findById(userId)).thenReturn(Optional.of(user));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request("valid"), response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        verifyNoInteractions(chain);
+    }
+
+    @Test
+    void tokenWithoutVersion_returnsForbidden() throws Exception {
+        UUID userId = UUID.randomUUID();
+        User user = new User();
+        user.setId(userId);
+        user.setRole(UserRole.STUDENT);
+        user.setAccountStatus(AccountStatus.ACTIVE);
+        when(jwtUtils.validateToken("legacy")).thenReturn(true);
+        when(jwtUtils.extractUserId("legacy")).thenReturn(userId);
+        when(jwtUtils.extractTokenVersion("legacy")).thenReturn(null);
+        when(users.findById(userId)).thenReturn(Optional.of(user));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request("legacy"), response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        verifyNoInteractions(chain);
+    }
+
+    @Test
+    void inactiveUser_returnsForbiddenEvenWithCurrentTokenVersion() throws Exception {
+        UUID userId = UUID.randomUUID();
+        User user = new User();
+        user.setId(userId);
+        user.setRole(UserRole.STUDENT);
+        user.setAccountStatus(AccountStatus.BANNED);
+        user.setTokenVersion(2);
+        when(jwtUtils.validateToken("valid")).thenReturn(true);
+        when(jwtUtils.extractUserId("valid")).thenReturn(userId);
+        when(jwtUtils.extractTokenVersion("valid")).thenReturn(2);
+        when(users.findById(userId)).thenReturn(Optional.of(user));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request("valid"), response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        verifyNoInteractions(chain);
     }
 
     private static MockHttpServletRequest request(String token) {

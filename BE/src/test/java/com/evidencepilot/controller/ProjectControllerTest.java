@@ -7,6 +7,7 @@ import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.service.ClaimService;
 import com.evidencepilot.service.CollectionService;
 import com.evidencepilot.service.DocumentService;
+import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.ProjectService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,12 +28,13 @@ class ProjectControllerTest {
     private final DocumentService documentService = mock(DocumentService.class);
     private final ClaimService claimService = mock(ClaimService.class);
     private final CollectionService collectionService = mock(CollectionService.class);
+    private final PaperProcessingService paperProcessingService = mock(PaperProcessingService.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         mockMvc = standaloneSetup(new ProjectController(
-                projectService, documentService, claimService, collectionService)).build();
+                projectService, documentService, claimService, collectionService, paperProcessingService)).build();
     }
 
     @Test
@@ -56,7 +58,7 @@ class ProjectControllerTest {
     void createProject_returns201() throws Exception {
         mockMvc.perform(post("/api/projects")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"title\":\"Audit\",\"description\":\"Evidence\",\"targetStandard\":\"ISO\"}"))
+                        .content("{\"title\":\"Audit\",\"description\":\"Evidence\",\"targetStandard\":\"CUSTOM\"}"))
                 .andExpect(status().isCreated());
         verify(projectService).createProject(any(ProjectCreateRequest.class));
     }
@@ -83,6 +85,13 @@ class ProjectControllerTest {
         UUID id = UUID.randomUUID();
         mockMvc.perform(patch("/api/projects/{id}/archive", id)).andExpect(status().isOk());
         verify(projectService).archiveProject(id);
+    }
+
+    @Test
+    void unarchiveProject_delegatesId() throws Exception {
+        UUID id = UUID.randomUUID();
+        mockMvc.perform(patch("/api/projects/{id}/unarchive", id)).andExpect(status().isOk());
+        verify(projectService).unarchiveProject(id);
     }
 
     @Test
@@ -118,13 +127,6 @@ class ProjectControllerTest {
         UUID id = UUID.randomUUID();
         mockMvc.perform(get("/api/projects/{id}/claims", id)).andExpect(status().isOk());
         verify(claimService).getClaimsByProject(id, 0, 20, "createdAt,desc", null, null);
-    }
-
-    @Test
-    void getProjectCollections_bindsDefaultPaging() throws Exception {
-        UUID id = UUID.randomUUID();
-        mockMvc.perform(get("/api/projects/{id}/collections", id)).andExpect(status().isOk());
-        verify(collectionService).getCollectionsByProjectId(id, 0, 20, "createdAt,desc", null, null);
     }
 
     @Test

@@ -7,27 +7,19 @@ spring:
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
 
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:evidence_pilot}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
-    username: ${DB_USERNAME:root}
+    url: jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
-      # Wait up to 30 s for a single connection attempt before giving up on that attempt
       connection-timeout: 30000
-      # 0 = keep retrying the pool on startup until the DB is available.
-      # This prevents a crash when MySQL finishes schema.sql a few seconds
-      # after the healthcheck passes.
       initialization-fail-timeout: 0
-  
+
   flyway:
-    baseline-on-migrate: true
-    baseline-version: 1
     enabled: false
 
   jpa:
     hibernate:
-      # 'update' – safe for dev; use 'validate' once schema.sql has seeded the DB
-      # in production to detect drift between schema.sql and entity definitions.
       ddl-auto: update
     show-sql: true
     properties:
@@ -113,6 +105,10 @@ app:
   email-verification:
     url: ${EMAIL_VERIFICATION_URL:}
     token-ttl-hours: ${EMAIL_VERIFICATION_TOKEN_TTL_HOURS:24}
+  password-reset:
+    url: ${PASSWORD_RESET_URL:}
+    token-ttl-minutes: ${PASSWORD_RESET_TOKEN_TTL_MINUTES:60}
+    request-cooldown-seconds: ${PASSWORD_RESET_REQUEST_COOLDOWN_SECONDS:60}
 
 # ── External AI model integration ────────────────────────────────────────
 ai:

@@ -1,25 +1,33 @@
 package com.evidencepilot.service;
 
 import com.evidencepilot.dto.request.ClaimCreationRequest;
+import com.evidencepilot.dto.request.MappingReviewRequest;
 import com.evidencepilot.mapper.ClaimMapper;
 import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Claim;
+import com.evidencepilot.model.ClaimEvidenceMapping;
 import com.evidencepilot.model.Document;
+import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.EvidenceRelation;
+import com.evidencepilot.model.enums.StrengthBand;
 import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
+import com.evidencepilot.model.enums.MappingReviewStatus;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.ClaimRepository;
-import com.evidencepilot.repository.EvidenceEdgeRepository;
+import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectMemberRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.impl.ClaimServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
@@ -35,6 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -59,7 +68,10 @@ class ClaimServiceImplAccessTest {
     private ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
 
     @Mock
-    private EvidenceEdgeRepository evidenceEdgeRepository;
+    private DocumentChunkRepository documentChunkRepository;
+
+    @Mock
+    private ClaimMatchingService claimMatchingService;
 
     @Mock
     private CurrentUserService currentUserService;
@@ -96,28 +108,24 @@ class ClaimServiceImplAccessTest {
     }
 
     @Test
-    void getEdgesForClaimRequiresClaimAccess() {
-        User user = user();
-        Claim claim = claim();
-
-        when(currentUserService.requireCurrentUser()).thenReturn(user);
-        when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
-        when(evidenceEdgeRepository.findByClaimId(claim.getId())).thenReturn(List.of());
-
-        service().getEdgesForClaim(claim.getId());
-
-        verify(currentUserService).requireClaimAccess(user, claim);
-    }
-
-    @Test
     void createSuggestionRequiresProjectWriteAccess() {
         User user = user();
         Claim claim = claim();
+        UUID chunkId = UUID.randomUUID();
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setId(chunkId);
+        Document doc = new Document();
+        doc.setDocType(DocumentType.SOURCE);
+        doc.setActive(true);
+        chunk.setDocument(doc);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
+        when(documentChunkRepository.findById(chunkId)).thenReturn(Optional.of(chunk));
+        when(aiSuggestionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(claimMapper.toAiSuggestionResponse(any())).thenReturn(null);
 
-        service().createSuggestion(claim.getId(), UUID.randomUUID(), 0.9f, "Matched");
+        service().createSuggestion(claim.getId(), chunkId, 0.9f, "Matched");
 
         verify(currentUserService).requireProjectWriteAccess(user, claim.getProject());
     }
@@ -129,9 +137,13 @@ class ClaimServiceImplAccessTest {
         AiSuggestion suggestion = new AiSuggestion();
         suggestion.setId(UUID.randomUUID());
         suggestion.setClaim(claim);
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setId(UUID.randomUUID());
+        suggestion.setDocumentChunk(chunk);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(aiSuggestionRepository.findById(suggestion.getId())).thenReturn(Optional.of(suggestion));
+        when(claimEvidenceMappingRepository.findByClaimIdAndDocumentChunkId(any(), any())).thenReturn(List.of());
 
         service().updateSuggestionStatus(suggestion.getId(), "ACCEPTED");
 
@@ -142,13 +154,37 @@ class ClaimServiceImplAccessTest {
     void updateClaimRejectsCompletedProject() {
         User user = user();
         Claim claim = claim();
-        claim.getProject().setStatus(ProjectStatus.APPROVED);
+        claim.getProject().setStatus(ProjectStatus.ARCHIVED);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
+        doThrow(new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.CONFLICT, "Project is read-only."))
+                .when(currentUserService).requireProjectWriteAccess(user, claim.getProject());
 
         assertThatThrownBy(() -> service().updateClaim(claim.getId(), "Updated", null))
                 .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("Project is read-only.");
+    }
+
+    @Test
+    void archivedProjectRejectsAdminEvidenceMappingReview() {
+        User admin = user();
+        admin.setRole(com.evidencepilot.model.enums.UserRole.ADMIN);
+        Claim claim = claim();
+        claim.getProject().setStatus(ProjectStatus.ARCHIVED);
+        ClaimEvidenceMapping mapping = new ClaimEvidenceMapping();
+        mapping.setId(UUID.randomUUID());
+        mapping.setClaim(claim);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(admin);
+        when(claimEvidenceMappingRepository.findById(mapping.getId())).thenReturn(Optional.of(mapping));
+        doThrow(new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.CONFLICT, "Project is read-only."))
+                .when(currentUserService).requireProjectWriteAccess(admin, claim.getProject());
+
+        assertThatThrownBy(() -> service().reviewMapping(
+                mapping.getId(), new MappingReviewRequest(MappingReviewStatus.VERIFIED, null, null)))
                 .hasMessageContaining("Project is read-only.");
     }
 
@@ -182,6 +218,7 @@ class ClaimServiceImplAccessTest {
     void projectClaimQueriesRequireProjectAccess() {
         User user = user();
         Project project = claim().getProject();
+        project.setStatus(ProjectStatus.ARCHIVED);
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
@@ -233,17 +270,32 @@ class ClaimServiceImplAccessTest {
     void acceptAndRejectSuggestionSetExpectedStatus() {
         User user = user();
         Claim claim = claim();
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setId(UUID.randomUUID());
         AiSuggestion accepted = suggestion(claim);
+        accepted.setDocumentChunk(chunk);
+        accepted.setRelation(EvidenceRelation.SUPPORTS);
+        accepted.setStrengthScore(45);
+        accepted.setStrengthBand(StrengthBand.MEDIUM);
+        accepted.setScoreBreakdown("{\"relation\":{\"max\":35,\"earned\":35}}");
         AiSuggestion rejected = suggestion(claim);
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(aiSuggestionRepository.findById(accepted.getId())).thenReturn(Optional.of(accepted));
         when(aiSuggestionRepository.findById(rejected.getId())).thenReturn(Optional.of(rejected));
+        when(claimEvidenceMappingRepository.findByClaimIdAndDocumentChunkId(any(), any())).thenReturn(List.of());
 
         service().acceptSuggestion(accepted.getId());
         service().rejectSuggestion(rejected.getId());
 
         assertThat(accepted.getStatus()).isEqualTo(SuggestionStatus.ACCEPTED);
         assertThat(rejected.getStatus()).isEqualTo(SuggestionStatus.REJECTED);
+        ArgumentCaptor<ClaimEvidenceMapping> mappingCaptor = ArgumentCaptor.forClass(ClaimEvidenceMapping.class);
+        verify(claimEvidenceMappingRepository).save(mappingCaptor.capture());
+        ClaimEvidenceMapping mapping = mappingCaptor.getValue();
+        assertThat(mapping.getRelation()).isEqualTo(EvidenceRelation.SUPPORTS);
+        assertThat(mapping.getStrengthScore()).isEqualTo(45);
+        assertThat(mapping.getStrengthBand()).isEqualTo(StrengthBand.MEDIUM);
+        assertThat(mapping.getScoreBreakdown()).isEqualTo(accepted.getScoreBreakdown());
     }
 
     private ClaimServiceImpl service() {
@@ -254,7 +306,8 @@ class ClaimServiceImplAccessTest {
                 paperSectionRepository,
                 aiSuggestionRepository,
                 claimEvidenceMappingRepository,
-                evidenceEdgeRepository,
+                documentChunkRepository,
+                claimMatchingService,
                 currentUserService,
                 claimMapper);
     }

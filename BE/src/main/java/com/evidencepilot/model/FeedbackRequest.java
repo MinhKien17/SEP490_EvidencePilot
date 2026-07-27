@@ -43,6 +43,9 @@ public class FeedbackRequest {
     @Column(name = "requested_at")
     private LocalDateTime requestedAt;
 
+    @Column(name = "section_validation", columnDefinition = "TEXT")
+    private String sectionValidation;
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

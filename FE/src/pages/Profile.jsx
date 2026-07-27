@@ -227,7 +227,7 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { initialMockData } from '../mockData.js'; 
+import api from '../api.js';
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -239,62 +239,60 @@ export default function Profile() {
   
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState(""); 
   const [message, setMessage] = useState({ type: "", text: "" });
 
   const pathname = window.location.pathname;
-  const fallbackRole = pathname.includes('/admin') ? 'ADMIN' : 'INSTRUCTOR';
+  const fallbackRole = pathname.includes('/admin')
+    ? 'ADMIN'
+    : pathname.includes('/instructor') ? 'INSTRUCTOR' : 'STUDENT';
+  const currentRole = user?.role || fallbackRole;
 
-  // --- 2. ĐỌC DỮ LIỆU TỪ MOCK DATA CHUNG ---
-  const fetchUserProfile = () => {
+  // --- 2. ĐỌC DỮ LIỆU PROFILE THẬT ---
+  const fetchUserProfile = async () => {
     setLoading(true);
     try {
-      const data = fallbackRole === 'ADMIN' 
-        ? initialMockData.adminProfile 
-        : initialMockData.userProfile;
-      
-      if (data) {
-        setUser(data);
-        setFirstName(data.firstName || "");
-        setLastName(data.lastName || "");
-        setEmail(data.email || ""); 
-      }
+      const { data } = await api.get('/api/users/profile');
+      setUser(data);
+      setFirstName(data.firstName || "");
+      setLastName(data.lastName || "");
     } catch (error) {
       console.error("Lỗi truy xuất dữ liệu profile:", error);
+      setMessage({
+        type: "error",
+        text: error.response?.data?.message || "Failed to load profile."
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  // --- 3. CẬP NHẬT NGƯỢC LẠI VÀO MOCK DATA CHUNG ---
-  const handleUpdateProfile = (e) => {
+  // --- 3. CẬP NHẬT PROFILE THẬT ---
+  const handleUpdateProfile = async (e) => {
     e.preventDefault();
-    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
-      setMessage({ type: "error", text: "First name, last name, and email fields cannot be blank." });
+    if (!firstName.trim() || !lastName.trim()) {
+      setMessage({ type: "error", text: "First name and last name fields cannot be blank." });
       return;
     }
 
     setSubmitting(true);
     setMessage({ type: "", text: "" });
 
-    setTimeout(() => {
-      const updatedUser = {
-        ...user,
+    try {
+      const { data } = await api.put('/api/users/profile', {
         firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        email: email.trim() 
-      };
-
-      if (fallbackRole === 'ADMIN') {
-        initialMockData.adminProfile = updatedUser;
-      } else {
-        initialMockData.userProfile = updatedUser;
-      }
-
-      setUser(updatedUser);
+        lastName: lastName.trim()
+      });
+      setUser(data);
       setMessage({ type: "success", text: "Profile updated successfully" });
+    } catch (error) {
+      console.error("Lỗi cập nhật profile:", error);
+      setMessage({
+        type: "error",
+        text: error.response?.data?.message || "Failed to update profile."
+      });
+    } finally {
       setSubmitting(false);
-    }, 400);
+    }
   };
 
   useEffect(() => {
@@ -315,13 +313,13 @@ export default function Profile() {
     <div className="min-h-screen bg-[#f8fafc] text-[#0f172a] p-8 font-sans flex flex-col justify-between">
       <div className="max-w-4xl w-full mx-auto flex-1">
         
-        {/* Dynamic Header */}
-        <div className="mb-8 border-b border-gray-200 pb-6">
+          {/* Dynamic Header */}
+          <div className="mb-8 border-b border-gray-200 pb-6">
           <h1 className="text-3xl font-black text-[#1e3a8a] tracking-tight">
-            {fallbackRole === 'ADMIN' ? 'Admin Profile' : 'Instructor Profile'}
+            {currentRole === 'ADMIN' ? 'Admin Profile' : currentRole === 'INSTRUCTOR' ? 'Instructor Profile' : 'Student Profile'}
           </h1>
           <p className="text-xs text-gray-400 mt-1">
-            {fallbackRole === 'ADMIN' 
+            {currentRole === 'ADMIN'
               ? 'Manage root credentials, platform access privileges, and cryptographic keys.'
               : 'Manage your personal cryptographic identification, profile identities, and institutional platform authority.'}
           </p>
@@ -340,9 +338,10 @@ export default function Profile() {
           {/* LEFT PANEL */}
           <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6 flex flex-col items-center text-center space-y-4">
             <div className={`w-20 h-20 bg-gradient-to-tr rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-md ${
-              fallbackRole === 'ADMIN' ? 'from-rose-600 to-orange-500' : 'from-purple-600 to-indigo-500'
+              currentRole === 'ADMIN' ? 'from-rose-600 to-orange-500' :
+              currentRole === 'INSTRUCTOR' ? 'from-purple-600 to-indigo-500' : 'from-[#1e3a8a] to-blue-500'
             }`}>
-              {user?.firstName?.charAt(0) || "A"}{user?.lastName?.charAt(0) || "P"}
+              {user?.firstName?.charAt(0) || "U"}{user?.lastName?.charAt(0) || "P"}
             </div>
             
             <div className="space-y-1 w-full">
@@ -350,15 +349,16 @@ export default function Profile() {
                 {user?.firstName} {user?.lastName}
               </h2>
               <p className="text-xs text-gray-400 font-medium truncate px-2">
-                {fallbackRole === 'ADMIN' ? '👑 Administrator' : '👨‍🏫 Faculty Member'}
+                {currentRole === 'ADMIN' ? '👑 Administrator' : currentRole === 'INSTRUCTOR' ? '👨‍🏫 Faculty Member' : '🎓 Student'}
               </p>
             </div>
 
             <div className="w-full pt-4 border-t border-gray-100">
               <span className={`inline-block px-3 py-1 text-[9px] font-black tracking-widest uppercase rounded-lg border ${
-                fallbackRole === 'ADMIN' ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-purple-50 text-purple-700 border-purple-100'
+                currentRole === 'ADMIN' ? 'bg-rose-50 text-rose-700 border-rose-100' :
+                currentRole === 'INSTRUCTOR' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-blue-50 text-[#1e3a8a] border-blue-100'
               }`}>
-                Authority: {fallbackRole}
+                Authority: {currentRole}
               </span>
             </div>
 
@@ -381,6 +381,7 @@ export default function Profile() {
                     <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">First Name</label>
                     <input 
                       type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)}
+                      required maxLength={100}
                       className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition"
                     />
                   </div>
@@ -388,6 +389,7 @@ export default function Profile() {
                     <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">Last Name</label>
                     <input 
                       type="text" value={lastName} onChange={(e) => setLastName(e.target.value)}
+                      required maxLength={100}
                       className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition"
                     />
                   </div>
@@ -396,8 +398,8 @@ export default function Profile() {
                 <div className="space-y-1.5">
                   <label className="text-gray-500 font-black uppercase tracking-wide text-[10px]">Email</label>
                   <input 
-                    type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition"
+                    type="email" value={user?.email || ""} readOnly
+                    className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-xl font-medium text-gray-500 cursor-not-allowed"
                   />
                 </div>
 
@@ -405,7 +407,8 @@ export default function Profile() {
                   <button
                     type="submit" disabled={submitting}
                     className={`px-6 py-2.5 text-white font-black rounded-xl transition shadow-sm disabled:opacity-50 ${
-                      fallbackRole === 'ADMIN' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-purple-600 hover:bg-purple-700'
+                      currentRole === 'ADMIN' ? 'bg-rose-600 hover:bg-rose-700' :
+                      currentRole === 'INSTRUCTOR' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-[#1e3a8a] hover:bg-blue-800'
                     }`}
                   >
                     {submitting ? "Synchronizing..." : "Update"}
@@ -418,7 +421,7 @@ export default function Profile() {
               <div className="text-xs">
                 <div className="bg-gray-50/70 border border-gray-100 p-3 rounded-xl inline-block min-w-[200px]">
                   <span className="block text-gray-400 font-black uppercase text-[9px] tracking-wide">Assigned Scope Role</span>
-                  <span className="font-mono text-gray-600 block mt-1 text-[11px] font-bold">{fallbackRole}</span>
+                  <span className="font-mono text-gray-600 block mt-1 text-[11px] font-bold">{currentRole}</span>
                 </div>
               </div>
             </div>

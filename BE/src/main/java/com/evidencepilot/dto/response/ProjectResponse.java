@@ -1,6 +1,7 @@
 package com.evidencepilot.dto.response;
 
 import com.evidencepilot.model.Project;
+import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.model.enums.ProjectStatus;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -10,7 +11,7 @@ public record ProjectResponse(
     String title,
     String description,
     ProjectStatus status,
-    String targetStandard,
+    PaperStandard targetStandard,
     LocalDateTime createdAt,
     LocalDateTime updatedAt
 ) {

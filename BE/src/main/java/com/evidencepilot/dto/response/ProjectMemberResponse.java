@@ -8,5 +8,9 @@ public record ProjectMemberResponse(
     UUID projectId,
     UUID userId,
     String role,
-    LocalDateTime joinedAt
+    LocalDateTime joinedAt,
+    String firstName,
+    String lastName,
+    String email,
+    String userRole
 ) {}

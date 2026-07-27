@@ -1,6 +1,7 @@
 package com.evidencepilot.config.infrastructure;
 
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -28,7 +29,7 @@ class DatabaseSeederTest {
     private PasswordEncoder passwordEncoder;
 
     @Test
-    void seedsThreeAccountsFromConfiguration() {
+    void seedsThreeActiveAccountsFromConfiguration() {
         when(userRepository.findByEmail(anyString())).thenReturn(Optional.empty());
         when(passwordEncoder.encode(anyString())).thenAnswer(invocation -> "encoded:" + invocation.getArgument(0));
 
@@ -47,14 +48,17 @@ class DatabaseSeederTest {
         verify(userRepository, org.mockito.Mockito.times(3)).save(users.capture());
 
         assertThat(users.getAllValues())
-                .extracting(User::getEmail, User::getRole, User::getPasswordHash)
+                .extracting(User::getEmail, User::getRole, User::getPasswordHash, User::getAccountStatus)
                 .containsExactly(
                         org.assertj.core.groups.Tuple.tuple(
-                                "configured-admin@example.com", UserRole.ADMIN, "encoded:admin-password"),
+                                "configured-admin@example.com", UserRole.ADMIN,
+                                "encoded:admin-password", AccountStatus.ACTIVE),
                         org.assertj.core.groups.Tuple.tuple(
-                                "configured-student@example.com", UserRole.STUDENT, "encoded:student-password"),
+                                "configured-student@example.com", UserRole.STUDENT,
+                                "encoded:student-password", AccountStatus.ACTIVE),
                         org.assertj.core.groups.Tuple.tuple(
-                                "configured-instructor@example.com", UserRole.INSTRUCTOR, "encoded:instructor-password"));
+                                "configured-instructor@example.com", UserRole.INSTRUCTOR,
+                                "encoded:instructor-password", AccountStatus.ACTIVE));
     }
 
     @Test
@@ -71,5 +75,27 @@ class DatabaseSeederTest {
                 .run();
 
         verifyNoInteractions(userRepository, passwordEncoder);
+    }
+
+    @Test
+    void configuredSeedUserIsActive() {
+        User existing = new User();
+        existing.setAccountStatus(AccountStatus.BANNED);
+        when(userRepository.findByEmail("student@example.com")).thenReturn(Optional.of(existing));
+        when(passwordEncoder.encode("password")).thenReturn("encoded");
+
+        new DatabaseSeeder(
+                userRepository,
+                passwordEncoder,
+                "",
+                "",
+                "student@example.com",
+                "password",
+                "",
+                "")
+                .run();
+
+        verify(userRepository).save(existing);
+        assertThat(existing.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
     }
 }

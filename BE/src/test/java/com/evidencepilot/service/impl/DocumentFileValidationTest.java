@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class DocumentFileValidationTest {
 
     @Test
-    void acceptsOnlyPdf() {
+    void acceptsPdfAndDocxButRejectsLegacyDoc() {
         var pdf = new MockMultipartFile("file", "paper.pdf", "application/pdf", new byte[] {1});
         var docx = new MockMultipartFile(
                 "file",
@@ -20,11 +20,9 @@ class DocumentFileValidationTest {
         var doc = new MockMultipartFile("file", "paper.doc", "application/msword", new byte[] {1});
 
         assertThatCode(() -> DocumentServiceImpl.validateFile(pdf)).doesNotThrowAnyException();
-        assertThatThrownBy(() -> DocumentServiceImpl.validateFile(docx))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Only PDF files");
+        assertThatCode(() -> DocumentServiceImpl.validateFile(docx)).doesNotThrowAnyException();
         assertThatThrownBy(() -> DocumentServiceImpl.validateFile(doc))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Only PDF files");
+                .hasMessageContaining("Only PDF, DOCX, Markdown, and TeX");
     }
 }

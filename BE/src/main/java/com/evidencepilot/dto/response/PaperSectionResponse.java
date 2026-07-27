@@ -10,6 +10,8 @@ public record PaperSectionResponse(
         Integer sectionOrder,
         String sectionTitle,
         String contentTex,
+        String previousContentTex,
+        Integer version,
         String contentMdCache,
         LocalDateTime updatedAt) {
 }

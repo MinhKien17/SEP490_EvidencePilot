@@ -14,9 +14,11 @@ public interface DocumentMapper {
 
     @Mapping(target = "projectId", source = "project.id")
     @Mapping(target = "collectionId", source = "collection.id")
-    @Mapping(target = "sourceCategoryId", source = "sourceCategory.id")
-    @Mapping(target = "sourceCategoryName", source = "sourceCategory.name")
     @Mapping(target = "uploadedBy", source = "uploadedBy.id")
+    @Mapping(target = "openAlexTopic", source = "openAlexTopic")
+    @Mapping(target = "openAlexSubfield", source = "openAlexSubfield")
+    @Mapping(target = "openAlexField", source = "openAlexField")
+    @Mapping(target = "openAlexDomain", source = "openAlexDomain")
     DocumentResponse toDocumentResponse(Document entity);
 
     @Mapping(target = "documentId", source = "document.id")

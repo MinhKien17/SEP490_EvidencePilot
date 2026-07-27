@@ -7,6 +7,7 @@ import com.evidencepilot.dto.response.ProjectMemberResponse;
 import com.evidencepilot.dto.response.ProjectResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.ProjectMapper;
+import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.enums.ProjectRole;
@@ -17,6 +18,7 @@ import com.evidencepilot.repository.ProjectMemberRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.CurrentUserService;
+import com.evidencepilot.service.AuditService;
 import com.evidencepilot.service.ProjectService;
 import com.evidencepilot.service.SystemNotificationService;
 import com.evidencepilot.dto.request.PagingRequest;
@@ -31,6 +33,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -47,6 +50,7 @@ public class ProjectServiceImpl implements ProjectService {
     private final CurrentUserService currentUserService;
     private final SystemNotificationService systemNotificationService;
     private final ProjectMapper projectMapper;
+    private final AuditService auditService;
 
     @Override
     public List<ProjectResponse> getAllProjects() {
@@ -93,7 +97,7 @@ public class ProjectServiceImpl implements ProjectService {
         project.setTitle(request.title());
         project.setDescription(request.description());
         project.setTargetStandard(request.targetStandard());
-        project.setStatus(ProjectStatus.ASSIGNED);
+        project.setStatus(ProjectStatus.CREATED);
         project.setCreatedAt(LocalDateTime.now());
 
         Project saved = projectRepository.save(project);
@@ -107,6 +111,14 @@ public class ProjectServiceImpl implements ProjectService {
         owner.setJoinedAt(LocalDateTime.now());
         projectMemberRepository.save(owner);
 
+        auditService.record("PROJECT_CREATED", "PROJECT", saved.getId(), currentUser, null, saved.getStatus());
+        systemNotificationService.createNotification(
+                currentUser,
+                currentUser,
+                "PROJECT_CREATED",
+                saved.getId(),
+                "Project \"" + saved.getTitle() + "\" has been created.");
+
         return ProjectResponse.from(saved);
     }
 
@@ -116,14 +128,22 @@ public class ProjectServiceImpl implements ProjectService {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(id);
         currentUserService.requireProjectManageAccess(currentUser, project);
-        requireMutable(project);
+        currentUserService.requireProjectWriteAccess(currentUser, project);
+
+        String oldTitle = project.getTitle();
+        String oldDescription = project.getDescription();
+        PaperStandard oldTarget = project.getTargetStandard();
 
         project.setTitle(request.title());
         project.setDescription(request.description());
         project.setTargetStandard(request.targetStandard());
         project.setUpdatedAt(LocalDateTime.now());
 
-        return ProjectResponse.from(projectRepository.save(project));
+        Project saved = projectRepository.save(project);
+        auditService.record("PROJECT_UPDATED", "PROJECT", saved.getId(), currentUser,
+                "title=" + oldTitle + ",description=" + oldDescription + ",targetStandard=" + oldTarget,
+                "title=" + saved.getTitle() + ",description=" + saved.getDescription() + ",targetStandard=" + saved.getTargetStandard());
+        return ProjectResponse.from(saved);
     }
 
     @Override
@@ -131,13 +151,26 @@ public class ProjectServiceImpl implements ProjectService {
     public ProjectResponse completeProject(UUID id) {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(id);
-        currentUserService.requireProjectManageAccess(currentUser, project);
-        if (project.getStatus() != ProjectStatus.IN_PROGRESS) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only ACTIVE projects can be completed.");
+        currentUserService.requireRole(currentUser, UserRole.INSTRUCTOR);
+        currentUserService.requireProjectAccess(currentUser, project);
+        if (project.getStatus() != ProjectStatus.IN_PROGRESS
+                && project.getStatus() != ProjectStatus.SUBMITTED_FOR_REVIEW
+                && project.getStatus() != ProjectStatus.RETURNED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project cannot be completed in its current state.");
         }
+        ProjectStatus oldStatus = project.getStatus();
         project.setStatus(ProjectStatus.APPROVED);
         project.setUpdatedAt(LocalDateTime.now());
-        return ProjectResponse.from(projectRepository.save(project));
+        Project saved = projectRepository.save(project);
+        auditService.record("PROJECT_COMPLETED", "PROJECT", saved.getId(), currentUser,
+                oldStatus, ProjectStatus.APPROVED);
+        systemNotificationService.createNotification(
+                currentUser,
+                currentUser,
+                "PROJECT_COMPLETED",
+                saved.getId(),
+                "Project \"" + saved.getTitle() + "\" has been completed.");
+        return ProjectResponse.from(saved);
     }
 
     @Override
@@ -147,11 +180,33 @@ public class ProjectServiceImpl implements ProjectService {
         Project project = findActiveProject(id);
         currentUserService.requireProjectManageAccess(currentUser, project);
         if (project.getStatus() != ProjectStatus.APPROVED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only COMPLETED projects can be archived.");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only APPROVED projects can be archived.");
+        }
+        project.setStatus(ProjectStatus.ARCHIVED);
+        project.setUpdatedAt(LocalDateTime.now());
+        Project saved = projectRepository.save(project);
+        auditService.record(
+                "PROJECT_ARCHIVED", "PROJECT", project.getId(), currentUser,
+                ProjectStatus.APPROVED, ProjectStatus.ARCHIVED);
+        return ProjectResponse.from(saved);
+    }
+
+    @Override
+    @Transactional
+    public ProjectResponse unarchiveProject(UUID id) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = findActiveProject(id);
+        currentUserService.requireRole(currentUser, UserRole.ADMIN);
+        if (project.getStatus() != ProjectStatus.ARCHIVED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only ARCHIVED projects can be unarchived.");
         }
         project.setStatus(ProjectStatus.APPROVED);
         project.setUpdatedAt(LocalDateTime.now());
-        return ProjectResponse.from(projectRepository.save(project));
+        Project saved = projectRepository.save(project);
+        auditService.record(
+                "PROJECT_UNARCHIVED", "PROJECT", project.getId(), currentUser,
+                ProjectStatus.ARCHIVED, ProjectStatus.APPROVED);
+        return ProjectResponse.from(saved);
     }
 
     @Override
@@ -160,8 +215,10 @@ public class ProjectServiceImpl implements ProjectService {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(id);
         currentUserService.requireProjectManageAccess(currentUser, project);
+        currentUserService.requireProjectWriteAccess(currentUser, project);
         project.setActive(false);
         projectRepository.save(project);
+        auditService.record("PROJECT_DELETED", "PROJECT", project.getId(), currentUser, null, null);
     }
 
     @Override
@@ -185,6 +242,7 @@ public class ProjectServiceImpl implements ProjectService {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(projectId);
         currentUserService.requireProjectManageAccess(currentUser, project);
+        currentUserService.requireProjectWriteAccess(currentUser, project);
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(userId, "User"));
@@ -205,6 +263,13 @@ public class ProjectServiceImpl implements ProjectService {
         member.setRole(memberRole);
         member.setJoinedAt(LocalDateTime.now());
         projectMemberRepository.save(member);
+
+        if (project.getStatus() == ProjectStatus.CREATED) {
+            project.setStatus(ProjectStatus.ASSIGNED);
+            project.setUpdatedAt(LocalDateTime.now());
+            projectRepository.save(project);
+        }
+
         systemNotificationService.createNotification(
                 user,
                 currentUser,
@@ -219,6 +284,7 @@ public class ProjectServiceImpl implements ProjectService {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(projectId);
         currentUserService.requireProjectManageAccess(currentUser, project);
+        currentUserService.requireProjectWriteAccess(currentUser, project);
         List<ProjectMember> members = projectMemberRepository.findByProjectIdAndUserId(projectId, userId);
         members.forEach(member -> systemNotificationService.createNotification(
                 member.getUser(),
@@ -236,12 +302,6 @@ public class ProjectServiceImpl implements ProjectService {
             throw new ResourceNotFoundException(id, "Project");
         }
         return project;
-    }
-
-    private void requireMutable(Project project) {
-        if (project.getStatus() == ProjectStatus.APPROVED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
-        }
     }
 
     private Specification<Project> projectSpec(
@@ -269,8 +329,7 @@ public class ProjectServiceImpl implements ProjectService {
                 String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
                 predicates.add(cb.or(
                         cb.like(cb.lower(root.get("title")), like),
-                        cb.like(cb.lower(root.get("description")), like),
-                        cb.like(cb.lower(root.get("targetStandard")), like)));
+                        cb.like(cb.lower(root.get("description")), like)));
             }
 
             return cb.and(predicates.toArray(Predicate[]::new));

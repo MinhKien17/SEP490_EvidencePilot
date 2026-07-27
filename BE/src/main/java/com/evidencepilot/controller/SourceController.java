@@ -20,10 +20,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.util.List;
 import java.util.UUID;
 
@@ -34,6 +33,21 @@ import java.util.UUID;
 public class SourceController {
 
     private final DocumentService documentService;
+
+    @Operation(summary = "List sources by project",
+            description = "Returns all active source documents belonging to a project.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Source list returned"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "404", description = "Project not found")
+    })
+    @GetMapping("/projects/{projectId}")
+    public List<DocumentResponse> findByProject(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
+        return documentService.getDocumentsByProject(projectId).stream()
+                .filter(d -> d.docType() == DocumentType.SOURCE && d.active())
+                .toList();
+    }
 
     @Operation(summary = "Get source by ID", description = "Returns metadata for a single active source document.")
     @ApiResponses({
@@ -73,6 +87,25 @@ public class SourceController {
         return documentService.getDocumentText(id);
     }
 
+    @Operation(summary = "Remove shared source from project",
+            description = "Removes a collection-shared source from a project by deleting the reference. "
+                    + "Original document remains in collection. "
+                    + "Blocked with 409 if evidence mappings exist.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Shared source removed"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Shared source not found"),
+            @ApiResponse(responseCode = "409", description = "Evidence mappings exist — remove them first")
+    })
+    @DeleteMapping("/projects/{projectId}/sources/{sourceId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeSharedSource(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId,
+            @Parameter(description = "Source document UUID") @PathVariable UUID sourceId) {
+        documentService.removeSharedDocument(projectId, sourceId);
+    }
+
     @Operation(summary = "Soft-delete source by ID",
             description = "Soft-deletes a source document by setting active=false.")
     @ApiResponses({
@@ -101,22 +134,10 @@ public class SourceController {
     public ResponseEntity<DocumentResponse> upload(
             @Parameter(description = "File to upload") @RequestParam("file") MultipartFile file,
             @Parameter(description = "Project UUID (optional for project-scoped sources)") @RequestParam(value = "projectId", required = false) UUID projectId,
-            @Parameter(description = "Collection UUID (optional for collection-scoped sources)") @RequestParam(value = "collectionId", required = false) UUID collectionId,
-            @Parameter(description = "Source category UUID (optional)") @RequestParam(value = "sourceCategoryId", required = false) String sourceCategoryId) {
+            @Parameter(description = "Collection UUID (optional for collection-scoped sources)") @RequestParam(value = "collectionId", required = false) UUID collectionId) {
 
         DocumentResponse response = documentService.uploadDocument(
-                projectId, collectionId, parseOptionalUuid(sourceCategoryId), file, DocumentType.SOURCE);
+                projectId, collectionId, file, DocumentType.SOURCE);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
-
-    private UUID parseOptionalUuid(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        try {
-            return UUID.fromString(value);
-        } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid sourceCategoryId");
-        }
     }
 }

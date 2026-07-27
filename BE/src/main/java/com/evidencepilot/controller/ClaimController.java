@@ -1,10 +1,10 @@
 package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.request.ClaimCreationRequest;
+import com.evidencepilot.dto.request.MappingReviewRequest;
 import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.dto.response.ClaimEvidenceMappingResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
-import com.evidencepilot.dto.response.EvidenceEdgeResponse;
 import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.service.ClaimService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -171,6 +171,22 @@ public class ClaimController {
         claimService.updateSuggestionStatus(suggestionId, status);
     }
 
+    @Operation(summary = "Generate AI suggestions on demand",
+            description = "Triggers AI embedding + Qdrant search to create new PENDING suggestions "
+                    + "for the specified claim. Idempotent calls may produce duplicates; "
+                    + "deduplication is enforced by (claimId, claimVersion, documentChunkId, modelVersion).")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Suggestions generated"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "404", description = "Claim not found")
+    })
+    @PostMapping("/{id}/suggestions/generate")
+    @ResponseStatus(HttpStatus.CREATED)
+    public List<AiSuggestionResponse> generateSuggestions(
+            @Parameter(description = "Claim UUID") @PathVariable UUID id) {
+        return claimService.generateSuggestions(id);
+    }
+
     @Operation(summary = "List evidence mappings for a claim",
             description = "Returns all evidence mappings (claim-evidence links) for the specified claim.")
     @ApiResponses({
@@ -184,16 +200,21 @@ public class ClaimController {
         return claimService.getMappingsForClaim(id);
     }
 
-    @Operation(summary = "List evidence edges for a claim",
-            description = "Returns all evidence edges (AI verdict graph) for the specified claim.")
+    @Operation(summary = "Review a claim-evidence mapping",
+            description = "Allows an instructor to verify or reject a student-created evidence mapping. "
+                    + "Preserves original AI relation value; stores instructor override separately.")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Edge list returned"),
+            @ApiResponse(responseCode = "200", description = "Mapping reviewed"),
+            @ApiResponse(responseCode = "400", description = "Invalid review data"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
-            @ApiResponse(responseCode = "404", description = "Claim not found")
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Mapping not found")
     })
-    @GetMapping("/{id}/edges")
-    public List<EvidenceEdgeResponse> getEdges(
-            @Parameter(description = "Claim UUID") @PathVariable UUID id) {
-        return claimService.getEdgesForClaim(id);
+    @PatchMapping("/mappings/{mappingId}/review")
+    public ClaimEvidenceMappingResponse reviewMapping(
+            @Parameter(description = "Mapping UUID") @PathVariable UUID mappingId,
+            @Valid @RequestBody MappingReviewRequest request) {
+        return claimService.reviewMapping(mappingId, request);
     }
+
 }

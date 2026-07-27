@@ -5,14 +5,17 @@ import com.evidencepilot.dto.request.SubmitReviewRequest;
 import com.evidencepilot.dto.response.FeedbackRequestResponseDto;
 import com.evidencepilot.dto.response.InstructorFeedbackResponseDto;
 import com.evidencepilot.exception.ResourceNotFoundException;
+import com.evidencepilot.model.Document;
 import com.evidencepilot.model.FeedbackRequest;
 import com.evidencepilot.model.FeedbackStatus;
 import com.evidencepilot.model.InstructorFeedback;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
+import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
@@ -20,9 +23,11 @@ import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.FeedbackService;
+import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.SystemNotificationService;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -33,15 +38,18 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class FeedbackServiceImpl implements FeedbackService {
 
     private final FeedbackRequestRepository feedbackRequestRepository;
     private final InstructorFeedbackRepository instructorFeedbackRepository;
     private final PaperSectionRepository paperSectionRepository;
+    private final DocumentRepository documentRepository;
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
     private final SystemNotificationService systemNotificationService;
+    private final PaperProcessingService paperProcessingService;
 
     @Override
     public List<FeedbackRequestResponseDto> findAllForCurrentUser() {
@@ -68,9 +76,10 @@ public class FeedbackServiceImpl implements FeedbackService {
         if (project.getStatus() == ProjectStatus.SUBMITTED_FOR_REVIEW) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is already in review.");
         }
-        if (project.getStatus() != ProjectStatus.IN_PROGRESS) {
+        if (project.getStatus() != ProjectStatus.IN_PROGRESS
+                && project.getStatus() != ProjectStatus.RETURNED) {
             throw new ResponseStatusException(
-                    HttpStatus.CONFLICT, "Only ACTIVE projects can be submitted for review.");
+                    HttpStatus.CONFLICT, "Only ACTIVE or RETURNED projects can be submitted for review.");
         }
 
         UUID instructorId = request != null ? request.instructorId() : null;
@@ -85,12 +94,26 @@ public class FeedbackServiceImpl implements FeedbackService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project has no student.");
         }
 
+        List<Document> papers = documentRepository
+                .findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.PAPER);
+        String validationJson = null;
+        if (!papers.isEmpty()) {
+            try {
+                var validation = paperProcessingService.validateSections(papers.get(0).getId());
+                validationJson = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .writeValueAsString(validation);
+            } catch (Exception e) {
+                log.warn("Section validation failed for project {}: {}", project.getId(), e.getMessage());
+            }
+        }
+
         FeedbackRequest feedbackRequest = new FeedbackRequest();
         feedbackRequest.setProject(project);
         feedbackRequest.setStudent(student);
         feedbackRequest.setInstructor(instructor);
         feedbackRequest.setStatus(FeedbackStatus.PENDING);
         feedbackRequest.setRequestedAt(LocalDateTime.now());
+        feedbackRequest.setSectionValidation(validationJson);
 
         project.setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
         projectRepository.save(project);
@@ -113,7 +136,7 @@ public class FeedbackServiceImpl implements FeedbackService {
         if (feedbackRequest.getStatus() != FeedbackStatus.PENDING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Feedback request closed.");
         }
-        if (feedbackRequest.getProject().getStatus() == ProjectStatus.APPROVED) {
+        if (feedbackRequest.getProject().getStatus().isReadOnly()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
         }
         PaperSection section = requireSectionInProject(request.sectionId(), feedbackRequest.getProject());
@@ -140,6 +163,54 @@ public class FeedbackServiceImpl implements FeedbackService {
 
     @Override
     @Transactional
+    public InstructorFeedbackResponseDto answerFeedback(UUID feedbackItemId, String answerContent) {
+        User currentUser = currentUserService.requireCurrentUser();
+        InstructorFeedback feedback = instructorFeedbackRepository.findById(feedbackItemId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Instructor feedback not found: " + feedbackItemId));
+        FeedbackRequest request = feedback.getRequest();
+        if (request.getStudent() == null || !currentUser.getId().equals(request.getStudent().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Only the assigned student can answer feedback.");
+        }
+        if (feedback.isAnswered()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Feedback already answered.");
+        }
+        if (request.getStatus() != FeedbackStatus.RETURNED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Feedback can only be answered when the request is RETURNED.");
+        }
+        PaperSection section = feedback.getSection();
+        if (section != null && section.getAssignedUser() != null
+                && !currentUser.getId().equals(section.getAssignedUser().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You are not assigned to this section.");
+        }
+
+        feedback.setAnswered(true);
+        feedback.setAnswerContent(answerContent);
+        feedback.setAnsweredAt(LocalDateTime.now());
+        InstructorFeedback saved = instructorFeedbackRepository.save(feedback);
+
+        long unanswered = instructorFeedbackRepository.countByRequestIdAndAnsweredFalse(request.getId());
+        if (unanswered == 0) {
+            request.setStatus(FeedbackStatus.REVIEWED);
+            feedbackRequestRepository.save(request);
+        }
+
+        systemNotificationService.createNotification(
+                feedback.getInstructor(),
+                currentUser,
+                "FEEDBACK_ANSWERED",
+                request.getId(),
+                currentUser.getEmail() + " answered feedback on project \""
+                        + request.getProject().getTitle() + "\".");
+
+        return InstructorFeedbackResponseDto.fromEntity(saved);
+    }
+
+    @Override
+    @Transactional
     public FeedbackRequestResponseDto updateStatus(UUID feedbackRequestId, String status) {
         User currentUser = currentUserService.requireCurrentUser();
         FeedbackStatus newStatus;
@@ -151,7 +222,13 @@ public class FeedbackServiceImpl implements FeedbackService {
         if (newStatus == FeedbackStatus.PENDING) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status: " + status);
         }
-        FeedbackRequest feedbackRequest = transition(feedbackRequestId, newStatus, ProjectStatus.RETURNED, currentUser);
+        ProjectStatus projectStatus = switch (newStatus) {
+            case REVIEWED -> ProjectStatus.APPROVED;
+            case REJECTED -> ProjectStatus.SUBMITTED_FOR_REVIEW;
+            case RETURNED -> ProjectStatus.RETURNED;
+            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status: " + status);
+        };
+        FeedbackRequest feedbackRequest = transition(feedbackRequestId, newStatus, projectStatus, currentUser);
         systemNotificationService.createNotification(
                 feedbackRequest.getStudent(),
                 currentUser,
@@ -164,9 +241,14 @@ public class FeedbackServiceImpl implements FeedbackService {
 
     private FeedbackRequest transition(UUID id, FeedbackStatus status, ProjectStatus projectStatus, User currentUser) {
         FeedbackRequest feedbackRequest = requireFeedbackAccess(id, currentUser, true);
+        if (feedbackRequest.getProject().getStatus().isReadOnly()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
+        }
         feedbackRequest.setStatus(status);
-        feedbackRequest.getProject().setStatus(projectStatus);
-        projectRepository.save(feedbackRequest.getProject());
+        Project project = feedbackRequest.getProject();
+        project.setStatus(projectStatus);
+        project.setUpdatedAt(LocalDateTime.now());
+        projectRepository.save(project);
         return feedbackRequestRepository.save(feedbackRequest);
     }
 

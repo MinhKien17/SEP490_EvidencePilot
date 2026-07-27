@@ -86,12 +86,20 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.CONFLICT, "Request conflicts with existing data.", request);
     }
 
-    @ExceptionHandler({MultipartException.class, MaxUploadSizeExceededException.class})
+    @ExceptionHandler(MultipartException.class)
     public ResponseEntity<ApiErrorResponse> handleMultipart(
-            Exception exception,
+            MultipartException exception,
             HttpServletRequest request) {
 
         return build(HttpStatus.BAD_REQUEST, "File upload failed.", request);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiErrorResponse> handleMaxUploadSize(
+            MaxUploadSizeExceededException exception,
+            HttpServletRequest request) {
+
+        return build(HttpStatus.PAYLOAD_TOO_LARGE, "File size exceeds the 50MB limit", request);
     }
 
     private ResponseEntity<ApiErrorResponse> build(HttpStatus status, String message,

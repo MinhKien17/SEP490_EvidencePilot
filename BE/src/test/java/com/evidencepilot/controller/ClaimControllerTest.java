@@ -98,10 +98,4 @@ class ClaimControllerTest {
         verify(service).getMappingsForClaim(id);
     }
 
-    @Test
-    void getEdges_delegatesClaimId() throws Exception {
-        UUID id = UUID.randomUUID();
-        mockMvc.perform(get("/api/claims/{id}/edges", id)).andExpect(status().isOk());
-        verify(service).getEdgesForClaim(id);
-    }
 }

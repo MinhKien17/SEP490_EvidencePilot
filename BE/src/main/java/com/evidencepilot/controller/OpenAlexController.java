@@ -41,11 +41,11 @@ public class OpenAlexController {
                        + "saves it to MinIO, and triggers the extraction pipeline. "
                        + "Returns 202 Accepted — processing happens asynchronously via RabbitMQ.")
     @ApiResponse(responseCode = "202", description = "Document accepted for processing")
-    @ApiResponse(responseCode = "400", description = "DOI not found or no OA PDF available")
-    @ApiResponse(responseCode = "404", description = "Project not found")
+    @ApiResponse(responseCode = "400", description = "DOI not found, no OA PDF available, or missing project/collection")
+    @ApiResponse(responseCode = "404", description = "Project or collection not found")
     @PostMapping("/ingest/doi")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public DocumentResponse ingestByDoi(@Valid @RequestBody DoiIngestionRequest request) {
-        return ingestionService.ingestByDoi(request.projectId(), request.doi());
+        return ingestionService.ingestByDoi(request.projectId(), request.collectionId(), request.doi());
     }
 }

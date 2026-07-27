@@ -5,11 +5,13 @@ import com.evidencepilot.dto.response.UserResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.UserMapper;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -37,5 +39,19 @@ public class UserServiceImpl implements UserService {
             user.setLastName(request.getLastName());
         }
         return userMapper.toUserResponse(userRepository.save(user));
+    }
+
+    @Override
+    public List<UserResponse> findUsersByRole(UserRole role) {
+        return userRepository.findByRole(role).stream()
+                .map(userMapper::toUserResponse)
+                .toList();
+    }
+
+    @Override
+    public List<UserResponse> searchUsersByRole(UserRole role, String q) {
+        return userRepository.searchByRole(role, q).stream()
+                .map(userMapper::toUserResponse)
+                .toList();
     }
 }

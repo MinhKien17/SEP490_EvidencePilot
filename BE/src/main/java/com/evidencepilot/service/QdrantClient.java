@@ -13,4 +13,6 @@ public interface QdrantClient {
     String findClosestChunkId(List<Float> queryVector, String projectId);
 
     List<QdrantSearchResult> findClosestChunks(List<Float> queryVector, String scopeType, String scopeId, int topK);
+
+    Map<String, Object> health();
 }

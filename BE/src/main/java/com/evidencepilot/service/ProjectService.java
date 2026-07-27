@@ -25,6 +25,7 @@ public interface ProjectService {
     ProjectResponse updateProject(UUID id, ProjectUpdateRequest request);
     ProjectResponse completeProject(UUID id);
     ProjectResponse archiveProject(UUID id);
+    ProjectResponse unarchiveProject(UUID id);
     void deleteProject(UUID id);
     List<ProjectMember> getProjectMembers(UUID projectId);
     List<ProjectMemberResponse> getProjectMemberResponses(UUID projectId);

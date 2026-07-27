@@ -3,11 +3,9 @@ package com.evidencepilot.mapper;
 import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.dto.response.ClaimEvidenceMappingResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
-import com.evidencepilot.dto.response.EvidenceEdgeResponse;
 import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.ClaimEvidenceMapping;
-import com.evidencepilot.model.EvidenceEdge;
 import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.model.enums.SuggestionStatus;
 import org.mapstruct.Mapper;
@@ -27,11 +25,16 @@ public interface ClaimMapper {
     @Mapping(target = "chunkIndex", source = "documentChunk.chunkIndex")
     @Mapping(target = "excerpt", source = "documentChunk.text")
     @Mapping(target = "status", source = "status")
+    @Mapping(target = "modelName", source = "modelName")
+    @Mapping(target = "modelVersion", source = "modelVersion")
+    @Mapping(target = "promptVersion", source = "promptVersion")
+    @Mapping(target = "rubricVersion", source = "rubricVersion")
+    @Mapping(target = "evaluatedAt", source = "evaluatedAt")
+    @Mapping(target = "scoreBreakdown", source = "scoreBreakdown")
+    @Mapping(target = "relation", source = "relation")
+    @Mapping(target = "strengthScore", source = "strengthScore")
+    @Mapping(target = "strengthBand", source = "strengthBand")
     AiSuggestionResponse toAiSuggestionResponse(AiSuggestion entity);
-
-    @Mapping(target = "claimId", source = "claim.id")
-    @Mapping(target = "documentChunkId", source = "documentChunk.id")
-    EvidenceEdgeResponse toEvidenceEdgeResponse(EvidenceEdge entity);
 
     @Mapping(target = "claimId", source = "claim.id")
     @Mapping(target = "documentChunkId", source = "documentChunk.id")

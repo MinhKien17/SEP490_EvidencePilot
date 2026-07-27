@@ -1,6 +1,7 @@
 package com.evidencepilot.config.infrastructure;
 
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -66,6 +67,7 @@ public class DatabaseSeeder implements CommandLineRunner {
         user.setFirstName(firstName);
         user.setLastName(lastName);
         user.setRole(role);
+        user.setAccountStatus(AccountStatus.ACTIVE);
         user.setEmailVerified(true);
         user.setEmailVerificationTokenHash(null);
         user.setEmailVerificationTokenExpiresAt(null);

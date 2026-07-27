@@ -4,7 +4,7 @@ import com.evidencepilot.dto.request.ClaimCreationRequest;
 import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.dto.response.ClaimEvidenceMappingResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
-import com.evidencepilot.dto.response.EvidenceEdgeResponse;
+import com.evidencepilot.dto.request.MappingReviewRequest;
 import com.evidencepilot.dto.response.PagedResponse;
 import java.util.List;
 import java.util.UUID;
@@ -35,5 +35,6 @@ public interface ClaimService {
     void rejectSuggestion(UUID suggestionId);
     void updateSuggestionStatus(UUID suggestionId, String status);
     List<ClaimEvidenceMappingResponse> getMappingsForClaim(UUID claimId);
-    List<EvidenceEdgeResponse> getEdgesForClaim(UUID claimId);
+    List<AiSuggestionResponse> generateSuggestions(UUID claimId);
+    ClaimEvidenceMappingResponse reviewMapping(UUID mappingId, MappingReviewRequest request);
 }

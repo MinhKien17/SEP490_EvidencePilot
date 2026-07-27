@@ -9,6 +9,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 
 import lombok.Getter;
 import lombok.Setter;
+import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.UserRole;
@@ -32,7 +33,9 @@ public class Project {
     @Enumerated(EnumType.STRING)
     private ProjectStatus status;
 
-    private String targetStandard;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "target_standard")
+    private PaperStandard targetStandard;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

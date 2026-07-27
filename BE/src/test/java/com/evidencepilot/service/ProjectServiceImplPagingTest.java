@@ -50,6 +50,9 @@ class ProjectServiceImplPagingTest {
     @Mock
     private ProjectMapper projectMapper;
 
+    @Mock
+    private AuditService auditService;
+
     @Test
     void getAllProjectsReturnsPagedMetadataAndWhitelistedSort() {
         User admin = new User();
@@ -76,7 +79,8 @@ class ProjectServiceImplPagingTest {
                 userRepository,
                 currentUserService,
                 systemNotificationService,
-                projectMapper);
+                projectMapper,
+                auditService);
 
         var response = service.getAllProjects(
                 1,

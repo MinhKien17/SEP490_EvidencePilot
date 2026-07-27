@@ -1,6 +1,7 @@
 package com.evidencepilot.config.security;
 
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -16,15 +17,23 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    private static final String RESET_REQUEST_PATH = "/api/auth/password-reset/request";
+    private static final String RESET_CONFIRM_PATH = "/api/auth/password-reset/confirm";
+
     private final JwtUtils jwtUtils;
     private final UserRepository userRepository;
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return RESET_REQUEST_PATH.equals(path) || RESET_CONFIRM_PATH.equals(path);
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -52,10 +61,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 return;
             }
 
-            String role = jwtUtils.extractRole(token);
-            String authority = role == null || role.isBlank()
-                    ? "ROLE_STUDENT"
-                    : (role.startsWith("ROLE_") ? role : "ROLE_" + role.toUpperCase(Locale.ROOT));
+            if (user.getAccountStatus() != AccountStatus.ACTIVE
+                    || !Integer.valueOf(user.getTokenVersion()).equals(jwtUtils.extractTokenVersion(token))) {
+                response.sendError(HttpServletResponse.SC_FORBIDDEN);
+                return;
+            }
+
+            String authority = "ROLE_" + user.getRole().name();
 
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(

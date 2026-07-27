@@ -1,6 +1,7 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.model.Claim;
+import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.User;
@@ -82,6 +83,8 @@ public class CurrentUserServiceImpl implements CurrentUserService {
         if (isAdmin(currentUser))
             return;
         if (isInstructor(currentUser)) {
+            if (isProjectMember(currentUser, project))
+                return;
             if (project.getStatus() == ProjectStatus.SUBMITTED_FOR_REVIEW && project.getId() != null
                     && feedbackRequestRepository.existsByProjectIdAndInstructorId(
                             project.getId(), currentUser.getId())) {
@@ -100,8 +103,18 @@ public class CurrentUserServiceImpl implements CurrentUserService {
 
     @Override
     public void requireProjectWriteAccess(User currentUser, Project project) {
+        if (project.getStatus().isReadOnly()) {
+            throw new ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "Project is read-only.");
+        }
         if (isAdmin(currentUser))
             return;
+        if (project.getStatus() == ProjectStatus.SUBMITTED_FOR_REVIEW) {
+            throw new ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "Project is locked and cannot be modified.");
+        }
         if (!hasProjectRole(currentUser, project, Set.of(
                 ProjectRole.OWNER, ProjectRole.EDITOR, ProjectRole.INSTRUCTOR))) {
             throw new ResponseStatusException(
@@ -134,12 +147,6 @@ public class CurrentUserServiceImpl implements CurrentUserService {
         if (project.getProjectMembers() == null) {
             return false;
         }
-        if (project.getStatus() == ProjectStatus.SUBMITTED_FOR_REVIEW ||
-            project.getStatus() == ProjectStatus.APPROVED) {
-            throw new ResponseStatusException(
-                    org.springframework.http.HttpStatus.FORBIDDEN,
-                    "Write access denied: project is locked");
-        }
         return project.getProjectMembers().stream()
                 .anyMatch(pm -> pm.getUser() != null
                         && currentUser.getId().equals(pm.getUser().getId())
@@ -166,5 +173,17 @@ public class CurrentUserServiceImpl implements CurrentUserService {
     @Override
     public void requireClaimAccess(User currentUser, Claim claim) {
         requireProjectAccess(currentUser, claim.getProject());
+    }
+
+    @Override
+    public void requireSectionAssignment(User currentUser, PaperSection section) {
+        if (isAdmin(currentUser)) return;
+        if (isInstructor(currentUser)) return;
+        if (section.getAssignedUser() == null) return;
+        if (!currentUser.getId().equals(section.getAssignedUser().getId())) {
+            throw new ResponseStatusException(
+                    org.springframework.http.HttpStatus.FORBIDDEN,
+                    "You are not assigned to this section");
+        }
     }
 }

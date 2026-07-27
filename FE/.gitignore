@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment
+.env
+
+# Agent skill definitions (local dev only)
+.agents/
+skills-lock.json

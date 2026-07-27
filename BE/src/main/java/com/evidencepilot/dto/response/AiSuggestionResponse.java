@@ -1,5 +1,7 @@
 package com.evidencepilot.dto.response;
 
+import com.evidencepilot.model.enums.EvidenceRelation;
+import com.evidencepilot.model.enums.StrengthBand;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -15,7 +17,16 @@ public record AiSuggestionResponse(
     Float score,
     String explanation,
     Integer claimVersion,
-    LocalDateTime createdAt
+    LocalDateTime createdAt,
+    String modelName,
+    String modelVersion,
+    String promptVersion,
+    String rubricVersion,
+    LocalDateTime evaluatedAt,
+    String scoreBreakdown,
+    EvidenceRelation relation,
+    Integer strengthScore,
+    StrengthBand strengthBand
 ) {
     public static final String PENDING = "PENDING";
     public static final String ACCEPTED = "ACCEPTED";

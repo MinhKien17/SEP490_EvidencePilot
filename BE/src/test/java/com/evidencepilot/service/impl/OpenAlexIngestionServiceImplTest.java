@@ -9,6 +9,8 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
+import com.evidencepilot.repository.CollectionRepository;
+import com.evidencepilot.repository.DocumentReferenceRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.CurrentUserService;
@@ -33,6 +35,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -47,11 +50,15 @@ class OpenAlexIngestionServiceImplTest {
     @Mock
     private ProjectRepository projectRepository;
     @Mock
+    private CollectionRepository collectionRepository;
+    @Mock
     private CurrentUserService currentUserService;
     @Mock
     private DocumentObjectStorage documentObjectStorage;
     @Mock
     private DocumentPersistenceService documentPersistenceService;
+    @Mock
+    private DocumentReferenceRepository documentReferenceRepository;
 
     private OpenAlexIngestionServiceImpl service;
     private OpenAlexIngestionServiceImpl serviceSpy;
@@ -63,8 +70,8 @@ class OpenAlexIngestionServiceImplTest {
     void setUp() {
         service = new OpenAlexIngestionServiceImpl(
                 openAlexClient, documentRepository, projectRepository,
-                currentUserService, documentObjectStorage,
-                documentPersistenceService, new ObjectMapper());
+                collectionRepository, currentUserService, documentObjectStorage,
+                documentPersistenceService, documentReferenceRepository, new ObjectMapper());
         serviceSpy = spy(service);
 
         currentUser = new User();
@@ -93,7 +100,10 @@ class OpenAlexIngestionServiceImplTest {
                 null,
                 new OpenAlexWorkResponse.OpenAlexOpenAccess(true, "green", "https://example.com/paper.pdf", true),
                 null,
-                2024
+                2024,
+                null,
+                List.of(),
+                null
         );
     }
 
@@ -101,7 +111,6 @@ class OpenAlexIngestionServiceImplTest {
     void lookupByDoi_returnsPreview() {
         when(openAlexClient.fetchWork("10.1000/xyz")).thenReturn(sampleWork);
 
-        // lookupByDoi doesn't check urlIsReachable, so use service directly
         OpenAlexPreview preview = service.lookupByDoi("10.1000/xyz");
 
         assertThat(preview.title()).isEqualTo("Test Paper");
@@ -139,7 +148,6 @@ class OpenAlexIngestionServiceImplTest {
                     doc.setUploadedBy(currentUser);
                     doc.setActive(true);
                     doc.setOriginalFilename("Test Paper.pdf");
-                    doc.setFileUrl(fileUrl);
                     doc.setDoi(doi);
                     doc.setTitle("Test Paper");
                     doc.setPublicationYear(2024);
@@ -148,7 +156,7 @@ class OpenAlexIngestionServiceImplTest {
                     return doc;
                 });
 
-        var result = serviceSpy.ingestByDoi(projectId, doi);
+        var result = serviceSpy.ingestByDoi(projectId, null, doi);
 
         assertThat(result.processingStatus()).isEqualTo(ProcessingStatus.UPLOADED);
         assertThat(result.originalFilename()).contains("Test Paper");
@@ -156,18 +164,33 @@ class OpenAlexIngestionServiceImplTest {
     }
 
     @Test
-    void ingestByDoi_throwsWhenOaUrlIsNull() {
+    void ingestByDoi_returnsMetadataOnlyWhenOaUrlIsNull() {
         var workNoPdf = new OpenAlexWorkResponse(
                 "https://openalex.org/W456", "https://doi.org/10.1000/no-pdf",
-                "No PDF", List.of(), null, null, null, null, 2023);
+                "No PDF", List.of(), null, null, null, null, 2023, null, List.of(), null);
 
         when(currentUserService.requireCurrentUser()).thenReturn(currentUser);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
         when(openAlexClient.fetchWork("10.1000/no-pdf")).thenReturn(workNoPdf);
+        when(documentRepository.save(any())).thenAnswer(invocation -> {
+            var doc = (com.evidencepilot.model.Document) invocation.getArgument(0);
+            if (doc.getId() == null) doc.setId(UUID.randomUUID());
+            return doc;
+        });
 
-        assertThatThrownBy(() -> service.ingestByDoi(project.getId(), "10.1000/no-pdf"))
+        var result = service.ingestByDoi(project.getId(), null, "10.1000/no-pdf");
+
+        assertThat(result.processingStatus()).isEqualTo(ProcessingStatus.METADATA_FETCHED);
+        assertThat(result.originalFilename()).contains("No PDF");
+    }
+
+    @Test
+    void ingestByDoi_throwsWhenNeitherProjectNorCollection() {
+        when(currentUserService.requireCurrentUser()).thenReturn(currentUser);
+
+        assertThatThrownBy(() -> service.ingestByDoi(null, null, "10.1000/xyz"))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("No open-access PDF URL");
+                .hasMessageContaining("Either projectId or collectionId is required");
     }
 
     @Test
@@ -176,17 +199,20 @@ class OpenAlexIngestionServiceImplTest {
         when(currentUserService.requireCurrentUser()).thenReturn(currentUser);
         when(projectRepository.findById(badId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.ingestByDoi(badId, "10.1000/xyz"))
+        assertThatThrownBy(() -> service.ingestByDoi(badId, null, "10.1000/xyz"))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
-    void ingestByDoi_throwsWhenProjectIsApproved() {
-        project.setStatus(ProjectStatus.APPROVED);
+    void ingestByDoi_throwsWhenProjectIsArchived() {
+        project.setStatus(ProjectStatus.ARCHIVED);
         when(currentUserService.requireCurrentUser()).thenReturn(currentUser);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        doThrow(new ResponseStatusException(
+                org.springframework.http.HttpStatus.CONFLICT, "Project is read-only."))
+                .when(currentUserService).requireProjectWriteAccess(currentUser, project);
 
-        assertThatThrownBy(() -> service.ingestByDoi(project.getId(), "10.1000/xyz"))
+        assertThatThrownBy(() -> service.ingestByDoi(project.getId(), null, "10.1000/xyz"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("read-only");
     }

@@ -9,6 +9,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import lombok.Getter;
 import lombok.Setter;
 import com.evidencepilot.model.enums.UserRole;
+import com.evidencepilot.model.enums.AccountStatus;
 
 @Entity
 @Table(name = "users")
@@ -30,6 +31,10 @@ public class User {
     @Enumerated(EnumType.STRING)
     private UserRole role;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "account_status", nullable = false)
+    private AccountStatus accountStatus = AccountStatus.ACTIVE;
+
     @Column(name = "email_verified", nullable = false)
     private Boolean emailVerified = true;
 
@@ -38,6 +43,18 @@ public class User {
 
     @Column(name = "email_verification_token_expires_at")
     private LocalDateTime emailVerificationTokenExpiresAt;
+
+    @Column(name = "password_reset_token_hash", unique = true)
+    private String passwordResetTokenHash;
+
+    @Column(name = "password_reset_token_expires_at")
+    private LocalDateTime passwordResetTokenExpiresAt;
+
+    @Column(name = "password_reset_requested_at")
+    private LocalDateTime passwordResetRequestedAt;
+
+    @Column(name = "token_version", nullable = false)
+    private int tokenVersion;
 
     private String firstName;
     private String lastName;

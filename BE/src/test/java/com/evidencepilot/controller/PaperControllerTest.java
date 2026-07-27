@@ -2,6 +2,10 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.repository.DocumentRepository;
+import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.service.CitationValidationService;
+import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.PaperProcessingService;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,11 +27,15 @@ class PaperControllerTest {
 
     private final DocumentService documentService = mock(DocumentService.class);
     private final PaperProcessingService paperService = mock(PaperProcessingService.class);
+    private final CitationValidationService citationValidationService = mock(CitationValidationService.class);
+    private final ProjectRepository projectRepository = mock(ProjectRepository.class);
+    private final DocumentRepository documentRepository = mock(DocumentRepository.class);
+    private final CurrentUserService currentUserService = mock(CurrentUserService.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = standaloneSetup(new PaperController(documentService, paperService))
+        mockMvc = standaloneSetup(new PaperController(documentService, paperService, citationValidationService, projectRepository, documentRepository, currentUserService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -96,7 +104,7 @@ class PaperControllerTest {
     }
 
     @Test
-    void upload_returns201AndDetectsSections() throws Exception {
+    void upload_returns201WithoutDetectingSectionsSynchronously() throws Exception {
         UUID projectId = UUID.randomUUID();
         UUID documentId = UUID.randomUUID();
         DocumentResponse response = mock(DocumentResponse.class);
@@ -108,7 +116,7 @@ class PaperControllerTest {
                 .andExpect(status().isCreated());
 
         verify(documentService).uploadDocument(eq(projectId), any(), eq(DocumentType.PAPER));
-        verify(paperService).detectAndPersistSections(documentId);
+        verify(paperService, never()).detectAndPersistSections(documentId);
     }
 
     private static DocumentResponse document(DocumentType type, boolean active) {

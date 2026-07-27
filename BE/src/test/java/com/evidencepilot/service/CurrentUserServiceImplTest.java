@@ -82,6 +82,7 @@ class CurrentUserServiceImplTest {
     void requireProjectManageAccessRejectsStudentEditor() {
         User student = user(UserRole.STUDENT);
         Project project = projectWithMembers(member(student, ProjectRole.EDITOR));
+        project.setStatus(ProjectStatus.APPROVED);
 
         CurrentUserServiceImpl service =
                 new CurrentUserServiceImpl(userRepository, feedbackRequestRepository);
@@ -90,6 +91,75 @@ class CurrentUserServiceImplTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
                         .isEqualTo(HttpStatus.FORBIDDEN));
+    }
+
+    @Test
+    void requireProjectManageAccessAllowsAdminInstructorAndOwnerWithoutLifecycleLock() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        Project project = projectWithMembers(member(instructor, ProjectRole.INSTRUCTOR));
+        project.setStatus(ProjectStatus.APPROVED);
+
+        assertThatCode(() -> service().requireProjectManageAccess(instructor, project))
+                .doesNotThrowAnyException();
+
+        project.setStatus(ProjectStatus.ARCHIVED);
+        assertThatCode(() -> service().requireProjectManageAccess(instructor, project))
+                .doesNotThrowAnyException();
+
+        User owner = user(UserRole.STUDENT);
+        Project ownedProject = projectWithMembers(member(owner, ProjectRole.OWNER));
+        ownedProject.setStatus(ProjectStatus.ARCHIVED);
+        assertThatCode(() -> service().requireProjectManageAccess(owner, ownedProject))
+                .doesNotThrowAnyException();
+
+        assertThatCode(() -> service().requireProjectManageAccess(
+                user(UserRole.ADMIN), projectWithMembers()))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void requireProjectManageAccessRejectsUnrelatedInstructor() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        Project project = projectWithMembers(member(user(UserRole.INSTRUCTOR), ProjectRole.INSTRUCTOR));
+        project.setStatus(ProjectStatus.ARCHIVED);
+
+        assertThatThrownBy(() -> service().requireProjectManageAccess(instructor, project))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(HttpStatus.FORBIDDEN));
+    }
+
+    @Test
+    void projectWriteAccessLocksReadOnlyStatusesForAdmin() {
+        User admin = user(UserRole.ADMIN);
+        Project project = projectWithMembers();
+
+        project.setStatus(ProjectStatus.APPROVED);
+        assertThatThrownBy(() -> service().requireProjectWriteAccess(admin, project))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(HttpStatus.CONFLICT));
+
+        project.setStatus(ProjectStatus.ARCHIVED);
+        assertThatThrownBy(() -> service().requireProjectWriteAccess(admin, project))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(HttpStatus.CONFLICT));
+    }
+
+    @Test
+    void submittedProjectWriteAccessAllowsAdminButLocksNonAdminMember() {
+        User admin = user(UserRole.ADMIN);
+        User editor = user(UserRole.STUDENT);
+        Project project = projectWithMembers(member(editor, ProjectRole.EDITOR));
+        project.setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
+
+        assertThatCode(() -> service().requireProjectWriteAccess(admin, project))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> service().requireProjectWriteAccess(editor, project))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(HttpStatus.CONFLICT));
     }
 
     @Test

@@ -13,6 +13,7 @@ import com.evidencepilot.model.FeedbackStatus;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
+import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
@@ -50,6 +51,9 @@ class FeedbackServiceImplTest {
     private PaperSectionRepository paperSectionRepository;
 
     @Mock
+    private DocumentRepository documentRepository;
+
+    @Mock
     private ProjectRepository projectRepository;
 
     @Mock
@@ -60,6 +64,9 @@ class FeedbackServiceImplTest {
 
     @Mock
     private SystemNotificationService systemNotificationService;
+
+    @Mock
+    private PaperProcessingService paperProcessingService;
 
     @Test
     void submitForReviewUsesProjectInstructorAndStudent() {
@@ -167,7 +174,7 @@ class FeedbackServiceImplTest {
 
         assertThatThrownBy(() -> service().submitForReview(project.getId(), null))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Only ACTIVE projects can be submitted for review.");
+                .hasMessageContaining("Only ACTIVE or RETURNED projects can be submitted for review.");
     }
 
     @Test
@@ -186,6 +193,42 @@ class FeedbackServiceImplTest {
                 new InstructorFeedbackRequest(UUID.randomUUID(), "L1", "Too late.")))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Feedback request closed.");
+    }
+
+    @Test
+    void archivedProjectRejectsInstructorFeedbackCreation() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        project.setStatus(ProjectStatus.ARCHIVED);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(feedbackRequestRepository.findById(request.getId())).thenReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> service().comment(
+                request.getId(),
+                new InstructorFeedbackRequest(UUID.randomUUID(), "L1", "Too late.")))
+                .hasMessageContaining("Project is read-only.");
+    }
+
+    @Test
+    void archivedProjectRejectsAdminFeedbackCreation() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        User admin = user(UserRole.ADMIN);
+        Project project = project(instructor, student);
+        project.setStatus(ProjectStatus.ARCHIVED);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(admin);
+        when(currentUserService.isAdmin(admin)).thenReturn(true);
+        when(feedbackRequestRepository.findById(request.getId())).thenReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> service().comment(
+                request.getId(),
+                new InstructorFeedbackRequest(UUID.randomUUID(), "L1", "Too late.")))
+                .hasMessageContaining("Project is read-only.");
     }
 
     @Test
@@ -213,7 +256,7 @@ class FeedbackServiceImplTest {
         service().updateStatus(request.getId(), "REVIEWED");
 
         assertThat(request.getStatus()).isEqualTo(FeedbackStatus.REVIEWED);
-        assertThat(project.getStatus()).isEqualTo(ProjectStatus.RETURNED);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.APPROVED);
         verify(systemNotificationService).createNotification(
                 student, instructor, "REVIEW_STATUS_CHANGED", request.getId(),
                 "Review status for project \"Capstone\" changed to REVIEWED.");
@@ -232,10 +275,12 @@ class FeedbackServiceImplTest {
                 feedbackRequestRepository,
                 instructorFeedbackRepository,
                 paperSectionRepository,
+                documentRepository,
                 projectRepository,
                 userRepository,
                 currentUserService,
-                systemNotificationService);
+                systemNotificationService,
+                paperProcessingService);
     }
 
     private User user(UserRole role) {

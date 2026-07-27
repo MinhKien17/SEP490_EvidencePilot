@@ -4,17 +4,18 @@ import com.evidencepilot.mapper.DocumentMapper;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentText;
 import com.evidencepilot.model.Project;
-import com.evidencepilot.model.SourceCategory;
+
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.ProcessingStatus;
+import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.DocumentTextRepository;
+import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
-import com.evidencepilot.repository.SourceCategoryRepository;
 import com.evidencepilot.service.impl.DocumentPersistenceService;
 import com.evidencepilot.service.impl.DocumentServiceImpl;
 import io.minio.MinioClient;
@@ -40,6 +41,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -63,7 +65,10 @@ class DocumentServiceImplAccessTest {
     private CollectionRepository collectionRepository;
 
     @Mock
-    private SourceCategoryRepository sourceCategoryRepository;
+    private ProjectDocumentRepository projectDocumentRepository;
+
+    @Mock
+    private ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
 
     @Mock
     private CurrentUserService currentUserService;
@@ -81,6 +86,7 @@ class DocumentServiceImplAccessTest {
     void getDocumentByIdRequiresProjectAccess() {
         User user = user();
         Project project = project();
+        project.setStatus(ProjectStatus.ARCHIVED);
         Document document = document(project);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
@@ -108,7 +114,7 @@ class DocumentServiceImplAccessTest {
     }
 
     @Test
-    void deleteDocumentRequiresProjectAccess() {
+    void deleteDocumentRequiresProjectWriteAccess() {
         User user = user();
         Project project = project();
         Document document = document(project);
@@ -118,11 +124,11 @@ class DocumentServiceImplAccessTest {
 
         service().deleteDocument(document.getId());
 
-        verify(currentUserService).requireProjectAccess(user, project);
+        verify(currentUserService).requireProjectWriteAccess(user, project);
     }
 
     @Test
-    void uploadDocumentRequiresProjectAccess() throws Exception {
+    void uploadDocumentRequiresProjectWriteAccess() throws Exception {
         User user = user();
         Project project = project();
         Document persisted = document(project);
@@ -143,7 +149,7 @@ class DocumentServiceImplAccessTest {
 
         service().uploadDocument(project.getId(), file, DocumentType.PAPER);
 
-        verify(currentUserService).requireProjectAccess(user, project);
+        verify(currentUserService).requireProjectWriteAccess(user, project);
     }
 
     @Test
@@ -214,6 +220,7 @@ class DocumentServiceImplAccessTest {
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        doThrow(readOnly()).when(currentUserService).requireProjectWriteAccess(user, project);
 
         assertThatThrownBy(() -> service().uploadDocument(project.getId(), file, DocumentType.PAPER))
                 .isInstanceOf(ResponseStatusException.class)
@@ -225,11 +232,12 @@ class DocumentServiceImplAccessTest {
     void deleteDocumentRejectsArchivedProject() {
         User user = user();
         Project project = project();
-        project.setStatus(ProjectStatus.APPROVED);
+        project.setStatus(ProjectStatus.ARCHIVED);
         Document document = document(project);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        doThrow(readOnly()).when(currentUserService).requireProjectWriteAccess(user, project);
 
         assertThatThrownBy(() -> service().deleteDocument(document.getId()))
                 .isInstanceOf(ResponseStatusException.class)
@@ -238,107 +246,86 @@ class DocumentServiceImplAccessTest {
     }
 
     @Test
-    void uploadSourceWithCategoryPersistsCategory() throws Exception {
+    void archivedProjectRejectsShareAndRemoveSharedDocument() {
         User user = user();
+        Project project = project();
+        project.setStatus(ProjectStatus.ARCHIVED);
         com.evidencepilot.model.Collection collection = collection();
-        SourceCategory category = category(true);
-        Document persisted = document(null);
-        persisted.setDocType(DocumentType.SOURCE);
-        persisted.setId(UUID.randomUUID());
-        persisted.setCollection(collection);
-        persisted.setSourceCategory(category);
-        MockMultipartFile file = new MockMultipartFile(
-                "file", "source.pdf", "application/pdf", "content".getBytes());
-
+        Document source = document(null);
+        source.setDocType(DocumentType.SOURCE);
+        source.setCollection(collection);
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
-        when(sourceCategoryRepository.findByIdAndActiveTrue(category.getId())).thenReturn(Optional.of(category));
-        when(documentPersistenceService.savePendingDocument(
-                any(), eq(collection), eq(user), eq(DocumentType.SOURCE),
-                eq("source.pdf"), eq("application/pdf"), eq(7L)))
-                .thenReturn(persisted);
-        when(documentPersistenceService.markDocumentAsUploaded(
-                eq(persisted.getId()), anyString()))
-                .thenReturn(persisted);
-        when(minioClient.putObject(any(PutObjectArgs.class))).thenReturn(null);
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        doThrow(readOnly()).when(currentUserService).requireProjectWriteAccess(user, project);
 
-        var response = service().uploadDocument(
-                null, collection.getId(), category.getId(), file, DocumentType.SOURCE);
-
-        assertThat(response.sourceCategoryId()).isEqualTo(category.getId());
-        assertThat(response.sourceCategoryName()).isEqualTo(category.getName());
+        assertThatThrownBy(() -> service().shareToProject(collection.getId(), source.getId(), project.getId()))
+                .hasMessageContaining("Project is read-only.");
+        assertThatThrownBy(() -> service().removeSharedDocument(project.getId(), source.getId()))
+                .hasMessageContaining("Project is read-only.");
+        verify(projectDocumentRepository, never()).save(any());
+        verify(projectDocumentRepository, never()).delete(any());
     }
 
     @Test
-    void uploadSourceWithoutCategoryStoresNull() throws Exception {
+    void archivedProjectRejectsExtractionAffectingFileAttachment() {
         User user = user();
-        com.evidencepilot.model.Collection collection = collection();
-        Document persisted = document(null);
-        persisted.setDocType(DocumentType.SOURCE);
-        persisted.setId(UUID.randomUUID());
-        persisted.setCollection(collection);
+        Project project = project();
+        project.setStatus(ProjectStatus.ARCHIVED);
+        Document document = document(project);
+        document.setProcessingStatus(ProcessingStatus.METADATA_FETCHED);
         MockMultipartFile file = new MockMultipartFile(
-                "file", "source.pdf", "application/pdf", "content".getBytes());
+                "file", "paper.pdf", "application/pdf", "content".getBytes());
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
-        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
-        when(documentPersistenceService.savePendingDocument(
-                any(), eq(collection), eq(user), eq(DocumentType.SOURCE),
-                eq("source.pdf"), eq("application/pdf"), eq(7L)))
-                .thenReturn(persisted);
-        when(documentPersistenceService.markDocumentAsUploaded(
-                eq(persisted.getId()), anyString()))
-                .thenReturn(persisted);
-        when(minioClient.putObject(any(PutObjectArgs.class))).thenReturn(null);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        doThrow(readOnly()).when(currentUserService).requireProjectWriteAccess(user, project);
 
-        var response = service().uploadDocument(
-                null, collection.getId(), null, file, DocumentType.SOURCE);
-
-        assertThat(response.sourceCategoryId()).isNull();
-        assertThat(response.sourceCategoryName()).isNull();
+        assertThatThrownBy(() -> service().attachFileToDocument(document.getId(), file))
+                .hasMessageContaining("Project is read-only.");
+        verify(documentPersistenceService, never()).markDocumentAsUploaded(any(), anyString());
     }
 
     @Test
-    void uploadSourceRejectsInactiveCategory() {
+    void submittedProjectLocksLinkedDocumentMutationForNonAdmin() {
         User user = user();
+        Project project = project();
+        project.setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
         com.evidencepilot.model.Collection collection = collection();
-        SourceCategory category = category(false);
-        MockMultipartFile file = new MockMultipartFile(
-                "file", "source.pdf", "application/pdf", "content".getBytes());
+        Document source = document(null);
+        source.setCollection(collection);
+        com.evidencepilot.model.ProjectDocument link = new com.evidencepilot.model.ProjectDocument();
+        link.setProject(project);
+        link.setDocument(source);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
-        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
-        when(sourceCategoryRepository.findByIdAndActiveTrue(category.getId())).thenReturn(Optional.empty());
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(projectDocumentRepository.findByDocumentId(source.getId())).thenReturn(List.of(link));
 
-        assertThatThrownBy(() -> service().uploadDocument(
-                null, collection.getId(), category.getId(), file, DocumentType.SOURCE))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Source category not found");
+        assertThatThrownBy(() -> service().deleteDocument(source.getId()))
+                .hasMessageContaining("Project is locked and cannot be modified.");
+        verify(documentRepository, never()).save(source);
     }
 
     @Test
-    void getSourcesByCollectionChecksCollectionAccessAndFiltersCategory() {
-        User user = user();
-        com.evidencepilot.model.Collection collection = collection();
-        SourceCategory category = category(true);
-        Document matched = document(null);
-        matched.setDocType(DocumentType.SOURCE);
-        matched.setCollection(collection);
-        matched.setSourceCategory(category);
-        Document otherCategory = document(null);
-        otherCategory.setDocType(DocumentType.SOURCE);
-        otherCategory.setCollection(collection);
-        otherCategory.setSourceCategory(category(true));
+    void submittedProjectAllowsLinkedDocumentMutationForAdmin() {
+        User admin = user();
+        Project project = project();
+        project.setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
+        Document source = document(null);
+        com.evidencepilot.model.ProjectDocument link = new com.evidencepilot.model.ProjectDocument();
+        link.setProject(project);
+        link.setDocument(source);
 
-        when(currentUserService.requireCurrentUser()).thenReturn(user);
-        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
-        when(documentRepository.findByCollectionId(collection.getId())).thenReturn(List.of(matched, otherCategory));
+        when(currentUserService.requireCurrentUser()).thenReturn(admin);
+        when(currentUserService.isAdmin(admin)).thenReturn(true);
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(projectDocumentRepository.findByDocumentId(source.getId())).thenReturn(List.of(link));
 
-        var results = service().getSourcesByCollection(collection.getId(), category.getId());
+        service().deleteDocument(source.getId());
 
-        assertThat(results).hasSize(1);
-        assertThat(results.get(0).id()).isEqualTo(matched.getId());
-        verify(currentUserService).requireCollectionAccess(user, collection);
+        verify(documentRepository).save(source);
     }
 
     @Test
@@ -415,13 +402,18 @@ class DocumentServiceImplAccessTest {
                 documentTextRepository,
                 projectRepository,
                 collectionRepository,
-                sourceCategoryRepository,
+                projectDocumentRepository,
+                claimEvidenceMappingRepository,
                 currentUserService,
                 documentPersistenceService,
                 documentMapper,
                 minioClient);
         ReflectionTestUtils.setField(service, "bucketName", "test-bucket");
         return service;
+    }
+
+    private ResponseStatusException readOnly() {
+        return new ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT, "Project is read-only.");
     }
 
     private User user() {
@@ -442,14 +434,6 @@ class DocumentServiceImplAccessTest {
         collection.setId(UUID.randomUUID());
         collection.setActive(true);
         return collection;
-    }
-
-    private SourceCategory category(boolean active) {
-        SourceCategory category = new SourceCategory();
-        category.setId(UUID.randomUUID());
-        category.setName(active ? "Journal" : "Inactive");
-        category.setActive(active);
-        return category;
     }
 
     private Document document(Project project) {
