@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { useTheme } from '../../context/ThemeContext';
 
 export default function Navbar({ t }) {
   const { isAuthenticated, role, logout } = useAuth();
   const { toggleLanguage } = useLanguage();
+  const { theme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const wsLink = !isAuthenticated ? '/login'
@@ -30,6 +32,13 @@ export default function Navbar({ t }) {
           <Link to="/about" className="text-gray-600 hover:text-[#1e3a8a] font-medium transition">{t.nav.about}</Link>
           <Link to="/terms" className="text-gray-600 hover:text-[#1e3a8a] font-medium transition">{t.nav.terms}</Link>
           <Link to="/privacy" className="text-gray-600 hover:text-[#1e3a8a] font-medium transition">{t.nav.privacy}</Link>
+          <button onClick={toggleTheme} className="p-1.5 text-gray-400 hover:text-[#1e3a8a] transition rounded-lg" title={theme === 'light' ? 'Dark mode' : 'Light mode'}>
+            {theme === 'light' ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+            )}
+          </button>
           <button onClick={toggleLanguage} className="text-xs font-bold text-gray-400 hover:text-[#1e3a8a] transition px-2 py-1 border border-gray-200 rounded-lg">{t.nav.lang}</button>
           {isAuthenticated ? (
             <>
@@ -58,6 +67,7 @@ export default function Navbar({ t }) {
             <Link to="/terms" className="text-gray-600 font-medium" onClick={() => setMenuOpen(false)}>{t.nav.terms}</Link>
             <Link to="/privacy" className="text-gray-600 font-medium" onClick={() => setMenuOpen(false)}>{t.nav.privacy}</Link>
           </div>
+          <button onClick={() => { toggleTheme(); setMenuOpen(false); }} className="block text-xs font-bold text-gray-400 border border-gray-200 rounded-lg px-3 py-1.5">{theme === 'light' ? '🌙' : '☀️'}</button>
           <button onClick={() => { toggleLanguage(); setMenuOpen(false); }} className="block text-xs font-bold text-gray-400 border border-gray-200 rounded-lg px-3 py-1.5">{t.nav.lang}</button>
           {isAuthenticated ? (
             <>

@@ -1,12 +1,45 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import { EditorView, basicSetup } from 'codemirror';
 import { EditorState } from '@codemirror/state';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { latex } from 'codemirror-lang-latex';
 
-export default function LatexEditor({ content, onChange, readOnly = false, fontSize = 14 }) {
+const lightTheme = EditorView.theme({
+  '&': { backgroundColor: '#ffffff' },
+  '.cm-scroller': { fontFamily: '"JetBrains Mono", "Fira Code", monospace' },
+});
+
+const LatexEditor = forwardRef(function LatexEditor({ content, onChange, readOnly = false, fontSize = 14 }, ref) {
   const containerRef = useRef(null);
   const viewRef = useRef(null);
+  const [isDark, setIsDark] = useState(() =>
+    typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+  );
+
+  useImperativeHandle(ref, () => ({
+    getSelection: () => {
+      const v = viewRef.current;
+      if (!v) return '';
+      return v.state.sliceDoc(v.state.selection.main.from, v.state.selection.main.to);
+    },
+    insertAtCursor: (text, cursorOffset) => {
+      const v = viewRef.current;
+      if (!v) return;
+      const from = v.state.selection.main.from;
+      v.dispatch({
+        changes: { from, to: v.state.selection.main.to, insert: text },
+        selection: { anchor: cursorOffset != null ? from + cursorOffset : from + text.length },
+      });
+    },
+  }));
+
+  useEffect(() => {
+    const el = document.documentElement;
+    const cb = () => setIsDark(el.classList.contains('dark'));
+    const mo = new MutationObserver(cb);
+    mo.observe(el, { attributes: true, attributeFilter: ['class'] });
+    return () => mo.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -23,12 +56,13 @@ export default function LatexEditor({ content, onChange, readOnly = false, fontS
       extensions: [
         basicSetup,
         latex(),
-        oneDark,
+        isDark ? oneDark : lightTheme,
         EditorView.editable.of(!readOnly),
         updateListener,
         EditorView.theme({
-          '&': { fontSize: `${fontSize}px` },
+          '&': { fontSize: `${fontSize}px`, backgroundColor: isDark ? undefined : '#ffffff' },
           '.cm-scroller': { fontFamily: '"JetBrains Mono", "Fira Code", monospace' },
+          '.cm-activeLine': { backgroundColor: isDark ? '#1e293b' : '#f0f4ff' },
         }),
       ],
     });
@@ -36,7 +70,7 @@ export default function LatexEditor({ content, onChange, readOnly = false, fontS
     viewRef.current = new EditorView({ state, parent: containerRef.current });
 
     return () => { if (viewRef.current) viewRef.current.destroy(); };
-  }, [readOnly, fontSize]);
+  }, [readOnly, fontSize, isDark]);
 
   useEffect(() => {
     if (viewRef.current && content !== undefined) {
@@ -50,4 +84,6 @@ export default function LatexEditor({ content, onChange, readOnly = false, fontS
   }, [content]);
 
   return <div ref={containerRef} className="h-full overflow-auto" />;
-}
+});
+
+export default LatexEditor;

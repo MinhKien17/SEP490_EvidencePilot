@@ -1,6 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { useTheme } from '../context/ThemeContext';
 import { instructorText } from '../locales';
 
 export default function AppHeader() {
@@ -8,6 +9,7 @@ export default function AppHeader() {
   const location = useLocation();
   const { role, logout } = useAuth();
   const { language, toggleLanguage } = useLanguage();
+  const { theme, toggleTheme } = useTheme();
   const t = instructorText[language];
 
   const roleLinks = role === 'INSTRUCTOR'
@@ -22,7 +24,7 @@ export default function AppHeader() {
       : [{ label: 'Projects', path: '/student/projects' }];
 
   return (
-    <header className="bg-[#1e3a8a] text-white px-6 h-14 flex items-center justify-between shadow-sm shrink-0">
+    <header className="bg-[#1e3a8a] dark:bg-(--accent-bar) text-white px-6 h-14 flex items-center justify-between shadow-sm shrink-0">
       <div className="flex items-center gap-3 min-w-0">
         <div className="w-7 h-7 bg-indigo-500 rounded-md text-xs flex items-center justify-center font-bold shrink-0">EP</div>
         <span className="font-bold text-sm tracking-wider truncate">Evidence Pilot</span>
@@ -42,6 +44,13 @@ export default function AppHeader() {
         </nav>
       </div>
       <div className="flex items-center gap-3 shrink-0">
+        <button onClick={toggleTheme} className="p-1.5 text-blue-200 hover:text-white transition rounded hover:bg-blue-800/30" title={theme === 'light' ? 'Dark mode' : 'Light mode'}>
+          {theme === 'light' ? (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+          )}
+        </button>
         <button onClick={toggleLanguage}
           className="text-[11px] font-bold text-blue-200 border border-blue-400/30 px-2 py-1 rounded hover:bg-blue-800/30 transition">
           {language === 'vi' ? 'EN' : 'VI'}

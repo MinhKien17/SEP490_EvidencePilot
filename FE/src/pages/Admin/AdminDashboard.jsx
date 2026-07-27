@@ -1196,31 +1196,31 @@ function SettingsSection({ lang, api }) {
         </form>
 
         <div data-guide="settings-categories" className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{lang.collectionCategories}</span>
-          <button onClick={() => { setCatForm({ id: null, name: '', description: '' }); setShowCatForm(true); }} className="px-2.5 py-1 text-xs font-bold bg-[#1e3a8a] text-white rounded-lg hover:bg-[#1e40af] transition">{lang.addCategory}</button>
-        </div>
-        {catsLoading ? (
-          <div className="animate-pulse space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-8 bg-gray-200 rounded w-full" />)}</div>
-        ) : cats.length === 0 ? (
-          <div className="text-sm text-gray-400 text-center py-4">{lang.noCategories}</div>
-        ) : (
-          <div className="divide-y divide-gray-100 text-sm max-h-64 overflow-y-auto">
-            {cats.map(c => (
-              <div key={c.id} className="flex items-center justify-between py-2.5">
-                <div>
-                  <span className="font-semibold text-gray-900">{c.name}</span>
-                  {c.description && <span className="text-gray-400 ml-2 text-xs">{c.description}</span>}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => { setCatForm({ id: c.id, name: c.name, description: c.description || '' }); setShowCatForm(true); }} className="px-2 py-1 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition">{lang.editCategory}</button>
-                  <button onClick={() => doCatDelete(c.id)} className="px-2 py-1 text-xs text-gray-400 border border-gray-200 rounded-lg hover:border-rose-200 hover:text-rose-600 transition">{lang.delete}</button>
-                </div>
-              </div>
-            ))}
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{lang.collectionCategories}</span>
+            <button onClick={() => { setCatForm({ id: null, name: '', description: '' }); setShowCatForm(true); }} className="px-2.5 py-1 text-xs font-bold bg-[#1e3a8a] text-white rounded-lg hover:bg-[#1e40af] transition">{lang.addCategory}</button>
           </div>
-        )}
-      </div>
+          {catsLoading ? (
+            <div className="animate-pulse space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-8 bg-gray-200 rounded w-full" />)}</div>
+          ) : cats.length === 0 ? (
+            <div className="text-sm text-gray-400 text-center py-4">{lang.noCategories}</div>
+          ) : (
+            <div className="divide-y divide-gray-100 text-sm max-h-64 overflow-y-auto">
+              {cats.map(c => (
+                <div key={c.id} className="flex items-center justify-between py-2.5">
+                  <div>
+                    <span className="font-semibold text-gray-900">{c.name}</span>
+                    {c.description && <span className="text-gray-400 ml-2 text-xs">{c.description}</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => { setCatForm({ id: c.id, name: c.name, description: c.description || '' }); setShowCatForm(true); }} className="px-2 py-1 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition">{lang.editCategory}</button>
+                    <button onClick={() => doCatDelete(c.id)} className="px-2 py-1 text-xs text-gray-400 border border-gray-200 rounded-lg hover:border-rose-200 hover:text-rose-600 transition">{lang.delete}</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div data-guide="settings-config" className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
@@ -1454,9 +1454,6 @@ export default function AdminDashboard() {
         {/* Footer */}
         <footer data-tour="footer" className="bg-white border-t border-gray-200 px-6 py-3 flex items-center justify-between text-[11px] text-gray-400 shrink-0">
           <span>{L.copyright}</span>
-          <button onClick={toggleLanguage} className="font-bold text-gray-500 hover:text-[#1e3a8a] transition">
-            {L.langSwitch}
-          </button>
         </footer>
       </div>
     </div>

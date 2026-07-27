@@ -93,6 +93,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
+import { ThemeProvider } from './context/ThemeContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import ScrollToTop from './components/ScrollToTop';
 
@@ -123,6 +124,7 @@ function App() {
       <ScrollToTop />
       <AuthProvider>
         <LanguageProvider>
+          <ThemeProvider>
           <Routes>
             {/* Public Entry Nodes */}
             <Route path="/" element={<Home />} />
@@ -155,6 +157,7 @@ function App() {
             } />
             
           </Routes>
+          </ThemeProvider>
         </LanguageProvider>
       </AuthProvider>
     </BrowserRouter>
