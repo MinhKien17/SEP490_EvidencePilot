@@ -5,4 +5,5 @@ import java.util.UUID;
 
 public interface TraceabilityExportService {
     TraceabilityExportResponse exportTraceability(UUID projectId);
+    byte[] exportTraceabilityCsv(UUID projectId);
 }

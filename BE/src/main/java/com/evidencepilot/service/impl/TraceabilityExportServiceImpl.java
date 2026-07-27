@@ -28,6 +28,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -193,6 +194,49 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
                 gaps.weak(),
                 gaps.contradicted(),
                 gaps.pendingSuggestions());
+    }
+
+    @Override
+    public byte[] exportTraceabilityCsv(UUID projectId) {
+        TraceabilityExportResponse data = exportTraceability(projectId);
+        StringBuilder csv = new StringBuilder();
+        csv.append('\uFEFF'); // BOM for Excel
+        csv.append("Claim ID,Claim Content,Verdict,Confidence,AI Score,Unsupported,Weak,Contradicted,Matched Sources,Feedback Status\n");
+        for (var claim : data.claims()) {
+            String verdict = "MISSING";
+            String confidence = "";
+            if (claim.graphData() != null && claim.graphData().containsKey("verdict")) {
+                verdict = String.valueOf(claim.graphData().get("verdict"));
+            }
+            if (claim.graphData() != null && claim.graphData().containsKey("confidence")) {
+                Object c = claim.graphData().get("confidence");
+                confidence = c != null ? String.valueOf(c) : "";
+            }
+            String matchedSources = claim.matches().stream()
+                    .map(m -> m.filename())
+                    .distinct()
+                    .collect(Collectors.joining("; "));
+            csv.append(escCsv(claim.id().toString())).append(',')
+               .append(escCsv(claim.content())).append(',')
+               .append(escCsv(verdict)).append(',')
+               .append(escCsv(confidence)).append(',')
+               .append(claim.aiConfidenceScore() != null ? claim.aiConfidenceScore() : "").append(',')
+               .append(claim.unsupported()).append(',')
+               .append(claim.weak()).append(',')
+               .append(claim.contradicted()).append(',')
+               .append(escCsv(matchedSources)).append(',')
+               .append(escCsv(data.feedback().isEmpty() ? "NONE" : "PRESENT"))
+               .append('\n');
+        }
+        return csv.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static String escCsv(String s) {
+        if (s == null) return "";
+        if (s.contains(",") || s.contains("\"") || s.contains("\n")) {
+            return "\"" + s.replace("\"", "\"\"") + "\"";
+        }
+        return s;
     }
 
     private String missingIfBlank(String value) {

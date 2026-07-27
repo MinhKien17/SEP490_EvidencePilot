@@ -287,7 +287,27 @@ CREATE TABLE system_notifications (
 );
 
 -- ==========================================
--- 9. AUDIT TRAIL
+-- 9. EXPORT JOBS
+-- ==========================================
+CREATE TABLE export_jobs (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    project_id BINARY(16) NOT NULL,
+    user_id BINARY(16) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    format VARCHAR(20) NOT NULL DEFAULT 'TEX',
+    download_url VARCHAR(1024),
+    error_message TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_export_project (project_id),
+    INDEX idx_export_user (user_id),
+    INDEX idx_export_status (status),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- ==========================================
+-- 10. AUDIT TRAIL
 -- ==========================================
 CREATE TABLE audit_logs (
     id BINARY(16) NOT NULL PRIMARY KEY,

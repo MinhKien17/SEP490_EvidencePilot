@@ -66,6 +66,23 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     }
 
     @Override
+    public List<PaperSectionResponse> getPaperSectionsByUser(UUID documentId, UUID userId) {
+        requireDocumentAccess(documentId);
+        return paperSectionRepository
+                .findByDocumentIdAndAssignedUserIdOrderBySectionOrderAsc(documentId, userId)
+                .stream()
+                .map(projectMapper::toPaperSectionResponse)
+                .toList();
+    }
+
+    @Override
+    public PaperSectionResponse getSectionHistory(UUID documentId, UUID sectionId) {
+        requireDocumentAccess(documentId);
+        PaperSection section = requireSectionInDocument(sectionId, documentId);
+        return projectMapper.toPaperSectionResponse(section);
+    }
+
+    @Override
     @Transactional
     public List<PaperSectionResponse> detectAndPersistSections(UUID documentId) {
         Document document = documentRepository.findById(documentId)
@@ -189,7 +206,9 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         if (content != null) {
             section.setPreviousContentTex(section.getContentTex());
             section.setContentTex(content);
-            section.setVersion(section.getVersion() != null ? section.getVersion() + 1 : 2);
+            // ponytail: cap at version 2 per requirement, no further increment
+            int next = section.getVersion() != null ? section.getVersion() + 1 : 1;
+            section.setVersion(Math.min(next, 2));
         }
         section.setUpdatedAt(LocalDateTime.now());
         return projectMapper.toPaperSectionResponse(paperSectionRepository.save(section));

@@ -11,6 +11,10 @@ public interface PaperProcessingService {
 
     List<PaperSectionResponse> getPaperSections(UUID documentId);
 
+    List<PaperSectionResponse> getPaperSectionsByUser(UUID documentId, UUID userId);
+
+    PaperSectionResponse getSectionHistory(UUID documentId, UUID sectionId);
+
     List<PaperSectionResponse> detectAndPersistSections(UUID documentId);
 
     Map<String, Object> review(UUID documentId, String targetStyle);

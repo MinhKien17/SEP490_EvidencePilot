@@ -1,5 +1,6 @@
 package com.evidencepilot.controller;
 
+import com.evidencepilot.dto.response.CitationValidationResponse;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.PaperSectionResponse;
 import com.evidencepilot.dto.response.PaperValidationResponse;
@@ -10,6 +11,7 @@ import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.service.CitationValidationService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.PaperProcessingService;
@@ -47,6 +49,7 @@ public class PaperController {
 
     private final DocumentService documentService;
     private final PaperProcessingService paperProcessingService;
+    private final CitationValidationService citationValidationService;
     private final ProjectRepository projectRepository;
     private final DocumentRepository documentRepository;
     private final CurrentUserService currentUserService;
@@ -107,8 +110,27 @@ public class PaperController {
     })
     @GetMapping("/papers/{id}/sections")
     public List<PaperSectionResponse> sections(
-            @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
+            @Parameter(description = "Paper document UUID") @PathVariable UUID id,
+            @Parameter(description = "Filter by assigned user") @RequestParam(required = false) UUID assignedUserId) {
+        if (assignedUserId != null) {
+            return paperProcessingService.getPaperSectionsByUser(id, assignedUserId);
+        }
         return paperProcessingService.getPaperSections(id);
+    }
+
+    @Operation(summary = "Get section version history",
+            description = "Returns a single section with its version and previousContentTex for history display.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Section history returned"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Section not found")
+    })
+    @GetMapping("/papers/{documentId}/sections/{sectionId}/history")
+    public PaperSectionResponse sectionHistory(
+            @Parameter(description = "Paper document UUID") @PathVariable UUID documentId,
+            @Parameter(description = "Section UUID") @PathVariable UUID sectionId) {
+        return paperProcessingService.getSectionHistory(documentId, sectionId);
     }
 
     @Operation(summary = "Validate paper against standard",
@@ -124,6 +146,21 @@ public class PaperController {
     public PaperValidationResponse validate(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
         return paperProcessingService.validateSections(id);
+    }
+
+    @Operation(summary = "Deep citation scan",
+            description = "Parses \\cite{} and \\bibitem{} from all sections, checks key existence "
+                    + "against project sources, and validates citation format against PaperStandard.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Citation validation result"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Paper not found")
+    })
+    @GetMapping("/papers/{id}/validate-citations")
+    public CitationValidationResponse validateCitations(
+            @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
+        return citationValidationService.validateCitations(id);
     }
 
     @Operation(summary = "Update a paper section",
@@ -213,7 +250,7 @@ public class PaperController {
             @ApiResponse(responseCode = "403", description = "Access denied"),
             @ApiResponse(responseCode = "404", description = "Paper not found")
     })
-    @PostMapping("/papers/{id}/reviews")
+    @PostMapping("/papers/{id}/review")
     public Map<String, Object> review(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id,
             @Parameter(description = "Target output style (optional)") @RequestParam(required = false) String targetStyle) {

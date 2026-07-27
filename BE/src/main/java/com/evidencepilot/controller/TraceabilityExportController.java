@@ -8,6 +8,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -36,5 +39,17 @@ public class TraceabilityExportController {
     public TraceabilityExportResponse export(
             @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
         return traceabilityExportService.exportTraceability(projectId);
+    }
+
+    @Operation(summary = "Export traceability matrix as CSV",
+            description = "Generates a CSV download of the traceability matrix for a project.")
+    @GetMapping("/{projectId}/traceability/csv")
+    public ResponseEntity<byte[]> exportCsv(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
+        byte[] csv = traceabilityExportService.exportTraceabilityCsv(projectId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"traceability.csv\"")
+                .contentType(MediaType.parseMediaType("text/csv;charset=utf-8"))
+                .body(csv);
     }
 }
