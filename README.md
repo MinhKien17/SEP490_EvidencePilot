@@ -145,7 +145,7 @@ Ownership rules used by `CurrentUserService`:
 | `GET` | `/api/papers` | Bearer token | Admin gets all active papers; non-admin gets papers from own projects. |
 | `GET` | `/api/papers/{id}` | Bearer token | Returns one active paper after project access check. |
 | `GET` | `/api/papers/{id}/sections` | Bearer token | Lists detected paper sections. |
-| `POST` | `/api/papers/{id}/reviews?targetStyle=...` | Optional target style | Runs AI paper review. |
+| `POST` | `/api/papers/{id}/review?targetStyle=...` | Optional target style | Runs AI paper review. |
 | `DELETE` | `/api/papers/{id}` | Bearer token | Soft-deletes paper. |
 | `POST` | `/api/papers` | Multipart `file`, `projectId` | Stores paper, queues extraction, and detects sections. |
 
@@ -293,7 +293,7 @@ sequenceDiagram
     participant MySQL
     participant Qdrant
 
-    Client->>JavaAPI: Upload PDF or DOCX
+    Client->>JavaAPI: Upload PDF, DOCX, or Markdown
     JavaAPI->>MySQL: Save Document as PENDING_UPLOAD
     JavaAPI->>MinIO: Store raw document
     JavaAPI->>MySQL: Set UPLOADED, then commit QUEUED
@@ -303,9 +303,9 @@ sequenceDiagram
     JavaWorker->>MySQL: Set PROCESSING
     JavaWorker->>MinIO: Create presigned raw-file URL
     JavaWorker->>PythonAI: POST /extract with presigned URL
-    PythonAI-->>JavaWorker: Markdown
+    PythonAI-->>JavaWorker: Markdown + structured blocks
     JavaWorker->>MinIO: Store processed Markdown checkpoint
-    JavaWorker->>JavaWorker: Chunk Markdown and create sparse vectors
+    JavaWorker->>JavaWorker: Chunk structured blocks with DocumentChunker
     JavaWorker->>PythonAI: POST /ai/embeddings/batch
     PythonAI-->>JavaWorker: Dense vectors
     JavaWorker->>MySQL: Save DocumentText and DocumentChunk rows
@@ -332,7 +332,7 @@ flowchart TD
     Access --> DocumentService["DocumentService.uploadDocument(..., PAPER)"]
     DocumentService --> Queue["Queue extraction"]
     DocumentService --> Sections["PaperProcessingService.detectAndPersistSections"]
-    Sections --> Review["POST /api/papers/{id}/reviews"]
+    Sections --> Review["POST /api/papers/{id}/review"]
     Review --> AI["PaperProcessingService.review"]
     AI --> Response["review response"]
 ```
@@ -342,7 +342,7 @@ Explanation:
 - Paper upload is project-scoped and requires project access.
 - Paper upload uses the shared `DocumentService` path with `DocumentType.PAPER`.
 - `PaperProcessingService.detectAndPersistSections` runs after upload.
-- Review is exposed as `POST /api/papers/{id}/reviews` and accepts optional `targetStyle`.
+- Review is exposed as `POST /api/papers/{id}/review` and accepts optional `targetStyle`.
 
 ## 7. Claim CRUD, Suggestions, and Evaluation Flow
 

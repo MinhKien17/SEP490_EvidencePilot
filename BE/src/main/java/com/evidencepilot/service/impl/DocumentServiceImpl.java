@@ -633,15 +633,15 @@ public class DocumentServiceImpl implements DocumentService {
             case ".pdf" -> genericType || contentType.equals("application/pdf");
             case ".docx" -> genericType || contentType.equals(
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-            case ".md", ".markdown" -> genericType || contentType.startsWith("text/markdown");
-            case ".tex" -> genericType || contentType.startsWith("text/")
-                    || contentType.contains("latex") || contentType.equals("application/x-tex");
+            case ".md", ".markdown" -> genericType
+                    || contentType.startsWith("text/markdown")
+                    || contentType.startsWith("text/plain");
             default -> false;
         };
         if (!supported) {
             throw new ResponseStatusException(
                     HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-                    "Only PDF, DOCX, Markdown, and TeX files are supported");
+                    "Only PDF, DOCX, and Markdown files are supported");
         }
     }
 }

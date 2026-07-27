@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -80,7 +81,10 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
                 .map(sparseVectorGenerator::generate)
                 .toList();
         List<DocumentChunk> savedChunks = documentPersistenceService.saveExtraction(
-                document.getId(), "mineru", extracted.markdown(), chunks);
+                document.getId(),
+                extractionMethod(document.getOriginalFilename()),
+                extracted.markdown(),
+                chunks);
         if (savedChunks.size() != chunks.size()) {
             throw new DocumentExtractionException("Failed to persist every document chunk");
         }
@@ -102,6 +106,20 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
         }
         documentPersistenceService.markReady(document.getId(), payloadChunks.size());
         log.info("Completed extraction for document {} with {} chunks", document.getId(), payloadChunks.size());
+    }
+
+    private static String extractionMethod(String filename) {
+        String normalized = filename == null ? "" : filename.toLowerCase(Locale.ROOT);
+        if (normalized.endsWith(".pdf")) {
+            return "mineru";
+        }
+        if (normalized.endsWith(".docx")) {
+            return "python-docx";
+        }
+        if (normalized.endsWith(".md") || normalized.endsWith(".markdown")) {
+            return "markdown";
+        }
+        throw new DocumentExtractionException("Unsupported document filename: " + filename);
     }
 
     private AiModelClient.ExtractedDocument readCheckpoint(String checkpointKey) {

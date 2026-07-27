@@ -1,5 +1,6 @@
 package com.evidencepilot.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.evidencepilot.dto.request.AdminUserCreateRequest;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.AccountStatus;
@@ -9,6 +10,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Propagation;
@@ -22,7 +25,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
 
 @DataJpaTest
-@Import(AdminService.class)
+@Import({AdminService.class, AdminServicePersistenceIntegrationTest.JsonConfig.class})
 class AdminServicePersistenceIntegrationTest {
 
     @jakarta.annotation.Resource AdminService service;
@@ -79,5 +82,13 @@ class AdminServicePersistenceIntegrationTest {
         user.setEmailVerified(true);
         user.setCreatedAt(java.time.LocalDateTime.now());
         users.save(user);
+    }
+
+    @TestConfiguration
+    static class JsonConfig {
+        @Bean
+        ObjectMapper objectMapper() {
+            return new ObjectMapper();
+        }
     }
 }

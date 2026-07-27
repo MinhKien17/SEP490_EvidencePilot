@@ -91,7 +91,7 @@ class PaperControllerTest {
     @Test
     void review_bindsTargetStyle() throws Exception {
         UUID id = UUID.randomUUID();
-        mockMvc.perform(post("/api/papers/{id}/reviews", id).param("targetStyle", "APA"))
+        mockMvc.perform(post("/api/papers/{id}/review", id).param("targetStyle", "APA"))
                 .andExpect(status().isOk());
         verify(paperService).review(id, "APA");
     }

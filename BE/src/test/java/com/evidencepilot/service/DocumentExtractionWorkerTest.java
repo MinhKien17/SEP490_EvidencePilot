@@ -12,6 +12,8 @@ import com.evidencepilot.service.impl.DocumentPersistenceService;
 import com.evidencepilot.service.impl.SparseVectorGenerator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
@@ -187,6 +189,46 @@ class DocumentExtractionWorkerTest {
         completion.verify(qdrantService).upsertVectors(any(ExtractionResultPayload.class));
         completion.verify(paperProcessingService).detectAndPersistSections(documentId);
         completion.verify(persistence).markReady(documentId, 1);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "source.docx, python-docx",
+            "source.md, markdown",
+            "source.markdown, markdown"
+    })
+    void processPersistsExtractionMethodForNonPdfFormats(
+            String filename,
+            String extractionMethod) {
+        UUID documentId = UUID.randomUUID();
+        Document document = document(documentId);
+        document.setOriginalFilename(filename);
+        String markdown = "Extracted source.";
+        String checkpointKey = "documents/processed/" + documentId + "/extraction.json";
+        List<Float> vector = Collections.nCopies(768, 0.1f);
+        DocumentChunk chunk = chunk(document, markdown);
+
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(documentObjectStorage.exists(checkpointKey)).thenReturn(false);
+        when(aiModelClient.extractDocument(eq(filename), anyString()))
+                .thenReturn(extracted(markdown));
+        when(aiModelClient.generateEmbeddings(List.of(markdown))).thenReturn(List.of(vector));
+        when(sparseVectorGenerator.generate(markdown))
+                .thenReturn(new SparseVector(List.of(), List.of()));
+        when(persistence.saveExtraction(
+                documentId,
+                extractionMethod,
+                markdown,
+                List.of(markdown)))
+                .thenReturn(List.of(chunk));
+
+        worker().process(documentId);
+
+        verify(persistence).saveExtraction(
+                documentId,
+                extractionMethod,
+                markdown,
+                List.of(markdown));
     }
 
     @Test
