@@ -12,6 +12,8 @@ import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.DocumentExtractionWorker;
 import com.evidencepilot.service.DocumentObjectStorage;
+import com.evidencepilot.service.ExtractionBundle;
+import com.evidencepilot.service.MediaAssetService;
 import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.QdrantService;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +22,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -43,6 +47,7 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
     private final DocumentPersistenceService documentPersistenceService;
     private final ObjectMapper objectMapper;
     private final PaperProcessingService paperProcessingService;
+    private final MediaAssetService mediaAssetService;
 
     @Override
     public void process(UUID documentId) {
@@ -63,13 +68,32 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
         if (extracted == null) {
             String downloadUrl = baseUrl + "/api/documents/" + document.getId()
                     + "/download?token=" + document.getDownloadToken();
-            extracted = aiModelClient.extractDocument(
-                    document.getOriginalFilename(),
-                    downloadUrl);
-            if (!extracted.valid()) {
-                throw new DocumentExtractionException("Extraction returned an invalid document");
+            try (ExtractionBundle bundle = aiModelClient.extractDocument(
+                    document.getOriginalFilename(), downloadUrl)) {
+                extracted = bundle.document();
+                if (!extracted.valid()) {
+                    throw new DocumentExtractionException("Extraction returned an invalid document");
+                }
+                if (document.getProject() != null
+                        && document.getDocType() == DocumentType.SOURCE
+                        && document.getOriginalFilename() != null
+                        && document.getOriginalFilename().toLowerCase(Locale.ROOT).endsWith(".pdf")) {
+                    for (String image : extracted.images()) {
+                        try (InputStream content = bundle.openImage(image)) {
+                            mediaAssetService.importExtractedImage(
+                                    document,
+                                    image,
+                                    content,
+                                    bundle.imageSize(image),
+                                    bundle.imageMediaType(image));
+                        } catch (IOException e) {
+                            throw new DocumentExtractionException(
+                                    "Failed to read extracted image " + image + ": " + e.getMessage());
+                        }
+                    }
+                }
+                writeCheckpoint(checkpointKey, extracted);
             }
-            writeCheckpoint(checkpointKey, extracted);
         }
 
         List<String> chunks = DocumentChunker.chunk(extracted.blocks());

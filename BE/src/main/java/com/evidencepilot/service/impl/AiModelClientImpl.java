@@ -1,18 +1,27 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.service.AiModelClient;
+import com.evidencepilot.service.ExtractionBundle;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
 @Slf4j
 @Component
 public class AiModelClientImpl implements AiModelClient {
+
+    private static final MediaType APPLICATION_ZIP = MediaType.valueOf("application/zip");
 
     private final RestClient restClient;
     private final String baseUrl;
@@ -46,27 +55,67 @@ public class AiModelClientImpl implements AiModelClient {
     }
 
     @Override
-    public ExtractedDocument extractDocument(String filename, String downloadUrl) {
-        ExtractedDocument response = call("/extract", () -> restClient.post()
-                .uri(baseUrl + "/extract")
-                .body(Map.of(
-                        "filename", stringValue(filename, "document"),
-                        "download_url", downloadUrl))
-                .retrieve()
-                .body(ExtractedDocument.class));
+    public ExtractionBundle extractDocument(String filename, String downloadUrl) {
+        Path archivePath;
+        try {
+            archivePath = Files.createTempFile("evidencepilot-extraction-", ".zip");
+        } catch (IOException e) {
+            throw new AiApiException("/extract", "could not create temporary archive", e);
+        }
 
-        if (response == null || response.markdown() == null || response.markdown().isBlank()) {
-            throw new AiApiException("/extract", "returned null or empty markdown", null);
-        }
-        if (response.blocks() == null || response.blocks().isEmpty()) {
-            throw new AiApiException("/extract", "returned null or empty blocks", null);
-        }
-        for (ExtractionBlock block : response.blocks()) {
-            if (block == null || !block.valid()) {
-                throw new AiApiException("/extract", "returned invalid blocks", null);
+        boolean returned = false;
+        try {
+            ExtractionBundle bundle = call("/extract", () -> restClient.post()
+                    .uri(baseUrl + "/extract")
+                    .accept(APPLICATION_ZIP)
+                    .body(Map.of(
+                            "filename", stringValue(filename, "document"),
+                            "download_url", downloadUrl))
+                    .exchange((request, response) -> {
+                        if (!response.getStatusCode().is2xxSuccessful()) {
+                            throw new AiApiException("/extract", response.getStatusCode().value());
+                        }
+                        if (!APPLICATION_ZIP.equalsTypeAndSubtype(response.getHeaders().getContentType())) {
+                            throw new AiApiException("/extract", "did not return application/zip", null);
+                        }
+                        try (InputStream input = response.getBody();
+                                OutputStream output = Files.newOutputStream(archivePath)) {
+                            if (input == null) {
+                                throw new IOException("Extraction bundle response body is empty");
+                            }
+                            copyWithLimit(input, output, 100L * 1024 * 1024);
+                        } catch (IOException e) {
+                            throw new AiApiException("/extract", "could not download extraction bundle", e);
+                        }
+                        try {
+                            return ExtractionBundle.open(archivePath);
+                        } catch (IOException e) {
+                            throw new AiApiException("/extract", "returned an invalid extraction bundle", e);
+                        }
+                    }));
+            returned = true;
+            return bundle;
+        } finally {
+            if (!returned) {
+                try {
+                    Files.deleteIfExists(archivePath);
+                } catch (IOException ignored) {
+                }
             }
         }
-        return new ExtractedDocument(response.markdown(), List.copyOf(response.blocks()));
+    }
+
+    public static void copyWithLimit(InputStream input, OutputStream output, long maxBytes) throws IOException {
+        byte[] buffer = new byte[64 * 1024];
+        long total = 0;
+        int read;
+        while ((read = input.read(buffer)) >= 0) {
+            total += read;
+            if (total > maxBytes) {
+                throw new IOException("Extraction bundle exceeds the 100 MiB limit");
+            }
+            output.write(buffer, 0, read);
+        }
     }
 
     @Override

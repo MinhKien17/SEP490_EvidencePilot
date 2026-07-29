@@ -7,7 +7,14 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -51,44 +58,42 @@ class AiModelClientTest {
     }
 
     @Test
-    void extractDocumentPostsPresignedUrlToExtractEndpoint() {
+    void extractDocumentStreamsExtractionZipAndDeletesItWhenClosed() throws IOException {
         RestClient.Builder builder = RestClient.builder()
                 .defaultHeader("ngrok-skip-browser-warning", "true");
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(requestTo("http://ai.test/extract"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("ngrok-skip-browser-warning", "true"))
+                .andExpect(header("Accept", "application/zip"))
                 .andExpect(content().json("""
                         {
                           "filename":"source.pdf",
                           "download_url":"https://storage.test/source.pdf"
                         }
                         """, true))
-                .andRespond(withSuccess(
-                        """
-                        {
-                          "markdown":"# Extracted",
-                          "blocks":[
-                            {"type":"heading","text":"Extracted","level":1},
-                            {"type":"paragraph","text":"Body"}
-                          ]
-                        }
-                        """,
-                        MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess(extractionZip(), MediaType.valueOf("application/zip")));
 
         AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test");
 
-        AiModelClient.ExtractedDocument result = client.extractDocument(
-                "source.pdf", "https://storage.test/source.pdf");
+        ExtractionBundle bundle = client.extractDocument("source.pdf", "https://storage.test/source.pdf");
 
-        assertThat(result.markdown()).isEqualTo("# Extracted");
-        assertThat(result.blocks()).extracting(AiModelClient.ExtractionBlock::type)
+        assertThat(bundle.document().markdown()).isEqualTo("# Extracted\n\n![](images/figure.jpg)");
+        assertThat(bundle.document().blocks()).extracting(AiModelClient.ExtractionBlock::type)
                 .containsExactly("heading", "paragraph");
+        try (InputStream image = bundle.openImage("images/figure.jpg")) {
+            assertThat(image.readAllBytes()).containsExactly(1, 2, 3);
+        }
+        var archivePath = (java.nio.file.Path) org.springframework.test.util.ReflectionTestUtils
+                .getField(bundle, "archivePath");
+        assertThat(Files.exists(archivePath)).isTrue();
+        bundle.close();
+        assertThat(Files.exists(archivePath)).isFalse();
         server.verify();
     }
 
     @Test
-    void extractDocumentRejectsLegacyMarkdownOnlyResponse() {
+    void extractDocumentRejectsNonZipResponse() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(requestTo("http://ai.test/extract"))
@@ -100,7 +105,7 @@ class AiModelClientTest {
 
         assertThatThrownBy(() -> client.extractDocument("source.pdf", "https://storage.test/source.pdf"))
                 .isInstanceOf(AiModelClient.AiApiException.class)
-                .hasMessageContaining("blocks");
+                .hasMessageContaining("application/zip");
     }
 
     @Test
@@ -145,5 +150,26 @@ class AiModelClientTest {
         assertThatThrownBy(() -> new AiModelClientImpl(builder.build(), "http://ai.test").generate("prompt"))
                 .isInstanceOf(AiModelClient.AiApiException.class)
                 .hasMessageContaining("empty response");
+    }
+
+    private static byte[] extractionZip() throws IOException {
+        var output = new ByteArrayOutputStream();
+        try (var zip = new ZipOutputStream(output, StandardCharsets.UTF_8)) {
+            zip.putNextEntry(new ZipEntry("extraction.json"));
+            zip.write("""
+                    {"blocks":[
+                      {"type":"heading","text":"Extracted","level":1,"caption":null},
+                      {"type":"paragraph","text":"Body","level":null,"caption":null}
+                    ],"images":["images/figure.jpg"]}
+                    """.getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("document.md"));
+            zip.write("# Extracted\n\n![](images/figure.jpg)".getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("images/figure.jpg"));
+            zip.write(new byte[] {1, 2, 3});
+            zip.closeEntry();
+        }
+        return output.toByteArray();
     }
 }

@@ -9,7 +9,7 @@ public interface AiModelClient {
 
     String generate(String prompt);
 
-    ExtractedDocument extractDocument(String filename, String downloadUrl);
+    ExtractionBundle extractDocument(String filename, String downloadUrl);
 
     List<Float> generateEmbedding(String text);
 
@@ -35,11 +35,19 @@ public interface AiModelClient {
         }
     }
 
-    record ExtractedDocument(String markdown, List<ExtractionBlock> blocks) {
+    record ExtractedDocument(String markdown, List<ExtractionBlock> blocks, List<String> images) {
+        public ExtractedDocument {
+            blocks = blocks == null ? null : List.copyOf(blocks);
+            images = images == null ? null : List.copyOf(images);
+        }
+
         public boolean valid() {
             return markdown != null && !markdown.isBlank()
                     && blocks != null && !blocks.isEmpty()
-                    && blocks.stream().allMatch(block -> block != null && block.valid());
+                    && blocks.stream().allMatch(block -> block != null && block.valid())
+                    && images != null
+                    && images.stream().allMatch(ExtractionBundle::validImagePath)
+                    && images.stream().distinct().count() == images.size();
         }
     }
 

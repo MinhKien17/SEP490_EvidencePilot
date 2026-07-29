@@ -7,4 +7,6 @@ import java.util.UUID;
 
 public interface ProjectMediaRepository extends JpaRepository<ProjectMedia, UUID> {
     List<ProjectMedia> findByProjectId(UUID projectId);
+    List<ProjectMedia> findByProjectIdOrderByIdAsc(UUID projectId);
+    boolean existsByProjectIdAndStorageKey(UUID projectId, String storageKey);
 }

@@ -1,6 +1,7 @@
 package com.evidencepilot.service;
 
 import com.evidencepilot.dto.response.ProjectMediaResponse;
+import com.evidencepilot.model.Document;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectMedia;
 import com.evidencepilot.model.User;
@@ -14,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 
 import java.time.LocalDateTime;
+import java.io.InputStream;
 import java.util.List;
 import java.util.UUID;
 
@@ -68,6 +70,35 @@ public class MediaAssetService {
     public ProjectMedia getMedia(UUID id) {
         return projectMediaRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media not found"));
+    }
+
+    @Transactional
+    public void importExtractedImage(
+            Document source,
+            String texFilename,
+            InputStream content,
+            long size,
+            String mimeType) {
+        Project project = source.getProject();
+        if (project == null) {
+            return;
+        }
+        String storageKey = "media/" + project.getId()
+                + "/extracted/" + source.getId() + "/" + texFilename;
+        if (projectMediaRepository.existsByProjectIdAndStorageKey(project.getId(), storageKey)) {
+            return;
+        }
+
+        objectStorage.write(storageKey, content, size, mimeType);
+
+        ProjectMedia media = new ProjectMedia();
+        media.setProject(project);
+        media.setUploadedBy(source.getUploadedBy());
+        media.setStorageKey(storageKey);
+        media.setTexFilename(texFilename);
+        media.setMimeType(mimeType);
+        media.setUploadedAt(LocalDateTime.now());
+        projectMediaRepository.save(media);
     }
 
     public String getSignedUrl(UUID id) {
