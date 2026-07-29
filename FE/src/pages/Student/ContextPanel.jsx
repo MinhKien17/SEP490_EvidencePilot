@@ -14,13 +14,13 @@ export default function ContextPanel({
   handleFetchMatches, handleAnalyzeClaim, canEditClaim,
   editingClaim, setEditingClaim, editClaimContent, setEditClaimContent, handleDeleteClaim, handleUpdateClaim,
   // Feedback tab
-  feedbacks, setShowSubmitReviewModal,
+  feedbacks, setShowSubmitReviewModal, userProjectRole,
   // Graph tab
   graphData, fetchGraphData, graphScope, onGraphScopeToggle, dynamicNodes, hoveredNodeId, setHoveredNodeId,
   exports, fetchExports, api,
   papers, selectedPaperDetail, setSelectedPaperDetail,
   handleExportCsv, handleExportJson, setSelectedPaper, loadCode,
-  renderModalPaperPdf,
+  renderModalPaperPdf, isLocked,
 }) {
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [sourceMode, setSourceMode] = useState('doi');
@@ -43,7 +43,7 @@ export default function ContextPanel({
         <div className="flex border-b border-(--border) bg-(--surface) relative shrink-0">
           <button data-tour="context-info-tab" onClick={() => setActiveTab('Source')} className={activeClass('Source')}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            {t('info')}
+            {t('sources')}
             {activeTab === 'Source' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 shadow-[0_-2px_8px_rgba(79,70,229,0.5)]"></div>}
           </button>
           <button data-tour="context-claims-tab" onClick={() => setActiveTab('Claims')} className={activeClass('Claims')}>
@@ -69,7 +69,7 @@ export default function ContextPanel({
         <div className="flex-1 overflow-y-auto bg-(--surface-secondary)/50 p-4">
           {activeTab === 'Source' && (
             <div className="p-5 flex flex-col gap-6 animate-in fade-in duration-300">
-              <button onClick={() => setShowSourceModal(true)} className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm py-3 px-4 rounded-xl shadow-md hover:shadow-lg transition-all">
+              <button onClick={() => setShowSourceModal(true)} disabled={isLocked} className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-bold text-sm py-3 px-4 rounded-xl shadow-md hover:shadow-lg transition-all">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
                 Insert Source
               </button>
@@ -149,7 +149,7 @@ export default function ContextPanel({
               )}
 
               <div>
-                <h3 className="text-[11px] font-bold text-(--text-tertiary) tracking-widest mb-3 uppercase flex items-center gap-2"><div className="h-px bg-(--border) flex-1"></div> Uploaded Sources <div className="h-px bg-(--border) flex-1"></div></h3>
+                <h3 className="text-[11px] font-bold text-(--text-tertiary) tracking-widest mb-3 uppercase flex items-center gap-2"><div className="h-px bg-(--border) flex-1"></div> {t('availableSource')} <div className="h-px bg-(--border) flex-1"></div></h3>
                 <div className="flex flex-col gap-3">
                   {sources.length === 0 ? <div className="text-sm text-(--text-secondary) italic text-center p-4">No uploaded sources yet.</div> : (
                     sources.map(src => (
@@ -169,8 +169,8 @@ export default function ContextPanel({
               <div className="bg-(--surface) border border-(--border) rounded-xl p-3.5 shadow-sm">
                 <h4 className="text-[11px] font-bold text-(--text-secondary) mb-2 uppercase tracking-wider">Add Claim</h4>
                 <div className="flex gap-2 flex-wrap">
-                  <input value={newClaimContent} onChange={(e) => setNewClaimContent(e.target.value)} placeholder="Claim content..." className="flex-1 text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 min-w-[120px] text-(--text-primary)" />
-                  <button onClick={handleCreateClaim} disabled={!newClaimContent.trim()} className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-(--border) disabled:dark:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">Add</button>
+                  <input value={newClaimContent} onChange={(e) => setNewClaimContent(e.target.value)} placeholder="Claim content..." disabled={isLocked} className="flex-1 text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 min-w-[120px] text-(--text-primary) disabled:opacity-50" />
+                  <button onClick={handleCreateClaim} disabled={!newClaimContent.trim() || isLocked} className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-(--border) disabled:dark:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">Add</button>
                 </div>
               </div>
               {claims.length === 0 ? <div className="text-xs text-(--text-tertiary) italic text-center py-8">No claims yet.</div> : (
@@ -189,7 +189,7 @@ export default function ContextPanel({
                       </div>
                       <p className="text-xs font-semibold text-(--text-primary) pl-1 leading-relaxed">{claim.content}</p>
                       <div className="flex gap-2 mt-3 pt-2.5 border-t border-(--border-light) pl-1">
-                        <button onClick={(e) => { e.stopPropagation(); handleAnalyzeClaim(claim.id); }} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+                        <button onClick={(e) => { e.stopPropagation(); handleAnalyzeClaim(claim.id); }} disabled={isLocked} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-40 flex items-center gap-1">
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                           AI Analyze
                         </button>
@@ -241,7 +241,7 @@ export default function ContextPanel({
                   <p className="text-[10px] text-(--text-tertiary) uppercase tracking-wider font-bold">Project Status</p>
                   <p className="text-sm font-bold text-(--text-primary) mt-0.5">{project?.status || 'Unknown'}</p>
                 </div>
-                {project?.status === 'ACTIVE' && <button onClick={() => setShowSubmitReviewModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-all">Submit for Review</button>}
+                {userProjectRole === 'LEADER' && (project?.status === 'ASSIGNED' || project?.status === 'IN_PROGRESS' || project?.status === 'RETURNED') && <button onClick={() => setShowSubmitReviewModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition-all">{t('submitReview')}</button>}
               </div>
               <h3 className="text-[11px] font-bold text-(--text-tertiary) tracking-widest uppercase flex items-center gap-2 mt-2"><div className="h-px bg-(--border) flex-1"></div> Review History <div className="h-px bg-(--border) flex-1"></div></h3>
               <div className="space-y-4">
@@ -432,47 +432,7 @@ export default function ContextPanel({
                 <div className="text-xs text-(--text-tertiary) italic text-center py-8">No graph data yet. Use "AI Analyze" on your claims.</div>
               )}
 
-              <div className="bg-(--surface) border border-(--border) rounded-xl p-4 shadow-sm">
-                <details>
-                  <summary className="font-bold text-xs text-(--text-primary) cursor-pointer select-none flex items-center gap-2">
-                    <svg className="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                    My Exports
-                  </summary>
-                  <div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
-                    {exports.length === 0 ? (
-                      <div className="text-xs text-(--text-tertiary) italic text-center py-4">No exports yet.</div>
-                    ) : exports.map(job => (
-                      <div key={job.id} className="flex items-center justify-between p-2.5 bg-(--surface-secondary) border border-(--border-light) rounded-lg text-xs">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${job.status === 'READY' ? 'bg-emerald-400' : job.status === 'FAILED' ? 'bg-rose-400' : job.status === 'PROCESSING' ? 'bg-amber-400 animate-pulse' : 'bg-(--border)'}`} />
-                          <span className="truncate text-(--text-secondary)">
-                            {job.format} export
-                            <span className="text-(--text-tertiary) ml-1">· {new Date(job.createdAt).toLocaleDateString()}</span>
-                          </span>
-                        </div>
-                        {job.status === 'READY' && (
-                          <a href={`/api/exports/${job.id}/download`}
-                            className="text-indigo-600 hover:text-indigo-800 font-bold shrink-0 ml-2"
-                            onClick={async (e) => {
-                              e.preventDefault();
-                              try {
-                                const r = await api.get(`/api/exports/${job.id}/download`, { responseType: 'blob' });
-                                const url = URL.createObjectURL(r.data);
-                                const a = document.createElement('a'); a.href = url; a.download = `export-${job.id}.zip`;
-                                a.click(); URL.revokeObjectURL(url);
-                                showToast('Downloaded export.');
-                              } catch { showToast('Download failed.'); }
-                            }}>
-                            Download
-                          </a>
-                        )}
-                        {job.status === 'FAILED' && <span className="text-rose-500 text-[10px] shrink-0">Failed</span>}
-                        {job.status === 'PROCESSING' && <span className="text-amber-500 text-[10px] shrink-0">Processing...</span>}
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              </div>
+
             </div>
           )}
         </div>

@@ -111,7 +111,7 @@ export default function PreviewPane({ latex, mediaAssets }) {
 
   return (
     <div className="h-full overflow-y-auto bg-white p-8">
-      <div className="max-w-prose mx-auto" dangerouslySetInnerHTML={{ __html: html }} />
+      <div className="max-w-prose mx-auto whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   );
 }

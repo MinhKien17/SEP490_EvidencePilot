@@ -146,5 +146,13 @@
     "darkModeDesc": "Toggle between light and dark themes.",
     "language": "Language",
     "languageDesc": "Switch between English and Vietnamese."
-  }
+  },
+  "availableSource": "Available Source",
+  "previewFullPaper": "Preview Full Paper",
+  "fullPaper": "Full Paper",
+  "pages": "Pages",
+  "leaderRole": "Leader",
+  "memberRole": "Member",
+  "requestFeedback": "Request Feedback",
+  "assignedToYou": "Assigned to you"
 }

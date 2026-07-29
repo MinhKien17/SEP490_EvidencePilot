@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useTranslation } from 'react-i18next';
 
-export default function WorkspaceHeader({ project, navigate, notifications, unreadCount, showNotifications, setShowNotifications, onMarkNotificationRead, historyDisabled, handleRunAiReview, loadingAiReview, selectedPaper, onShowHistory, showExportMenu, setShowExportMenu, handleExportTexArchive, handleExportTraceabilityJson, handleExportTraceabilityCsv, handleExportGraphCsv }) {
+export default function WorkspaceHeader({ project, navigate, notifications, unreadCount, showNotifications, setShowNotifications, onMarkNotificationRead, historyDisabled, handleRunAiReview, loadingAiReview, selectedPaper, onShowHistory, showExportMenu, setShowExportMenu, handleExportTexArchive, handleExportTraceabilityJson, handleExportTraceabilityCsv, handleExportGraphCsv, isLocked }) {
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { t, i18n } = useTranslation();
@@ -64,7 +64,7 @@ export default function WorkspaceHeader({ project, navigate, notifications, unre
           {i18n.language === 'en' ? 'VI' : 'EN'}
         </button>
 
-        <button data-tour="header-ai-review" onClick={handleRunAiReview} disabled={loadingAiReview || !selectedPaper} className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1 shadow-sm transition-colors" title={t('aiReview')}>
+        <button data-tour="header-ai-review" onClick={handleRunAiReview} disabled={loadingAiReview || !selectedPaper || isLocked} className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1 shadow-sm transition-colors" title={t('aiReview')}>
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 01-2 2h0a2 2 0 01-2-2v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
           {loadingAiReview ? t('loading') : t('aiReview')}
         </button>
@@ -92,8 +92,13 @@ export default function WorkspaceHeader({ project, navigate, notifications, unre
           )}
         </div>
 
-        <div data-tour="header-avatar" className="w-7 h-7 bg-indigo-600 text-white rounded-full text-xs flex items-center justify-center font-bold shrink-0" title={user?.firstName ? `${user.firstName} ${user.lastName || ''}` : 'Profile'}>
-          {user?.firstName?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+        <div className="flex items-center gap-2">
+          <div data-tour="header-avatar" className="w-7 h-7 bg-indigo-600 text-white rounded-full text-xs flex items-center justify-center font-bold shrink-0" title={user?.firstName ? `${user.firstName} ${user.lastName || ''}` : 'Profile'}>
+            {user?.firstName?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+          </div>
+          {project?.currentUserRole && (
+            <span className="text-[10px] font-bold text-(--text-secondary) uppercase tracking-wider">{project.currentUserRole}</span>
+          )}
         </div>
       </div>
     </header>

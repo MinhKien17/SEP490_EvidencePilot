@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { AppHeader, LoadingSkeleton, StatusBadge, Modal, TourLauncher, SectionTree, EvidenceGraph, LatexEditor } from '../../components';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import { AppHeader, LoadingSkeleton, StatusBadge, Modal, TourLauncher, SectionTree, EvidenceGraph, LatexEditor, Spinner } from '../../components';
+import { Marker, MarkerIcon, MarkerContent } from '../../components/Marker';
 import { instructorText, commonText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
@@ -29,10 +31,10 @@ export default function ProjectDetail() {
   const [users, setUsers] = useState([]);
   const [showAddMember, setShowAddMember] = useState(false);
   const [newMemberId, setNewMemberId] = useState('');
+  const [newMemberRole, setNewMemberRole] = useState('MEMBER');
 
   // Setup tab state
   const [doiInput, setDoiInput] = useState('');
-  const [importingDoi, setImportingDoi] = useState(false);
   const [standard, setStandard] = useState('');
   const [sources, setSources] = useState([]);
   const [showSourceDetail, setShowSourceDetail] = useState(false);
@@ -43,10 +45,19 @@ export default function ProjectDetail() {
   const [selectedCollectionId, setSelectedCollectionId] = useState('');
   const [collectionSources, setCollectionSources] = useState([]);
   const [showSetUpPaper, setShowSetUpPaper] = useState(false);
-  const [autoGenLoading, setAutoGenLoading] = useState(false);
-  const [importDoiSourceLoading, setImportDoiSourceLoading] = useState(false);
   const [setupMode, setSetupMode] = useState('standard');
-  const [shareLoading, setShareLoading] = useState(false);
+  const [saveOrderLoading, setSaveOrderLoading] = useState(false);
+  const [editingPaperId, setEditingPaperId] = useState(null);
+  const [editingPaperTitle, setEditingPaperTitle] = useState('');
+  const [editingSectionId, setEditingSectionId] = useState(null);
+  const [editingSectionTitle, setEditingSectionTitle] = useState('');
+  const [tempSections, setTempSections] = useState(new Set());
+  const [uploadState, setUploadState] = useState(null);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [addSourceDocType, setAddSourceDocType] = useState('SOURCE');
+  const [addSourceLoading, setAddSourceLoading] = useState(false);
+  const [shareLoadingId, setShareLoadingId] = useState(null);
+  const [selectedSourceIds, setSelectedSourceIds] = useState([]);
   const [pendingAssign, setPendingAssign] = useState(null); // { sectionId, userId, userName }
 
   const loadProject = useCallback(async () => {
@@ -67,7 +78,7 @@ export default function ProjectDetail() {
     try {
       const res = await api.get(`/api/projects/${id}/papers`);
       setPapers(res.data || []);
-    } catch {}
+    } catch { }
   }, [id]);
 
   const loadSections = useCallback(async (paperId) => {
@@ -86,28 +97,28 @@ export default function ProjectDetail() {
       const projectFbs = (fbRes.data || []).filter(fb => fb.projectId === id);
       setFeedbackRequests(projectFbs);
       setTraceability(traceRes?.data || null);
-    } catch {}
+    } catch { }
   }, [id]);
 
   const loadUsers = useCallback(async () => {
     try {
       const res = await api.get('/api/users?role=STUDENT');
       setUsers(res.data || []);
-    } catch {}
+    } catch { }
   }, []);
 
   const loadSources = useCallback(async () => {
     try {
       const res = await api.get(`/api/sources/projects/${id}`);
       setSources(res.data || []);
-    } catch {}
+    } catch { }
   }, [id]);
 
   const loadCollections = useCallback(async () => {
     try {
       const res = await api.get('/api/collections');
       setCollections(res.data?.content || res.data || []);
-    } catch {}
+    } catch { }
   }, []);
 
   useEffect(() => { loadProject(); }, [loadProject]);
@@ -121,30 +132,39 @@ export default function ProjectDetail() {
     if (!standard || !project) return;
     setSaving(true);
     try {
+      await api.post(`/api/projects/${id}/papers/reset-standard?standard=${standard}`);
       await api.put(`/api/projects/${id}`, { ...project, targetStandard: standard });
-      await api.post(`/api/projects/${id}/papers/init`);
       await loadProject();
-      await loadPapers();
-      if (selectedPaper) {
-        const secRes = await api.get(`/api/papers/${selectedPaper.id}/sections`);
-        if ((secRes.data || []).length === 0) {
-          await api.post(`/api/papers/${selectedPaper.id}/sections/create?standard=${standard}&title=Auto`);
-          await loadSections(selectedPaper.id);
-        }
+      const papersRes = await api.get(`/api/projects/${id}/papers`);
+      const freshPapers = papersRes.data || [];
+      setPapers(freshPapers);
+      const canonicalPaper = freshPapers.find(p => p.id === selectedPaper?.id) || freshPapers[0] || null;
+      setSelectedPaper(canonicalPaper);
+      if (canonicalPaper) {
+        await loadSections(canonicalPaper.id);
       }
+      setShowSetUpPaper(false);
     } catch { alert('Failed to update standard'); }
     finally { setSaving(false); }
   };
 
-  const handleImportDoi = async () => {
+  const handleImportDoiUnified = async (asSource) => {
     if (!doiInput.trim()) return;
-    setImportingDoi(true);
+    setAddSourceLoading(true);
     try {
-      await api.post('/api/documents/ingest/doi', { doi: doiInput.trim(), projectId: id });
+      const payload = { doi: doiInput.trim(), projectId: id };
+      if (asSource) payload.docType = 'SOURCE';
+      await api.post('/api/documents/ingest/doi', payload);
       setDoiInput('');
-      await loadPapers();
+      if (asSource) {
+        await loadSources();
+      } else {
+        const papersRes = await api.get(`/api/projects/${id}/papers`);
+        setPapers(papersRes.data || []);
+      }
+      setShowAddSource(false);
     } catch { alert('DOI import failed.'); }
-    finally { setImportingDoi(false); }
+    finally { setAddSourceLoading(false); }
   };
 
   const handleUploadSource = async (e) => {
@@ -155,7 +175,7 @@ export default function ProjectDetail() {
     formData.append('projectId', id);
     try {
       await api.post('/api/sources', formData);
-      await loadPapers();
+      await loadSources();
     } catch { alert('Upload failed.'); }
   };
 
@@ -165,56 +185,137 @@ export default function ProjectDetail() {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('projectId', id);
+    setUploadState('uploading');
     try {
       const { data: doc } = await api.post('/api/papers', formData);
-      if (standard) {
-        const secRes = await api.get(`/api/papers/${doc.id}/sections`);
-        if ((secRes.data || []).length === 0) {
-          await api.post(`/api/papers/${doc.id}/sections/create?standard=${standard}&title=Auto`);
-        }
-        await loadSections(doc.id);
+      setSelectedPaper(doc);
+      setUploadState('processing');
+      loadPapers();
+      loadProject();
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.response?.data || 'Upload failed.';
+      if (err?.response?.status === 409) {
+        alert(msg);
+      } else {
+        alert('Upload failed.');
       }
-      await loadPapers();
-    } catch { alert('Upload failed.'); }
+      setUploadState(null);
+    }
   };
 
-  const handleImportDoiSource = async () => {
-    if (!doiInput.trim()) return;
-    setImportDoiSourceLoading(true);
-    try {
-      await api.post('/api/documents/ingest/doi', { doi: doiInput.trim(), projectId: id, docType: 'SOURCE' });
-      setDoiInput('');
-      await loadSources();
-    } catch { alert('DOI+Source import failed.'); }
-    finally { setImportDoiSourceLoading(false); }
+  const toggleSourceSelection = (sourceId) => {
+    setSelectedSourceIds(prev =>
+      prev.includes(sourceId) ? prev.filter(id => id !== sourceId) : [...prev, sourceId]
+    );
   };
 
-  const handleShareSource = async (sourceId) => {
+  const handleShareSources = async (checkedIds) => {
     if (!selectedCollectionId) return;
-    setShareLoading(true);
     try {
-      await api.post(`/api/collections/${selectedCollectionId}/sources/${sourceId}/share-to-project/${id}`);
+      const projectSourceIds = new Set(sources.map(s => s.id));
+      const toShare = checkedIds.filter(id => !projectSourceIds.has(id));
+      const toUnshare = sources.filter(s => !checkedIds.includes(s.id)).map(s => s.id);
+      await Promise.all(toShare.map(sourceId =>
+        api.post(`/api/collections/${selectedCollectionId}/sources/${sourceId}/share-to-project/${id}`)
+      ));
+      await Promise.all(toUnshare.map(sourceId =>
+        api.delete(`/api/sources/projects/${id}/sources/${sourceId}`)
+      ));
       await loadSources();
-    } catch { alert('Share failed.'); }
-    finally { setShareLoading(false); }
+      setShowShareCollection(false);
+      setSelectedCollectionId('');
+      setCollectionSources([]);
+      setSelectedSourceIds([]);
+    } catch { alert('Operation failed. Reload and try again.'); }
   };
 
-  const handleAutoGenerateSections = async () => {
-    if (!selectedPaper) return;
-    setAutoGenLoading(true);
-    try {
-      await api.post(`/api/papers/${selectedPaper.id}/sections/create?standard=${standard}&title=Auto`);
-      await loadSections(selectedPaper.id);
-    } catch { alert('Auto-generation failed.'); }
-    finally { setAutoGenLoading(false); }
+  const handleDragEnd = (result) => {
+    if (!result.destination) return;
+    const reordered = Array.from(sections);
+    const [removed] = reordered.splice(result.source.index, 1);
+    reordered.splice(result.destination.index, 0, removed);
+    setSections(reordered);
   };
 
-  const handleDetectSections = async () => {
+  const handleSaveAllChanges = async () => {
     if (!selectedPaper) return;
+    setSaveOrderLoading(true);
     try {
-      await api.post(`/api/papers/${selectedPaper.id}/sections/create?title=Detected`);
+      const tempItems = sections.filter(s => tempSections.has(s.id));
+      const realIds = await Promise.all(tempItems.map(s =>
+        api.post(`/api/papers/${selectedPaper.id}/sections/create`, null, { params: { title: s.sectionTitle } })
+          .then(r => r.data.id)
+      ));
+      const idMap = {};
+      tempItems.forEach((s, i) => { idMap[s.id] = realIds[i]; });
+      await Promise.all(sections.map((s, i) => {
+        const realId = idMap[s.id] || s.id;
+        return api.put(`/api/papers/${selectedPaper.id}/sections/${realId}`, null, { params: { order: i } });
+      }));
       await loadSections(selectedPaper.id);
-    } catch { alert('Detection failed.'); }
+      setTempSections(new Set());
+    } catch { alert('Failed to save changes'); }
+    finally { setSaveOrderLoading(false); }
+  };
+
+  const handleStartSectionRename = (section) => {
+    setEditingSectionId(section.id);
+    setEditingSectionTitle(section.sectionTitle);
+  };
+
+  const handleSaveSectionRename = async (sectionId) => {
+    if (!editingSectionTitle.trim() || !selectedPaper) return;
+    if (tempSections.has(sectionId)) {
+      setSections(prev => prev.map(s => s.id === sectionId ? { ...s, sectionTitle: editingSectionTitle.trim() } : s));
+      setEditingSectionId(null);
+      return;
+    }
+    try {
+      await api.put(`/api/papers/${selectedPaper.id}/sections/${sectionId}`, null, { params: { title: editingSectionTitle.trim() } });
+      setEditingSectionId(null);
+      await loadSections(selectedPaper.id);
+    } catch { alert('Failed to rename section'); }
+  };
+
+  const handleDeleteSection = async (sectionId) => {
+    if (!selectedPaper) return;
+    if (tempSections.has(sectionId)) {
+      setSections(prev => prev.filter(s => s.id !== sectionId));
+      setTempSections(prev => { const n = new Set(prev); n.delete(sectionId); return n; });
+      return;
+    }
+    if (!confirm('Delete this section? This action cannot be undone.')) return;
+    try {
+      await api.delete(`/api/papers/${selectedPaper.id}/sections/${sectionId}`);
+      await loadSections(selectedPaper.id);
+    } catch { alert('Failed to delete section'); }
+  };
+
+  const handleAddSection = () => {
+    if (!selectedPaper) return;
+    if (selectedPaper.processingStatus === 'QUEUED' || selectedPaper.processingStatus === 'PROCESSING') return;
+    const tempId = 'temp_' + Date.now();
+    setSections(prev => [...prev, {
+      id: tempId, sectionTitle: 'New Section', sectionOrder: prev.length,
+      contentTex: '', assignedUser: null, version: 1, active: true
+    }]);
+    setTempSections(prev => new Set(prev).add(tempId));
+  };
+
+  const handleStartRename = (paper) => {
+    setEditingPaperId(paper.id);
+    setEditingPaperTitle(paper.title || paper.originalFilename || '');
+  };
+
+  const handleSaveRename = async (paperId) => {
+    if (!editingPaperTitle.trim()) return;
+    try {
+      const newTitle = editingPaperTitle.trim();
+      const newFilename = newTitle.endsWith('.tex') ? newTitle : newTitle + '.tex';
+      await api.put(`/api/papers/${paperId}`, null, { params: { title: newTitle, originalFilename: newFilename } });
+      setEditingPaperId(null);
+      await loadPapers();
+    } catch { alert('Failed to rename'); }
   };
 
   const handleAssignSection = async (sectionId, userId) => {
@@ -239,9 +340,10 @@ export default function ProjectDetail() {
   const handleAddMember = async () => {
     if (!newMemberId) return;
     try {
-      await api.post(`/api/projects/${id}/members`, null, { params: { userId: newMemberId, role: 'EDITOR' } });
+      await api.post(`/api/projects/${id}/members`, null, { params: { userId: newMemberId, role: newMemberRole } });
       setShowAddMember(false);
       setNewMemberId('');
+      setNewMemberRole('MEMBER');
       loadProject();
     } catch { alert('Failed to add member.'); }
   };
@@ -282,6 +384,24 @@ export default function ProjectDetail() {
     if (selectedPaper) loadSections(selectedPaper.id);
   }, [selectedPaper]);
 
+  useEffect(() => {
+    if (!selectedPaper) return;
+    const status = selectedPaper.processingStatus;
+    if (status === 'READY' || status === 'FAILED' || !status) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.get(`/api/papers/${selectedPaper.id}`);
+        if (res.data.processingStatus === 'READY') {
+          clearInterval(interval);
+          setUploadState(null);
+          loadSections(selectedPaper.id);
+          loadPapers();
+        }
+      } catch { clearInterval(interval); }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [selectedPaper?.id, selectedPaper?.processingStatus]);
+
   if (loading) return <div className="min-h-screen bg-[#f8fafc]"><AppHeader /><div className="max-w-6xl mx-auto p-8"><LoadingSkeleton count={6} /></div></div>;
   if (!project) return null;
 
@@ -301,8 +421,11 @@ export default function ProjectDetail() {
               {project.description && <p className="text-sm text-gray-500 mt-1">{project.description}</p>}
               <p className="text-xs text-gray-400 mt-1">ID: {project.id} &middot; <StatusBadge status={project.status} /></p>
             </div>
-            <TourLauncher steps={TOUR_STEPS} tourKey="instructor-project-detail"
-              className="w-8 h-8 rounded-full bg-white border border-slate-300 shadow-sm flex items-center justify-center text-sm font-bold text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-300 transition-all shrink-0" />
+            <div className="flex items-center gap-2">
+              <button onClick={() => setShowExportModal(true)} className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700">Export</button>
+              <TourLauncher steps={TOUR_STEPS} tourKey="instructor-project-detail"
+                className="w-8 h-8 rounded-full bg-white border border-slate-300 shadow-sm flex items-center justify-center text-sm font-bold text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-300 transition-all shrink-0" />
+            </div>
           </div>
         </div>
 
@@ -318,9 +441,8 @@ export default function ProjectDetail() {
               key={tab.key}
               id={`tab-${tab.key}`}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2 text-xs font-bold rounded-t-lg transition ${
-                activeTab === tab.key ? 'bg-white text-[#1e3a8a] border border-b-white border-gray-200 -mb-px' : 'text-gray-500 hover:text-gray-700'
-              }`}
+              className={`px-4 py-2 text-xs font-bold rounded-t-lg transition ${activeTab === tab.key ? 'bg-white text-[#1e3a8a] border border-b-white border-gray-200 -mb-px' : 'text-gray-500 hover:text-gray-700'
+                }`}
             >
               {tab.label}
             </button>
@@ -395,15 +517,25 @@ export default function ProjectDetail() {
               ) : (
                 <div className="space-y-1">
                   {papers.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => { setSelectedPaper(p); loadSections(p.id); }}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-xs transition ${
-                        selectedPaper?.id === p.id ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <span className="font-medium">{p.originalFilename || p.title}</span>
-                    </button>
+                    <div key={p.id} className="flex items-center gap-1">
+                      {editingPaperId === p.id ? (
+                        <div className="flex-1 flex items-center gap-1 px-3 py-2 rounded-lg bg-indigo-50 border border-indigo-200">
+                          <input autoFocus value={editingPaperTitle} onChange={e => setEditingPaperTitle(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleSaveRename(p.id); if (e.key === 'Escape') setEditingPaperId(null); }} className="flex-1 bg-transparent outline-none text-xs border-b border-indigo-300" onClick={e => e.stopPropagation()} />
+                          <button onClick={() => handleSaveRename(p.id)} className="text-emerald-600 hover:text-emerald-800 font-bold text-xs px-1" title="Save">{'\u2713'}</button>
+                          <button onClick={() => setEditingPaperId(null)} className="text-gray-400 hover:text-gray-600 text-xs px-1" title="Cancel">{'\u2715'}</button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { setSelectedPaper(p); loadSections(p.id); }}
+                          className={`flex-1 text-left px-3 py-2 rounded-lg text-xs transition ${selectedPaper?.id === p.id ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'hover:bg-gray-50'}`}
+                        >
+                          <span className="font-medium">{p.originalFilename || p.title}</span>
+                        </button>
+                      )}
+                      {editingPaperId !== p.id && (
+                        <button onClick={e => { e.stopPropagation(); handleStartRename(p); }} className="p-1 text-gray-400 hover:text-indigo-600 text-xs" title="Rename">{'\u270E'}</button>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -412,61 +544,85 @@ export default function ProjectDetail() {
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-sm font-bold text-[#1e3a8a]">Sections</h2>
                 <div className="flex gap-2">
-                  {standard && selectedPaper && sections.length === 0 && (
-                    <button onClick={handleAutoGenerateSections} disabled={autoGenLoading} className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50">{autoGenLoading ? '...' : 'Auto-gen'}</button>
+                  {selectedPaper && (
+                    <button onClick={handleAddSection} disabled={selectedPaper.processingStatus === 'QUEUED' || selectedPaper.processingStatus === 'PROCESSING'} className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed">+ Section</button>
                   )}
-                  {!standard && selectedPaper && sections.length === 0 && (
-                    <button onClick={handleDetectSections} className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700">Detect</button>
+                  {selectedPaper && sections.length > 0 && (
+                    <button onClick={handleSaveAllChanges} disabled={saveOrderLoading} className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 disabled:opacity-50">{saveOrderLoading ? '...' : 'Save All Changes'}</button>
                   )}
                   {selectedPaper && (
                     <button onClick={async () => {
                       try {
                         const res = await api.get(`/api/papers/${selectedPaper.id}/validate`);
                         alert(JSON.stringify(res.data, null, 2));
-                      } catch {}
+                      } catch { }
                     }} className="px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700">Validate</button>
                   )}
                 </div>
               </div>
               {!selectedPaper ? (
                 <p className="text-xs text-gray-400 italic">Select a paper to see sections.</p>
+              ) : selectedPaper.processingStatus === 'PROCESSING' || selectedPaper.processingStatus === 'QUEUED' ? (
+                <div className="flex items-center gap-2 text-xs text-gray-500 italic">
+                  <span className="inline-block w-2 h-2 bg-amber-400 rounded-full animate-pulse"></span>
+                  Processing sections...
+                </div>
               ) : sections.length === 0 ? (
                 <div className="text-xs text-gray-400 italic">
-                  {standard ? (
-                    <p>Standard <strong>{standard}</strong> selected. Click <strong>Auto-gen</strong> to create empty section templates.</p>
-                  ) : (
-                    <p>Upload a paper in <strong>Setup</strong>, then click <strong>Detect</strong> to extract sections from content.</p>
-                  )}
+                  <p>No sections yet. Click <strong>+ Section</strong> to add one manually, or go to <strong>Setup</strong> to choose a standard that auto-generates section templates.</p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {sections.map(s => (
-                    <div key={s.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 text-xs">
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono text-gray-400 w-4">{s.sectionOrder != null ? s.sectionOrder + 1 : '?'}</span>
-                        <span className="font-medium">{s.sectionTitle}</span>
-                        {s.version > 1 && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">v{s.version}</span>}
-                        {s.assignedUserId && (
-                          <span className="flex items-center gap-1 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-bold">
-                            {'\u{1F512}'} {displayName(projectMembers.find(m => m.userId === s.assignedUserId))}
-                          </span>
-                        )}
+                <DragDropContext onDragEnd={handleDragEnd}>
+                  <Droppable droppableId="sections">
+                    {(provided) => (
+                      <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
+                        {sections.map((s, index) => (
+                          <Draggable key={s.id} draggableId={s.id} index={index}>
+                            {(provided, snapshot) => (
+                              <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className={`flex items-center justify-between rounded-lg px-4 py-3 text-xs ${snapshot.isDragging ? 'bg-indigo-50 shadow-lg border border-indigo-200' : tempSections.has(s.id) ? 'bg-gray-50 border border-dashed border-gray-300' : 'bg-gray-50'}`}>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-gray-300 cursor-grab active:cursor-grabbing">{'\u283F'}</span>
+                                  {editingSectionId === s.id ? (
+                                    <div className="flex items-center gap-1">
+                                      <input autoFocus value={editingSectionTitle} onChange={e => setEditingSectionTitle(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleSaveSectionRename(s.id); if (e.key === 'Escape') setEditingSectionId(null); }} className="bg-transparent outline-none border-b border-indigo-300 text-xs" />
+                                      <button onClick={() => handleSaveSectionRename(s.id)} className="text-emerald-600 hover:text-emerald-800 font-bold text-xs px-1" title="Save">{'\u2713'}</button>
+                                      <button onClick={() => setEditingSectionId(null)} className="text-gray-400 hover:text-gray-600 text-xs px-1" title="Cancel">{'\u2715'}</button>
+                                    </div>
+                                  ) : (
+                                    <span className="font-medium">{s.sectionTitle}</span>
+                                  )}
+                                  {s.version > 1 && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">v{s.version}</span>}
+                                  {s.assignedUserId && (
+                                    <span className="flex items-center gap-1 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-bold">
+                                      {'\u{1F512}'} {displayName(projectMembers.find(m => m.userId === s.assignedUserId))}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {editingSectionId !== s.id && (
+                                    <button onClick={e => { e.stopPropagation(); handleStartSectionRename(s); }} className="text-gray-400 hover:text-indigo-600 text-xs px-1" title="Rename">{'\u270E'}</button>
+                                  )}
+                                  <button onClick={() => handleDeleteSection(s.id)} className="text-gray-400 hover:text-rose-600 text-xs px-1" title="Delete">{'\u2715'}</button>
+                                  <select
+                                    value={s.assignedUserId || ''}
+                                    onChange={e => handleAssignSection(s.id, e.target.value)}
+                                    className="border border-gray-200 rounded px-2 py-1 text-[10px] outline-none"
+                                  >
+                                    <option value="">Unassigned</option>
+                                    {projectMembers.filter(m => m.userId !== currentUser?.id).map(m => (
+                                      <option key={m.id} value={m.userId}>{displayName(m)} <span className="text-gray-400">({m.role})</span></option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={s.assignedUserId || ''}
-                          onChange={e => handleAssignSection(s.id, e.target.value)}
-                          className="border border-gray-200 rounded px-2 py-1 text-[10px] outline-none"
-                        >
-                          <option value="">Unassigned</option>
-                          {projectMembers.filter(m => m.userId !== currentUser?.id).map(m => (
-                            <option key={m.id} value={m.userId}>{displayName(m)} <span className="text-gray-400">({m.role})</span></option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    )}
+                  </Droppable>
+                </DragDropContext>
               )}
             </div>
           </div>
@@ -549,11 +705,15 @@ export default function ProjectDetail() {
 
       <Modal open={showAddMember} onClose={() => setShowAddMember(false)} title="Add Member">
         <div className="space-y-4">
-          <select value={newMemberId} onChange={e => setNewMemberId(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none">
+           <select value={newMemberId} onChange={e => setNewMemberId(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none">
             <option value="">Select student...</option>
             {users.filter(u => u.role === 'STUDENT' && !projectMembers.find(m => m.userId === u.id)).map(u => (
               <option key={u.id} value={u.id}>{u.firstName || u.lastName ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : u.email}</option>
             ))}
+          </select>
+          <select value={newMemberRole} onChange={e => setNewMemberRole(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none">
+            <option value="MEMBER">Member</option>
+            <option value="LEADER">Leader</option>
           </select>
           <div className="flex justify-end gap-2">
             <button onClick={() => setShowAddMember(false)} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">{ct.cancel}</button>
@@ -593,28 +753,37 @@ export default function ProjectDetail() {
         )}
       </Modal>
 
-      <Modal open={showAddSource} onClose={() => setShowAddSource(false)} title="Add Source">
+      <Modal open={showAddSource} onClose={() => { setShowAddSource(false); setDoiInput(''); }} title="Add Source">
         <div className="space-y-5 text-xs">
           <div className="border border-gray-200 rounded-xl p-4 space-y-3">
             <h3 className="font-bold text-indigo-700">① Import by DOI</h3>
+            <div className="flex gap-2 mb-2">
+              <button
+                onClick={() => setAddSourceDocType('SOURCE')}
+                className={`flex-1 px-3 py-1.5 text-xs font-bold rounded-lg border transition ${addSourceDocType === 'SOURCE' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}
+              >
+                As Source (reference)
+              </button>
+              <button
+                onClick={() => setAddSourceDocType('PAPER')}
+                className={`flex-1 px-3 py-1.5 text-xs font-bold rounded-lg border transition ${addSourceDocType === 'PAPER' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200 hover:border-amber-300'}`}
+              >
+                As Paper (student work)
+              </button>
+            </div>
             <div className="flex gap-2">
-              <input value={doiInput} onChange={e => setDoiInput(e.target.value)} placeholder="10.1000/xyz123" className="flex-1 border border-gray-200 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-indigo-500" />
-              <button onClick={() => { handleImportDoi(); setShowAddSource(false); }} disabled={importingDoi} className="px-3 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50">Fetch</button>
+              <input value={doiInput} onChange={e => setDoiInput(e.target.value)} placeholder="10.1000/xyz123" className="flex-1 border border-gray-200 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-indigo-500 text-xs" />
+              <button onClick={() => handleImportDoiUnified(addSourceDocType === 'SOURCE')} disabled={addSourceLoading || !doiInput.trim()} className="px-3 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50 text-xs">
+                {addSourceLoading ? '...' : 'Import'}
+              </button>
             </div>
           </div>
           <div className="border border-gray-200 rounded-xl p-4 space-y-3">
             <h3 className="font-bold text-amber-700">② Upload Source (PDF/DOCX)</h3>
-            <input type="file" accept=".pdf,.docx" onChange={(e) => { handleUploadSource(e); setShowAddSource(false); }} className="text-xs" />
+            <input type="file" accept=".pdf,.docx" onChange={async (e) => { await handleUploadSource(e); setShowAddSource(false); }} className="text-xs" />
           </div>
           <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-            <h3 className="font-bold text-emerald-700">③ Import DOI as Source</h3>
-            <div className="flex gap-2">
-              <input value={doiInput} onChange={e => setDoiInput(e.target.value)} placeholder="10.1000/xyz123" className="flex-1 border border-gray-200 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-indigo-500" />
-              <button onClick={() => { handleImportDoiSource(); setShowAddSource(false); }} disabled={importDoiSourceLoading} className="px-3 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 disabled:opacity-50">Go</button>
-            </div>
-          </div>
-          <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-            <h3 className="font-bold text-rose-700">④ Share from Collection</h3>
+            <h3 className="font-bold text-rose-700">③ Share from Collection</h3>
             <button onClick={() => { setShowShareCollection(true); loadCollections(); setShowAddSource(false); }} className="px-3 py-2 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700">Browse Collections</button>
           </div>
           <div className="flex justify-end gap-2">
@@ -635,42 +804,42 @@ export default function ProjectDetail() {
             </div>
           </div>
         ) : (
-        <div className="space-y-5 text-xs">
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-            <button onClick={() => setSetupMode('standard')}
-              className={`flex-1 px-3 py-2 rounded-md text-xs font-bold transition ${setupMode === 'standard' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-              📋 Choose Standard
-            </button>
-            <button onClick={() => setSetupMode('paper')}
-              className={`flex-1 px-3 py-2 rounded-md text-xs font-bold transition ${setupMode === 'paper' ? 'bg-white text-amber-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-              📄 Upload Paper
-            </button>
-          </div>
-
-          {setupMode === 'standard' && (
-            <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-              <h3 className="font-bold text-indigo-700">Choose Standard</h3>
-              <p className="text-gray-400">Select a paper format standard. This creates empty section templates.</p>
-              <select value={standard} onChange={e => setStandard(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-indigo-500">
-                <option value="">No standard</option>
-                {STANDARDS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <button onClick={() => { handleUpdateStandard(); setShowSetUpPaper(false); }} disabled={saving} className="px-4 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 disabled:opacity-50">{saving ? ct.saving : 'Save Standard'}</button>
+          <div className="space-y-5 text-xs">
+            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+              <button onClick={() => setSetupMode('standard')}
+                className={`flex-1 px-3 py-2 rounded-md text-xs font-bold transition ${setupMode === 'standard' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                📋 Choose Standard
+              </button>
+              <button onClick={() => setSetupMode('paper')}
+                className={`flex-1 px-3 py-2 rounded-md text-xs font-bold transition ${setupMode === 'paper' ? 'bg-white text-amber-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                📄 Upload Paper
+              </button>
             </div>
-          )}
 
-          {setupMode === 'paper' && (
-            <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-              <h3 className="font-bold text-amber-700">Upload Paper</h3>
-              <p className="text-gray-400">Upload a student paper. System will detect sections from content.</p>
-              <input type="file" accept=".pdf,.docx" onChange={(e) => { handleUploadPaper(e); setShowSetUpPaper(false); }} className="text-xs" />
+            {setupMode === 'standard' && (
+              <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+                <h3 className="font-bold text-indigo-700">Choose Standard</h3>
+                <p className="text-gray-400">Select a paper format standard. This creates empty section templates.</p>
+                <select value={standard} onChange={e => setStandard(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-indigo-500">
+                  <option value="">No standard</option>
+                  {STANDARDS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <button onClick={handleUpdateStandard} disabled={saving} className="px-4 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 disabled:opacity-50">{saving ? ct.saving : 'Save Standard'}</button>
+              </div>
+            )}
+
+            {setupMode === 'paper' && (
+              <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+                <h3 className="font-bold text-amber-700">Upload Paper</h3>
+                <p className="text-gray-400">Upload a student paper. System will detect sections from content.</p>
+                <input type="file" accept=".pdf,.docx" onChange={(e) => { handleUploadPaper(e); setShowSetUpPaper(false); }} className="text-xs" />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowSetUpPaper(false)} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">{ct.cancel}</button>
             </div>
-          )}
-
-          <div className="flex justify-end gap-2">
-            <button onClick={() => setShowSetUpPaper(false)} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">{ct.cancel}</button>
           </div>
-        </div>
         )}
       </Modal>
 
@@ -684,7 +853,10 @@ export default function ProjectDetail() {
               if (e.target.value) {
                 try {
                   const res = await api.get(`/api/collections/${e.target.value}/sources`);
-                  setCollectionSources(res.data?.content || res.data || []);
+                  const loaded = res.data?.content || res.data || [];
+                  setCollectionSources(loaded);
+                  const projectSourceIds = new Set(sources.map(s => s.id));
+                  setSelectedSourceIds(loaded.filter(ls => projectSourceIds.has(ls.id)).map(s => s.id));
                 } catch { setCollectionSources([]); }
               } else { setCollectionSources([]); }
             }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none">
@@ -698,18 +870,81 @@ export default function ProjectDetail() {
           {collectionSources.length > 0 && (
             <div className="max-h-48 overflow-y-auto space-y-1 border border-gray-100 rounded-lg p-1">
               {collectionSources.map(s => (
-                <div key={s.id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg">
-                  <span className="font-medium">{s.title || s.originalFilename || s.id}</span>
-                  <button onClick={() => handleShareSource(s.id)} disabled={shareLoading} className="px-2 py-1 bg-indigo-600 text-white text-[10px] font-bold rounded hover:bg-indigo-700 disabled:opacity-50">{shareLoading ? '...' : 'Share'}</button>
-                </div>
+                <label key={s.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
+                  <input type="checkbox" checked={selectedSourceIds.includes(s.id)} onChange={() => toggleSourceSelection(s.id)} className="accent-indigo-600" />
+                  <span className="font-medium flex-1 text-xs">{s.title || s.originalFilename || s.id}</span>
+                </label>
               ))}
             </div>
+          )}
+          {collectionSources.length > 0 && (
+            <button onClick={() => handleShareSources(selectedSourceIds)} className="w-full px-3 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700">
+              Apply Changes
+            </button>
           )}
           <div className="flex justify-end gap-2">
             <button onClick={() => { setShowShareCollection(false); setSelectedCollectionId(''); setCollectionSources([]); }} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">Close</button>
           </div>
         </div>
       </Modal>
+
+      <Modal open={showExportModal} onClose={() => setShowExportModal(false)} title="Export">
+        <div className="space-y-3 text-xs">
+          <button onClick={async () => {
+            try {
+              const r = await api.get(`/api/projects/${id}/export?format=tex`, { responseType: 'blob' });
+              const url = URL.createObjectURL(r.data);
+              const a = document.createElement('a'); a.href = url; a.download = `papers-${project?.title || 'export'}.zip`;
+              a.click(); URL.revokeObjectURL(url);
+              setShowExportModal(false);
+            } catch { alert('Export failed.'); }
+          }} className="w-full text-left px-4 py-3 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition font-medium text-indigo-700">
+            Paper (.tex archive)
+            <span className="block text-[10px] text-gray-500 font-normal">Download paper with sections and images as a ZIP archive</span>
+          </button>
+          <button onClick={async () => {
+            try {
+              const r = await api.get(`/api/projects/${id}/traceability`);
+              const blob = new Blob([JSON.stringify(r.data, null, 2)], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a'); a.href = url; a.download = `traceability-${project?.title || 'export'}.json`;
+              a.click(); URL.revokeObjectURL(url);
+              setShowExportModal(false);
+            } catch { alert('Export failed.'); }
+          }} className="w-full text-left px-4 py-3 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition font-medium text-emerald-700">
+            Traceability Report (JSON)
+            <span className="block text-[10px] text-gray-500 font-normal">Export full traceability matrix with claims, sources, and evidence</span>
+          </button>
+          <button onClick={async () => {
+            try {
+              const r = await api.get(`/api/projects/${id}/traceability/csv`, { responseType: 'blob' });
+              const url = URL.createObjectURL(r.data);
+              const a = document.createElement('a'); a.href = url; a.download = `traceability-${project?.title || 'export'}.csv`;
+              a.click(); URL.revokeObjectURL(url);
+              setShowExportModal(false);
+            } catch { alert('Export failed.'); }
+          }} className="w-full text-left px-4 py-3 bg-amber-50 rounded-lg hover:bg-amber-100 transition font-medium text-amber-700">
+            Traceability Report (CSV)
+            <span className="block text-[10px] text-gray-500 font-normal">Export traceability as a CSV file for spreadsheet analysis</span>
+          </button>
+          <div className="flex justify-end">
+            <button onClick={() => setShowExportModal(false)} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">Cancel</button>
+          </div>
+        </div>
+      </Modal>
+
+      {uploadState && (
+        <Modal open={true} onClose={() => {}} title="">
+          <Marker role="status">
+            <MarkerIcon>
+              <Spinner className="animate-spin h-8 w-8 text-indigo-600" />
+            </MarkerIcon>
+            <MarkerContent className="shimmer-text">
+              {uploadState === 'uploading' ? 'Uploading paper...' : 'Processing sections...'}
+            </MarkerContent>
+          </Marker>
+        </Modal>
+      )}
     </div>
   );
 }

@@ -58,11 +58,22 @@ const LatexEditor = forwardRef(function LatexEditor({ content, onChange, readOnl
         latex(),
         isDark ? oneDark : lightTheme,
         EditorView.editable.of(!readOnly),
+        EditorView.lineWrapping,
         updateListener,
         EditorView.theme({
-          '&': { fontSize: `${fontSize}px`, backgroundColor: isDark ? undefined : '#ffffff' },
-          '.cm-scroller': { fontFamily: '"JetBrains Mono", "Fira Code", monospace' },
-          '.cm-activeLine': { backgroundColor: isDark ? '#1e293b' : '#f0f4ff' },
+          '&': { fontSize: `${fontSize}px`, backgroundColor: isDark ? '#0f172a' : '#ffffff', color: isDark ? '#f8fafc' : '#000000', height: '100%' },
+          '.cm-editor': { width: '100%', maxWidth: '100%', height: '100%', overflow: 'hidden' },
+          '.cm-scroller': { fontFamily: '"JetBrains Mono", "Fira Code", monospace', width: '100%', height: '100%', overflow: 'auto' },
+          '.cm-content': { color: isDark ? '#f8fafc' : '#000000', breakWords: 'break-word', overflowWrap: 'anywhere' },
+          '.cm-line': { color: isDark ? '#f8fafc' : '#000000', wordBreak: 'break-word', overflowWrap: 'anywhere' },
+          '.cm-content *, .cm-line *': { color: isDark ? '#f8fafc !important' : '#000000 !important' },
+          '.cm-activeLine': { backgroundColor: isDark ? '#0f172a !important' : '#ffffff !important' },
+          '.cm-activeLineGutter': { backgroundColor: isDark ? '#0f172a !important' : '#ffffff !important' },
+          '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.35) !important' : 'rgba(224, 231, 255, 0.6) !important' },
+          '.cm-lintRange': { wordBreak: 'break-word', overflowWrap: 'anywhere', maxWidth: '100%' },
+          '.cm-lintRange-warning': { backgroundColor: 'transparent', borderBottom: '2px solid #eab308' },
+          '.cm-lintRange-error': { backgroundColor: 'transparent', borderBottom: '2px solid #ef4444' },
+          '.cm-gutters': { display: 'none' },
         }),
       ],
     });
@@ -83,7 +94,7 @@ const LatexEditor = forwardRef(function LatexEditor({ content, onChange, readOnl
     }
   }, [content]);
 
-  return <div ref={containerRef} className="h-full overflow-auto" />;
+  return <div ref={containerRef} className="h-full w-full overflow-hidden" />;
 });
 
 export default LatexEditor;

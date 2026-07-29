@@ -10,6 +10,7 @@ import WorkspaceHeader from './WorkspaceHeader.jsx';
 import FilePanel from './FilePanel.jsx';
 import EditorPanel from './EditorPanel.jsx';
 import ContextPanel from './ContextPanel.jsx';
+import FullPaperPreview from './FullPaperPreview.jsx';
 
 const DEFAULT_SAMPLE_LATEX = `% Select a paper from the file panel to start editing.`;
 
@@ -21,6 +22,8 @@ export default function WorkspaceLayout() {
   const [activeTab, setActiveTab] = useState(() => localStorage.getItem('student_workspace_active_tab') || 'Source');
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showOverview, setShowOverview] = useState(false);
+  const [sectionsExpanded, setSectionsExpanded] = useState(true);
+  const [assignedExpanded, setAssignedExpanded] = useState(true);
   const [showReviseModal, setShowReviseModal] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
@@ -38,6 +41,7 @@ export default function WorkspaceLayout() {
   const [loadingProject, setLoadingProject] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [viewerFile, setViewerFile] = useState(null);
+const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
   const [codeContent, setCodeContent] = useState('');
 
@@ -63,8 +67,7 @@ export default function WorkspaceLayout() {
   const [showAiReviewModal, setShowAiReviewModal] = useState(false);
   const [citationResult, setCitationResult] = useState(null);
   const [loadingCitation, setLoadingCitation] = useState(false);
-  const [selectedInstructorId, setSelectedInstructorId] = useState('');
-  const [instructorsList, setInstructorsList] = useState([]);
+
   const [loadingAiReview, setLoadingAiReview] = useState(false);
   const [rollingBack, setRollingBack] = useState(false);
   const [aiReviewResult, setAiReviewResult] = useState(null);
@@ -158,9 +161,6 @@ export default function WorkspaceLayout() {
   };
 
   // Data loading
-  useEffect(() => {
-    api.get('/api/users', { params: { role: 'INSTRUCTOR' } }).then(r => setInstructorsList(r.data || [])).catch(() => {});
-  }, []);
 
   const loadProjectData = useCallback(async (projId) => {
     if (!projId) return;
@@ -209,6 +209,7 @@ export default function WorkspaceLayout() {
   }, [projectId, loadProjectData]);
 
   const assignedSection = user ? sections.find(s => String(s.assignedUserId) === String(user.id)) : null;
+  const isLocked = project?.status === 'SUBMITTED_FOR_REVIEW' || project?.status === 'APPROVED' || project?.status === 'ARCHIVED';
 
   useEffect(() => {
     if (!selectedPaper) { setSections([]); return; }
@@ -269,9 +270,11 @@ export default function WorkspaceLayout() {
   const handleExportTexArchive = async () => {
     if (!project) return;
     try {
-      const r = await api.post('/api/exports', null, { params: { projectId: project.id, format: 'tex' } });
-      showToast('Export started. You will be notified when ready.');
-      setTimeout(() => fetchExports(), 500);
+      const r = await api.get(`/api/projects/${project.id}/export?format=tex`, { responseType: 'blob' });
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement('a'); a.href = url; a.download = `papers-${project?.title || 'export'}.zip`;
+      a.click(); URL.revokeObjectURL(url);
+      showToast('Downloaded paper archive.');
     } catch { showToast('Export failed.'); }
   };
 
@@ -317,6 +320,7 @@ export default function WorkspaceLayout() {
   };
 
   const handleUploadSource = async (file) => {
+    if (isLocked) { showToast("Project is locked."); return; }
     if (!file || !project || !user) return;
     showToast(`Uploading ${file.name}...`);
     const fd = new FormData();
@@ -344,6 +348,7 @@ export default function WorkspaceLayout() {
   };
 
   const handleUploadMedia = async (file) => {
+    if (isLocked) { showToast("Project is locked."); return; }
     if (!file || !project) return;
     showToast(`Uploading ${file.name}...`);
     const fd = new FormData();
@@ -374,6 +379,7 @@ export default function WorkspaceLayout() {
   };
 
   const handleCreateClaim = async () => {
+    if (isLocked) { showToast("Project is locked."); return; }
     if (!newClaimContent.trim() || !project) return;
     const sectionId = assignedSection?.id;
     if (!sectionId) { showToast("No section assigned to you."); return; }
@@ -441,11 +447,13 @@ export default function WorkspaceLayout() {
   };
 
   const canEditClaim = (claim) => {
+    if (isLocked) return false;
     if (role === 'ADMIN' || role === 'INSTRUCTOR') return true;
     return sections.filter(s => String(s.assignedUserId) === String(user?.id)).map(s => s.id).includes(claim.sectionId);
   };
 
   const handleSaveDraft = async () => {
+    if (isLocked) { showToast("Project is locked."); return; }
     if (!selectedPaper) { showToast("No paper selected."); return; }
     if (!assignedSection) { showToast("No section assigned to you."); return; }
     setSaveStatus('saving');
@@ -543,6 +551,7 @@ export default function WorkspaceLayout() {
   };
 
   const handleScanCitations = async () => {
+    if (isLocked) { showToast("Project is locked."); return; }
     if (!selectedPaper) { showToast("Select a paper first."); return; }
     setLoadingCitation(true);
     setCitationResult(null);
@@ -554,6 +563,7 @@ export default function WorkspaceLayout() {
   };
 
   const handleRunAiReview = async () => {
+    if (isLocked) { showToast("Project is locked."); return; }
     if (!selectedPaper) { showToast("Select a paper first."); return; }
     setLoadingAiReview(true); setShowAiReviewModal(true);
     try {
@@ -567,11 +577,11 @@ export default function WorkspaceLayout() {
 
   const handleSubmitReview = async () => {
     if (!project) return;
-    if (!selectedInstructorId) { showToast("Select an instructor."); return; }
+    setShowSubmitReviewModal(false);
+    if (assignedSection) await handleSaveDraft();
     try {
-      await api.post(`/api/projects/${project.id}/reviews`, { instructorId: selectedInstructorId });
+      await api.post(`/api/projects/${project.id}/reviews`);
       showToast("Submitted for review.");
-      setShowSubmitReviewModal(false);
       await loadProjectData(project.id);
     } catch { showToast("Submit failed."); }
   };
@@ -736,7 +746,7 @@ export default function WorkspaceLayout() {
 
   return (
     <div className="h-screen w-full flex flex-col bg-(--surface-secondary) overflow-hidden font-sans antialiased text-(--text-primary)">
-      <WorkspaceHeader project={project} navigate={navigate} selectedPaper={selectedPaper} handleRunAiReview={handleRunAiReview} loadingAiReview={loadingAiReview} onShowHistory={() => setShowHistoryModal(true)} historyDisabled={!assignedSection}
+      <WorkspaceHeader project={project} navigate={navigate} selectedPaper={selectedPaper} handleRunAiReview={handleRunAiReview} loadingAiReview={loadingAiReview} isLocked={isLocked} onShowHistory={() => setShowHistoryModal(true)} historyDisabled={!assignedSection}
         notifications={notifications} unreadCount={unreadCount} showNotifications={showNotifications} setShowNotifications={setShowNotifications} onMarkNotificationRead={handleMarkNotificationRead}
         showExportMenu={showExportMenu} setShowExportMenu={setShowExportMenu} handleExportTexArchive={handleExportTexArchive} handleExportTraceabilityJson={handleExportTraceabilityJson} handleExportTraceabilityCsv={handleExportTraceabilityCsv} handleExportGraphCsv={handleExportCsv} />
 
@@ -756,17 +766,17 @@ export default function WorkspaceLayout() {
           </div>
         </div>
 
-        <FilePanel isOpen={isFileTreeOpen} width={fileTreeWidth} onResizeStart={handleLeftDividerMouseDown} sections={sections} assignedSection={assignedSection} selectedSectionId={selectedSectionId} onSelectSection={(sec) => { setSelectedSectionId(sec.id); loadCode(sec.contentTex || ''); }} selectedPaper={selectedPaper} onSelectPaper={(p) => { setSelectedPaper(p); setShowHistoryModal(false); loadCode(p.extractedText || ''); }} papers={papers} onUploadPaper={handleUploadPaper} sources={sources} onUploadSource={handleUploadSource} onDeleteSource={handleDeleteSource} mediaAssets={mediaAssets} onUploadMedia={handleUploadMedia} onDeleteMedia={handleDeleteMedia} onInsertMedia={handleInsertMedia} showToast={showToast} />
+        <FilePanel isOpen={isFileTreeOpen} width={fileTreeWidth} onResizeStart={handleLeftDividerMouseDown} sections={sections} assignedSection={assignedSection} selectedSectionId={selectedSectionId} onSelectSection={(sec) => { setSelectedSectionId(sec.id); loadCode(sec.contentTex || ''); }} selectedPaper={selectedPaper} onSelectPaper={(p) => { setSelectedPaper(p); setShowHistoryModal(false); loadCode(p.extractedText || ''); }} papers={papers} onUploadPaper={isLocked ? undefined : handleUploadPaper} sources={sources} onUploadSource={isLocked ? undefined : handleUploadSource} onDeleteSource={handleDeleteSource} mediaAssets={mediaAssets} onUploadMedia={isLocked ? undefined : handleUploadMedia} onDeleteMedia={handleDeleteMedia} onInsertMedia={handleInsertMedia} showToast={showToast} isLocked={isLocked} />
 
-        <EditorPanel editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSection={assignedSection} currentSection={sections.find(s => String(s.id) === String(selectedSectionId))} displayContent={displayContent} updateCode={updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} handleScanCitations={handleScanCitations} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} />
+        <EditorPanel editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSection={assignedSection} currentSection={sections.find(s => String(s.id) === String(selectedSectionId))} displayContent={displayContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} handleScanCitations={handleScanCitations} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} isLocked={isLocked} />
 
         <ContextPanel isOpen={isDrawerOpen} width={rightDrawerWidth} onResizeStart={handleRightDividerMouseDown} activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); localStorage.setItem('student_workspace_active_tab', tab); }} showToast={showToast}
-          sources={sources} isUploading={isUploading} setIsUploading={setIsUploading} project={project} setViewerFile={setViewerFile} fetchSources={fetchSources}
+          sources={sources} isUploading={isUploading} setIsUploading={setIsUploading} project={project} setViewerFile={setViewerFile} fetchSources={fetchSources} isLocked={isLocked}
           newClaimContent={newClaimContent} setNewClaimContent={setNewClaimContent} handleCreateClaim={handleCreateClaim}
           claims={claims} selectedClaim={selectedClaim} claimMatches={claimMatches} loadingMatches={loadingMatches}
           handleFetchMatches={handleFetchMatches} handleAnalyzeClaim={handleAnalyzeClaim} canEditClaim={canEditClaim}
           editingClaim={editingClaim} setEditingClaim={setEditingClaim} editClaimContent={editClaimContent} setEditClaimContent={setEditClaimContent} handleDeleteClaim={handleDeleteClaim}
-          feedbacks={feedbacks} setShowSubmitReviewModal={setShowSubmitReviewModal}
+          feedbacks={feedbacks} setShowSubmitReviewModal={setShowSubmitReviewModal} userProjectRole={project?.currentUserRole}
           graphData={graphData} fetchGraphData={fetchGraphData} graphScope={graphScope} onGraphScopeToggle={handleGraphScopeToggle} dynamicNodes={dynamicNodes} hoveredNodeId={hoveredNodeId} setHoveredNodeId={setHoveredNodeId}
           exports={exports} fetchExports={fetchExports} api={api} showToast={showToast}
           papers={papers} selectedPaperDetail={selectedPaperDetail} setSelectedPaperDetail={setSelectedPaperDetail}
@@ -830,58 +840,74 @@ export default function WorkspaceLayout() {
         </div>
       )}
 
-      {/* Overview Modal */}
+      {/* Overview — Sections accordion, assigned sections, preview button */}
       {showOverview && (
         <div className="absolute left-14 top-14 bottom-0 w-72 bg-(--surface) border-r border-(--border) shadow-xl z-30 animate-in slide-in-from-left duration-200 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-(--border) shrink-0">
-            <h2 className="text-sm font-bold text-(--text-primary)">Overview</h2>
+            <h2 className="text-sm font-bold text-(--text-primary)">{t('sections')}</h2>
             <button onClick={() => setShowOverview(false)} className="text-(--text-tertiary) hover:text-(--text-secondary) transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-(--surface-secondary) border border-(--border) rounded-xl p-4 text-center shadow-sm">
-                <div className="text-xl font-bold text-indigo-600">{papers.length}</div>
-                <div className="text-[10px] text-(--text-tertiary) uppercase tracking-wider font-bold mt-0.5">Papers</div>
-              </div>
-              <div className="bg-(--surface-secondary) border border-(--border) rounded-xl p-4 text-center shadow-sm">
-                <div className="text-xl font-bold text-indigo-600">{sections.length}</div>
-                <div className="text-[10px] text-(--text-tertiary) uppercase tracking-wider font-bold mt-0.5">Sections</div>
-              </div>
-            </div>
-            <div className="bg-(--surface-secondary) border border-(--border) rounded-xl p-4 shadow-sm">
-              <h4 className="text-xs font-bold text-(--text-primary) mb-2">Your Assigned Section</h4>
-              {assignedSection ? (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 p-2.5 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
-                    <span className="text-xs font-medium text-(--text-primary) truncate">{assignedSection.sectionTitle || 'Untitled Section'}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-[11px] text-(--text-secondary)">
-                    <div className="p-2 bg-(--surface) rounded-lg"><span className="font-bold">Version:</span> {assignedSection.version || 1}</div>
-                    <div className="p-2 bg-(--surface) rounded-lg"><span className="font-bold">Order:</span> {assignedSection.sectionOrder || '-'}</div>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-xs text-(--text-tertiary) italic p-2 text-center">No section assigned to you.</p>
-              )}
-            </div>
-            <div className="bg-(--surface-secondary) border border-(--border) rounded-xl p-4 shadow-sm">
-              <h4 className="text-xs font-bold text-(--text-primary) mb-3">All Sections</h4>
-              {sections.length === 0 ? (
-                <p className="text-xs text-(--text-tertiary) italic text-center py-4">No sections available.</p>
-              ) : (
-                <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                  {sections.map(sec => (
-                    <div key={sec.id} className={`flex items-center justify-between p-2 rounded-lg text-[11px] border ${String(sec.id) === String(assignedSection?.id) ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' : 'bg-(--surface) border-(--border-light)'}`}>
-                      <span className="truncate max-w-[180px] font-medium text-(--text-primary)">{sec.sectionTitle || 'Untitled'} <span className="text-(--text-tertiary) font-mono">(#{sec.sectionOrder})</span></span>
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${sec.assignedUserId ? 'bg-indigo-50 text-indigo-700' : 'text-(--text-tertiary)'}`}>{sec.assignedUserId ? 'Assigned' : 'Unassigned'}</span>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+            {assignedSection && (
+              <>
+                <button onClick={() => setAssignedExpanded(!assignedExpanded)}
+                  className="w-full flex items-center justify-between px-2 py-1.5 text-[10px] font-bold text-(--text-secondary) tracking-wider uppercase cursor-pointer hover:bg-(--surface-secondary) rounded-lg">
+                  <span className="flex items-center gap-1.5">{assignedExpanded ? '▼' : '▶'} {t('assignedToYou')}</span>
+                </button>
+                {assignedExpanded && (
+                  <div className="space-y-1 pl-1">
+                    <div key={assignedSection.id}
+                      onClick={() => { setSelectedSectionId(assignedSection.id); loadCode(assignedSection.contentTex || ''); setShowOverview(false); }}
+                      className="flex items-center justify-between p-2.5 rounded-lg text-xs border cursor-pointer bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800">
+                      <div className="flex items-center gap-2 truncate min-w-0">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                        <span className="truncate font-medium text-(--text-primary)">{assignedSection.sectionTitle || 'Untitled'}</span>
+                        <span className="text-[9px] text-(--text-tertiary) font-mono shrink-0">#{assignedSection.sectionOrder}</span>
+                      </div>
+                      <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">v{assignedSection.version || 1}</span>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+              </>
+            )}
+            <button onClick={() => setSectionsExpanded(!sectionsExpanded)}
+              className="w-full flex items-center justify-between px-2 py-1.5 text-[10px] font-bold text-(--text-secondary) tracking-wider uppercase cursor-pointer hover:bg-(--surface-secondary) rounded-lg">
+              <span className="flex items-center gap-1.5">{sectionsExpanded ? '▼' : '▶'} {t('sections')} ({sections.length})</span>
+            </button>
+            {sectionsExpanded && (
+              <div className="space-y-1 pl-1">
+                {sections.length === 0 ? (
+                  <p className="text-xs text-(--text-tertiary) italic text-center py-4">{t('noSections')}</p>
+                ) : (
+                  sections.map(sec => {
+                    const isMySection = String(sec.id) === String(assignedSection?.id);
+                    return (
+                      <div key={sec.id}
+                        onClick={() => { setSelectedSectionId(sec.id); loadCode(sec.contentTex || ''); setShowOverview(false); }}
+                        className={`flex items-center justify-between p-2.5 rounded-lg text-xs border cursor-pointer transition-all ${isMySection ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' : 'bg-(--surface-secondary) border-(--border) hover:bg-(--surface-tertiary)'}`}>
+                        <div className="flex items-center gap-2 truncate min-w-0">
+                          {isMySection && <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title={t('assignedToYou')}></span>}
+                          <span className="truncate font-medium text-(--text-primary)">{sec.sectionTitle || 'Untitled'}</span>
+                          <span className="text-[9px] text-(--text-tertiary) font-mono shrink-0">#{sec.sectionOrder}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">v{sec.version || 1}</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
+          <div className="px-3 py-3 border-t border-(--border) shrink-0">
+            <button onClick={() => setShowFullPaperPreview(true)} disabled={sections.length === 0}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-2">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+              {t('previewFullPaper')}
+            </button>
           </div>
         </div>
       )}
@@ -923,22 +949,17 @@ export default function WorkspaceLayout() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-(--surface) rounded-xl shadow-2xl w-full max-w-md p-6 transform transition-all">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-bold text-(--text-primary)">Submit for Review</h2>
+              <h2 className="text-lg font-bold text-(--text-primary)">{t('submitReview')}</h2>
               <button onClick={() => setShowSubmitReviewModal(false)} className="text-(--text-tertiary) hover:text-(--text-secondary) transition-colors">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <p className="text-sm text-(--text-secondary) mb-4">Select an instructor to review your draft.</p>
-            <div className="mb-6">
-              <label className="block text-xs font-bold text-(--text-tertiary) uppercase tracking-wider mb-2">Instructor</label>
-              <select value={selectedInstructorId || ''} onChange={(e) => setSelectedInstructorId(e.target.value)} className="w-full p-2.5 bg-(--surface) border border-(--border) rounded-lg text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                {instructorsList.map(inst => <option key={inst.id} value={inst.id}>{inst.firstName} {inst.lastName} ({inst.email})</option>)}
-                {instructorsList.length === 0 && <option value="">No instructors</option>}
-              </select>
-            </div>
+            <p className="text-sm text-(--text-secondary) mb-6 leading-relaxed">
+              This will seal your entire paper for the instructor to review. No further edits will be possible until the instructor returns it. Are you sure?
+            </p>
             <div className="flex justify-end gap-3">
-              <button onClick={() => setShowSubmitReviewModal(false)} className="px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors">Cancel</button>
-              <button onClick={handleSubmitReview} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm shadow-indigo-200 transition-colors">Submit</button>
+              <button onClick={() => setShowSubmitReviewModal(false)} className="px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors">{t('cancel')}</button>
+              <button onClick={handleSubmitReview} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm shadow-indigo-200 transition-colors">{t('submitReview')}</button>
             </div>
           </div>
         </div>
@@ -1117,6 +1138,15 @@ export default function WorkspaceLayout() {
       )}
 
       <TourLauncher steps={tourSteps} tourKey="student-workspace" />
+
+      {showFullPaperPreview && (
+        <FullPaperPreview
+          sections={sections}
+          paperTitle={selectedPaper?.originalFilename || 'Paper'}
+          mediaAssets={mediaAssets}
+          onClose={() => setShowFullPaperPreview(false)}
+        />
+      )}
     </div>
   );
 }

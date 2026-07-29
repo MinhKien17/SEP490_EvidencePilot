@@ -146,5 +146,13 @@
     "darkModeDesc": "Chuyển đổi giữa chủ đề sáng và tối.",
     "language": "Ngôn ngữ",
     "languageDesc": "Chuyển đổi giữa Tiếng Anh và Tiếng Việt."
-  }
+  },
+  "availableSource": "Nguồn có sẵn",
+  "previewFullPaper": "Xem toàn bộ bài viết",
+  "fullPaper": "Toàn bộ bài viết",
+  "pages": "Trang",
+  "leaderRole": "Trưởng nhóm",
+  "memberRole": "Thành viên",
+  "requestFeedback": "Yêu cầu phản hồi",
+  "assignedToYou": "Được giao cho bạn"
 }

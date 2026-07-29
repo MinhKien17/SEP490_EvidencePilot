@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import LatexEditor from '../../components/LatexEditor';
 import PreviewPane from '../../components/PreviewPane';
 import { useTranslation } from 'react-i18next';
@@ -9,10 +10,11 @@ export default function EditorPanel({
   insertLatexTag, insertSymbol, handleFindReplace, handleDownloadTex,
   showSymbolMenu, setShowSymbolMenu, showTextSizeMenu, setShowTextSizeMenu,
   showSearchPanel, setShowSearchPanel, searchQuery, setSearchQuery, replaceQuery, setReplaceQuery,
-  textSize, setTextSize, showToast, editorRef, mediaAssets
+  textSize, setTextSize, showToast, editorRef, mediaAssets, isLocked
 }) {
   const { t } = useTranslation();
   const isOwnSection = assignedSection && String(selectedSectionId) === String(assignedSection.id);
+  const [previewZoom, setPreviewZoom] = useState(100);
   return (
     <div id="editor-preview-container" className="flex-1 flex overflow-hidden bg-(--surface-tertiary)/50 p-2 gap-2">
       <div style={{ width: `${editorWidth}%`, flexGrow: 0, flexShrink: 0 }} className="bg-(--surface) rounded-lg shadow-sm border border-(--border) flex flex-col overflow-hidden">
@@ -23,16 +25,16 @@ export default function EditorPanel({
             {currentSection && <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1 py-0.5 rounded shrink-0">v{currentSection.version || 1}</span>}
           </div>
           <div className="flex items-center gap-3">
-            {currentSection && !isOwnSection && (
+            {(isLocked || (currentSection && !isOwnSection)) && (
               <span className="text-[9px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded-md border border-amber-200 dark:border-amber-800">{t('readOnly')}</span>
             )}
             {selectedPaper && (
-              <button onClick={handleScanCitations} className="border border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 px-2.5 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-colors" title={t('scanCitationsTitle')}>
+              <button onClick={handleScanCitations} disabled={isLocked} className="border border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 disabled:opacity-40 px-2.5 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-colors" title={t('scanCitationsTitle')}>
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 {t('scanCitations')}
               </button>
             )}
-            <button onClick={handleSaveDraft} disabled={saveStatus === 'saving' || !isOwnSection} className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold transition-colors disabled:opacity-50 ${saveStatus === 'saving' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30' : saveStatus === 'saved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30' : saveStatus === 'error' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30' : 'bg-(--surface-tertiary) text-(--text-secondary) hover:bg-(--border)'}`}>
+            <button onClick={handleSaveDraft} disabled={saveStatus === 'saving' || !isOwnSection || isLocked} className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold transition-colors disabled:opacity-50 ${saveStatus === 'saving' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30' : saveStatus === 'saved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30' : saveStatus === 'error' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30' : 'bg-(--surface-tertiary) text-(--text-secondary) hover:bg-(--border)'}`}>
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
               {saveStatus === 'saving' ? t('saving') : saveStatus === 'saved' ? t('saved') : saveStatus === 'error' ? t('error') : t('save')}
               {lastSaved && saveStatus !== 'saving' && <span className="text-[9px] opacity-60 ml-0.5">{lastSaved.toLocaleTimeString()}</span>}
@@ -43,7 +45,7 @@ export default function EditorPanel({
           <div className="h-9 flex items-center justify-between px-3 border-b border-(--border-light) gap-1">
             <div className="flex-1 flex items-center gap-1 min-w-0 pr-2">
               <div className="relative">
-                <button onClick={() => { if (!isOwnSection) return; setShowTextSizeMenu(!showTextSizeMenu); setShowSymbolMenu(false); }} className={`h-7 px-1.5 flex items-center gap-1 hover:bg-(--surface-tertiary) rounded text-(--text-primary) font-extrabold text-[11px] transition-colors cursor-pointer ${!isOwnSection ? 'opacity-30 pointer-events-none' : ''}`} title={t('headingFontSize')}>
+                <button onClick={() => { if (!isOwnSection || isLocked) return; setShowTextSizeMenu(!showTextSizeMenu); setShowSymbolMenu(false); }} className={`h-7 px-1.5 flex items-center gap-1 hover:bg-(--surface-tertiary) rounded text-(--text-primary) font-extrabold text-[11px] transition-colors cursor-pointer ${!isOwnSection || isLocked ? 'opacity-30 pointer-events-none' : ''}`} title={t('headingFontSize')}>
                   <span>TT</span><span className="text-[7px]">▼</span>
                 </button>
                 {showTextSizeMenu && (
@@ -124,8 +126,8 @@ export default function EditorPanel({
             </div>
           )}
         </div>
-        <div className="flex-1 min-h-0">
-          <LatexEditor ref={editorRef} content={displayContent} onChange={isOwnSection ? updateCode : undefined} readOnly={!isOwnSection} fontSize={textSize} />
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <LatexEditor ref={editorRef} content={displayContent} onChange={isOwnSection && !isLocked ? updateCode : undefined} readOnly={!isOwnSection || isLocked} fontSize={textSize} />
         </div>
       </div>
       <div onMouseDown={onEditorResizeStart} className="w-1.5 hover:bg-indigo-500 cursor-col-resize self-stretch transition-all shrink-0 z-10 relative group flex items-center justify-center border-l border-r border-(--border)" title={t('dragToResize')}>
@@ -137,9 +139,16 @@ export default function EditorPanel({
             <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
             {t('preview')}
           </div>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setPreviewZoom(p => Math.min(200, p + 10))} className="text-xs font-bold text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-secondary) px-1.5 py-0.5 rounded transition-colors">+</button>
+            <span className="text-xs font-mono text-(--text-primary) min-w-[36px] text-center">{previewZoom}%</span>
+            <button onClick={() => setPreviewZoom(p => Math.max(50, p - 10))} className="text-xs font-bold text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-secondary) px-1.5 py-0.5 rounded transition-colors">−</button>
+          </div>
         </div>
-        <div className="flex-1 min-h-0">
-          <PreviewPane latex={displayContent} mediaAssets={mediaAssets} />
+        <div className="flex-1 min-h-0 overflow-auto flex justify-center">
+          <div style={{ transform: `scale(${previewZoom / 100})`, transformOrigin: 'center top' }}>
+            <PreviewPane latex={displayContent} mediaAssets={mediaAssets} />
+          </div>
         </div>
       </div>
     </div>

@@ -13,3 +13,4 @@ export { default as LatexEditor } from './LatexEditor';
 export { default as PreviewPane } from './PreviewPane';
 export { default as SectionTree } from './SectionTree';
 export { default as EvidenceGraph } from './EvidenceGraph';
+export { default as Spinner } from './Spinner';
