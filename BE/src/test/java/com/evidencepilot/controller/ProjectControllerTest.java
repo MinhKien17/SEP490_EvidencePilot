@@ -195,7 +195,7 @@ class ProjectControllerTest {
         UUID projectId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         mockMvc.perform(post("/api/projects/{id}/members", projectId)
-                        .param("userId", userId.toString()).param("role", "EDITOR"))
+                        .param("userId", userId.toString()).param("role", "MEMBER"))
                 .andExpect(status().isCreated());
         verify(projectService).addMember(projectId, userId, ProjectRole.MEMBER);
     }
