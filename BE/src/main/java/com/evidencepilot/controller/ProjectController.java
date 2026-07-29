@@ -39,7 +39,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 
@@ -215,14 +219,21 @@ public class ProjectController {
     @Operation(summary = "Export project as .tex archive",
             description = "Returns a ZIP of .tex files for all papers in the project.")
     @GetMapping("/{projectId}/export")
-    public ResponseEntity<byte[]> exportProject(
+    public ResponseEntity<StreamingResponseBody> exportProject(
             @Parameter(description = "Project UUID") @PathVariable UUID projectId,
             @RequestParam(defaultValue = "tex") String format) {
-        byte[] archive = paperProcessingService.exportTexArchive(projectId);
+        Path archive = paperProcessingService.exportTexArchive(projectId);
+        StreamingResponseBody body = output -> {
+            try (InputStream content = Files.newInputStream(archive)) {
+                content.transferTo(output);
+            } finally {
+                Files.deleteIfExists(archive);
+            }
+        };
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"export.zip\"")
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(archive);
+                .body(body);
     }
 
     @Operation(summary = "Add a member to a project",

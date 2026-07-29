@@ -11,7 +11,6 @@ import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
-import com.evidencepilot.repository.ProjectMediaRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.SectionFeedbackRepository;
 import com.evidencepilot.repository.UserRepository;
@@ -21,13 +20,24 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipOutputStream;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -65,13 +75,10 @@ class PaperProcessingServiceImplTest {
     private ProjectRepository projectRepository;
 
     @Mock
-    private ProjectMediaRepository projectMediaRepository;
-
-    @Mock
-    private DocumentObjectStorage documentObjectStorage;
-
-    @Mock
     private SystemNotificationService systemNotificationService;
+
+    @Mock
+    private TexArchiveMediaWriter texArchiveMediaWriter;
 
     @Test
     void getPaperSectionsRequiresProjectAccess() {
@@ -229,6 +236,71 @@ class PaperProcessingServiceImplTest {
         verify(paperSectionRepository, never()).save(any(PaperSection.class));
     }
 
+    @Test
+    void exportTexArchiveWritesGraphicxPreambleAndProjectMedia() throws Exception {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        document.setOriginalFilename("paper.pdf");
+        PaperSection section = section(document);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(documentRepository.findByProjectId(project.getId())).thenReturn(List.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+
+        Path archive = service().exportTexArchive(project.getId());
+        try (ZipFile zip = new ZipFile(archive.toFile(), StandardCharsets.UTF_8)) {
+            String tex = new String(
+                    zip.getInputStream(zip.getEntry("paper.tex")).readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertThat(tex).contains("\\usepackage{graphicx}");
+        } finally {
+            Files.deleteIfExists(archive);
+        }
+        verify(texArchiveMediaWriter).writeProjectMedia(
+                eq(project.getId()),
+                any(ZipOutputStream.class));
+    }
+
+    @Test
+    void exportTexArchiveDeletesPartialFileAfterUncheckedFailure() throws Exception {
+        User user = user();
+        Project project = project();
+        RuntimeException failure = new IllegalStateException("media failed");
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(documentRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        doThrow(failure).when(texArchiveMediaWriter).writeProjectMedia(
+                eq(project.getId()),
+                any(ZipOutputStream.class));
+        Set<Path> before = projectExportArchives();
+
+        try {
+            assertThatThrownBy(() -> service().exportTexArchive(project.getId()))
+                    .isSameAs(failure);
+            assertThat(projectExportArchives()).isEqualTo(before);
+        } finally {
+            for (Path archive : projectExportArchives()) {
+                if (!before.contains(archive)) {
+                    Files.deleteIfExists(archive);
+                }
+            }
+        }
+    }
+
+    private static Set<Path> projectExportArchives() throws IOException {
+        try (var files = Files.list(Path.of(System.getProperty("java.io.tmpdir")))) {
+            return files
+                    .filter(path -> path.getFileName().toString()
+                            .startsWith("evidencepilot-project-export-"))
+                    .filter(path -> path.getFileName().toString().endsWith(".zip"))
+                    .collect(Collectors.toSet());
+        }
+    }
+
     private PaperProcessingServiceImpl service() {
         return new PaperProcessingServiceImpl(
                 aiModelClient,
@@ -240,9 +312,8 @@ class PaperProcessingServiceImplTest {
                 paperStandardService,
                 userRepository,
                 projectRepository,
-                projectMediaRepository,
-                documentObjectStorage,
-                systemNotificationService);
+                systemNotificationService,
+                texArchiveMediaWriter);
     }
 
     private User user() {

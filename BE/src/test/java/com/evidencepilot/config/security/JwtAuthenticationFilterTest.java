@@ -4,6 +4,7 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.UserRepository;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -82,6 +83,28 @@ class JwtAuthenticationFilterTest {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         assertThat(authentication.getPrincipal()).isSameAs(user);
         assertThat(authentication.getAuthorities()).extracting("authority").containsExactly("ROLE_INSTRUCTOR");
+    }
+
+    @Test
+    void asyncDispatchWithValidToken_reestablishesAuthentication() throws Exception {
+        UUID userId = UUID.randomUUID();
+        User user = new User();
+        user.setId(userId);
+        user.setRole(UserRole.STUDENT);
+        user.setAccountStatus(AccountStatus.ACTIVE);
+        user.setTokenVersion(1);
+        var request = request("valid");
+        request.setDispatcherType(DispatcherType.ASYNC);
+        when(jwtUtils.validateToken("valid")).thenReturn(true);
+        when(jwtUtils.extractUserId("valid")).thenReturn(userId);
+        when(jwtUtils.extractTokenVersion("valid")).thenReturn(1);
+        when(users.findById(userId)).thenReturn(Optional.of(user));
+
+        filter.doFilter(request, new MockHttpServletResponse(), chain);
+
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(authentication).isNotNull();
+        assertThat(authentication.getPrincipal()).isSameAs(user);
     }
 
     @Test

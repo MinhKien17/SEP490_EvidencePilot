@@ -12,13 +12,25 @@ import com.evidencepilot.service.ProjectService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
@@ -29,12 +41,14 @@ class ProjectControllerTest {
     private final ClaimService claimService = mock(ClaimService.class);
     private final CollectionService collectionService = mock(CollectionService.class);
     private final PaperProcessingService paperProcessingService = mock(PaperProcessingService.class);
+    private ProjectController controller;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = standaloneSetup(new ProjectController(
-                projectService, documentService, claimService, collectionService, paperProcessingService)).build();
+        controller = new ProjectController(
+                projectService, documentService, claimService, collectionService, paperProcessingService);
+        mockMvc = standaloneSetup(controller).build();
     }
 
     @Test
@@ -127,6 +141,53 @@ class ProjectControllerTest {
         UUID id = UUID.randomUUID();
         mockMvc.perform(get("/api/projects/{id}/claims", id)).andExpect(status().isOk());
         verify(claimService).getClaimsByProject(id, 0, 20, "createdAt,desc", null, null);
+    }
+
+    @Test
+    void exportProjectStreamsArchiveAndDeletesTemporaryFile() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        byte[] expected = {1, 2, 3};
+        Path archive = Files.write(Files.createTempFile("project-export-", ".zip"), expected);
+        when(paperProcessingService.exportTexArchive(projectId)).thenReturn(archive);
+
+        try {
+            MvcResult result = mockMvc.perform(get("/api/projects/{projectId}/export", projectId)
+                            .param("format", "tex"))
+                    .andExpect(request().asyncStarted())
+                    .andReturn();
+
+            mockMvc.perform(asyncDispatch(result))
+                    .andExpect(status().isOk())
+                    .andExpect(header().string("Content-Disposition", "attachment; filename=\"export.zip\""))
+                    .andExpect(content().contentType(MediaType.APPLICATION_OCTET_STREAM))
+                    .andExpect(content().bytes(expected));
+            assertThat(archive).doesNotExist();
+        } finally {
+            Files.deleteIfExists(archive);
+        }
+    }
+
+    @Test
+    void exportProjectDeletesTemporaryFileWhenStreamingFails() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        Path archive = Files.write(Files.createTempFile("project-export-", ".zip"), new byte[] {1});
+        when(paperProcessingService.exportTexArchive(projectId)).thenReturn(archive);
+        ResponseEntity<StreamingResponseBody> response = controller.exportProject(projectId, "tex");
+        OutputStream failingOutput = new OutputStream() {
+            @Override
+            public void write(int value) throws IOException {
+                throw new IOException("stream failed");
+            }
+        };
+
+        try {
+            assertThatThrownBy(() -> response.getBody().writeTo(failingOutput))
+                    .isInstanceOf(IOException.class)
+                    .hasMessage("stream failed");
+            assertThat(archive).doesNotExist();
+        } finally {
+            Files.deleteIfExists(archive);
+        }
     }
 
     @Test

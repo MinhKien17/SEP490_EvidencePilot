@@ -3,6 +3,7 @@ package com.evidencepilot.service;
 import com.evidencepilot.dto.response.PaperSectionResponse;
 import com.evidencepilot.dto.response.PaperValidationResponse;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -40,5 +41,5 @@ public interface PaperProcessingService {
 
     void deleteSection(UUID documentId, UUID sectionId);
 
-    byte[] exportTexArchive(UUID projectId);
+    Path exportTexArchive(UUID projectId);
 }

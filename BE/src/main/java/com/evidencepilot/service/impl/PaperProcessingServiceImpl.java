@@ -7,23 +7,21 @@ import com.evidencepilot.mapper.ProjectMapper;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
-import com.evidencepilot.model.ProjectMedia;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
-import com.evidencepilot.repository.ProjectMediaRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.SectionFeedbackRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.CurrentUserService;
-import com.evidencepilot.service.DocumentObjectStorage;
 import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.PaperStandardService;
 import com.evidencepilot.service.SystemNotificationService;
+import com.evidencepilot.service.TexArchiveMediaWriter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -31,9 +29,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -62,9 +62,8 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     private final PaperStandardService paperStandardService;
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
-    private final ProjectMediaRepository projectMediaRepository;
-    private final DocumentObjectStorage documentObjectStorage;
     private final SystemNotificationService systemNotificationService;
+    private final TexArchiveMediaWriter texArchiveMediaWriter;
 
     @Override
     public List<PaperSectionResponse> getPaperSections(UUID documentId) {
@@ -505,16 +504,21 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     }
 
     @Override
-    public byte[] exportTexArchive(UUID projectId) {
+    public Path exportTexArchive(UUID projectId) {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
         currentUserService.requireProjectAccess(currentUser, project);
 
         List<Document> docs = documentRepository.findByProjectId(projectId);
-        List<ProjectMedia> mediaList = projectMediaRepository.findByProjectId(projectId);
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        try (ZipOutputStream zos = new ZipOutputStream(baos, StandardCharsets.UTF_8)) {
+        Path destination;
+        try {
+            destination = Files.createTempFile("evidencepilot-project-export-", ".zip");
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to create export archive", e);
+        }
+        try (OutputStream output = Files.newOutputStream(destination);
+                ZipOutputStream zos = new ZipOutputStream(output, StandardCharsets.UTF_8)) {
             for (Document doc : docs) {
                 String filename = (doc.getOriginalFilename() != null
                         ? doc.getOriginalFilename().replaceAll("\\.[^.]+$", "")
@@ -546,19 +550,19 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
                 zos.write(tex.toString().getBytes(StandardCharsets.UTF_8));
                 zos.closeEntry();
             }
-
-            for (ProjectMedia media : mediaList) {
-                byte[] data = documentObjectStorage.read(media.getStorageKey());
-                ZipEntry imgEntry = new ZipEntry("images/" + media.getTexFilename());
-                imgEntry.setTime(System.currentTimeMillis());
-                zos.putNextEntry(imgEntry);
-                zos.write(data);
-                zos.closeEntry();
+            texArchiveMediaWriter.writeProjectMedia(projectId, zos);
+            return destination;
+        } catch (Exception e) {
+            try {
+                Files.deleteIfExists(destination);
+            } catch (Exception cleanupException) {
+                e.addSuppressed(cleanupException);
             }
-        } catch (IOException e) {
+            if (e instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
             throw new RuntimeException("Failed to create export archive", e);
         }
-        return baos.toByteArray();
     }
 
     private static String escapeLatex(String s) {
