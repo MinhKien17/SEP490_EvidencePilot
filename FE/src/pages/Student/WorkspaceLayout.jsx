@@ -11,6 +11,7 @@ import FilePanel from './FilePanel.jsx';
 import EditorPanel from './EditorPanel.jsx';
 import ContextPanel from './ContextPanel.jsx';
 import FullPaperPreview from './FullPaperPreview.jsx';
+import { hasActiveExtraction } from './extractionPolling.js';
 
 const DEFAULT_SAMPLE_LATEX = `% Select a paper from the file panel to start editing.`;
 
@@ -207,6 +208,35 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       finally { setLoadingProject(false); }
     })();
   }, [projectId, loadProjectData]);
+
+  useEffect(() => {
+    if (!project?.id || !hasActiveExtraction(sources)) return undefined;
+
+    let cancelled = false;
+    let timer;
+    const refresh = async () => {
+      try {
+        const [sourceResponse, mediaResponse] = await Promise.all([
+          api.get(`/api/projects/${project.id}/sources`),
+          api.get(`/api/media/projects/${project.id}`),
+        ]);
+        if (!cancelled) {
+          setSources(sourceResponse.data?.content || []);
+          setMediaAssets(mediaResponse.data || []);
+        }
+      } catch {
+        if (!cancelled) timer = window.setTimeout(refresh, 5000);
+        return;
+      }
+      if (!cancelled) timer = window.setTimeout(refresh, 5000);
+    };
+
+    timer = window.setTimeout(refresh, 5000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [project?.id, sources]);
 
   const assignedSection = user ? sections.find(s => String(s.assignedUserId) === String(user.id)) : null;
   const isLocked = project?.status === 'SUBMITTED_FOR_REVIEW' || project?.status === 'APPROVED' || project?.status === 'ARCHIVED';
