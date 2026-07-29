@@ -3,7 +3,9 @@ package com.evidencepilot.controller;
 import com.evidencepilot.dto.response.DocumentChunkResponse;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.DocumentTextResponse;
+import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.service.DocumentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 @RestController
 @RequestMapping("/api/sources")
@@ -33,6 +36,7 @@ import java.util.UUID;
 public class SourceController {
 
     private final DocumentService documentService;
+    private final ProjectDocumentRepository projectDocumentRepository;
 
     @Operation(summary = "List sources by project",
             description = "Returns all active source documents belonging to a project.")
@@ -44,9 +48,17 @@ public class SourceController {
     @GetMapping("/projects/{projectId}")
     public List<DocumentResponse> findByProject(
             @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
-        return documentService.getDocumentsByProject(projectId).stream()
+        // Direct sources (uploaded to project)
+        var direct = documentService.getDocumentsByProject(projectId).stream()
                 .filter(d -> d.docType() == DocumentType.SOURCE && d.active())
                 .toList();
+        // Shared sources (from collections via project_document link)
+        var shared = projectDocumentRepository.findByProjectId(projectId).stream()
+                .map(ProjectDocument::getDocument)
+                .filter(d -> d.isActive() && d.getDocType() == DocumentType.SOURCE)
+                .map(DocumentResponse::from)
+                .toList();
+        return Stream.concat(direct.stream(), shared.stream()).distinct().toList();
     }
 
     @Operation(summary = "Get source by ID", description = "Returns metadata for a single active source document.")

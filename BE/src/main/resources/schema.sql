@@ -41,7 +41,7 @@ CREATE TABLE project_members (
     id BINARY(16) NOT NULL PRIMARY KEY,
     project_id BINARY(16) NOT NULL,
     user_id BINARY(16) NOT NULL,
-    role VARCHAR(50) NOT NULL CHECK (role IN ('OWNER', 'EDITOR', 'VIEWER', 'INSTRUCTOR')),
+    role VARCHAR(50) NOT NULL CHECK (role IN ('LEADER', 'MEMBER', 'INSTRUCTOR')),
     joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE INDEX idx_project_members_unique (project_id, user_id),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,

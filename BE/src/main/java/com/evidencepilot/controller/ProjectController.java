@@ -226,7 +226,7 @@ public class ProjectController {
     }
 
     @Operation(summary = "Add a member to a project",
-            description = "Adds a student to the project as EDITOR. Requires project management access.")
+            description = "Adds a student to the project as LEADER or MEMBER. Requires project management access.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Member added"),
             @ApiResponse(responseCode = "400", description = "Invalid user ID or role"),

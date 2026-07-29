@@ -11,7 +11,9 @@ import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
+import com.evidencepilot.repository.ProjectMediaRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.repository.SectionFeedbackRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.impl.PaperProcessingServiceImpl;
 import org.junit.jupiter.api.Test;
@@ -42,6 +44,9 @@ class PaperProcessingServiceImplTest {
     private PaperSectionRepository paperSectionRepository;
 
     @Mock
+    private SectionFeedbackRepository sectionFeedbackRepository;
+
+    @Mock
     private DocumentRepository documentRepository;
 
     @Mock
@@ -58,6 +63,12 @@ class PaperProcessingServiceImplTest {
 
     @Mock
     private ProjectRepository projectRepository;
+
+    @Mock
+    private ProjectMediaRepository projectMediaRepository;
+
+    @Mock
+    private DocumentObjectStorage documentObjectStorage;
 
     @Mock
     private SystemNotificationService systemNotificationService;
@@ -222,12 +233,15 @@ class PaperProcessingServiceImplTest {
         return new PaperProcessingServiceImpl(
                 aiModelClient,
                 paperSectionRepository,
+                sectionFeedbackRepository,
                 documentRepository,
                 projectMapper,
                 currentUserService,
                 paperStandardService,
                 userRepository,
                 projectRepository,
+                projectMediaRepository,
+                documentObjectStorage,
                 systemNotificationService);
     }
 

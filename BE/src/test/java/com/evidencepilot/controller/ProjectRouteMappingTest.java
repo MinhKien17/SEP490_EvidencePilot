@@ -154,10 +154,13 @@ class ProjectRouteMappingTest {
                 "GET /api/admin/notifications/broadcast-history",
                 "GET /api/admin/documents/extraction-queue",
                 "GET /api/admin/config",
+                "DELETE /api/papers/{documentId}/sections/{sectionId}",
                 "PUT /api/papers/{documentId}/sections/{sectionId}/assign",
                 "POST /api/papers/{documentId}/sections/{sectionId}/rollback",
-                "POST /api/projects/{projectId}/papers/init"));
-        assertThat(routes).hasSize(109);
+                "PUT /api/papers/{id}",
+                "POST /api/projects/{projectId}/papers/init",
+                "POST /api/projects/{projectId}/papers/reset-standard"));
+        assertThat(routes).hasSize(112);
     }
 
     @Test

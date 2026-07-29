@@ -1,6 +1,7 @@
 package com.evidencepilot.dto.response;
 
 import com.evidencepilot.model.Project;
+import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.model.enums.ProjectStatus;
 import java.time.LocalDateTime;
@@ -13,7 +14,8 @@ public record ProjectResponse(
     ProjectStatus status,
     PaperStandard targetStandard,
     LocalDateTime createdAt,
-    LocalDateTime updatedAt
+    LocalDateTime updatedAt,
+    String currentUserRole
 ) {
     public static ProjectResponse from(Project project) {
         return new ProjectResponse(
@@ -23,7 +25,33 @@ public record ProjectResponse(
             project.getStatus(),
             project.getTargetStandard(),
             project.getCreatedAt(),
-            project.getUpdatedAt()
+            project.getUpdatedAt(),
+            null
         );
+    }
+
+    public static ProjectResponse from(Project project, String currentUserRole) {
+        return new ProjectResponse(
+            project.getId(),
+            project.getTitle(),
+            project.getDescription(),
+            project.getStatus(),
+            project.getTargetStandard(),
+            project.getCreatedAt(),
+            project.getUpdatedAt(),
+            currentUserRole
+        );
+    }
+
+    public static ProjectResponse from(Project project, java.util.UUID currentUserId) {
+        String role = null;
+        if (project.getProjectMembers() != null && currentUserId != null) {
+            role = project.getProjectMembers().stream()
+                .filter(pm -> pm.getUser() != null && currentUserId.equals(pm.getUser().getId()))
+                .map(ProjectMember::getRole)
+                .map(java.util.Objects::toString)
+                .findFirst().orElse(null);
+        }
+        return from(project, role);
     }
 }

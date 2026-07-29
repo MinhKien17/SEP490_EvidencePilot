@@ -116,7 +116,7 @@ public class CurrentUserServiceImpl implements CurrentUserService {
                     "Project is locked and cannot be modified.");
         }
         if (!hasProjectRole(currentUser, project, Set.of(
-                ProjectRole.OWNER, ProjectRole.EDITOR, ProjectRole.INSTRUCTOR))) {
+                ProjectRole.LEADER, ProjectRole.MEMBER, ProjectRole.INSTRUCTOR))) {
             throw new ResponseStatusException(
                     org.springframework.http.HttpStatus.FORBIDDEN,
                     "Write access denied to project");
@@ -127,7 +127,7 @@ public class CurrentUserServiceImpl implements CurrentUserService {
     public void requireProjectManageAccess(User currentUser, Project project) {
         if (isAdmin(currentUser))
             return;
-        if (!hasProjectRole(currentUser, project, Set.of(ProjectRole.INSTRUCTOR, ProjectRole.OWNER))) {
+        if (!hasProjectRole(currentUser, project, Set.of(ProjectRole.INSTRUCTOR, ProjectRole.LEADER))) {
             throw new ResponseStatusException(
                     org.springframework.http.HttpStatus.FORBIDDEN,
                     "Project management access denied");

@@ -206,7 +206,7 @@ class ProjectWriteAccessIntegrationTest {
         project.setActive(true);
         project = projectRepository.saveAndFlush(project);
 
-        addProjectMember(project, owner, ProjectRole.OWNER);
+        addProjectMember(project, owner, ProjectRole.LEADER);
 
         return project;
     }

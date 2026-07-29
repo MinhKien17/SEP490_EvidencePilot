@@ -89,7 +89,7 @@ class ProjectServiceImplFlowTest {
         ArgumentCaptor<ProjectMember> memberCaptor = ArgumentCaptor.forClass(ProjectMember.class);
         verify(projectMemberRepository).save(memberCaptor.capture());
         assertThat(memberCaptor.getValue().getUser()).isEqualTo(student);
-        assertThat(memberCaptor.getValue().getRole()).isEqualTo(ProjectRole.EDITOR);
+        assertThat(memberCaptor.getValue().getRole()).isEqualTo(ProjectRole.MEMBER);
     }
 
     @Test
@@ -102,7 +102,7 @@ class ProjectServiceImplFlowTest {
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
         when(userRepository.findById(otherInstructor.getId())).thenReturn(Optional.of(otherInstructor));
 
-        assertThatThrownBy(() -> service().addMember(project.getId(), otherInstructor.getId(), ProjectRole.EDITOR))
+        assertThatThrownBy(() -> service().addMember(project.getId(), otherInstructor.getId(), ProjectRole.MEMBER))
                 .isInstanceOf(ResponseStatusException.class);
     }
 
@@ -142,7 +142,7 @@ class ProjectServiceImplFlowTest {
         ProjectMember member = new ProjectMember();
         member.setProject(project);
         member.setUser(student);
-        member.setRole(ProjectRole.EDITOR);
+        member.setRole(ProjectRole.MEMBER);
         when(currentUserService.requireCurrentUser()).thenReturn(instructor);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
         when(projectMemberRepository.findByProjectIdAndUserId(project.getId(), student.getId()))

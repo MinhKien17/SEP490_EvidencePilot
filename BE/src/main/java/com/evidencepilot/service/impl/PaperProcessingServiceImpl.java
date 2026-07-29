@@ -7,14 +7,20 @@ import com.evidencepilot.mapper.ProjectMapper;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
+import com.evidencepilot.model.ProjectMedia;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.PaperStandard;
+import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
+import com.evidencepilot.repository.ProjectMediaRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.repository.SectionFeedbackRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.CurrentUserService;
+import com.evidencepilot.service.DocumentObjectStorage;
 import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.PaperStandardService;
 import com.evidencepilot.service.SystemNotificationService;
@@ -49,12 +55,15 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
 
     private final AiModelClient aiModelClient;
     private final PaperSectionRepository paperSectionRepository;
+    private final SectionFeedbackRepository sectionFeedbackRepository;
     private final DocumentRepository documentRepository;
     private final ProjectMapper projectMapper;
     private final CurrentUserService currentUserService;
     private final PaperStandardService paperStandardService;
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
+    private final ProjectMediaRepository projectMediaRepository;
+    private final DocumentObjectStorage documentObjectStorage;
     private final SystemNotificationService systemNotificationService;
 
     @Override
@@ -260,6 +269,18 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
 
     @Override
     @Transactional
+    public void deleteSection(UUID documentId, UUID sectionId) {
+        requireDocumentWriteAccess(documentId);
+        User currentUser = currentUserService.requireCurrentUser();
+        PaperSection section = requireSectionInDocument(sectionId, documentId);
+        currentUserService.requireSectionAssignment(currentUser, section);
+        section.setActive(false);
+        section.setUpdatedAt(LocalDateTime.now());
+        paperSectionRepository.save(section);
+    }
+
+    @Override
+    @Transactional
     public PaperSectionResponse createSection(UUID documentId, String title, UUID parentSectionId) {
         Document document = requireDocumentWriteAccess(documentId);
 
@@ -320,6 +341,95 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         return paperSectionRepository.saveAll(sections).stream()
                 .map(projectMapper::toPaperSectionResponse)
                 .toList();
+    }
+
+    @Override
+    @Transactional
+    public List<PaperSectionResponse> resetSectionsForStandard(UUID projectId, String standard) {
+        // 1. Validate the standard value early — fail fast before any DB writes.
+        PaperStandard paperStandard;
+        try {
+            paperStandard = PaperStandard.valueOf(standard);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown standard: " + standard);
+        }
+
+        // 2. Resolve the project and verify the caller has write access.
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
+        User currentUser = currentUserService.requireCurrentUser();
+        currentUserService.requireProjectWriteAccess(currentUser, project);
+
+        // 3. Find the project's single active Paper (1 Project : 1 Paper invariant).
+        List<Document> papers = documentRepository
+                .findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER);
+
+        // 4. No paper exists yet — create a stub and generate sections (same flow as /papers/init).
+        if (papers.isEmpty()) {
+            Document stub = new Document();
+            stub.setProject(project);
+            stub.setUploadedBy(currentUser);
+            stub.setDocType(DocumentType.PAPER);
+            stub.setFileUrl("placeholder");
+            stub.setOriginalFilename("_standard_" + paperStandard.name() + ".tex");
+            stub.setContentType("text/plain");
+            stub.setFileSizeBytes(0L);
+            stub.setProcessingStatus(ProcessingStatus.READY);
+            stub.setActive(true);
+            stub.setCreatedAt(java.time.LocalDateTime.now());
+            stub.setDownloadToken(UUID.randomUUID().toString());
+            stub = documentRepository.save(stub);
+            return createSectionsFromStandard(stub.getId(), standard);
+        }
+
+        Document paper = papers.getFirst();
+        // ponytail: update filename to reflect the new standard
+        paper.setOriginalFilename("_standard_" + paperStandard.name() + ".tex");
+        paper = documentRepository.save(paper);
+
+        // 5. Load all current sections for the paper.
+        List<PaperSection> existingSections = paperSectionRepository
+                .findByDocumentIdOrderBySectionOrderAsc(paper.getId());
+
+        // 6. Guard: refuse if any section is currently assigned to a student.
+        //    The frontend enforces this via hasAssignedSections lock, but the backend
+        //    must be the authoritative gate to prevent data loss from direct API calls.
+        boolean hasAssigned = existingSections.stream()
+                .anyMatch(s -> s.getAssignedUser() != null);
+        if (hasAssigned) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Cannot reset standard: one or more sections are assigned to students. "
+                    + "Unassign all sections before changing the standard.");
+        }
+
+        // ponytail: guard — refuse if any section contains student work content
+        boolean hasContent = existingSections.stream()
+                .anyMatch(s -> s.getContentTex() != null && !s.getContentTex().isBlank());
+        if (hasContent) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Cannot reset standard: one or more sections contain student work. "
+                    + "Clear section content before changing the standard.");
+        }
+
+        // 7. Delete SectionFeedback rows first.
+        //    FK: section_feedback.section_id is NOT NULL — must be cleared before
+        //    PaperSection rows can be deleted, or the DB throws a constraint violation.
+        List<UUID> sectionIds = existingSections.stream()
+                .map(PaperSection::getId)
+                .toList();
+        if (!sectionIds.isEmpty()) {
+            sectionFeedbackRepository.deleteAllBySectionIdIn(sectionIds);
+        }
+
+        // 8. Hard-delete all PaperSection rows for this paper.
+        //    Soft-delete (active=false) cannot be used: createSectionsFromStandard
+        //    computes startOrder from ALL rows (no active filter), so inactive rows
+        //    would cause an off-by-N offset on the new sections.
+        paperSectionRepository.deleteByDocumentId(paper.getId());
+
+        // 9. Re-create sections from the new standard on a now-clean paper.
+        //    createSectionsFromStandard now starts at sectionOrder = 0.
+        return createSectionsFromStandard(paper.getId(), standard);
     }
 
     private PaperSection requireSectionInDocument(UUID sectionId, UUID documentId) {
@@ -402,6 +512,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         currentUserService.requireProjectAccess(currentUser, project);
 
         List<Document> docs = documentRepository.findByProjectId(projectId);
+        List<ProjectMedia> mediaList = projectMediaRepository.findByProjectId(projectId);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (ZipOutputStream zos = new ZipOutputStream(baos, StandardCharsets.UTF_8)) {
             for (Document doc : docs) {
@@ -414,6 +525,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
                 String title = doc.getTitle() != null ? doc.getTitle() : (doc.getOriginalFilename() != null ? doc.getOriginalFilename() : "Untitled");
                 tex.append("\\documentclass{article}\n")
                         .append("\\usepackage[utf8]{inputenc}\n")
+                        .append("\\usepackage{graphicx}\n")
                         .append("\\usepackage{xcolor}\n")
                         .append("\\usepackage{soul}\n\n")
                         .append("\\title{").append(escapeLatex(title)).append("}\n")
@@ -432,6 +544,15 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
                 entry.setTime(System.currentTimeMillis());
                 zos.putNextEntry(entry);
                 zos.write(tex.toString().getBytes(StandardCharsets.UTF_8));
+                zos.closeEntry();
+            }
+
+            for (ProjectMedia media : mediaList) {
+                byte[] data = documentObjectStorage.read(media.getStorageKey());
+                ZipEntry imgEntry = new ZipEntry("images/" + media.getTexFilename());
+                imgEntry.setTime(System.currentTimeMillis());
+                zos.putNextEntry(imgEntry);
+                zos.write(data);
                 zos.closeEntry();
             }
         } catch (IOException e) {

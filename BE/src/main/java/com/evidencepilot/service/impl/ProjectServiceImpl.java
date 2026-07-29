@@ -84,7 +84,7 @@ public class ProjectServiceImpl implements ProjectService {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(id);
         currentUserService.requireProjectAccess(currentUser, project);
-        return ProjectResponse.from(project);
+        return ProjectResponse.from(project, currentUser.getId());
     }
 
     @Override
@@ -107,7 +107,7 @@ public class ProjectServiceImpl implements ProjectService {
         owner.setUser(currentUser);
         owner.setRole(currentUser.getRole() == UserRole.INSTRUCTOR
                 ? ProjectRole.INSTRUCTOR
-                : ProjectRole.OWNER);
+                : ProjectRole.LEADER);
         owner.setJoinedAt(LocalDateTime.now());
         projectMemberRepository.save(owner);
 
@@ -252,9 +252,9 @@ public class ProjectServiceImpl implements ProjectService {
         if (!projectMemberRepository.findByProjectIdAndUserId(projectId, userId).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "User is already a project member.");
         }
-        ProjectRole memberRole = role != null ? role : ProjectRole.EDITOR;
-        if (memberRole != ProjectRole.EDITOR) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Students must be EDITOR.");
+        ProjectRole memberRole = role != null ? role : ProjectRole.MEMBER;
+        if (memberRole != ProjectRole.LEADER && memberRole != ProjectRole.MEMBER) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Student must be LEADER or MEMBER.");
         }
 
         ProjectMember member = new ProjectMember();

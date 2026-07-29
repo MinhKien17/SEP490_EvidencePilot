@@ -14,6 +14,7 @@ import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.DocumentTextRepository;
+import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.impl.DocumentPersistenceService;
@@ -66,6 +67,9 @@ class DocumentServiceImplAccessTest {
 
     @Mock
     private ProjectDocumentRepository projectDocumentRepository;
+
+    @Mock
+    private PaperSectionRepository paperSectionRepository;
 
     @Mock
     private ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
@@ -403,6 +407,7 @@ class DocumentServiceImplAccessTest {
                 projectRepository,
                 collectionRepository,
                 projectDocumentRepository,
+                paperSectionRepository,
                 claimEvidenceMappingRepository,
                 currentUserService,
                 documentPersistenceService,

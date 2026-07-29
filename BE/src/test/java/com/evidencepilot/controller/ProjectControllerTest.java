@@ -136,7 +136,7 @@ class ProjectControllerTest {
         mockMvc.perform(post("/api/projects/{id}/members", projectId)
                         .param("userId", userId.toString()).param("role", "EDITOR"))
                 .andExpect(status().isCreated());
-        verify(projectService).addMember(projectId, userId, ProjectRole.EDITOR);
+        verify(projectService).addMember(projectId, userId, ProjectRole.MEMBER);
     }
 
     @Test

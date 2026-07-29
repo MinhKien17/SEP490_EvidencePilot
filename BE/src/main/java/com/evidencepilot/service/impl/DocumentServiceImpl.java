@@ -21,6 +21,7 @@ import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.DocumentTextRepository;
+import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
 
@@ -67,6 +68,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final ProjectRepository projectRepository;
     private final CollectionRepository collectionRepository;
     private final ProjectDocumentRepository projectDocumentRepository;
+    private final PaperSectionRepository paperSectionRepository;
     private final ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
     private final CurrentUserService currentUserService;
     private final DocumentPersistenceService documentPersistenceService;
@@ -177,6 +179,17 @@ public class DocumentServiceImpl implements DocumentService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source not found or inactive");
         }
         doc.setCollection(collection);
+        return DocumentResponse.from(documentRepository.save(doc));
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse updateDocumentMetadata(UUID id, String title, String originalFilename) {
+        var currentUser = currentUserService.requireCurrentUser();
+        Document doc = findDocument(id);
+        requireDocumentWriteAccess(currentUser, doc);
+        if (title != null) doc.setTitle(title);
+        if (originalFilename != null) doc.setOriginalFilename(originalFilename);
         return DocumentResponse.from(documentRepository.save(doc));
     }
 
@@ -358,6 +371,29 @@ public class DocumentServiceImpl implements DocumentService {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
         currentUserService.requireProjectWriteAccess(currentUser, project);
+
+        // Guard: only allow unshare if sections are clean
+        List<Document> papers = documentRepository
+                .findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER);
+        for (Document paper : papers) {
+            var sections = paperSectionRepository
+                    .findByDocumentIdOrderBySectionOrderAsc(paper.getId());
+            if (project.getTargetStandard() != null) {
+                boolean hasContent = sections.stream()
+                        .anyMatch(s -> s.getContentTex() != null && !s.getContentTex().isBlank());
+                if (hasContent) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            "Sections contain content — cannot remove shared source");
+                }
+            } else {
+                boolean hasAssigned = sections.stream()
+                        .anyMatch(s -> s.getAssignedUser() != null);
+                if (hasAssigned) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            "Sections have assigned students — cannot remove shared source");
+                }
+            }
+        }
 
         ProjectDocument pd = projectDocumentRepository.findByProjectIdAndDocumentId(projectId, sourceId)
                 .orElseThrow(() -> new ResourceNotFoundException("Shared document not found"));

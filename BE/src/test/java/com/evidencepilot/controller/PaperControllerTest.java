@@ -3,7 +3,9 @@ package com.evidencepilot.controller;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.repository.DocumentRepository;
+import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.repository.SectionFeedbackRepository;
 import com.evidencepilot.service.CitationValidationService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
@@ -30,12 +32,14 @@ class PaperControllerTest {
     private final CitationValidationService citationValidationService = mock(CitationValidationService.class);
     private final ProjectRepository projectRepository = mock(ProjectRepository.class);
     private final DocumentRepository documentRepository = mock(DocumentRepository.class);
+    private final PaperSectionRepository paperSectionRepository = mock(PaperSectionRepository.class);
+    private final SectionFeedbackRepository sectionFeedbackRepository = mock(SectionFeedbackRepository.class);
     private final CurrentUserService currentUserService = mock(CurrentUserService.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = standaloneSetup(new PaperController(documentService, paperService, citationValidationService, projectRepository, documentRepository, currentUserService))
+        mockMvc = standaloneSetup(new PaperController(documentService, paperService, citationValidationService, projectRepository, documentRepository, paperSectionRepository, sectionFeedbackRepository, currentUserService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -109,6 +113,7 @@ class PaperControllerTest {
         UUID documentId = UUID.randomUUID();
         DocumentResponse response = mock(DocumentResponse.class);
         when(response.id()).thenReturn(documentId);
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER)).thenReturn(List.of());
         when(documentService.uploadDocument(eq(projectId), any(), eq(DocumentType.PAPER))).thenReturn(response);
         MockMultipartFile file = new MockMultipartFile("file", "paper.pdf", "application/pdf", "pdf".getBytes());
 

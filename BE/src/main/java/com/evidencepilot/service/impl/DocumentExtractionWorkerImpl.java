@@ -32,7 +32,7 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
     private static final int EMBEDDING_BATCH_SIZE = 32;
     private static final int EMBEDDING_DIMENSION = 768;
 
-    @Value("${app.base-url:http://localhost:8080}")
+    @Value("${app.base-url}")
     private String baseUrl;
 
     private final DocumentRepository documentRepository;

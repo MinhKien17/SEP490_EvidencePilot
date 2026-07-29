@@ -92,7 +92,7 @@ logging:
 
 # ── Application-level settings ────────────────────────────────────────────
 app:
-  base-url: ${APP_BASE_URL:http://localhost:8080}
+  base-url: ${APP_BASE_URL}
   admin:
     email: ${ADMIN_EMAIL:}
     password: ${ADMIN_PASSWORD:}

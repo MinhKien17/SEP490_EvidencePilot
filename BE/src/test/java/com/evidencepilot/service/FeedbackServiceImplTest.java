@@ -306,7 +306,7 @@ class FeedbackServiceImplTest {
         ProjectMember studentMember = new ProjectMember();
         studentMember.setProject(project);
         studentMember.setUser(student);
-        studentMember.setRole(ProjectRole.EDITOR);
+        studentMember.setRole(ProjectRole.MEMBER);
 
         project.setProjectMembers(List.of(instructorMember, studentMember));
         return project;

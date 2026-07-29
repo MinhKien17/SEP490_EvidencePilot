@@ -13,6 +13,7 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface ProjectMapper {
 
+    @Mapping(target = "currentUserRole", ignore = true)
     ProjectResponse toProjectResponse(Project entity);
 
     @Mapping(target = "projectId", source = "project.id")

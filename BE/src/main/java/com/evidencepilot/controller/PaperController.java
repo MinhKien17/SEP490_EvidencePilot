@@ -6,11 +6,15 @@ import com.evidencepilot.dto.response.PaperSectionResponse;
 import com.evidencepilot.dto.response.PaperValidationResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Document;
+import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.repository.DocumentRepository;
+import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.repository.SectionFeedbackRepository;
 import com.evidencepilot.service.CitationValidationService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
@@ -52,6 +56,8 @@ public class PaperController {
     private final CitationValidationService citationValidationService;
     private final ProjectRepository projectRepository;
     private final DocumentRepository documentRepository;
+    private final PaperSectionRepository paperSectionRepository;
+    private final SectionFeedbackRepository sectionFeedbackRepository;
     private final CurrentUserService currentUserService;
 
     @Operation(summary = "List all papers",
@@ -217,6 +223,22 @@ public class PaperController {
         return paperProcessingService.rollbackSection(documentId, sectionId);
     }
 
+    @Operation(summary = "Soft-delete a paper section",
+            description = "Sets the section's active flag to false. Requires write access.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Section soft-deleted"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Section not found")
+    })
+    @DeleteMapping("/papers/{documentId}/sections/{sectionId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteSection(
+            @Parameter(description = "Paper document UUID") @PathVariable UUID documentId,
+            @Parameter(description = "Section UUID") @PathVariable UUID sectionId) {
+        paperProcessingService.deleteSection(documentId, sectionId);
+    }
+
     @Operation(summary = "Create a new paper section",
             description = "Adds a new section to a paper document. "
                     + "Optionally specify a parent section ID for ordering. "
@@ -313,9 +335,46 @@ public class PaperController {
         return ResponseEntity.status(HttpStatus.CREATED).body(DocumentResponse.from(stub));
     }
 
-    @Operation(summary = "Upload a paper",
+    @Operation(summary = "Reset paper sections to a new standard",
+            description = "Atomically deletes all existing sections of the project's single paper "
+                    + "and regenerates them from the specified standard. "
+                    + "If no paper exists yet, creates a stub paper first (same behaviour as /init). "
+                    + "Returns 409 CONFLICT if any section is currently assigned to a student.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Sections reset and recreated from new standard"),
+            @ApiResponse(responseCode = "400", description = "Unknown or unsupported standard"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Project not found"),
+            @ApiResponse(responseCode = "409", description = "Sections have assigned students — unassign first")
+    })
+    @PostMapping("/projects/{projectId}/papers/reset-standard")
+    public List<PaperSectionResponse> resetStandard(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId,
+            @Parameter(description = "New paper standard (e.g. IEEE, ACM, APA)") @RequestParam String standard) {
+        return paperProcessingService.resetSectionsForStandard(projectId, standard);
+    }
+
+
+    @Operation(summary = "Update paper metadata",
+            description = "Updates title and/or originalFilename of a paper document.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Paper metadata updated"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Paper not found")
+    })
+    @PutMapping("/papers/{id}")
+    public DocumentResponse updateMetadata(
+            @Parameter(description = "Paper document UUID") @PathVariable UUID id,
+            @Parameter(description = "New title") @RequestParam(required = false) String title,
+            @Parameter(description = "New filename") @RequestParam(required = false) String originalFilename) {
+        return documentService.updateDocumentMetadata(id, title, originalFilename);
+    }
+
+    @Operation(summary = "Upload a student paper",
             description = "Uploads a student paper (multipart/form-data) and queues it for "
-                    + "section detection and processing. The projectId is extracted from the JWT context.")
+                    + "section detection and processing.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Paper uploaded and queued for processing"),
             @ApiResponse(responseCode = "400", description = "Missing or invalid parameters"),
@@ -329,7 +388,35 @@ public class PaperController {
             @Parameter(description = "File to upload") @RequestParam("file") MultipartFile file,
             @Parameter(description = "Project UUID") @RequestParam("projectId") UUID projectId) {
 
+        List<Document> existing = documentRepository
+                .findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER);
+        if (!existing.isEmpty()) {
+            Document paper = existing.getFirst();
+            List<PaperSection> sections = paperSectionRepository
+                    .findByDocumentIdOrderBySectionOrderAsc(paper.getId());
+            boolean hasWork = sections.stream().anyMatch(s ->
+                    (s.getContentTex() != null && !s.getContentTex().isBlank())
+                    || s.getAssignedUser() != null);
+            if (hasWork) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Project already has a paper with student work. "
+                        + "Delete the existing paper first.");
+            }
+            List<UUID> sectionIds = sections.stream().map(PaperSection::getId).toList();
+            if (!sectionIds.isEmpty()) {
+                sectionFeedbackRepository.deleteAllBySectionIdIn(sectionIds);
+            }
+            paperSectionRepository.deleteByDocumentId(paper.getId());
+            documentRepository.delete(paper);
+        }
+
         DocumentResponse response = documentService.uploadDocument(projectId, file, DocumentType.PAPER);
+
+        Project project = projectRepository.findById(projectId).orElse(null);
+        if (project != null) {
+            project.setTargetStandard(PaperStandard.CUSTOM);
+            projectRepository.save(project);
+        }
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }

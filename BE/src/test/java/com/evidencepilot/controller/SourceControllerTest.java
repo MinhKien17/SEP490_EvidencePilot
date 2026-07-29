@@ -1,6 +1,7 @@
 package com.evidencepilot.controller;
 
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.service.DocumentService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,11 +19,12 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 class SourceControllerTest {
 
     private final DocumentService service = mock(DocumentService.class);
+    private final ProjectDocumentRepository projectDocumentRepository = mock(ProjectDocumentRepository.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = standaloneSetup(new SourceController(service))
+        mockMvc = standaloneSetup(new SourceController(service, projectDocumentRepository))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }

@@ -37,6 +37,7 @@ public interface DocumentService {
     List<DocumentResponse> getSourcesByCollection(UUID collectionId);
     PagedResponse<DocumentResponse> getSourcesByCollection(UUID collectionId, int page, int size, String sort, String q);
     DocumentResponse addSourceToCollection(UUID collectionId, UUID sourceId);
+    DocumentResponse updateDocumentMetadata(UUID id, String title, String originalFilename);
     DocumentResponse uploadDocument(UUID projectId, MultipartFile file, DocumentType docType);
 
     DocumentResponse uploadDocument(UUID projectId, UUID collectionId, MultipartFile file, DocumentType docType);

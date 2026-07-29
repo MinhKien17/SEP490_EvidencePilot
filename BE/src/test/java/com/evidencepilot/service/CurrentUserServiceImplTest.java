@@ -69,7 +69,7 @@ class CurrentUserServiceImplTest {
     @Test
     void requireProjectWriteAccessAllowsStudentEditor() {
         User student = user(UserRole.STUDENT);
-        Project project = projectWithMembers(member(student, ProjectRole.EDITOR));
+        Project project = projectWithMembers(member(student, ProjectRole.MEMBER));
 
         CurrentUserServiceImpl service =
                 new CurrentUserServiceImpl(userRepository, feedbackRequestRepository);
@@ -81,7 +81,7 @@ class CurrentUserServiceImplTest {
     @Test
     void requireProjectManageAccessRejectsStudentEditor() {
         User student = user(UserRole.STUDENT);
-        Project project = projectWithMembers(member(student, ProjectRole.EDITOR));
+        Project project = projectWithMembers(member(student, ProjectRole.MEMBER));
         project.setStatus(ProjectStatus.APPROVED);
 
         CurrentUserServiceImpl service =
@@ -107,7 +107,7 @@ class CurrentUserServiceImplTest {
                 .doesNotThrowAnyException();
 
         User owner = user(UserRole.STUDENT);
-        Project ownedProject = projectWithMembers(member(owner, ProjectRole.OWNER));
+        Project ownedProject = projectWithMembers(member(owner, ProjectRole.LEADER));
         ownedProject.setStatus(ProjectStatus.ARCHIVED);
         assertThatCode(() -> service().requireProjectManageAccess(owner, ownedProject))
                 .doesNotThrowAnyException();
@@ -151,7 +151,7 @@ class CurrentUserServiceImplTest {
     void submittedProjectWriteAccessAllowsAdminButLocksNonAdminMember() {
         User admin = user(UserRole.ADMIN);
         User editor = user(UserRole.STUDENT);
-        Project project = projectWithMembers(member(editor, ProjectRole.EDITOR));
+        Project project = projectWithMembers(member(editor, ProjectRole.MEMBER));
         project.setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
 
         assertThatCode(() -> service().requireProjectWriteAccess(admin, project))
@@ -242,7 +242,7 @@ class CurrentUserServiceImplTest {
     }
 
     private Project projectOwnedBy(User owner) {
-        return projectWithMembers(member(owner, ProjectRole.OWNER));
+        return projectWithMembers(member(owner, ProjectRole.LEADER));
     }
 
     private Project projectWithMembers(ProjectMember... members) {
