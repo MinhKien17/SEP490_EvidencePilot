@@ -11,14 +11,20 @@ import com.evidencepilot.service.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -41,6 +47,7 @@ public class ExportServiceImpl implements ExportService {
     private final DocumentObjectStorage documentObjectStorage;
     private final UserRepository userRepository;
     private final RabbitTemplate rabbitTemplate;
+    private final TexArchiveMediaWriter texArchiveMediaWriter;
 
     @Override
     @Transactional
@@ -66,25 +73,39 @@ public class ExportServiceImpl implements ExportService {
         job.setUpdatedAt(LocalDateTime.now());
         job = exportJobRepository.save(job);
 
-        rabbitTemplate.convertAndSend(RabbitMQConfig.EXPORT_QUEUE,
-                new ExportRequest(job.getId(), projectId, currentUser.getId(), format));
+        ExportRequest request = new ExportRequest(job.getId(), projectId, currentUser.getId(), format);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    rabbitTemplate.convertAndSend(RabbitMQConfig.EXPORT_QUEUE, request);
+                }
+            });
+        } else {
+            rabbitTemplate.convertAndSend(RabbitMQConfig.EXPORT_QUEUE, request);
+        }
 
         return job;
     }
 
     @Override
     public ExportJob getJob(UUID jobId) {
-        return exportJobRepository.findById(jobId)
+        User currentUser = currentUserService.requireCurrentUser();
+        ExportJob job = exportJobRepository.findById(jobId)
                 .orElseThrow(() -> new ResourceNotFoundException(jobId, "ExportJob"));
+        Project project = projectRepository.findById(job.getProjectId())
+                .orElseThrow(() -> new ResourceNotFoundException(job.getProjectId(), "Project"));
+        currentUserService.requireProjectAccess(currentUser, project);
+        return job;
     }
 
     @Override
-    public byte[] downloadExport(UUID jobId) {
+    public Resource downloadExport(UUID jobId) {
         ExportJob job = getJob(jobId);
         if (job.getStatus() != ExportStatus.READY) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Export not ready");
         }
-        return documentObjectStorage.read(EXPORT_MINIO_PREFIX + jobId + ".zip");
+        return new InputStreamResource(documentObjectStorage.getStream(EXPORT_MINIO_PREFIX + jobId + ".zip"));
     }
 
     @Override
@@ -98,10 +119,15 @@ public class ExportServiceImpl implements ExportService {
         job.setUpdatedAt(LocalDateTime.now());
         exportJobRepository.save(job);
 
+        Path archivePath = null;
         try {
-            byte[] archive = buildTexArchive(job.getProjectId());
+            archivePath = Files.createTempFile("evidencepilot-export-", ".zip");
+            writeTexArchive(job.getProjectId(), archivePath);
             String objectKey = EXPORT_MINIO_PREFIX + job.getId() + ".zip";
-            documentObjectStorage.write(objectKey, archive, "application/zip");
+            try (InputStream content = Files.newInputStream(archivePath)) {
+                documentObjectStorage.write(
+                        objectKey, content, Files.size(archivePath), "application/zip");
+            }
             String downloadUrl = documentObjectStorage.presignedGetUrl(objectKey, 60);
 
             job.setStatus(ExportStatus.READY);
@@ -119,15 +145,23 @@ public class ExportServiceImpl implements ExportService {
             job.setErrorMessage(e.getMessage());
             job.setUpdatedAt(LocalDateTime.now());
             exportJobRepository.save(job);
+        } finally {
+            if (archivePath != null) {
+                try {
+                    Files.deleteIfExists(archivePath);
+                } catch (IOException e) {
+                    log.warn("Failed to delete temporary export archive {}", archivePath, e);
+                }
+            }
         }
     }
 
-    private byte[] buildTexArchive(UUID projectId) {
+    private void writeTexArchive(UUID projectId, Path destination) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
         List<Document> docs = documentRepository.findByProjectId(projectId);
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        try (ZipOutputStream zos = new ZipOutputStream(baos, StandardCharsets.UTF_8)) {
+        try (ZipOutputStream zos = new ZipOutputStream(
+                Files.newOutputStream(destination), StandardCharsets.UTF_8)) {
             zos.putNextEntry(new ZipEntry("main.tex"));
             StringBuilder mainTex = new StringBuilder();
             mainTex.append("\\documentclass{article}\n")
@@ -157,10 +191,10 @@ public class ExportServiceImpl implements ExportService {
             mainTex.append("\\end{document}\n");
             zos.write(mainTex.toString().getBytes(StandardCharsets.UTF_8));
             zos.closeEntry();
+            texArchiveMediaWriter.writeProjectMedia(projectId, zos);
         } catch (IOException e) {
             throw new RuntimeException("Failed to build export archive", e);
         }
-        return baos.toByteArray();
     }
 
     private static String escapeLatex(String s) {

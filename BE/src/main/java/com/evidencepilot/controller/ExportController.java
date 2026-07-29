@@ -5,6 +5,7 @@ import com.evidencepilot.service.ExportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -40,12 +41,12 @@ public class ExportController {
 
     @GetMapping("/{jobId}/download")
     @Operation(summary = "Download export ZIP")
-    public ResponseEntity<byte[]> download(@PathVariable UUID jobId) {
-        byte[] data = exportService.downloadExport(jobId);
+    public ResponseEntity<Resource> download(@PathVariable UUID jobId) {
+        Resource content = exportService.downloadExport(jobId);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"export-" + jobId + ".zip\"")
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(data);
+                .body(content);
     }
 
     @GetMapping
