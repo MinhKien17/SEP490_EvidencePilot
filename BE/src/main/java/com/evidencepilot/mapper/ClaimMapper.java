@@ -16,6 +16,7 @@ public interface ClaimMapper {
 
     @Mapping(target = "projectId", source = "project.id")
     @Mapping(target = "sectionId", source = "section.id")
+    @Mapping(target = "createdById", source = "createdBy.id")
     ClaimResponse toClaimResponse(Claim entity);
 
     @Mapping(target = "claimId", source = "claim.id")

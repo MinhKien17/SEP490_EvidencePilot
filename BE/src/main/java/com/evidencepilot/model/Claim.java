@@ -21,11 +21,11 @@ public class Claim {
     @JdbcTypeCode(java.sql.Types.BINARY)
     private UUID id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     private Project project;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "section_id", columnDefinition = "BINARY(16)", referencedColumnName = "id")
     private PaperSection section;
 
@@ -39,6 +39,10 @@ public class Claim {
     private Integer claimVersion;
 
     private boolean active = true;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by", columnDefinition = "BINARY(16)", referencedColumnName = "id")
+    private User createdBy;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

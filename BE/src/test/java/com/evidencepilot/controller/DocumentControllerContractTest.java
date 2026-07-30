@@ -2,6 +2,7 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.service.DocumentObjectStorage;
 import com.evidencepilot.service.DocumentService;
+import com.evidencepilot.service.impl.DocumentPersistenceService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
@@ -19,11 +20,12 @@ class DocumentControllerContractTest {
 
     private final DocumentService service = mock(DocumentService.class);
     private final DocumentObjectStorage storage = mock(DocumentObjectStorage.class);
+    private final DocumentPersistenceService documentPersistenceService = mock(DocumentPersistenceService.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = standaloneSetup(new DocumentController(service, storage)).build();
+        mockMvc = standaloneSetup(new DocumentController(service, storage, documentPersistenceService)).build();
     }
 
     @Test

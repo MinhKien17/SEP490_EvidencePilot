@@ -32,6 +32,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
@@ -519,37 +520,51 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         }
         try (OutputStream output = Files.newOutputStream(destination);
                 ZipOutputStream zos = new ZipOutputStream(output, StandardCharsets.UTF_8)) {
+
+            StringBuilder mainTex = new StringBuilder();
+            String projectTitle = project.getTitle() != null ? project.getTitle() : "Untitled";
+            mainTex.append("\\documentclass{article}\n")
+                    .append("\\usepackage[utf8]{inputenc}\n")
+                    .append("\\usepackage{graphicx}\n")
+                    .append("\\usepackage{xcolor}\n")
+                    .append("\\usepackage{soul}\n")
+                    .append("\\graphicspath{{images/}}\n\n")
+                    .append("\\title{").append(escapeLatex(projectTitle)).append("}\n")
+                    .append("\\date{\\today}\n\n")
+                    .append("\\begin{document}\n\n")
+                    .append("\\maketitle\n\n");
+
             for (Document doc : docs) {
-                String filename = (doc.getOriginalFilename() != null
-                        ? doc.getOriginalFilename().replaceAll("\\.[^.]+$", "")
-                        : "paper-" + doc.getId()) + ".tex";
+                String docTitle = doc.getTitle() != null ? doc.getTitle() :
+                        (doc.getOriginalFilename() != null ? doc.getOriginalFilename() : "Untitled");
+                if (docs.size() > 1) {
+                    mainTex.append("\\section{").append(escapeLatex(docTitle)).append("}\n\n");
+                }
                 List<PaperSection> sections = paperSectionRepository
                         .findByDocumentIdOrderBySectionOrderAsc(doc.getId());
-                StringBuilder tex = new StringBuilder();
-                String title = doc.getTitle() != null ? doc.getTitle() : (doc.getOriginalFilename() != null ? doc.getOriginalFilename() : "Untitled");
-                tex.append("\\documentclass{article}\n")
-                        .append("\\usepackage[utf8]{inputenc}\n")
-                        .append("\\usepackage{graphicx}\n")
-                        .append("\\usepackage{xcolor}\n")
-                        .append("\\usepackage{soul}\n\n")
-                        .append("\\title{").append(escapeLatex(title)).append("}\n")
-                        .append("\\author{").append(escapeLatex(project.getTitle())).append("}\n")
-                        .append("\\date{\\today}\n\n")
-                        .append("\\begin{document}\n\n")
-                        .append("\\maketitle\n\n");
+                int idx = 1;
                 for (PaperSection section : sections) {
-                    if (section.getContentTex() != null && !section.getContentTex().isBlank()) {
-                        tex.append("\\section{").append(escapeLatex(section.getSectionTitle())).append("}\n\n");
-                        tex.append(section.getContentTex()).append("\n\n");
-                    }
+                    if (section.getContentTex() == null || section.getContentTex().isBlank()) continue;
+                    String sectionFilename = String.format("%02d-%s.tex", idx,
+                            sanitizeFilename(section.getSectionTitle()));
+                    idx++;
+                    mainTex.append("\\input{sections/").append(sectionFilename).append("}\n\n");
+                    String sectionContent = "\\section{" + escapeLatex(section.getSectionTitle()) + "}\n\n"
+                            + section.getContentTex() + "\n";
+                    ZipEntry sectionEntry = new ZipEntry("sections/" + sectionFilename);
+                    sectionEntry.setTime(System.currentTimeMillis());
+                    zos.putNextEntry(sectionEntry);
+                    zos.write(sectionContent.getBytes(StandardCharsets.UTF_8));
+                    zos.closeEntry();
                 }
-                tex.append("\\end{document}\n");
-                ZipEntry entry = new ZipEntry(filename);
-                entry.setTime(System.currentTimeMillis());
-                zos.putNextEntry(entry);
-                zos.write(tex.toString().getBytes(StandardCharsets.UTF_8));
-                zos.closeEntry();
             }
+            mainTex.append("\\end{document}\n");
+            ZipEntry mainEntry = new ZipEntry("main.tex");
+            mainEntry.setTime(System.currentTimeMillis());
+            zos.putNextEntry(mainEntry);
+            zos.write(mainTex.toString().getBytes(StandardCharsets.UTF_8));
+            zos.closeEntry();
+
             texArchiveMediaWriter.writeProjectMedia(projectId, zos);
             return destination;
         } catch (Exception e) {
@@ -572,5 +587,11 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
                 .replace("_", "\\_").replace("{", "\\{")
                 .replace("}", "\\}").replace("~", "\\textasciitilde{}")
                 .replace("^", "\\textasciicircum{}");
+    }
+
+    private static String sanitizeFilename(String s) {
+        return s == null ? "untitled" : s.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("^-|-$", "");
     }
 }

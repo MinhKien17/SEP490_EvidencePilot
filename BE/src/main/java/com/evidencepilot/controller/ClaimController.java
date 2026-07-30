@@ -5,6 +5,7 @@ import com.evidencepilot.dto.request.MappingReviewRequest;
 import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.dto.response.ClaimEvidenceMappingResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
+import com.evidencepilot.dto.response.ClaimSourceAuditResponse;
 import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.service.ClaimService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -217,4 +218,18 @@ public class ClaimController {
         return claimService.reviewMapping(mappingId, request);
     }
 
+    @Operation(summary = "Audit claim-source connections for a project",
+            description = "Returns all claims with their source mappings, highlighting weak or missing connections. "
+                    + "Soft-deleted sources appear with sourceActive=false.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Audit report returned"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Project not found")
+    })
+    @GetMapping("/audit/{projectId}")
+    public ClaimSourceAuditResponse auditClaimSources(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
+        return claimService.auditClaimSources(projectId);
+    }
 }

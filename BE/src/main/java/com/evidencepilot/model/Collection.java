@@ -20,11 +20,11 @@ public class Collection {
     @JdbcTypeCode(java.sql.Types.BINARY)
     private UUID id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id", columnDefinition = "BINARY(16)", referencedColumnName = "id")
     private Project project;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "instructor_id", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     private User instructor;
 
@@ -32,7 +32,7 @@ public class Collection {
 
     private String description;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", columnDefinition = "BINARY(16)", referencedColumnName = "id")
     private CollectionCategory category;
 

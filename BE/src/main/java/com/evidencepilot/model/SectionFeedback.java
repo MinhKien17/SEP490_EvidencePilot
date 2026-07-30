@@ -20,11 +20,11 @@ public class SectionFeedback {
     @JdbcTypeCode(java.sql.Types.BINARY)
     private UUID id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "section_id", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     private PaperSection section;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "author_id", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     private User author;
 

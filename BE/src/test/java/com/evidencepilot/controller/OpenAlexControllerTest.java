@@ -121,7 +121,7 @@ class OpenAlexControllerTest {
         mockMvc.perform(post("/api/documents/ingest/doi")
                         .header("Authorization", bearerToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"doi\": \"10.1000/xyz\"}"))
+                        .content("{\"doi\": \"10.1000/xyz\", \"collectionId\": \"00000000-0000-0000-0000-000000000000\"}"))
                 .andExpect(status().isAccepted());
     }
 }

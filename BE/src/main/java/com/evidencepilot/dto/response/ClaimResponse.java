@@ -11,5 +11,6 @@ public record ClaimResponse(
     Float aiConfidenceScore,
     Integer claimVersion,
     boolean active,
+    UUID createdById,
     LocalDateTime createdAt
 ) {}

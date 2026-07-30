@@ -3,8 +3,10 @@ package com.evidencepilot.service.impl;
 import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.ClaimMapper;
+import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.DocumentChunk;
+import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.service.AiAnalysisService;
@@ -47,21 +49,6 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         claim.setAiConfidenceScore((float) avgScore);
         Claim saved = claimRepository.save(claim);
 
-        // EvidenceEdge creation removed in Phase 5 - using ClaimEvidenceMapping + AiSuggestion instead
-        // for (AiSuggestionResponse suggestion : suggestions) {
-        //     EvidenceEdge edge = new EvidenceEdge();
-        //     edge.setClaim(saved);
-        //     if (suggestion.documentChunkId() != null) {
-        //         DocumentChunk chunk = documentChunkRepository.findById(suggestion.documentChunkId()).orElse(null);
-        //         edge.setDocumentChunk(chunk);
-        //     }
-        //     edge.setVerdict("SUPPORTIVE");
-        //     edge.setConfidenceScore(suggestion.score());
-        //     edge.setExplanation(suggestion.explanation());
-        //     edge.setCreatedAt(LocalDateTime.now());
-        //     evidenceEdgeRepository.save(edge);
-        // }
-
         log.info("Analysis completed for claim {} (score={})", claim.getId(), avgScore);
         return saved;
     }
@@ -73,7 +60,7 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         try {
             chunkId = UUID.fromString(sourceId);
         } catch (IllegalArgumentException e) {
-            log.warn("Invalid sourceId UUID {}, skipping evidence edge creation", sourceId);
+            log.warn("Invalid sourceId UUID {}, skipping direct analysis", sourceId);
             return claim;
         }
 
@@ -81,16 +68,6 @@ public class AiAnalysisServiceImpl implements AiAnalysisService {
         if (chunk == null) {
             throw new ResourceNotFoundException("DocumentChunk not found for sourceId: " + sourceId);
         }
-
-        // EvidenceEdge creation removed in Phase 5 - using ClaimEvidenceMapping + AiSuggestion instead
-        // EvidenceEdge edge = new EvidenceEdge();
-        // edge.setClaim(claim);
-        // edge.setDocumentChunk(chunk);
-        // edge.setVerdict("SUPPORTIVE");
-        // edge.setConfidenceScore(0.75f);
-        // edge.setExplanation(excerpt);
-        // edge.setCreatedAt(LocalDateTime.now());
-        // evidenceEdgeRepository.save(edge);
 
         claim.setAiConfidenceScore(0.75f);
         Claim saved = claimRepository.save(claim);

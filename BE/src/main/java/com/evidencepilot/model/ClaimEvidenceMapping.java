@@ -24,19 +24,19 @@ public class ClaimEvidenceMapping {
     @JdbcTypeCode(java.sql.Types.BINARY)
     private UUID id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "claim_id", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     private Claim claim;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "document_chunk_id", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     private DocumentChunk documentChunk;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "suggestion_id", columnDefinition = "BINARY(16)", referencedColumnName = "id")
     private AiSuggestion suggestion;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     private User createdBy;
 
@@ -63,7 +63,7 @@ public class ClaimEvidenceMapping {
     @Enumerated(EnumType.STRING)
     private MappingReviewStatus reviewStatus;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reviewed_by", columnDefinition = "BINARY(16)", referencedColumnName = "id")
     private User reviewedBy;
 

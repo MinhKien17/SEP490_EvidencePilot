@@ -3,10 +3,12 @@ package com.evidencepilot.controller;
 import com.evidencepilot.dto.response.DocumentChunkResponse;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.DocumentTextResponse;
+import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.service.DocumentObjectStorage;
 import com.evidencepilot.service.DocumentService;
+import com.evidencepilot.service.impl.DocumentPersistenceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -29,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.UUID;
@@ -41,6 +44,7 @@ public class DocumentController {
 
     private final DocumentService documentService;
     private final DocumentObjectStorage documentObjectStorage;
+    private final DocumentPersistenceService documentPersistenceService;
 
     @Operation(summary = "Get document by ID",
             description = "Returns metadata for a single document by UUID.")
@@ -156,5 +160,26 @@ public class DocumentController {
     public void deleteDocument(
             @Parameter(description = "Document UUID") @PathVariable UUID id) {
         documentService.deleteDocument(id);
+    }
+
+    @Operation(summary = "Re-extract a document",
+            description = "Resets the document status and re-publishes the extraction event. "
+                    + "The document must have a file already stored in MinIO.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Re-extraction triggered"),
+            @ApiResponse(responseCode = "400", description = "No file in storage for this document"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "404", description = "Document not found")
+    })
+    @PostMapping("/{id}/re-extract")
+    public DocumentResponse reExtract(
+            @Parameter(description = "Document UUID") @PathVariable UUID id) {
+        var doc = documentService.getDocumentById(id);
+        if (doc.fileUrl() == null || "pending".equals(doc.fileUrl())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "No file in storage for this document");
+        }
+        return DocumentResponse.from(
+                documentPersistenceService.markDocumentAsUploaded(id, doc.fileUrl()));
     }
 }

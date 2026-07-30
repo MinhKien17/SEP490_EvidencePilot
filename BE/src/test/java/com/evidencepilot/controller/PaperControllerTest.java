@@ -9,6 +9,7 @@ import com.evidencepilot.repository.SectionFeedbackRepository;
 import com.evidencepilot.service.CitationValidationService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
+import com.evidencepilot.service.FormatScanService;
 import com.evidencepilot.service.PaperProcessingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,12 +35,13 @@ class PaperControllerTest {
     private final DocumentRepository documentRepository = mock(DocumentRepository.class);
     private final PaperSectionRepository paperSectionRepository = mock(PaperSectionRepository.class);
     private final SectionFeedbackRepository sectionFeedbackRepository = mock(SectionFeedbackRepository.class);
+    private final FormatScanService formatScanService = mock(FormatScanService.class);
     private final CurrentUserService currentUserService = mock(CurrentUserService.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = standaloneSetup(new PaperController(documentService, paperService, citationValidationService, projectRepository, documentRepository, paperSectionRepository, sectionFeedbackRepository, currentUserService))
+        mockMvc = standaloneSetup(new PaperController(documentService, paperService, citationValidationService, formatScanService, projectRepository, documentRepository, paperSectionRepository, sectionFeedbackRepository, currentUserService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }

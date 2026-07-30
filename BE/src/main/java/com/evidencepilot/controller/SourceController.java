@@ -1,12 +1,14 @@
 package com.evidencepilot.controller;
 
-import com.evidencepilot.dto.response.DocumentChunkResponse;
 import com.evidencepilot.dto.response.DocumentResponse;
-import com.evidencepilot.dto.response.DocumentTextResponse;
 import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.repository.ProjectDocumentRepository;
+import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
+import com.evidencepilot.exception.ResourceNotFoundException;
+import com.evidencepilot.model.Project;
+import com.evidencepilot.repository.ProjectRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -37,6 +40,8 @@ public class SourceController {
 
     private final DocumentService documentService;
     private final ProjectDocumentRepository projectDocumentRepository;
+    private final CurrentUserService currentUserService;
+    private final ProjectRepository projectRepository;
 
     @Operation(summary = "List sources by project",
             description = "Returns all active source documents belonging to a project.")
@@ -48,6 +53,9 @@ public class SourceController {
     @GetMapping("/projects/{projectId}")
     public List<DocumentResponse> findByProject(
             @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
+        currentUserService.requireProjectAccess(currentUserService.requireCurrentUser(),
+                projectRepository.findById(projectId)
+                        .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project")));
         // Direct sources (uploaded to project)
         var direct = documentService.getDocumentsByProject(projectId).stream()
                 .filter(d -> d.docType() == DocumentType.SOURCE && d.active())
@@ -73,32 +81,6 @@ public class SourceController {
         return documentService.getSourceById(id);
     }
 
-    @Operation(summary = "Get text chunks of a source",
-            description = "Retrieves all active text chunks for the specified source document.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Chunks list returned"),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
-            @ApiResponse(responseCode = "404", description = "Source not found")
-    })
-    @GetMapping("/{id}/chunks")
-    public List<DocumentChunkResponse> chunks(
-            @Parameter(description = "Source document UUID") @PathVariable UUID id) {
-        return documentService.getDocumentChunks(id);
-    }
-
-    @Operation(summary = "Get extracted text of a source",
-            description = "Returns the full extracted text content for the specified source document.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Text returned"),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
-            @ApiResponse(responseCode = "404", description = "Source or extracted text not found")
-    })
-    @GetMapping("/{id}/text")
-    public DocumentTextResponse text(
-            @Parameter(description = "Source document UUID") @PathVariable UUID id) {
-        return documentService.getDocumentText(id);
-    }
-
     @Operation(summary = "Remove shared source from project",
             description = "Removes a collection-shared source from a project by deleting the reference. "
                     + "Original document remains in collection. "
@@ -118,26 +100,11 @@ public class SourceController {
         documentService.removeSharedDocument(projectId, sourceId);
     }
 
-    @Operation(summary = "Soft-delete source by ID",
-            description = "Soft-deletes a source document by setting active=false.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "204", description = "Source soft-deleted"),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
-            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
-            @ApiResponse(responseCode = "404", description = "Source not found")
-    })
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(
-            @Parameter(description = "Source document UUID") @PathVariable UUID id) {
-        documentService.deleteDocument(id);
-        return ResponseEntity.noContent().build();
-    }
-
     @Operation(summary = "Upload a source file",
             description = "Accepts a file upload (multipart/form-data) and streams it directly to MinIO for processing.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Source uploaded and queued for processing"),
-            @ApiResponse(responseCode = "400", description = "Missing or invalid parameters"),
+            @ApiResponse(responseCode = "400", description = "Missing or invalid parameters — at least one of projectId or collectionId is required"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
             @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
             @ApiResponse(responseCode = "404", description = "Uploader user or project not found")
@@ -145,11 +112,16 @@ public class SourceController {
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<DocumentResponse> upload(
             @Parameter(description = "File to upload") @RequestParam("file") MultipartFile file,
-            @Parameter(description = "Project UUID (optional for project-scoped sources)") @RequestParam(value = "projectId", required = false) UUID projectId,
-            @Parameter(description = "Collection UUID (optional for collection-scoped sources)") @RequestParam(value = "collectionId", required = false) UUID collectionId) {
+            @Parameter(description = "Project UUID") @RequestParam(value = "projectId", required = false) UUID projectId,
+            @Parameter(description = "Collection UUID") @RequestParam(value = "collectionId", required = false) UUID collectionId) {
 
+        if (projectId == null && collectionId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Either projectId or collectionId must be provided");
+        }
         DocumentResponse response = documentService.uploadDocument(
                 projectId, collectionId, file, DocumentType.SOURCE);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
+
 }

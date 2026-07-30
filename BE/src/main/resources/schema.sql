@@ -1,3 +1,6 @@
+-- ==========================================
+-- 0. DATABASE
+-- ==========================================
 DROP DATABASE IF EXISTS evidence_pilot;
 CREATE DATABASE IF NOT EXISTS evidence_pilot;
 USE evidence_pilot;
@@ -99,11 +102,14 @@ CREATE TABLE documents (
     openalex_subfield VARCHAR(255),
     openalex_field VARCHAR(255),
     openalex_domain VARCHAR(255),
+    cited_by_count INT,
+    extraction_quality JSON,
     download_token VARCHAR(36),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_documents_project_id (project_id),
     INDEX idx_documents_collection_id (collection_id),
     INDEX idx_documents_file_hash_sha256 (file_hash_sha256),
+    INDEX idx_documents_processing_status (processing_status),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE SET NULL,
     FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
@@ -124,7 +130,7 @@ CREATE TABLE document_chunks (
     id BINARY(16) NOT NULL PRIMARY KEY,
     document_id BINARY(16) NOT NULL,
     chunk_index INT NOT NULL,
-    text TEXT NOT NULL,
+    `text` TEXT NOT NULL,
     active BOOLEAN NOT NULL DEFAULT TRUE,
     INDEX idx_document_chunks (document_id, chunk_index),
     FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
@@ -137,6 +143,7 @@ CREATE TABLE document_references (
     raw_text TEXT NOT NULL,
     title VARCHAR(255),
     publication_year INT,
+    cited_by_count INT,
     doi VARCHAR(255),
     edge_type VARCHAR(50),
     FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
@@ -152,6 +159,8 @@ CREATE TABLE paper_sections (
     section_order INT NOT NULL,
     section_title VARCHAR(255) NOT NULL,
     content_tex LONGTEXT NOT NULL,
+    previous_content_tex LONGTEXT,
+    version INT DEFAULT 1,
     content_md_cache LONGTEXT,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_paper_sections (document_id, section_order),
@@ -178,13 +187,16 @@ CREATE TABLE claims (
     id BINARY(16) NOT NULL PRIMARY KEY,
     project_id BINARY(16) NOT NULL,
     section_id BINARY(16),
+    created_by BINARY(16),
     content TEXT NOT NULL,
     ai_confidence_score FLOAT,
     claim_version INT NOT NULL DEFAULT 1,
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_claims_project_id (project_id),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-    FOREIGN KEY (section_id) REFERENCES paper_sections(id) ON DELETE SET NULL
+    FOREIGN KEY (section_id) REFERENCES paper_sections(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 CREATE TABLE ai_suggestions (
@@ -196,6 +208,15 @@ CREATE TABLE ai_suggestions (
     score FLOAT,
     explanation TEXT,
     claim_version INT NOT NULL,
+    model_name VARCHAR(255),
+    model_version VARCHAR(255),
+    prompt_version VARCHAR(255),
+    rubric_version VARCHAR(255),
+    evaluated_at DATETIME,
+    score_breakdown JSON,
+    relation VARCHAR(50) CHECK (relation IN ('SUPPORTS', 'CONTRADICTS', 'NEUTRAL', 'EXTENDS', 'DETAILS', 'GENERALIZES')),
+    strength_score INT,
+    strength_band VARCHAR(20) CHECK (strength_band IN ('HIGH', 'MEDIUM', 'LOW')),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (claim_id) REFERENCES claims(id) ON DELETE CASCADE,
     FOREIGN KEY (document_chunk_id) REFERENCES document_chunks(id) ON DELETE CASCADE
@@ -209,29 +230,41 @@ CREATE TABLE claim_evidence_mappings (
     created_by BINARY(16) NOT NULL,
     status VARCHAR(50) NOT NULL CHECK (status IN ('ACTIVE', 'INACTIVE')),
     instructor_rejected BOOLEAN NOT NULL DEFAULT FALSE,
+    relation VARCHAR(50) CHECK (relation IN ('SUPPORTS', 'CONTRADICTS', 'NEUTRAL', 'EXTENDS', 'DETAILS', 'GENERALIZES')),
+    strength_score INT,
+    strength_band VARCHAR(20) CHECK (strength_band IN ('HIGH', 'MEDIUM', 'LOW')),
+    review_status VARCHAR(50) CHECK (review_status IN ('PENDING', 'VERIFIED', 'REJECTED')),
+    reviewed_by BINARY(16),
+    reviewed_at DATETIME,
+    review_note TEXT,
+    relation_override VARCHAR(50) CHECK (relation_override IN ('SUPPORTS', 'CONTRADICTS', 'NEUTRAL', 'EXTENDS', 'DETAILS', 'GENERALIZES')),
+    score_breakdown JSON,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE INDEX idx_claim_evidence_mappings_unique (claim_id, document_chunk_id),
     FOREIGN KEY (claim_id) REFERENCES claims(id) ON DELETE CASCADE,
     FOREIGN KEY (document_chunk_id) REFERENCES document_chunks(id) ON DELETE CASCADE,
     FOREIGN KEY (suggestion_id) REFERENCES ai_suggestions(id) ON DELETE SET NULL,
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE evidence_edges (
-    id BINARY(16) NOT NULL PRIMARY KEY,
-    claim_id BINARY(16) NOT NULL,
-    document_chunk_id BINARY(16) NOT NULL,
-    verdict VARCHAR(255) NOT NULL,
-    confidence_score FLOAT NOT NULL,
-    explanation TEXT,
-    missing_evidence TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (claim_id) REFERENCES claims(id) ON DELETE CASCADE,
-    FOREIGN KEY (document_chunk_id) REFERENCES document_chunks(id) ON DELETE CASCADE
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- ==========================================
--- 7. FEEDBACK & ASYNC STATE
+-- 7. SHARED DOCUMENTS (project <-> source bridge)
+-- ==========================================
+CREATE TABLE project_documents (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    project_id BINARY(16) NOT NULL,
+    document_id BINARY(16) NOT NULL,
+    shared_by BINARY(16) NOT NULL,
+    shared_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE INDEX idx_project_documents_unique (project_id, document_id),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+    FOREIGN KEY (shared_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- ==========================================
+-- 8. FEEDBACK & ASYNC STATE
 -- ==========================================
 CREATE TABLE section_feedback (
     id BINARY(16) NOT NULL PRIMARY KEY,
@@ -251,6 +284,7 @@ CREATE TABLE feedback_requests (
     student_id BINARY(16) NOT NULL,
     instructor_id BINARY(16) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'RETURNED', 'REVIEWED', 'REJECTED')),
+    section_validation TEXT,
     requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -264,6 +298,9 @@ CREATE TABLE instructor_feedbacks (
     instructor_id BINARY(16) NOT NULL,
     line_reference VARCHAR(100),
     content TEXT NOT NULL,
+    answered BOOLEAN DEFAULT FALSE,
+    answer_content TEXT,
+    answered_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (request_id) REFERENCES feedback_requests(id) ON DELETE CASCADE,
     FOREIGN KEY (section_id) REFERENCES paper_sections(id) ON DELETE CASCADE,
@@ -271,7 +308,7 @@ CREATE TABLE instructor_feedbacks (
 );
 
 -- ==========================================
--- 8. SYSTEM NOTIFICATIONS
+-- 9. SYSTEM NOTIFICATIONS
 -- ==========================================
 CREATE TABLE system_notifications (
     id BINARY(16) NOT NULL PRIMARY KEY,
@@ -287,7 +324,7 @@ CREATE TABLE system_notifications (
 );
 
 -- ==========================================
--- 9. EXPORT JOBS
+-- 10. EXPORT JOBS
 -- ==========================================
 CREATE TABLE export_jobs (
     id BINARY(16) NOT NULL PRIMARY KEY,
@@ -307,7 +344,7 @@ CREATE TABLE export_jobs (
 );
 
 -- ==========================================
--- 10. AUDIT TRAIL
+-- 11. AUDIT TRAIL
 -- ==========================================
 CREATE TABLE audit_logs (
     id BINARY(16) NOT NULL PRIMARY KEY,
@@ -323,4 +360,3 @@ CREATE TABLE audit_logs (
     INDEX idx_audit_occurred (occurred_at),
     FOREIGN KEY (actor_id) REFERENCES users(id)
 );
-

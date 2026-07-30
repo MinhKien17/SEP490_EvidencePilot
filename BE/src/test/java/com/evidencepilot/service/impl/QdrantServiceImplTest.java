@@ -4,6 +4,7 @@ import com.evidencepilot.dto.ExtractionResultPayload;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.repository.DocumentRepository;
+import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.service.QdrantClient;
 import org.junit.jupiter.api.Test;
 
@@ -19,6 +20,10 @@ import static org.mockito.Mockito.when;
 
 class QdrantServiceImplTest {
 
+    private ProjectDocumentRepository projectDocuments() {
+        return mock(ProjectDocumentRepository.class);
+    }
+
     @Test
     void upsertVectorsWritesEachChunkWithinProjectScope() {
         QdrantClient client = mock(QdrantClient.class);
@@ -33,7 +38,7 @@ class QdrantServiceImplTest {
         var chunk = new ExtractionResultPayload.ChunkPayload(
                 chunkId, 1, "text", List.of(0.2f), null);
 
-        new QdrantServiceImpl(client, documents)
+        new QdrantServiceImpl(client, documents, projectDocuments())
                 .upsertVectors(new ExtractionResultPayload(documentId, List.of(chunk)));
 
         verify(client).upsertVector(
@@ -50,7 +55,7 @@ class QdrantServiceImplTest {
         QdrantClient client = mock(QdrantClient.class);
         DocumentRepository documents = mock(DocumentRepository.class);
 
-        new QdrantServiceImpl(client, documents)
+        new QdrantServiceImpl(client, documents, projectDocuments())
                 .upsertVectors(new ExtractionResultPayload(UUID.randomUUID(), List.of()));
 
         verifyNoInteractions(client);
@@ -64,7 +69,7 @@ class QdrantServiceImplTest {
         UUID chunkId = UUID.randomUUID();
         when(documentRepository.findById(documentId)).thenReturn(Optional.of(new Document()));
 
-        QdrantServiceImpl service = new QdrantServiceImpl(qdrantClient, documentRepository);
+        QdrantServiceImpl service = new QdrantServiceImpl(qdrantClient, documentRepository, projectDocuments());
         ExtractionResultPayload payload = new ExtractionResultPayload(
                 documentId,
                 List.of(new ExtractionResultPayload.ChunkPayload(

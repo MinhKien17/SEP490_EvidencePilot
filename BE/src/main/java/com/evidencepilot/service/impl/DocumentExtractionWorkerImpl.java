@@ -75,7 +75,6 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
                     throw new DocumentExtractionException("Extraction returned an invalid document");
                 }
                 if (document.getProject() != null
-                        && document.getDocType() == DocumentType.SOURCE
                         && document.getOriginalFilename() != null
                         && document.getOriginalFilename().toLowerCase(Locale.ROOT).endsWith(".pdf")) {
                     for (String image : extracted.images()) {
@@ -90,6 +89,13 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
                             throw new DocumentExtractionException(
                                     "Failed to read extracted image " + image + ": " + e.getMessage());
                         }
+                    }
+                    if (!extracted.images().isEmpty()) {
+                        String md = extracted.markdown();
+                        for (String image : extracted.images()) {
+                            md = md.replace("![](" + image + ")", "\\includegraphics{" + image + "}");
+                        }
+                        extracted = new AiModelClient.ExtractedDocument(md, extracted.blocks(), extracted.images());
                     }
                 }
                 writeCheckpoint(checkpointKey, extracted);

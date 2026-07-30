@@ -253,7 +253,7 @@ class PaperProcessingServiceImplTest {
         Path archive = service().exportTexArchive(project.getId());
         try (ZipFile zip = new ZipFile(archive.toFile(), StandardCharsets.UTF_8)) {
             String tex = new String(
-                    zip.getInputStream(zip.getEntry("paper.tex")).readAllBytes(),
+                    zip.getInputStream(zip.getEntry("main.tex")).readAllBytes(),
                     StandardCharsets.UTF_8);
             assertThat(tex).contains("\\usepackage{graphicx}");
         } finally {

@@ -64,5 +64,6 @@ logging:
     org.hibernate.SQL: WARN
 
 app:
+  base-url: http://localhost:${server.port}
   upload:
     dir: ${java.io.tmpdir}/evidence-pilot-uploads

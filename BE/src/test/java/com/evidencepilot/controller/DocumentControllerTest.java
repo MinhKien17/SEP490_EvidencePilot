@@ -29,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -127,5 +128,26 @@ class DocumentControllerTest {
 
         assertEquals(0, documentRepository.count());
         verifyNoInteractions(minioClient, rabbitTemplate);
+    }
+
+    @Test
+    void reExtract_shouldReturn200AndPublishExtractionJob() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "re-extract.pdf", "application/pdf", "content".getBytes());
+
+        String json = mockMvc.perform(multipart("/api/documents")
+                        .file(file)
+                        .header("Authorization", bearerToken))
+                .andExpect(status().isAccepted())
+                .andReturn().getResponse().getContentAsString();
+
+        String docId = json.replaceAll(".*\"id\":\"([^\"]+)\".*", "$1");
+
+        mockMvc.perform(post("/api/documents/{id}/re-extract", docId)
+                        .header("Authorization", bearerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(docId));
+
+        verify(rabbitTemplate, atLeast(2)).convertAndSend(eq("extraction.queue"), any(Object.class));
     }
 }

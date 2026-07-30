@@ -5,12 +5,16 @@ import com.evidencepilot.dto.request.MappingReviewRequest;
 import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.dto.response.ClaimEvidenceMappingResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
+import com.evidencepilot.dto.response.ClaimSourceAuditResponse;
+import com.evidencepilot.dto.response.ClaimSourceAuditResponse.ClaimAuditItem;
+import com.evidencepilot.dto.response.ClaimSourceAuditResponse.MappingAuditItem;
 import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.ClaimMapper;
 import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.ClaimEvidenceMapping;
+import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
@@ -153,6 +157,7 @@ public class ClaimServiceImpl implements ClaimService {
         Claim claim = new Claim();
         claim.setProject(project);
         claim.setSection(section);
+        claim.setCreatedBy(currentUser);
         claim.setContent(request.content());
         claim.setAiConfidenceScore(request.aiConfidenceScore());
         claim.setClaimVersion(1);
@@ -407,5 +412,44 @@ public class ClaimServiceImpl implements ClaimService {
 
             return cb.and(predicates.toArray(Predicate[]::new));
         };
+    }
+
+    @Override
+    public ClaimSourceAuditResponse auditClaimSources(UUID projectId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
+        currentUserService.requireProjectAccess(currentUserService.requireCurrentUser(), project);
+
+        List<Claim> claims = claimRepository.findByProjectId(projectId).stream()
+                .filter(Claim::isActive).toList();
+        List<ClaimAuditItem> items = new ArrayList<>();
+        int totalMappings = 0, claimsWithNoSources = 0, claimsWithWeakSources = 0;
+
+        for (Claim c : claims) {
+            List<ClaimEvidenceMapping> mappings = claimEvidenceMappingRepository.findByClaimId(c.getId());
+            List<MappingAuditItem> mappingItems = mappings.stream().map(m -> {
+                DocumentChunk chunk = m.getDocumentChunk();
+                if (chunk == null) return null;
+                Document doc = chunk.getDocument();
+                if (doc == null) return null;
+                return new MappingAuditItem(
+                        m.getId(),
+                        doc.getOriginalFilename(),
+                        doc.isActive(),
+                        chunk.isActive(),
+                        m.getStrengthScore(),
+                        m.getStrengthBand() != null ? m.getStrengthBand().name() : null,
+                        m.getReviewStatus() != null ? m.getReviewStatus().name() : null);
+            }).filter(java.util.Objects::nonNull).toList();
+
+            totalMappings += mappingItems.size();
+            if (mappingItems.isEmpty()) claimsWithNoSources++;
+            long activeMappings = mappingItems.stream().filter(m -> m.sourceActive() && m.chunkActive()).count();
+            if (activeMappings == 0 && !mappingItems.isEmpty()) claimsWithWeakSources++;
+
+            items.add(new ClaimAuditItem(c.getId(), c.getContent(), c.getSection() != null ? c.getSection().getId() : null, mappingItems.size(), mappingItems));
+        }
+
+        return new ClaimSourceAuditResponse(projectId, claims.size(), totalMappings, claimsWithNoSources, claimsWithWeakSources, items);
     }
 }

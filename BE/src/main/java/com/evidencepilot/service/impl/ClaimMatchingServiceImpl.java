@@ -83,9 +83,11 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
     }
 
     private Optional<DocumentChunk> matchedSourceChunk(QdrantSearchResult match, UUID projectId) {
+        String pointId = match.chunkId();
+        String uuidStr = pointId.contains("_") ? pointId.substring(0, pointId.indexOf('_')) : pointId;
         UUID chunkId;
         try {
-            chunkId = UUID.fromString(match.chunkId());
+            chunkId = UUID.fromString(uuidStr);
         } catch (IllegalArgumentException e) {
             log.warn("Qdrant returned invalid chunk id {}, skipping", match.chunkId());
             return Optional.empty();

@@ -30,7 +30,7 @@ public record DocumentResponse(
             doc.getId(),
             doc.getProject() != null ? doc.getProject().getId() : null,
             doc.getCollection() != null ? doc.getCollection().getId() : null,
-            doc.getUploadedBy().getId(),
+            doc.getUploadedBy() != null ? doc.getUploadedBy().getId() : null,
             doc.getDocType(),
             doc.getFileUrl(),
             doc.getOriginalFilename(),

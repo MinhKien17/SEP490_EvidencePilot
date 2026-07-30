@@ -2,6 +2,8 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.repository.ProjectDocumentRepository;
+import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,11 +22,14 @@ class SourceControllerTest {
 
     private final DocumentService service = mock(DocumentService.class);
     private final ProjectDocumentRepository projectDocumentRepository = mock(ProjectDocumentRepository.class);
+    private final CurrentUserService currentUserService = mock(CurrentUserService.class);
+    private final ProjectRepository projectRepository = mock(ProjectRepository.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = standaloneSetup(new SourceController(service, projectDocumentRepository))
+        mockMvc = standaloneSetup(new SourceController(service,
+                        projectDocumentRepository, currentUserService, projectRepository))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -34,27 +39,6 @@ class SourceControllerTest {
         UUID id = UUID.randomUUID();
         mockMvc.perform(get("/api/sources/{id}", id)).andExpect(status().isOk());
         verify(service).getSourceById(id);
-    }
-
-    @Test
-    void chunks_delegatesId() throws Exception {
-        UUID id = UUID.randomUUID();
-        mockMvc.perform(get("/api/sources/{id}/chunks", id)).andExpect(status().isOk());
-        verify(service).getDocumentChunks(id);
-    }
-
-    @Test
-    void text_delegatesId() throws Exception {
-        UUID id = UUID.randomUUID();
-        mockMvc.perform(get("/api/sources/{id}/text", id)).andExpect(status().isOk());
-        verify(service).getDocumentText(id);
-    }
-
-    @Test
-    void delete_returns204() throws Exception {
-        UUID id = UUID.randomUUID();
-        mockMvc.perform(delete("/api/sources/{id}", id)).andExpect(status().isNoContent());
-        verify(service).deleteDocument(id);
     }
 
     @Test

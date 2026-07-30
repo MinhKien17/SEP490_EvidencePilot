@@ -215,12 +215,9 @@ public class DocumentServiceImpl implements DocumentService {
             ProcessingStatus processingStatus,
             Boolean active) {
         requireProjectAccess(projectId);
-        var pageable = PagingRequest.pageable(
-                page, size, sort, DOCUMENT_SORT_FIELDS, "createdAt,desc");
 
-        var projectDocs = documentRepository.findAll(
-                documentSpec(projectId, DocumentType.SOURCE, processingStatus, active, q),
-                pageable);
+        var allDirect = documentRepository.findAll(
+                documentSpec(projectId, DocumentType.SOURCE, processingStatus, active, q));
 
         var sharedDocs = projectDocumentRepository.findByProjectId(projectId).stream()
                 .map(ProjectDocument::getDocument)
@@ -230,17 +227,24 @@ public class DocumentServiceImpl implements DocumentService {
                 .map(DocumentResponse::from)
                 .toList();
 
-        List<DocumentResponse> combined = new ArrayList<>(projectDocs.getContent().stream()
-                .map(DocumentResponse::from).toList());
+        List<DocumentResponse> combined = new ArrayList<>();
+        combined.addAll(allDirect.stream().map(DocumentResponse::from).toList());
         combined.addAll(sharedDocs);
 
+        int total = combined.size();
+        int from = page * size;
+        int to = Math.min(from + size, total);
+        List<DocumentResponse> pageContent = from < total
+                ? combined.subList(from, to)
+                : List.of();
+
         return new PagedResponse<>(
-                combined,
+                pageContent,
                 page,
                 size,
-                combined.size(),
-                (int) Math.ceil((double) combined.size() / size),
-                page * size + size >= combined.size());
+                total,
+                (int) Math.ceil((double) total / size),
+                to >= total);
     }
 
     @Override
