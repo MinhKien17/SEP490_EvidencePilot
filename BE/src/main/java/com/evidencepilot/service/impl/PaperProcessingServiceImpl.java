@@ -511,7 +511,8 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
         currentUserService.requireProjectAccess(currentUser, project);
 
-        List<Document> docs = documentRepository.findByProjectId(projectId);
+        List<Document> docs = documentRepository
+                .findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER);
         Path destination;
         try {
             destination = Files.createTempFile("evidencepilot-project-export-", ".zip");

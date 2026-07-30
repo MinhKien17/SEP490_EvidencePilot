@@ -7,6 +7,7 @@ import com.evidencepilot.model.DocumentText;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.DocumentRepository;
@@ -246,7 +247,8 @@ class PaperProcessingServiceImplTest {
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
-        when(documentRepository.findByProjectId(project.getId())).thenReturn(List.of(document));
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
+                project.getId(), DocumentType.PAPER)).thenReturn(List.of(document));
         when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
                 .thenReturn(List.of(section));
 
@@ -272,7 +274,8 @@ class PaperProcessingServiceImplTest {
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
-        when(documentRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
+                project.getId(), DocumentType.PAPER)).thenReturn(List.of());
         doThrow(failure).when(texArchiveMediaWriter).writeProjectMedia(
                 eq(project.getId()),
                 any(ZipOutputStream.class));
