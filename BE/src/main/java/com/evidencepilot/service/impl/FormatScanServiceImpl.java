@@ -59,7 +59,6 @@ public class FormatScanServiceImpl implements FormatScanService {
 
             checkFirstPerson(tex, title, findings);
             checkAbstractRules(tex, title, findings);
-            checkSectionHeader(section, findings);
         }
 
         checkCitationCoverage(citationResult, findings);
@@ -96,24 +95,6 @@ public class FormatScanServiceImpl implements FormatScanService {
                     sectionTitle,
                     "Abstract contains citations. Abstracts should not include \\cite{}.",
                     "Remove citations from the abstract."));
-        }
-    }
-
-    private void checkSectionHeader(PaperSection section, List<ScanFinding> findings) {
-        String tex = section.getContentTex();
-        if (tex == null) return;
-
-        String expected = section.getSectionTitle();
-        if (expected == null) return;
-
-        Pattern headerPattern = Pattern.compile(
-                "\\\\section\\*?\\{" + Pattern.quote(expected) + "\\}", Pattern.CASE_INSENSITIVE);
-        if (!headerPattern.matcher(tex).find()
-                && !tex.strip().toLowerCase().startsWith("\\section")) {
-            findings.add(new ScanFinding("STRUCTURE", "INFO",
-                    expected,
-                    "Section '" + expected + "' may lack a proper \\section{} header.",
-                    "Add \\section{" + expected + "} at the start of this section."));
         }
     }
 
