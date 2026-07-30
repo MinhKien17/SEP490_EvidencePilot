@@ -238,7 +238,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     };
   }, [project?.id, sources]);
 
-  const assignedSection = user ? sections.find(s => String(s.assignedUserId) === String(user.id)) : null;
+  const assignedSections = user ? sections.filter(s => String(s.assignedUserId) === String(user.id)) : [];
   const isLocked = project?.status === 'SUBMITTED_FOR_REVIEW' || project?.status === 'APPROVED' || project?.status === 'ARCHIVED';
 
   useEffect(() => {
@@ -247,8 +247,8 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       .then(r => {
         const list = r.data || [];
         setSections(list);
-        const mine = user ? list.find(s => String(s.assignedUserId) === String(user.id)) : null;
-        if (mine) { setSelectedSectionId(mine.id); loadCode(mine.contentTex || ''); }
+        const mine = user ? list.filter(s => String(s.assignedUserId) === String(user.id)) : [];
+        if (mine.length > 0) { setSelectedSectionId(mine[0].id); loadCode(mine[0].contentTex || ''); }
         else { setSelectedSectionId(''); loadCode(''); }
       })
       .catch(() => setSections([]));
@@ -368,7 +368,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const handleDeleteSource = async (sourceId) => {
     if (!window.confirm("Delete this source?")) return;
     try {
-      await api.delete(`/api/sources/${sourceId}`);
+      await api.delete(`/api/documents/${sourceId}`);
       showToast("Source deleted.");
       const r = await api.get(`/api/projects/${project.id}/sources`);
       setSources(r.data?.content || []);
@@ -411,8 +411,8 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const handleCreateClaim = async () => {
     if (isLocked) { showToast("Project is locked."); return; }
     if (!newClaimContent.trim() || !project) return;
-    const sectionId = assignedSection?.id;
-    if (!sectionId) { showToast("No section assigned to you."); return; }
+    if (assignedSections.length === 0) { showToast("No section assigned to you."); return; }
+    const sectionId = selectedSectionId;
     try {
       await api.post('/api/claims', { sectionId, content: newClaimContent });
       showToast("Claim added.");
@@ -485,10 +485,10 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const handleSaveDraft = async () => {
     if (isLocked) { showToast("Project is locked."); return; }
     if (!selectedPaper) { showToast("No paper selected."); return; }
-    if (!assignedSection) { showToast("No section assigned to you."); return; }
+    if (!selectedSectionId) { showToast("No section selected."); return; }
     setSaveStatus('saving');
     try {
-      await api.put(`/api/papers/${selectedPaper.id}/sections/${assignedSection.id}`, null, { params: { content: codeContent } });
+      await api.put(`/api/papers/${selectedPaper.id}/sections/${selectedSectionId}`, null, { params: { content: codeContent } });
       setSaveStatus('saved'); setLastSaved(new Date());
       const r = await api.get(`/api/papers/${selectedPaper.id}/sections`);
       setSections(r.data || []);
@@ -580,15 +580,22 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     finally { setLoadingMatches(false); }
   };
 
+  const handleSelectClaim = (claim) => {
+    if (claim.sectionId) {
+      setSelectedSectionId(claim.sectionId);
+      loadCode('');
+    }
+  };
+
   const handleScanCitations = async () => {
     if (isLocked) { showToast("Project is locked."); return; }
     if (!selectedPaper) { showToast("Select a paper first."); return; }
     setLoadingCitation(true);
     setCitationResult(null);
     try {
-      const r = await api.get(`/api/papers/${selectedPaper.id}/validate-citations`);
+      const r = await api.get(`/api/papers/${selectedPaper.id}/format-scan`);
       setCitationResult(r.data);
-    } catch { showToast("Citation scan failed."); }
+    } catch { showToast("Format scan failed."); }
     finally { setLoadingCitation(false); }
   };
 
@@ -608,7 +615,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const handleSubmitReview = async () => {
     if (!project) return;
     setShowSubmitReviewModal(false);
-    if (assignedSection) await handleSaveDraft();
+    if (assignedSections.length > 0) await handleSaveDraft();
     try {
       await api.post(`/api/projects/${project.id}/reviews`);
       showToast("Submitted for review.");
@@ -776,7 +783,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
   return (
     <div className="h-screen w-full flex flex-col bg-(--surface-secondary) overflow-hidden font-sans antialiased text-(--text-primary)">
-      <WorkspaceHeader project={project} navigate={navigate} selectedPaper={selectedPaper} handleRunAiReview={handleRunAiReview} loadingAiReview={loadingAiReview} isLocked={isLocked} onShowHistory={() => setShowHistoryModal(true)} historyDisabled={!assignedSection}
+      <WorkspaceHeader project={project} navigate={navigate} selectedPaper={selectedPaper} handleRunAiReview={handleRunAiReview} loadingAiReview={loadingAiReview} isLocked={isLocked} onShowHistory={() => setShowHistoryModal(true)} historyDisabled={assignedSections.length === 0}
         notifications={notifications} unreadCount={unreadCount} showNotifications={showNotifications} setShowNotifications={setShowNotifications} onMarkNotificationRead={handleMarkNotificationRead}
         showExportMenu={showExportMenu} setShowExportMenu={setShowExportMenu} handleExportTexArchive={handleExportTexArchive} handleExportTraceabilityJson={handleExportTraceabilityJson} handleExportTraceabilityCsv={handleExportTraceabilityCsv} handleExportGraphCsv={handleExportCsv} />
 
@@ -796,9 +803,9 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
           </div>
         </div>
 
-        <FilePanel isOpen={isFileTreeOpen} width={fileTreeWidth} onResizeStart={handleLeftDividerMouseDown} sections={sections} assignedSection={assignedSection} selectedSectionId={selectedSectionId} onSelectSection={(sec) => { setSelectedSectionId(sec.id); loadCode(sec.contentTex || ''); }} selectedPaper={selectedPaper} onSelectPaper={(p) => { setSelectedPaper(p); setShowHistoryModal(false); loadCode(p.extractedText || ''); }} papers={papers} onUploadPaper={isLocked ? undefined : handleUploadPaper} sources={sources} onUploadSource={isLocked ? undefined : handleUploadSource} onDeleteSource={handleDeleteSource} mediaAssets={mediaAssets} onUploadMedia={isLocked ? undefined : handleUploadMedia} onDeleteMedia={handleDeleteMedia} onInsertMedia={handleInsertMedia} showToast={showToast} isLocked={isLocked} />
+        <FilePanel isOpen={isFileTreeOpen} width={fileTreeWidth} onResizeStart={handleLeftDividerMouseDown} sections={sections} assignedSections={assignedSections} selectedSectionId={selectedSectionId} onSelectSection={(sec) => { setSelectedSectionId(sec.id); loadCode(sec.contentTex || ''); }} selectedPaper={selectedPaper} onSelectPaper={(p) => { setSelectedPaper(p); setShowHistoryModal(false); loadCode(p.extractedText || ''); }} papers={papers} onUploadPaper={isLocked ? undefined : handleUploadPaper} sources={sources} onUploadSource={isLocked ? undefined : handleUploadSource} onDeleteSource={handleDeleteSource} mediaAssets={mediaAssets} onUploadMedia={isLocked ? undefined : handleUploadMedia} onDeleteMedia={handleDeleteMedia} onInsertMedia={handleInsertMedia} showToast={showToast} isLocked={isLocked} />
 
-        <EditorPanel editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSection={assignedSection} currentSection={sections.find(s => String(s.id) === String(selectedSectionId))} displayContent={displayContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} handleScanCitations={handleScanCitations} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} isLocked={isLocked} />
+        <EditorPanel editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSections={assignedSections} currentSection={sections.find(s => String(s.id) === String(selectedSectionId))} displayContent={displayContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} handleScanCitations={handleScanCitations} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} isLocked={isLocked} />
 
         <ContextPanel isOpen={isDrawerOpen} width={rightDrawerWidth} onResizeStart={handleRightDividerMouseDown} activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); localStorage.setItem('student_workspace_active_tab', tab); }} showToast={showToast}
           sources={sources} isUploading={isUploading} setIsUploading={setIsUploading} project={project} setViewerFile={setViewerFile} fetchSources={fetchSources} isLocked={isLocked}
@@ -806,6 +813,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
           claims={claims} selectedClaim={selectedClaim} claimMatches={claimMatches} loadingMatches={loadingMatches}
           handleFetchMatches={handleFetchMatches} handleAnalyzeClaim={handleAnalyzeClaim} canEditClaim={canEditClaim}
           editingClaim={editingClaim} setEditingClaim={setEditingClaim} editClaimContent={editClaimContent} setEditClaimContent={setEditClaimContent} handleDeleteClaim={handleDeleteClaim}
+          onSelectClaim={handleSelectClaim}
           feedbacks={feedbacks} setShowSubmitReviewModal={setShowSubmitReviewModal} userProjectRole={project?.currentUserRole}
           graphData={graphData} fetchGraphData={fetchGraphData} graphScope={graphScope} onGraphScopeToggle={handleGraphScopeToggle} dynamicNodes={dynamicNodes} hoveredNodeId={hoveredNodeId} setHoveredNodeId={setHoveredNodeId}
           exports={exports} fetchExports={fetchExports} api={api} showToast={showToast}
@@ -828,40 +836,45 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {!assignedSection ? (
+              {assignedSections.length === 0 ? (
                 <div className="text-xs text-(--text-tertiary) italic text-center py-8">No section is assigned to you.</div>
-              ) : (
-                <>
-                  {assignedSection.previousContentTex && (
-                    <div className="border border-(--border) rounded-xl p-4 bg-(--surface-secondary)/50 hover:border-amber-300 transition-colors">
+              ) : (() => {
+                const sec = sections.find(s => String(s.id) === String(selectedSectionId)) || assignedSections[0];
+                return sec ? (
+                  <>
+                    {sec.previousContentTex && (
+                      <div className="border border-(--border) rounded-xl p-4 bg-(--surface-secondary)/50 hover:border-amber-300 transition-colors">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-full border border-amber-200">Version {sec.version}</span>
+                            <p className="text-[10px] text-(--text-tertiary) mt-1.5">Updated at: {sec.updatedAt ? new Date(sec.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Unknown'}</p>
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-(--text-secondary) leading-relaxed font-mono bg-(--surface) rounded-lg p-2.5 border border-(--border-light)">{(sec.previousContentTex || '').substring(0, 140)}{(sec.previousContentTex || '').length > 140 ? '...' : ''}</p>
+                        <button onClick={handleRollbackSection.bind(null, sec.id)} disabled={rollingBack} className="mt-3 w-full bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs font-bold px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer">
+                          {rollingBack ? (
+                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></span> Restoring...</span>
+                          ) : (
+                            <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a5 5 0 015 5v2a5 5 0 01-5 5H6m0-10l4-4m-4 4l4 4" /></svg> Restore this version</>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                    <div className="border border-indigo-200 dark:border-indigo-800 rounded-xl p-4 bg-indigo-50/30 dark:bg-indigo-900/10">
                       <div className="flex items-start justify-between mb-2">
                         <div>
-                          <span className="text-[10px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-full border border-amber-200">Version {assignedSection.version}</span>
-                          <p className="text-[10px] text-(--text-tertiary) mt-1.5">Updated at: {assignedSection.updatedAt ? new Date(assignedSection.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Unknown'}</p>
+                          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">Version {sec.version + 1} (current)</span>
+                          <p className="text-[10px] text-(--text-tertiary) mt-1.5">Updated at: {sec.updatedAt ? new Date(sec.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Unknown'}</p>
                         </div>
                       </div>
-                      <p className="text-[11px] text-(--text-secondary) leading-relaxed font-mono bg-(--surface) rounded-lg p-2.5 border border-(--border-light)">{(assignedSection.previousContentTex || '').substring(0, 140)}{(assignedSection.previousContentTex || '').length > 140 ? '...' : ''}</p>
-                      <button onClick={handleRollbackSection.bind(null, assignedSection.id)} disabled={rollingBack} className="mt-3 w-full bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs font-bold px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer">
-                        {rollingBack ? (
-                          <span className="flex items-center gap-1.5"><span className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></span> Restoring...</span>
-                        ) : (
-                          <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a5 5 0 015 5v2a5 5 0 01-5 5H6m0-10l4-4m-4 4l4 4" /></svg> Restore this version</>
-                        )}
-                      </button>
+                      <p className="text-[11px] text-(--text-secondary) leading-relaxed font-mono bg-(--surface) rounded-lg p-2.5 border border-(--border-light)">{(sec.contentTex || '').substring(0, 140)}{(sec.contentTex || '').length > 140 ? '...' : ''}</p>
+                      <div className="mt-2 text-[10px] text-(--text-tertiary) italic flex items-center gap-1"><svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg> This is the current version being edited.</div>
                     </div>
-                  )}
-                  <div className="border border-indigo-200 dark:border-indigo-800 rounded-xl p-4 bg-indigo-50/30 dark:bg-indigo-900/10">
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">Version {assignedSection.version + 1} (current)</span>
-                        <p className="text-[10px] text-(--text-tertiary) mt-1.5">Updated at: {assignedSection.updatedAt ? new Date(assignedSection.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Unknown'}</p>
-                      </div>
-                    </div>
-                    <p className="text-[11px] text-(--text-secondary) leading-relaxed font-mono bg-(--surface) rounded-lg p-2.5 border border-(--border-light)">{(assignedSection.contentTex || '').substring(0, 140)}{(assignedSection.contentTex || '').length > 140 ? '...' : ''}</p>
-                    <div className="mt-2 text-[10px] text-(--text-tertiary) italic flex items-center gap-1"><svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg> This is the current version being edited.</div>
-                  </div>
-                </>
-              )}
+                  </>
+                ) : (
+                  <div className="text-xs text-(--text-tertiary) italic text-center py-8">Select a section to see version history.</div>
+                );
+              })()}
             </div>
             <div className="px-6 py-3 border-t border-(--border-light) flex justify-end shrink-0 bg-(--surface-secondary)/50">
               <button onClick={() => setShowHistoryModal(false)} className="text-xs font-semibold text-(--text-secondary) hover:text-(--text-primary) px-4 py-1.5 rounded-lg hover:bg-(--surface-tertiary) transition-colors cursor-pointer border border-(--border) bg-(--surface)">Close</button>
@@ -880,24 +893,26 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-1">
-            {assignedSection && (
+            {assignedSections.length > 0 && (
               <>
                 <button onClick={() => setAssignedExpanded(!assignedExpanded)}
                   className="w-full flex items-center justify-between px-2 py-1.5 text-[10px] font-bold text-(--text-secondary) tracking-wider uppercase cursor-pointer hover:bg-(--surface-secondary) rounded-lg">
-                  <span className="flex items-center gap-1.5">{assignedExpanded ? '▼' : '▶'} {t('assignedToYou')}</span>
+                  <span className="flex items-center gap-1.5">{assignedExpanded ? '▼' : '▶'} {t('assignedToYou')} ({assignedSections.length})</span>
                 </button>
                 {assignedExpanded && (
                   <div className="space-y-1 pl-1">
-                    <div key={assignedSection.id}
-                      onClick={() => { setSelectedSectionId(assignedSection.id); loadCode(assignedSection.contentTex || ''); setShowOverview(false); }}
-                      className="flex items-center justify-between p-2.5 rounded-lg text-xs border cursor-pointer bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800">
-                      <div className="flex items-center gap-2 truncate min-w-0">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
-                        <span className="truncate font-medium text-(--text-primary)">{assignedSection.sectionTitle || 'Untitled'}</span>
-                        <span className="text-[9px] text-(--text-tertiary) font-mono shrink-0">#{assignedSection.sectionOrder}</span>
+                    {assignedSections.map(sec => (
+                      <div key={sec.id}
+                        onClick={() => { setSelectedSectionId(sec.id); loadCode(sec.contentTex || ''); setShowOverview(false); }}
+                        className="flex items-center justify-between p-2.5 rounded-lg text-xs border cursor-pointer bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800">
+                        <div className="flex items-center gap-2 truncate min-w-0">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                          <span className="truncate font-medium text-(--text-primary)">{sec.sectionTitle || 'Untitled'}</span>
+                          <span className="text-[9px] text-(--text-tertiary) font-mono shrink-0">#{sec.sectionOrder}</span>
+                        </div>
+                        <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">v{sec.version || 1}</span>
                       </div>
-                      <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">v{assignedSection.version || 1}</span>
-                    </div>
+                    ))}
                   </div>
                 )}
               </>
@@ -912,7 +927,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                   <p className="text-xs text-(--text-tertiary) italic text-center py-4">{t('noSections')}</p>
                 ) : (
                   sections.map(sec => {
-                    const isMySection = String(sec.id) === String(assignedSection?.id);
+                    const isMySection = assignedSections.some(s => String(s.id) === String(sec.id));
                     return (
                       <div key={sec.id}
                         onClick={() => { setSelectedSectionId(sec.id); loadCode(sec.contentTex || ''); setShowOverview(false); }}
@@ -1049,65 +1064,33 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
             <div className="flex justify-between items-center px-6 py-4 border-b border-(--border-light) bg-(--surface-secondary) shrink-0">
               <h2 className="text-sm font-bold text-(--text-primary) flex items-center gap-2">
                 <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                Citation Scan
+                Format Scan
               </h2>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${citationResult.valid ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                {citationResult.valid ? 'PASS' : 'ISSUES FOUND'}
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${citationResult.findings?.length === 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                {citationResult.findings?.length === 0 ? 'ALL GOOD' : citationResult.findings?.length + ' ISSUES'}
               </span>
             </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-<div className="bg-(--surface-secondary) rounded-lg p-3 text-center border border-(--border-light)">
-                  <div className="text-lg font-bold text-(--text-primary)">{citationResult.totalCitations}</div>
-                  <div className="text-[10px] text-(--text-tertiary)">Citations</div>
-                </div>
-                <div className="bg-(--surface-secondary) rounded-lg p-3 text-center border border-(--border-light)">
-                  <div className="text-lg font-bold text-emerald-600">{citationResult.matchedCitations}</div>
-                  <div className="text-[10px] text-(--text-tertiary)">Matched</div>
-                </div>
-              </div>
-              {citationResult.missingCitations.length > 0 && (
-                <div>
-                  <h4 className="font-bold text-rose-600 mb-1">Missing Citations ({citationResult.missingCitations.length})</h4>
-                  <p className="text-(--text-secondary) mb-1">These keys were not found in project source documents:</p>
-                  <div className="bg-rose-50 border border-rose-100 rounded-lg p-2 space-y-0.5 max-h-24 overflow-y-auto">
-                    {citationResult.missingCitations.map((k, i) => <div key={i} className="font-mono text-[11px] text-rose-700">\cite{'{'}{k}{'}'}</div>)}
-                  </div>
-                </div>
-              )}
-              {citationResult.unmatchedKeys.length > 0 && (
-                <div>
-                  <h4 className="font-bold text-amber-600 mb-1">Unmatched Keys ({citationResult.unmatchedKeys.length})</h4>
-                  <p className="text-(--text-secondary) mb-1">Cited but no \bibitem definition found:</p>
-                  <div className="bg-amber-50 border border-amber-100 rounded-lg p-2 space-y-0.5 max-h-24 overflow-y-auto">
-                    {citationResult.unmatchedKeys.map((k, i) => <div key={i} className="font-mono text-[11px] text-amber-700">{k}</div>)}
-                  </div>
-                </div>
-              )}
-              {citationResult.formattingIssues.length > 0 && (
-                <div>
-                  <h4 className="font-bold text-amber-600 mb-1">Formatting Issues</h4>
-                  <div className="space-y-1">
-                    {citationResult.formattingIssues.map((issue, i) => (
-                      <div key={i} className="bg-amber-50 border border-amber-100 rounded-lg p-2 text-[11px] text-amber-800">{issue}</div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {citationResult.valid && (
+            <div className="flex-1 overflow-y-auto p-6 space-y-3 text-xs">
+              {(citationResult.findings || []).length === 0 ? (
                 <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-4 text-center">
-                  <p className="text-emerald-700 font-bold">All citations validated successfully!</p>
+                  <p className="text-emerald-700 font-bold">No issues found — paper looks good!</p>
                 </div>
-              )}
-              {citationResult.sectionValidation && (
-                <details>
-                  <summary className="font-bold text-(--text-secondary) cursor-pointer text-[11px]">Section validation details</summary>
-                  <div className="mt-2 text-[10px] text-(--text-secondary) space-y-1">
-                    {citationResult.sectionValidation.missingSections?.length > 0 && <div>Missing sections: {citationResult.sectionValidation.missingSections.join(', ')}</div>}
-                    {citationResult.sectionValidation.extraSections?.length > 0 && <div>Extra sections: {citationResult.sectionValidation.extraSections.join(', ')}</div>}
-                    {citationResult.sectionValidation.outOfOrder?.length > 0 && <div>Out of order: {citationResult.sectionValidation.outOfOrder.join(', ')}</div>}
-                  </div>
-                </details>
+              ) : (
+                (citationResult.findings || []).map((f, i) => {
+                  const sevColor = f.severity === 'ERROR' ? 'border-l-rose-500 bg-rose-50' : f.severity === 'WARN' ? 'border-l-amber-500 bg-amber-50' : 'border-l-indigo-500 bg-indigo-50';
+                  const sevLabel = f.severity === 'ERROR' ? 'Error' : f.severity === 'WARN' ? 'Warning' : 'Info';
+                  return (
+                    <div key={i} className={`border-l-4 ${sevColor} rounded-r-lg p-3 text-[11px]`}>
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="font-bold text-(--text-primary) uppercase tracking-wider text-[10px]">{f.category}</span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${f.severity === 'ERROR' ? 'bg-rose-200 text-rose-800' : f.severity === 'WARN' ? 'bg-amber-200 text-amber-800' : 'bg-indigo-200 text-indigo-800'}`}>{sevLabel}</span>
+                      </div>
+                      {f.section && <div className="text-[10px] text-(--text-tertiary) mb-0.5 font-mono">{f.section}</div>}
+                      <div className="text-(--text-primary) font-medium">{f.message}</div>
+                      {f.suggestion && <div className="text-(--text-secondary) mt-1 italic">Tip: {f.suggestion}</div>}
+                    </div>
+                  );
+                })
               )}
             </div>
             <div className="px-6 py-4 border-t border-(--border-light) bg-(--surface-secondary) flex justify-end shrink-0">

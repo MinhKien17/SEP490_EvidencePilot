@@ -489,7 +489,7 @@ export default function Workspace() {
   const handleDeleteSource = async (sourceId) => {
     if (!window.confirm("Bạn có chắc chắn muốn xóa tài liệu này?")) return;
     try {
-      await api.delete(`/api/sources/${sourceId}`);
+      await api.delete(`/api/documents/${sourceId}`);
       showToast("Xóa tài liệu thành công!");
       // Tải lại nguồn và graph
       const srcRes = await api.get(`/api/projects/${project.id}/sources`);
@@ -706,9 +706,10 @@ export default function Workspace() {
       const graphRes = await api.get(`/api/projects/${project.id}/traceability`);
       setGraphData(graphRes.data);
 
-      // Nếu đang chọn chính claim này, cập nhật lại selectedClaim
+      // Nếu đang chọn chính claim này, cập nhật từ danh sách đã tải lại
       if (selectedClaim && selectedClaim.id === claimId) {
-        setSelectedClaim(res.data);
+        const updated = claimRes.data?.content?.find(c => c.id === claimId);
+        if (updated) setSelectedClaim(updated);
         handleFetchMatches(claimId);
       }
     } catch (err) {
@@ -2252,7 +2253,7 @@ export default function Workspace() {
                           const borderColor = verdict === 'SUPPORTED' ? '#34d399' : verdict === 'REFUTED' ? '#fb7185' : verdict ? '#fbbf24' : '#334155';
                           const g = c.graphData || {};
                           return (
-                            <g key={`c-${ci}`} onClick={() => { setSelectedClaim(c); handleFetchMatches(c.id); }} style={{ cursor: 'pointer' }}>
+                            <g key={`c-${ci}`} onClick={() => { const fullClaim = claims.find(cl => cl.id === c.id); setSelectedClaim(fullClaim || c); handleFetchMatches(c.id); }} style={{ cursor: 'pointer' }}>
                               <rect x="10" y={ci * 80 + 10} width="140" height="80" rx="8" fill="#1e293b" stroke={borderColor} strokeWidth="1.5" />
                               <foreignObject x="15" y={ci * 80 + 15} width="130" height="45">
                                 <div style={{ color: '#e2e8f0', fontSize: '10px', lineHeight: '1.3', overflow: 'hidden' }}>{c.content}</div>

@@ -114,7 +114,7 @@ export default function CollectionDetail() {
 
   const handleDeleteSource = async (sourceId) => {
     if (!window.confirm(t.deleteSourceConfirm)) return;
-    try { await api.delete(`/api/sources/${sourceId}`); refetchSources(); if (selectedSource?.id === sourceId) setSelectedSource(null); }
+    try { await api.delete(`/api/documents/${sourceId}`); refetchSources(); if (selectedSource?.id === sourceId) setSelectedSource(null); }
     catch { alert(t.deleteFailed); }
   };
 

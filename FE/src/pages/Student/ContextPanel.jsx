@@ -13,6 +13,7 @@ export default function ContextPanel({
   claims, selectedClaim, claimMatches, loadingMatches,
   handleFetchMatches, handleAnalyzeClaim, canEditClaim,
   editingClaim, setEditingClaim, editClaimContent, setEditClaimContent, handleDeleteClaim, handleUpdateClaim,
+  onSelectClaim,
   // Feedback tab
   feedbacks, setShowSubmitReviewModal, userProjectRole,
   // Graph tab
@@ -29,6 +30,7 @@ export default function ContextPanel({
   const [sourceBusy, setSourceBusy] = useState(false);
   const fileInputRef = useRef(null);
   const { t } = useTranslation();
+  const [graphFilter, setGraphFilter] = useState('all');
   if (!isOpen) return null;
 
   const activeClass = (tab) =>
@@ -177,15 +179,22 @@ export default function ContextPanel({
                 claims.map(claim => {
                   const isSelected = selectedClaim?.id === claim.id;
                   return (
-                    <div key={claim.id} onClick={() => { handleFetchMatches(claim.id); }} className={`bg-(--surface) border rounded-xl p-3.5 shadow-sm hover:shadow-md transition-all relative overflow-hidden group cursor-pointer ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-400/20' : 'border-(--border)'}`}>
+                    <div key={claim.id} onClick={() => { handleFetchMatches(claim.id); if (onSelectClaim) onSelectClaim(claim); }} className={`bg-(--surface) border rounded-xl p-3.5 shadow-sm hover:shadow-md transition-all relative overflow-hidden group cursor-pointer ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-400/20' : 'border-(--border)'}`}>
                       <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>
                       <div className="flex justify-between items-center mb-1.5 pl-1">
                         <span className="text-[9px] font-black text-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 uppercase tracking-wide">ID: {claim.id}</span>
-                        {claim.aiConfidenceScore !== null ? (
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${claim.aiConfidenceScore >= 0.7 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 border border-emerald-100 dark:border-emerald-800' : claim.aiConfidenceScore >= 0.4 ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 border-amber-100 dark:border-amber-800' : 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 border border-rose-100 dark:border-rose-800'}`}>
-                            Confidence: {(claim.aiConfidenceScore * 100).toFixed(0)}%
-                          </span>
-                        ) : <span className="text-[10px] text-(--text-tertiary) italic">Unanalyzed</span>}
+                        <div className="flex items-center gap-1.5">
+                          {isSelected && claimMatches.length > 0 && (
+                            <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
+                              {claimMatches.length} match{claimMatches.length > 1 ? 'es' : ''}
+                            </span>
+                          )}
+                          {claim.aiConfidenceScore !== null ? (
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${claim.aiConfidenceScore >= 0.7 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 border border-emerald-100 dark:border-emerald-800' : claim.aiConfidenceScore >= 0.4 ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 border-amber-100 dark:border-amber-800' : 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 border border-rose-100 dark:border-rose-800'}`}>
+                              {(claim.aiConfidenceScore * 100).toFixed(0)}%
+                            </span>
+                          ) : <span className="text-[10px] text-(--text-tertiary) italic">—</span>}
+                        </div>
                       </div>
                       <p className="text-xs font-semibold text-(--text-primary) pl-1 leading-relaxed">{claim.content}</p>
                       <div className="flex gap-2 mt-3 pt-2.5 border-t border-(--border-light) pl-1">
@@ -343,6 +352,7 @@ export default function ContextPanel({
                   className="w-3.5 h-3.5 rounded border-(--border) text-indigo-600 focus:ring-indigo-500" />
                 <span>Show teammate claims</span>
               </label>
+              {/* ponytail: simple section-color from sectionId hash */}
               {graphData && graphData.claims && graphData.claims.length > 0 ? (
                 <div className="space-y-4">
                   <div className="bg-slate-900 rounded-xl p-4 border border-slate-800 text-slate-200">
@@ -351,7 +361,12 @@ export default function ContextPanel({
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
                         Source-claim Network
                       </h4>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex gap-0.5 bg-slate-800 rounded-lg p-0.5 border border-slate-700">
+                          {['all','SUPPORTED','NEUTRAL','REFUTED'].map(f => (
+                            <button key={f} onClick={() => setGraphFilter(f)} className={`text-[9px] px-1.5 py-0.5 rounded font-medium transition ${graphFilter === f ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>{f === 'all' ? 'All' : f.slice(0,4)}</button>
+                          ))}
+                        </div>
                         <button onClick={handleExportCsv} className="text-[9px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-medium" title="Export CSV">
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                           CSV
@@ -363,20 +378,23 @@ export default function ContextPanel({
                       </div>
                     </div>
                     <svg width="100%" viewBox={`0 0 600 ${Math.max(graphData.claims.length, graphData.sources?.length || 0) * 80 + 100}`} className="overflow-visible">
-                      {graphData.claims.map((c, ci) => (c.graphData?.matched_source_ids || []).map(sid => {
+                      {graphData.claims.filter(c => graphFilter === 'all' || c.graphData?.verdict === graphFilter).map((c, ci) => (c.graphData?.matched_source_ids || []).map(sid => {
                         const si = (graphData.sources || []).findIndex(s => s.id === sid);
                         if (si < 0) return null;
                         const y1 = ci * 80 + 50, y2 = si * 80 + 50;
                         const color = c.graphData?.verdict === 'SUPPORTED' ? '#34d399' : c.graphData?.verdict === 'REFUTED' ? '#fb7185' : '#fbbf24';
                         return <path key={`e-${ci}-${si}`} d={`M 150 ${y1} Q 300 ${(y1 + y2) / 2}, 450 ${y2}`} stroke={color} strokeWidth="1.5" fill="none" opacity="0.5" />;
                       }))}
-                      {graphData.claims.map((c, ci) => {
+                      {graphData.claims.filter(c => graphFilter === 'all' || c.graphData?.verdict === graphFilter).map((c, ci) => {
                         const verdict = c.graphData?.verdict;
                         const bc = verdict === 'SUPPORTED' ? '#34d399' : verdict === 'REFUTED' ? '#fb7185' : verdict ? '#fbbf24' : '#334155';
+                        const sectionColor = ['#6366f1','#8b5cf6','#a855f7','#d946ef','#ec4899','#f43f5e','#14b8a6','#06b6d4','#3b82f6'][(c.sectionId || 0) % 9];
                         return (
                           <g key={`c-${ci}`} onClick={() => { setSelectedPaper(c); handleFetchMatches(c.id); }} style={{ cursor: 'pointer' }}>
+                            <title>{c.content?.slice(0,120)} — {verdict || 'Unanalyzed'}{c.graphData?.confidence ? ` (${(c.graphData.confidence * 100).toFixed(0)}%)` : ''}</title>
                             <rect x="10" y={ci * 80 + 10} width="140" height="80" rx="8" fill="#1e293b" stroke={bc} strokeWidth="1.5" />
-                            <foreignObject x="15" y={ci * 80 + 15} width="130" height="45">
+                            <rect x="10" y={ci * 80 + 10} width="4" height="80" rx="2" fill={sectionColor} />
+                            <foreignObject x="18" y={ci * 80 + 15} width="127" height="45">
                               <div style={{ color: '#e2e8f0', fontSize: '10px', lineHeight: '1.3', overflow: 'hidden' }}>{c.content}</div>
                             </foreignObject>
                             <text x="80" y={ci * 80 + 75} fill={bc} fontSize="9" textAnchor="middle" fontWeight="bold">{verdict || 'Unanalyzed'}{c.graphData?.confidence ? ` (${(c.graphData.confidence * 100).toFixed(0)}%)` : ''}</text>
@@ -385,6 +403,7 @@ export default function ContextPanel({
                       })}
                       {(graphData.sources || []).map((s, si) => (
                         <g key={`s-${si}`}>
+                          <title>{s.filename} — cited {s.referenceCount} times</title>
                           <rect x="450" y={si * 80 + 10} width="140" height="80" rx="8" fill="#1e293b" stroke="#475569" />
                           <text x="520" y={si * 80 + 35} fill="#94a3b8" fontSize="9" textAnchor="middle">{s.filename?.slice(0, 22)}</text>
                           <text x="520" y={si * 80 + 55} fill="#64748b" fontSize="8" textAnchor="middle">Cited</text>
@@ -400,7 +419,7 @@ export default function ContextPanel({
                   </div>
                   <div className="bg-(--surface) border border-(--border) rounded-xl p-4 shadow-sm">
                     <h4 className="font-bold text-xs text-(--text-primary) mb-3">Connection Details</h4>
-                    {loadingMatches ? <div className="text-xs text-(--text-tertiary) italic">Loading...</div> : claimMatches.length === 0 ? <div className="text-xs text-(--text-tertiary) italic">No connections.</div> : (
+                    {loadingMatches ? <div className="text-xs text-(--text-tertiary) italic">Loading...</div> : claimMatches.length === 0 ? <div className="text-xs text-(--text-tertiary) italic">No connections for this claim.</div> : (
                       <div className="space-y-2 max-h-60 overflow-y-auto">
                         {claimMatches.map((m, i) => (
                           <div key={i} className="flex items-start gap-2 p-2 bg-(--surface-secondary) rounded-lg text-xs">
@@ -429,7 +448,11 @@ export default function ContextPanel({
                   </div>
                 </div>
               ) : (
-                <div className="text-xs text-(--text-tertiary) italic text-center py-8">No graph data yet. Use "AI Analyze" on your claims.</div>
+                <div className="text-xs text-(--text-tertiary) text-center py-8 space-y-2">
+                  <svg className="w-8 h-8 mx-auto text-(--border)" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                  <p>No graph data yet.</p>
+                  <p className="text-[10px]">Go to the <strong>Claims</strong> tab, select a claim, and run <strong>AI Analyze</strong> to generate the source-claim network.</p>
+                </div>
               )}
 
 

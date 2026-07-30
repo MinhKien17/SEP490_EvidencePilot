@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 
-export default function FilePanel({ isOpen, width, onResizeStart, sections, assignedSection, selectedSectionId, onSelectSection, selectedPaper, onSelectPaper, papers, onUploadPaper, sources, onUploadSource, onDeleteSource, mediaAssets, onUploadMedia, onDeleteMedia, onInsertMedia, showToast, isLocked }) {
+export default function FilePanel({ isOpen, width, onResizeStart, sections, assignedSections, selectedSectionId, onSelectSection, selectedPaper, onSelectPaper, papers, onUploadPaper, sources, onUploadSource, onDeleteSource, mediaAssets, onUploadMedia, onDeleteMedia, onInsertMedia, showToast, isLocked }) {
   const { t } = useTranslation();
   if (!isOpen) return null;
   return (
@@ -17,7 +17,7 @@ export default function FilePanel({ isOpen, width, onResizeStart, sections, assi
             <div className="text-xs text-(--text-tertiary) italic text-center py-4">{t('noSections')}</div>
           ) : (
             sections.map(sec => {
-              const isAssigned = String(sec.id) === String(assignedSection?.id);
+              const isAssigned = assignedSections.some(s => String(s.id) === String(sec.id));
               const isSelected = String(sec.id) === String(selectedSectionId);
               return (
                 <div key={sec.id} onClick={() => onSelectSection(sec)} className={`flex items-center justify-between text-xs font-medium p-2 rounded-md cursor-pointer transition-all mt-1 group ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 border border-indigo-100 dark:border-indigo-800 shadow-sm' : isAssigned ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-(--text-primary)' : 'text-(--text-secondary) hover:bg-(--surface-tertiary)'}`}>

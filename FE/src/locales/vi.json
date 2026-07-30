@@ -56,6 +56,8 @@
 
   "scanCitations": "Quét trích dẫn",
   "scanCitationsTitle": "Quét trích dẫn theo nguồn dự án",
+  "scanFormat": "Quét định dạng",
+  "scanFormatTitle": "Quét cấu trúc, văn phong, trích dẫn và phủ luận điểm",
   "headingFontSize": "Tiêu đề / Cỡ chữ",
   "subsection": "Mục con",
   "subsubsection": "Mục con cấp 2",

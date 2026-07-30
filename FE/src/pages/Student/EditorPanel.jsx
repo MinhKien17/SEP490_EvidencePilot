@@ -4,7 +4,7 @@ import PreviewPane from '../../components/PreviewPane';
 import { useTranslation } from 'react-i18next';
 
 export default function EditorPanel({
-  selectedPaper, selectedSectionId, assignedSection, currentSection, displayContent, updateCode,
+  selectedPaper, selectedSectionId, assignedSections, currentSection, displayContent, updateCode,
   editorWidth, onEditorResizeStart,
   saveStatus, lastSaved, handleSaveDraft, handleScanCitations,
   insertLatexTag, insertSymbol, handleFindReplace, handleDownloadTex,
@@ -13,7 +13,7 @@ export default function EditorPanel({
   textSize, setTextSize, showToast, editorRef, mediaAssets, isLocked
 }) {
   const { t } = useTranslation();
-  const isOwnSection = assignedSection && String(selectedSectionId) === String(assignedSection.id);
+  const isOwnSection = assignedSections && assignedSections.some(s => String(s.id) === String(selectedSectionId));
   const [previewZoom, setPreviewZoom] = useState(100);
   return (
     <div id="editor-preview-container" className="flex-1 flex overflow-hidden bg-(--surface-tertiary)/50 p-2 gap-2">
@@ -29,9 +29,9 @@ export default function EditorPanel({
               <span className="text-[9px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded-md border border-amber-200 dark:border-amber-800">{t('readOnly')}</span>
             )}
             {selectedPaper && (
-              <button onClick={handleScanCitations} disabled={isLocked} className="border border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 disabled:opacity-40 px-2.5 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-colors" title={t('scanCitationsTitle')}>
+              <button onClick={handleScanCitations} disabled={isLocked} className="border border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 disabled:opacity-40 px-2.5 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-colors" title="Scan paper format, tone, citations, and claim coverage">
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                {t('scanCitations')}
+                {t('scanFormat')}
               </button>
             )}
             <button onClick={handleSaveDraft} disabled={saveStatus === 'saving' || !isOwnSection || isLocked} className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold transition-colors disabled:opacity-50 ${saveStatus === 'saving' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30' : saveStatus === 'saved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30' : saveStatus === 'error' ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30' : 'bg-(--surface-tertiary) text-(--text-secondary) hover:bg-(--border)'}`}>
