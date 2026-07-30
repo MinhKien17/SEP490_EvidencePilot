@@ -118,6 +118,20 @@ export default function CollectionDetail() {
     catch { alert(t.deleteFailed); }
   };
 
+  const handleDownloadSource = async (source) => {
+    try {
+      const response = await api.get(`/api/documents/${source.id}/download`, { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = source.originalFilename || 'document';
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert(t.downloadFailed);
+    }
+  };
+
   const handleDeleteCollection = () => {
     const shared = sources.filter(s => s.projectId);
     if (shared.length > 0 && !window.confirm(t.sharedDocsWarning)) return;
@@ -307,11 +321,10 @@ export default function CollectionDetail() {
             {selectedSource.processingStatus === 'READY' || selectedSource.processingStatus === 'COMPLETED' ? (
               <div className="pt-2 border-t border-gray-100">
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2">{t.actions}</p>
-                <a href={`${api.defaults.baseURL}/api/documents/${selectedSource.id}/download`}
-                  target="_blank" rel="noopener noreferrer"
+                <button type="button" onClick={() => handleDownloadSource(selectedSource)}
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#1e3a8a] text-white rounded-xl text-xs font-bold hover:bg-blue-800 transition">
                   {t.downloadPdf} ↗
-                </a>
+                </button>
               </div>
             ) : null}
           </div>

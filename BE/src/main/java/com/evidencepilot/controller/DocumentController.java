@@ -133,18 +133,28 @@ public class DocumentController {
     }
 
     @Operation(summary = "Download a document PDF",
-            description = "Streams the original document file via a token-authenticated URL. "
-                    + "Used by the AI extraction worker instead of MinIO presigned URLs.")
+            description = "Streams the original document file. AI extraction workers use a download token; "
+                    + "signed-in users use their JWT access.")
     @GetMapping("/{id}/download")
     public ResponseEntity<InputStreamResource> downloadDocument(
             @PathVariable UUID id,
-            @RequestParam("token") String token) {
-        Document doc = documentService.getDocumentForDownload(id, token);
-        var stream = documentObjectStorage.getStream(doc.getFileUrl());
+            @RequestParam(value = "token", required = false) String token) {
+        String fileUrl;
+        String originalFilename;
+        if (token == null) {
+            DocumentResponse doc = documentService.getDocumentById(id);
+            fileUrl = doc.fileUrl();
+            originalFilename = doc.originalFilename();
+        } else {
+            Document doc = documentService.getDocumentForDownload(id, token);
+            fileUrl = doc.getFileUrl();
+            originalFilename = doc.getOriginalFilename();
+        }
+        var stream = documentObjectStorage.getStream(fileUrl);
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "inline; filename=\"" + doc.getOriginalFilename() + "\"")
+                        "inline; filename=\"" + originalFilename + "\"")
                 .body(new InputStreamResource(stream));
     }
 
