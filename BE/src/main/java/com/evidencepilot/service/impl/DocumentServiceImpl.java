@@ -39,12 +39,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -216,34 +219,40 @@ public class DocumentServiceImpl implements DocumentService {
             Boolean active) {
         requireProjectAccess(projectId);
 
-        var allDirect = documentRepository.findAll(
+        var pageable = PagingRequest.pageable(
+                page, size, sort, DOCUMENT_SORT_FIELDS, "createdAt,desc");
+        var direct = documentRepository.findAll(
                 documentSpec(projectId, DocumentType.SOURCE, processingStatus, active, q));
-
-        var sharedDocs = projectDocumentRepository.findByProjectId(projectId).stream()
+        var shared = projectDocumentRepository.findByProjectId(projectId).stream()
                 .map(ProjectDocument::getDocument)
-                .filter(d -> d.isActive() && d.getDocType() == DocumentType.SOURCE)
+                .filter(d -> d.getDocType() == DocumentType.SOURCE)
                 .filter(d -> processingStatus == null || d.getProcessingStatus() == processingStatus)
-                .filter(d -> active == null || d.isActive() == active)
-                .map(DocumentResponse::from)
+                .filter(d -> d.isActive() == (active != null ? active : true))
+                .filter(d -> matchesDocumentQuery(d, q))
                 .toList();
 
-        List<DocumentResponse> combined = new ArrayList<>();
-        combined.addAll(allDirect.stream().map(DocumentResponse::from).toList());
-        combined.addAll(sharedDocs);
+        Map<UUID, Document> byId = new LinkedHashMap<>();
+        direct.forEach(document -> byId.put(document.getId(), document));
+        shared.forEach(document -> byId.put(document.getId(), document));
+        List<Document> combined = new ArrayList<>(byId.values());
+        Sort.Order order = pageable.getSort().iterator().next();
+        combined.sort(documentComparator(order));
 
         int total = combined.size();
-        int from = page * size;
-        int to = Math.min(from + size, total);
+        int safePage = pageable.getPageNumber();
+        int safeSize = pageable.getPageSize();
+        int from = safePage * safeSize;
+        int to = Math.min(from + safeSize, total);
         List<DocumentResponse> pageContent = from < total
-                ? combined.subList(from, to)
+                ? combined.subList(from, to).stream().map(DocumentResponse::from).toList()
                 : List.of();
 
         return new PagedResponse<>(
                 pageContent,
-                page,
-                size,
+                safePage,
+                safeSize,
                 total,
-                (int) Math.ceil((double) total / size),
+                (int) Math.ceil((double) total / safeSize),
                 to >= total);
     }
 
@@ -646,6 +655,41 @@ public class DocumentServiceImpl implements DocumentService {
 
             return cb.and(predicates.toArray(Predicate[]::new));
         };
+    }
+
+    private static boolean matchesDocumentQuery(Document document, String q) {
+        if (q == null || q.isBlank()) {
+            return true;
+        }
+        String query = q.trim().toLowerCase(Locale.ROOT);
+        return containsIgnoreCase(document.getOriginalFilename(), query)
+                || containsIgnoreCase(document.getContentType(), query)
+                || containsIgnoreCase(document.getFileUrl(), query);
+    }
+
+    private static boolean containsIgnoreCase(String value, String query) {
+        return value != null && value.toLowerCase(Locale.ROOT).contains(query);
+    }
+
+    private static Comparator<Document> documentComparator(Sort.Order order) {
+        Comparator<Document> comparator = switch (order.getProperty()) {
+            case "originalFilename" -> Comparator.comparing(
+                    Document::getOriginalFilename,
+                    Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER));
+            case "docType" -> Comparator.comparing(
+                    Document::getDocType,
+                    Comparator.nullsLast(Comparator.naturalOrder()));
+            case "processingStatus" -> Comparator.comparing(
+                    Document::getProcessingStatus,
+                    Comparator.nullsLast(Comparator.naturalOrder()));
+            case "fileSizeBytes" -> Comparator.comparing(
+                    Document::getFileSizeBytes,
+                    Comparator.nullsLast(Comparator.naturalOrder()));
+            default -> Comparator.comparing(
+                    Document::getCreatedAt,
+                    Comparator.nullsLast(Comparator.naturalOrder()));
+        };
+        return order.isDescending() ? comparator.reversed() : comparator;
     }
 
     private static String fileExtension(String filename) {

@@ -4,7 +4,7 @@ import com.evidencepilot.mapper.DocumentMapper;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentText;
 import com.evidencepilot.model.Project;
-
+import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProjectStatus;
@@ -378,6 +378,42 @@ class DocumentServiceImplAccessTest {
         assertThat(service().getSourcesByProject(
                 project.getId(), 0, 20, "createdAt,desc", null, ProcessingStatus.READY, true).content()).isEmpty();
         verify(currentUserService, times(3)).requireProjectAccess(user, project);
+    }
+
+    @Test
+    void sourcePagingMergesDirectAndSharedDocumentsBeforePaging() {
+        User user = user();
+        Project project = project();
+        Document direct = document(project);
+        direct.setDocType(DocumentType.SOURCE);
+        direct.setOriginalFilename("b.pdf");
+        Document shared = document(null);
+        shared.setDocType(DocumentType.SOURCE);
+        shared.setOriginalFilename("a.pdf");
+        ProjectDocument projectDocument = new ProjectDocument();
+        projectDocument.setProject(project);
+        projectDocument.setDocument(shared);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(documentRepository.findAll(any(Specification.class))).thenReturn(List.of(direct));
+        when(projectDocumentRepository.findByProjectId(project.getId()))
+                .thenReturn(List.of(projectDocument));
+
+        var first = service().getSourcesByProject(
+                project.getId(), 0, 1, "originalFilename,asc", null, null, true);
+        var second = service().getSourcesByProject(
+                project.getId(), 1, 1, "originalFilename,asc", null, null, true);
+
+        assertThat(first.content()).singleElement()
+                .extracting(response -> response.originalFilename())
+                .isEqualTo("a.pdf");
+        assertThat(first.totalElements()).isEqualTo(2);
+        assertThat(first.last()).isFalse();
+        assertThat(second.content()).singleElement()
+                .extracting(response -> response.originalFilename())
+                .isEqualTo("b.pdf");
+        assertThat(second.last()).isTrue();
     }
 
     @Test
