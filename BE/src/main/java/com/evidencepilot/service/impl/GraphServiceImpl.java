@@ -70,12 +70,14 @@ public class GraphServiceImpl implements GraphService {
 
         for (Claim claim : claims) {
             List<ClaimEvidenceMapping> mappings = claimEvidenceMappingRepository
-                    .findByClaimId(claim.getId());
+                    .findByClaimId(claim.getId())
+                    .stream()
+                    .filter(mapping -> mapping.getStatus() == MappingStatus.ACTIVE)
+                    .toList();
 
             int matchCount = 0;
-            List<String> matchedSourceIds = new ArrayList<>();
+            Set<String> matchedSourceIds = new LinkedHashSet<>();
             for (ClaimEvidenceMapping mapping : mappings) {
-                if (mapping.getStatus() == MappingStatus.INACTIVE) continue;
                 matchCount++;
                 if (mapping.getDocumentChunk() != null && mapping.getDocumentChunk().getDocument() != null) {
                     UUID sourceId = mapping.getDocumentChunk().getDocument().getId();
@@ -95,11 +97,20 @@ public class GraphServiceImpl implements GraphService {
 
             Map<String, Object> gd = new LinkedHashMap<>();
             if (!mappings.isEmpty()) {
-                ClaimEvidenceMapping m = mappings.get(0);
+                ClaimEvidenceMapping m = mappings.stream()
+                        .max(Comparator
+                                .comparingInt((ClaimEvidenceMapping mapping) ->
+                                        mapping.getStrengthScore() != null
+                                                ? mapping.getStrengthScore()
+                                                : -1)
+                                .thenComparing(
+                                        ClaimEvidenceMapping::getCreatedAt,
+                                        Comparator.nullsFirst(Comparator.naturalOrder())))
+                        .orElseThrow();
                 EvidenceRelation rel = m.getRelationOverride() != null ? m.getRelationOverride() : m.getRelation();
                 gd.put("verdict", rel != null ? rel.name() : "UNKNOWN");
                 gd.put("confidence", m.getStrengthScore());
-                gd.put("matched_source_ids", matchedSourceIds);
+                gd.put("matched_source_ids", List.copyOf(matchedSourceIds));
                 gd.put("missing_evidence", List.of());
             } else {
                 gd.put("verdict", "UNKNOWN");

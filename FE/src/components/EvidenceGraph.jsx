@@ -3,8 +3,11 @@ import { Network } from 'vis-network';
 import { DataSet } from 'vis-data';
 
 const VERDICT_COLORS = {
-  SUPPORTED: { background: '#34d399', border: '#059669' },
-  REFUTED: { background: '#fb7185', border: '#e11d48' },
+  SUPPORTS: { background: '#34d399', border: '#059669' },
+  EXTENDS: { background: '#34d399', border: '#059669' },
+  DETAILS: { background: '#34d399', border: '#059669' },
+  GENERALIZES: { background: '#34d399', border: '#059669' },
+  CONTRADICTS: { background: '#fb7185', border: '#e11d48' },
   NEUTRAL: { background: '#fbbf24', border: '#d97706' },
   UNKNOWN: { background: '#94a3b8', border: '#64748b' },
 };
@@ -31,7 +34,7 @@ export default function EvidenceGraph({ traceabilityData, onClaimClick, onSource
       nodes.push({
         id: `claim-${c.id}`,
         label: c.content ? c.content.slice(0, 50) + '...' : 'Claim',
-        title: `<b>Claim:</b> ${c.content || ''}<br/><b>Verdict:</b> ${verdict}${g.confidence ? ` (${(g.confidence * 100).toFixed(0)}%)` : ''}`,
+        title: `<b>Claim:</b> ${c.content || ''}<br/><b>Verdict:</b> ${verdict}${g.confidence != null ? ` (${g.confidence}%)` : ''}`,
         shape: 'box',
         color: { background: color.background, border: color.border },
         font: { color: '#1e293b', size: 10 },
@@ -56,14 +59,14 @@ export default function EvidenceGraph({ traceabilityData, onClaimClick, onSource
     });
 
     (traceabilityData.edges || []).forEach((e) => {
-      const verdict = e.relation || 'unknown';
+      const verdict = e.relation || 'UNKNOWN';
       const color = VERDICT_COLORS[verdict] || VERDICT_COLORS.UNKNOWN;
       edges.push({
         from: `claim-${e.sourceId}`,
         to: `source-${e.targetId}`,
         color: { color: color.border, opacity: 0.6 },
-        width: e.score ? e.score * 3 : 1,
-        title: `Score: ${e.score ? (e.score * 100).toFixed(0) : '?'}%`,
+        width: e.score != null ? Math.max(1, e.score / 25) : 1,
+        title: `Score: ${e.score ?? '?'}%`,
       });
     });
 
@@ -107,9 +110,9 @@ export default function EvidenceGraph({ traceabilityData, onClaimClick, onSource
     <div>
       <div ref={containerRef} style={{ height, border: '1px solid #e2e8f0', borderRadius: '8px' }} />
       <div className="flex gap-4 mt-2 text-[10px] text-slate-500">
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-400" /> SUPPORTED</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-emerald-400" /> SUPPORTIVE</span>
         <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-400" /> NEUTRAL</span>
-        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-rose-400" /> REFUTED</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-rose-400" /> CONTRADICTS</span>
       </div>
     </div>
   );
