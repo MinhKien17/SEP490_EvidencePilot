@@ -11,16 +11,15 @@ import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
-import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.EvidenceRelation;
 import com.evidencepilot.model.enums.StrengthBand;
 import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.MappingReviewStatus;
+import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.ClaimRepository;
-import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectMemberRepository;
 import com.evidencepilot.repository.ProjectRepository;
@@ -68,9 +67,6 @@ class ClaimServiceImplAccessTest {
     private ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
 
     @Mock
-    private DocumentChunkRepository documentChunkRepository;
-
-    @Mock
     private ClaimMatchingService claimMatchingService;
 
     @Mock
@@ -86,7 +82,8 @@ class ClaimServiceImplAccessTest {
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
-        when(aiSuggestionRepository.findByClaimId(claim.getId())).thenReturn(List.of());
+        when(aiSuggestionRepository.findByClaimIdAndClaimVersionOrderByCreatedAtDesc(
+                claim.getId(), claim.getClaimVersion())).thenReturn(List.of());
 
         service().getSuggestionsForClaim(claim.getId());
 
@@ -108,24 +105,16 @@ class ClaimServiceImplAccessTest {
     }
 
     @Test
-    void createSuggestionRequiresProjectWriteAccess() {
+    void searchMatchesRequiresProjectWriteAccess() {
         User user = user();
         Claim claim = claim();
-        UUID chunkId = UUID.randomUUID();
-        DocumentChunk chunk = new DocumentChunk();
-        chunk.setId(chunkId);
-        Document doc = new Document();
-        doc.setDocType(DocumentType.SOURCE);
-        doc.setActive(true);
-        chunk.setDocument(doc);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
-        when(documentChunkRepository.findById(chunkId)).thenReturn(Optional.of(chunk));
-        when(aiSuggestionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(claimMapper.toAiSuggestionResponse(any())).thenReturn(null);
+        when(claimMatchingService.searchMatches(claim.getId(), claim.getProject().getId()))
+                .thenReturn(List.of());
 
-        service().createSuggestion(claim.getId(), chunkId, 0.9f, "Matched");
+        service().searchMatches(claim.getId());
 
         verify(currentUserService).requireProjectWriteAccess(user, claim.getProject());
     }
@@ -134,9 +123,7 @@ class ClaimServiceImplAccessTest {
     void updateSuggestionStatusRequiresProjectWriteAccess() {
         User user = user();
         Claim claim = claim();
-        AiSuggestion suggestion = new AiSuggestion();
-        suggestion.setId(UUID.randomUUID());
-        suggestion.setClaim(claim);
+        AiSuggestion suggestion = suggestion(claim);
         DocumentChunk chunk = new DocumentChunk();
         chunk.setId(UUID.randomUUID());
         suggestion.setDocumentChunk(chunk);
@@ -255,12 +242,21 @@ class ClaimServiceImplAccessTest {
         User user = user();
         Claim claim = claim();
         claim.setClaimVersion(1);
+        AiSuggestion pendingSuggestion = suggestion(claim);
+        ClaimEvidenceMapping activeMapping = new ClaimEvidenceMapping();
+        activeMapping.setStatus(MappingStatus.ACTIVE);
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
+        when(aiSuggestionRepository.findByClaimId(claim.getId()))
+                .thenReturn(List.of(pendingSuggestion));
+        when(claimEvidenceMappingRepository.findByClaimId(claim.getId()))
+                .thenReturn(List.of(activeMapping));
 
         service().updateClaim(claim.getId(), "updated", 0.9f);
         assertThat(claim.getContent()).isEqualTo("updated");
         assertThat(claim.getClaimVersion()).isEqualTo(2);
+        assertThat(pendingSuggestion.getStatus()).isEqualTo(SuggestionStatus.INVALIDATED);
+        assertThat(activeMapping.getStatus()).isEqualTo(MappingStatus.INACTIVE);
 
         service().deleteClaim(claim.getId());
         assertThat(claim.isActive()).isFalse();
@@ -306,7 +302,6 @@ class ClaimServiceImplAccessTest {
                 paperSectionRepository,
                 aiSuggestionRepository,
                 claimEvidenceMappingRepository,
-                documentChunkRepository,
                 claimMatchingService,
                 currentUserService,
                 claimMapper);

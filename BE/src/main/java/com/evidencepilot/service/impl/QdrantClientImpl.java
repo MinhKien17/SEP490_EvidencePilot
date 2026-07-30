@@ -23,7 +23,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 @Slf4j
@@ -67,23 +66,10 @@ public class QdrantClientImpl implements QdrantClient {
             String chunkId,
             List<Float> denseVector,
             SparseVector sparseVector,
-            String scopeType,
-            String scopeId,
-            Map<String, Object> extraPayload) {
+            Map<String, Object> pointPayload) {
         ensureCollection(denseVector.size());
 
-        String normalizedScopeType = normalizeScopeType(scopeType);
-        String normalizedScopeId = normalizeScopeId(scopeId);
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("scope_type", normalizedScopeType);
-        payload.put("scope_id", normalizedScopeId);
-        if ("PROJECT".equals(normalizedScopeType)) {
-            payload.put("project_id", normalizedScopeId);
-        }
-        if ("COLLECTION".equals(normalizedScopeType)) {
-            payload.put("collection_id", normalizedScopeId);
-        }
-        payload.putAll(extraPayload);
+        Map<String, Object> payload = new LinkedHashMap<>(pointPayload);
 
         NamedVectors namedVectors = new NamedVectors(denseVector, sparseVector);
         UpsertPoint point = new UpsertPoint(chunkId, namedVectors, payload);
@@ -99,8 +85,7 @@ public class QdrantClientImpl implements QdrantClient {
                         throw new QdrantException("Failed to sync vector to Qdrant");
                     })
                     .toBodilessEntity();
-            log.debug("Upserted chunkId={} into Qdrant (scopeType={}, scopeId={})",
-                    chunkId, normalizedScopeType, normalizedScopeId);
+            log.debug("Upserted chunkId={} into Qdrant", chunkId);
         } catch (RestClientException e) {
             throw new QdrantException("Failed to sync vector to Qdrant", e);
         }
@@ -109,28 +94,18 @@ public class QdrantClientImpl implements QdrantClient {
     // ── Read ───────────────────────────────────────────────────────────────────
 
     @Override
-    public String findClosestChunkId(List<Float> queryVector, String projectId) {
-        return findClosestChunks(queryVector, "PROJECT", projectId, 1).stream()
-                .findFirst()
-                .map(QdrantSearchResult::chunkId)
-                .orElse(null);
-    }
-
-    @Override
     public List<QdrantSearchResult> findClosestChunks(
             List<Float> queryVector,
-            String scopeType,
-            String scopeId,
+            List<String> documentIds,
             int topK) {
+        if (documentIds == null || documentIds.isEmpty()) {
+            return List.of();
+        }
         int safeTopK = Math.max(1, Math.min(topK, 20));
-        String normalizedScopeType = normalizeScopeType(scopeType);
-        String normalizedScopeId = normalizeScopeId(scopeId);
         Map<String, Object> filter = Map.of(
                 "must", List.of(
-                        Map.of("key", "scope_type",
-                                "match", Map.of("value", normalizedScopeType)),
-                        Map.of("key", "scope_id",
-                                "match", Map.of("value", normalizedScopeId))
+                        Map.of("key", "document_id",
+                                "match", Map.of("any", documentIds))
                 )
         );
 
@@ -160,8 +135,7 @@ public class QdrantClientImpl implements QdrantClient {
 
             List<Map<String, Object>> results = resultPoints(response.get("result"));
             if (results == null || results.isEmpty()) {
-                log.debug("Qdrant search returned no results for scopeType={}, scopeId={}",
-                        normalizedScopeType, normalizedScopeId);
+                log.debug("Qdrant search returned no results for {} documents", documentIds.size());
                 return List.of();
             }
 
@@ -173,14 +147,13 @@ public class QdrantClientImpl implements QdrantClient {
                 }
                 matches.add(new QdrantSearchResult(String.valueOf(id), score(result.get("score"))));
             }
-            log.debug("Qdrant returned {} hits for scopeType={}, scopeId={}",
-                    matches.size(), normalizedScopeType, normalizedScopeId);
+            log.debug("Qdrant returned {} hits for {} documents",
+                    matches.size(), documentIds.size());
             return matches;
         } catch (QdrantException e) {
             throw e;
         } catch (Exception e) {
-            log.error("Qdrant search failed for scopeType={}, scopeId={}",
-                    normalizedScopeType, normalizedScopeId, e);
+            log.error("Qdrant search failed for {} documents", documentIds.size(), e);
             throw new QdrantException("POST search", e.getMessage(), e);
         }
     }
@@ -293,20 +266,6 @@ public class QdrantClientImpl implements QdrantClient {
             normalized = normalized.substring(0, normalized.length() - 1);
         }
         return normalized;
-    }
-
-    private static String normalizeScopeType(String scopeType) {
-        if (scopeType == null || scopeType.isBlank()) {
-            return "PROJECT";
-        }
-        return scopeType.trim().toUpperCase(Locale.ROOT);
-    }
-
-    private static String normalizeScopeId(String scopeId) {
-        if (scopeId == null || scopeId.isBlank()) {
-            return "0";
-        }
-        return scopeId.trim();
     }
 
     private static BigDecimal score(Object rawScore) {

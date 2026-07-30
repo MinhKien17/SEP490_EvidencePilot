@@ -1,61 +1,46 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.ExtractionResultPayload;
-import com.evidencepilot.model.Document;
-import com.evidencepilot.model.Project;
-import com.evidencepilot.repository.DocumentRepository;
-import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.service.QdrantClient;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 class QdrantServiceImplTest {
 
-    private ProjectDocumentRepository projectDocuments() {
-        return mock(ProjectDocumentRepository.class);
-    }
-
     @Test
-    void upsertVectorsWritesEachChunkWithinProjectScope() {
+    void upsertVectorsWritesOneUuidPointPerChunk() {
         QdrantClient client = mock(QdrantClient.class);
-        DocumentRepository documents = mock(DocumentRepository.class);
         UUID documentId = UUID.randomUUID();
         UUID chunkId = UUID.randomUUID();
-        Project project = new Project();
-        project.setId(UUID.randomUUID());
-        Document document = new Document();
-        document.setProject(project);
-        when(documents.findById(documentId)).thenReturn(Optional.of(document));
         var chunk = new ExtractionResultPayload.ChunkPayload(
                 chunkId, 1, "text", List.of(0.2f), null);
 
-        new QdrantServiceImpl(client, documents, projectDocuments())
+        new QdrantServiceImpl(client)
                 .upsertVectors(new ExtractionResultPayload(documentId, List.of(chunk)));
 
         verify(client).upsertVector(
-                org.mockito.ArgumentMatchers.eq(chunkId.toString()),
-                org.mockito.ArgumentMatchers.eq(List.of(0.2f)),
-                org.mockito.ArgumentMatchers.isNull(),
-                org.mockito.ArgumentMatchers.eq("PROJECT"),
-                org.mockito.ArgumentMatchers.eq(project.getId().toString()),
-                org.mockito.ArgumentMatchers.argThat(payload -> payload.get("document_id").equals(documentId.toString())));
+                eq(chunkId.toString()),
+                eq(List.of(0.2f)),
+                isNull(),
+                argThat(payload -> documentId.toString().equals(payload.get("document_id"))
+                        && chunkId.toString().equals(payload.get("chunk_id"))));
     }
 
     @Test
-    void upsertVectorsSkipsMissingDocument() {
+    void upsertVectorsDoesNothingForEmptyPayload() {
         QdrantClient client = mock(QdrantClient.class);
-        DocumentRepository documents = mock(DocumentRepository.class);
 
-        new QdrantServiceImpl(client, documents, projectDocuments())
+        new QdrantServiceImpl(client)
                 .upsertVectors(new ExtractionResultPayload(UUID.randomUUID(), List.of()));
 
         verifyNoInteractions(client);
@@ -63,25 +48,16 @@ class QdrantServiceImplTest {
 
     @Test
     void upsertVectorsRejectsEmptyDenseEmbedding() {
-        QdrantClient qdrantClient = mock(QdrantClient.class);
-        DocumentRepository documentRepository = mock(DocumentRepository.class);
-        UUID documentId = UUID.randomUUID();
+        QdrantClient client = mock(QdrantClient.class);
         UUID chunkId = UUID.randomUUID();
-        when(documentRepository.findById(documentId)).thenReturn(Optional.of(new Document()));
-
-        QdrantServiceImpl service = new QdrantServiceImpl(qdrantClient, documentRepository, projectDocuments());
         ExtractionResultPayload payload = new ExtractionResultPayload(
-                documentId,
+                UUID.randomUUID(),
                 List.of(new ExtractionResultPayload.ChunkPayload(
-                        chunkId,
-                        0,
-                        "text",
-                        List.of(),
-                        null)));
+                        chunkId, 0, "text", List.of(), null)));
 
-        assertThatThrownBy(() -> service.upsertVectors(payload))
+        assertThatThrownBy(() -> new QdrantServiceImpl(client).upsertVectors(payload))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining(chunkId.toString());
-        verifyNoInteractions(qdrantClient);
+        verifyNoInteractions(client);
     }
 }

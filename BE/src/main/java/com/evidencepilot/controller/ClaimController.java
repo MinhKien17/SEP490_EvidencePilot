@@ -1,9 +1,11 @@
 package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.request.ClaimCreationRequest;
+import com.evidencepilot.dto.request.ClaimMatchEvaluationRequest;
 import com.evidencepilot.dto.request.MappingReviewRequest;
 import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.dto.response.ClaimEvidenceMappingResponse;
+import com.evidencepilot.dto.response.ClaimMatchCandidateResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
 import com.evidencepilot.dto.response.ClaimSourceAuditResponse;
 import com.evidencepilot.dto.response.PagedResponse;
@@ -136,23 +138,36 @@ public class ClaimController {
         return claimService.getSuggestionsForClaim(id);
     }
 
-    @Operation(summary = "Create an AI suggestion",
-            description = "Creates a new AI suggestion linking a document chunk to a claim. "
-                    + "The suggestion starts in PENDING status.")
+    @Operation(summary = "Search source matches for a claim",
+            description = "Uses the claim embedding and Qdrant to return transient SOURCE chunk candidates. "
+                    + "This endpoint does not create suggestions or run generative evaluation.")
     @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Suggestion created"),
-            @ApiResponse(responseCode = "400", description = "Invalid parameters"),
+            @ApiResponse(responseCode = "200", description = "Candidate list returned"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
             @ApiResponse(responseCode = "404", description = "Claim not found")
     })
-    @PostMapping("/{id}/suggestions")
-    @ResponseStatus(HttpStatus.CREATED)
-    public AiSuggestionResponse createSuggestion(
+    @PostMapping("/{id}/matches/search")
+    public List<ClaimMatchCandidateResponse> searchMatches(
+            @Parameter(description = "Claim UUID") @PathVariable UUID id) {
+        return claimService.searchMatches(id);
+    }
+
+    @Operation(summary = "Evaluate a selected source match",
+            description = "Runs generative AI evaluation for exactly one selected SOURCE chunk "
+                    + "and creates a PENDING suggestion.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Evaluation returned"),
+            @ApiResponse(responseCode = "400", description = "Chunk is not an eligible project source"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "404", description = "Claim or chunk not found"),
+            @ApiResponse(responseCode = "409", description = "Claim changed during evaluation"),
+            @ApiResponse(responseCode = "502", description = "AI returned an invalid evaluation")
+    })
+    @PostMapping("/{id}/suggestions/evaluate")
+    public AiSuggestionResponse evaluateMatch(
             @Parameter(description = "Claim UUID") @PathVariable UUID id,
-            @Parameter(description = "Document chunk UUID") @RequestParam UUID documentChunkId,
-            @Parameter(description = "Similarity score") @RequestParam Float score,
-            @Parameter(description = "Explanation of the match") @RequestParam String explanation) {
-        return claimService.createSuggestion(id, documentChunkId, score, explanation);
+            @Valid @RequestBody ClaimMatchEvaluationRequest request) {
+        return claimService.evaluateMatch(id, request.documentChunkId());
     }
 
     @Operation(summary = "Update suggestion status",
@@ -170,22 +185,6 @@ public class ClaimController {
             @Parameter(description = "Suggestion UUID") @PathVariable UUID suggestionId,
             @Parameter(description = "New status: ACCEPTED or REJECTED") @RequestParam String status) {
         claimService.updateSuggestionStatus(suggestionId, status);
-    }
-
-    @Operation(summary = "Generate AI suggestions on demand",
-            description = "Triggers AI embedding + Qdrant search to create new PENDING suggestions "
-                    + "for the specified claim. Idempotent calls may produce duplicates; "
-                    + "deduplication is enforced by (claimId, claimVersion, documentChunkId, modelVersion).")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Suggestions generated"),
-            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
-            @ApiResponse(responseCode = "404", description = "Claim not found")
-    })
-    @PostMapping("/{id}/suggestions/generate")
-    @ResponseStatus(HttpStatus.CREATED)
-    public List<AiSuggestionResponse> generateSuggestions(
-            @Parameter(description = "Claim UUID") @PathVariable UUID id) {
-        return claimService.generateSuggestions(id);
     }
 
     @Operation(summary = "List evidence mappings for a claim",

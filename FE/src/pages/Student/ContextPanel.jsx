@@ -11,7 +11,8 @@ export default function ContextPanel({
   // Claims tab
   newClaimContent, setNewClaimContent, handleCreateClaim,
   claims, selectedClaim, claimMatches, loadingMatches,
-  handleFetchMatches, handleAnalyzeClaim, canEditClaim,
+  claimCandidates, loadingCandidates, evaluatingChunkId, updatingSuggestionId,
+  handleSearchClaimMatches, handleEvaluateMatch, handleSuggestionStatus, canEditClaim,
   editingClaim, setEditingClaim, editClaimContent, setEditClaimContent, handleDeleteClaim, handleUpdateClaim,
   onSelectClaim,
   // Feedback tab
@@ -32,6 +33,12 @@ export default function ContextPanel({
   const { t } = useTranslation();
   const [graphFilter, setGraphFilter] = useState('all');
   if (!isOpen) return null;
+
+  const relationColor = (relation) => {
+    if (relation === 'CONTRADICTS') return '#fb7185';
+    if (relation === 'NEUTRAL' || relation === 'UNKNOWN') return '#fbbf24';
+    return '#34d399';
+  };
 
   const activeClass = (tab) =>
     `flex-1 py-3 text-[10px] font-bold uppercase tracking-wider flex flex-col justify-center items-center gap-1 transition-all relative ${activeTab === tab ? 'text-indigo-600' : 'text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-secondary)'}`;
@@ -179,7 +186,7 @@ export default function ContextPanel({
                 claims.map(claim => {
                   const isSelected = selectedClaim?.id === claim.id;
                   return (
-                    <div key={claim.id} onClick={() => { handleFetchMatches(claim.id); if (onSelectClaim) onSelectClaim(claim); }} className={`bg-(--surface) border rounded-xl p-3.5 shadow-sm hover:shadow-md transition-all relative overflow-hidden group cursor-pointer ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-400/20' : 'border-(--border)'}`}>
+                    <div key={claim.id} onClick={() => { if (onSelectClaim) onSelectClaim(claim); }} className={`bg-(--surface) border rounded-xl p-3.5 shadow-sm hover:shadow-md transition-all relative overflow-hidden group cursor-pointer ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-400/20' : 'border-(--border)'}`}>
                       <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>
                       <div className="flex justify-between items-center mb-1.5 pl-1">
                         <span className="text-[9px] font-black text-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 uppercase tracking-wide">ID: {claim.id}</span>
@@ -198,9 +205,9 @@ export default function ContextPanel({
                       </div>
                       <p className="text-xs font-semibold text-(--text-primary) pl-1 leading-relaxed">{claim.content}</p>
                       <div className="flex gap-2 mt-3 pt-2.5 border-t border-(--border-light) pl-1">
-                        <button onClick={(e) => { e.stopPropagation(); handleAnalyzeClaim(claim.id); }} disabled={isLocked} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-40 flex items-center gap-1">
+                        <button onClick={(e) => { e.stopPropagation(); handleSearchClaimMatches(claim); }} disabled={isLocked || loadingCandidates} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-40 flex items-center gap-1">
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                          AI Analyze
+                          Find matches
                         </button>
                         {canEditClaim(claim) && <>
                           <button onClick={(e) => { e.stopPropagation(); setEditingClaim(claim); setEditClaimContent(claim.content); }} className="text-[10px] text-(--text-secondary) hover:text-(--text-primary) flex items-center gap-0.5 ml-auto">Edit</button>
@@ -208,23 +215,67 @@ export default function ContextPanel({
                         </>}
                       </div>
                       {isSelected && (
-                        <div className="mt-3 pt-3 border-t border-dashed border-(--border) animate-in fade-in slide-in-from-top-1 duration-200">
-                          <h4 className="text-[10px] font-bold text-(--text-tertiary) uppercase tracking-widest mb-2">Matching Evidence</h4>
-                          {loadingMatches ? <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">Searching...</div> : claimMatches.length === 0 ? (
-                            <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">No matches found.</div>
-                          ) : (
-                            <div className="space-y-2">
-                              {claimMatches.map((m, idx) => (
-                                <div key={idx} className="bg-(--surface-secondary) border border-(--border) rounded p-2 text-[11px] hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors">
-                                  <div className="flex justify-between items-center mb-1 text-[9px] font-medium text-(--text-secondary)">
-                                    <span className="truncate max-w-[150px] font-bold text-(--text-primary) flex items-center gap-1"><svg className="w-2.5 h-2.5 text-red-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>{m.sourceFilename}</span>
-                                    <span className="text-indigo-600 font-bold bg-indigo-50 dark:bg-indigo-900/30 px-1 rounded">{(m.score * 100).toFixed(0)}% match</span>
+                        <div className="mt-3 pt-3 border-t border-dashed border-(--border) animate-in fade-in slide-in-from-top-1 duration-200 space-y-4">
+                          <div>
+                            <h4 className="text-[10px] font-bold text-(--text-tertiary) uppercase tracking-widest mb-2">Qdrant matches</h4>
+                            {loadingCandidates ? <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">Searching sources...</div> : claimCandidates.length === 0 ? (
+                              <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">Click Find matches to search active sources.</div>
+                            ) : (
+                              <div className="space-y-2">
+                                {claimCandidates.map(candidate => {
+                                  const evaluated = claimMatches.some(match => match.documentChunkId === candidate.documentChunkId);
+                                  return (
+                                    <div key={candidate.documentChunkId} className="bg-(--surface-secondary) border border-(--border) rounded p-2 text-[11px]">
+                                      <div className="flex justify-between items-center mb-1 text-[9px] font-medium text-(--text-secondary)">
+                                        <span className="truncate max-w-[150px] font-bold text-(--text-primary)">{candidate.sourceFilename}</span>
+                                        <span className="text-indigo-600 font-bold bg-indigo-50 dark:bg-indigo-900/30 px-1 rounded">{(candidate.similarityScore * 100).toFixed(0)}% match</span>
+                                      </div>
+                                      <p className="text-[10px] text-(--text-secondary) line-clamp-4 italic leading-relaxed">"{candidate.excerpt}"</p>
+                                      <div className="flex justify-between items-center mt-2">
+                                        <span className="text-[9px] text-(--text-tertiary)">Chunk {candidate.chunkIndex}</span>
+                                        <button
+                                          onClick={(event) => { event.stopPropagation(); handleEvaluateMatch(claim.id, candidate.documentChunkId); }}
+                                          disabled={isLocked || evaluated || evaluatingChunkId === candidate.documentChunkId}
+                                          className="text-[9px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-(--border) px-2 py-1 rounded transition-colors">
+                                          {evaluated ? 'Evaluated' : evaluatingChunkId === candidate.documentChunkId ? 'Evaluating...' : 'Select & evaluate'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
+                          <div>
+                            <h4 className="text-[10px] font-bold text-(--text-tertiary) uppercase tracking-widest mb-2">AI evaluations</h4>
+                            {loadingMatches ? <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">Loading evaluations...</div> : claimMatches.length === 0 ? (
+                              <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">No evaluated matches yet.</div>
+                            ) : (
+                              <div className="space-y-2">
+                                {claimMatches.map(match => (
+                                  <div key={match.id} className="bg-(--surface-secondary) border border-(--border) rounded p-2 text-[11px]">
+                                    <div className="flex justify-between items-center gap-2 mb-1">
+                                      <span className="truncate font-bold text-(--text-primary)">{match.sourceFilename}</span>
+                                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${match.status === 'ACCEPTED' ? 'bg-emerald-100 text-emerald-700' : match.status === 'REJECTED' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>{match.status}</span>
+                                    </div>
+                                    <div className="flex gap-2 text-[9px] font-bold mb-1">
+                                      <span className="text-indigo-600">{match.relation || 'UNKNOWN'}</span>
+                                      {match.strengthScore != null && <span className="text-(--text-secondary)">{match.strengthScore}% {match.strengthBand}</span>}
+                                    </div>
+                                    <p className="text-[10px] text-(--text-secondary) line-clamp-3 italic leading-relaxed">"{match.excerpt}"</p>
+                                    {match.explanation && <p className="text-[10px] text-indigo-600 mt-1 leading-relaxed">{match.explanation}</p>}
+                                    {match.status === 'PENDING' && (
+                                      <div className="flex justify-end gap-2 mt-2">
+                                        <button onClick={(event) => { event.stopPropagation(); handleSuggestionStatus(match.id, 'REJECTED'); }} disabled={isLocked || updatingSuggestionId === match.id} className="text-[9px] font-bold text-rose-600 hover:text-rose-700 disabled:opacity-40">Reject</button>
+                                        <button onClick={(event) => { event.stopPropagation(); handleSuggestionStatus(match.id, 'ACCEPTED'); }} disabled={isLocked || updatingSuggestionId === match.id} className="text-[9px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 px-2 py-1 rounded">Accept</button>
+                                      </div>
+                                    )}
                                   </div>
-                                  <p className="text-[10px] text-(--text-secondary) line-clamp-3 italic leading-relaxed">"{m.excerpt}"</p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                       {editingClaim && editingClaim.id === claim.id && (
@@ -286,7 +337,7 @@ export default function ContextPanel({
                 <div className="flex justify-between items-center mb-3">
                   <h4 className="font-bold text-xs text-indigo-400 flex items-center gap-1">
                     <svg className="w-3.5 h-3.5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
-                    Paper Connection Map
+                    Paper Connection Map <span className="text-[9px] text-slate-500 font-medium">(keyword heuristic)</span>
                   </h4>
                   <span className="text-[9px] text-slate-500 font-mono font-semibold">Total: {papers.length} files</span>
                 </div>
@@ -362,11 +413,10 @@ export default function ContextPanel({
                         Source-claim Network
                       </h4>
                       <div className="flex items-center gap-1.5">
-                        <div className="flex gap-0.5 bg-slate-800 rounded-lg p-0.5 border border-slate-700">
-                          {['all','SUPPORTED','NEUTRAL','REFUTED'].map(f => (
-                            <button key={f} onClick={() => setGraphFilter(f)} className={`text-[9px] px-1.5 py-0.5 rounded font-medium transition ${graphFilter === f ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>{f === 'all' ? 'All' : f.slice(0,4)}</button>
-                          ))}
-                        </div>
+                        <select value={graphFilter} onChange={(event) => setGraphFilter(event.target.value)} className="text-[9px] bg-slate-800 text-slate-300 rounded border border-slate-700 px-1 py-0.5">
+                          <option value="all">All relations</option>
+                          {['SUPPORTS','CONTRADICTS','NEUTRAL','EXTENDS','DETAILS','GENERALIZES'].map(relation => <option key={relation} value={relation}>{relation}</option>)}
+                        </select>
                         <button onClick={handleExportCsv} className="text-[9px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-medium" title="Export CSV">
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                           CSV
@@ -382,22 +432,22 @@ export default function ContextPanel({
                         const si = (graphData.sources || []).findIndex(s => s.id === sid);
                         if (si < 0) return null;
                         const y1 = ci * 80 + 50, y2 = si * 80 + 50;
-                        const color = c.graphData?.verdict === 'SUPPORTED' ? '#34d399' : c.graphData?.verdict === 'REFUTED' ? '#fb7185' : '#fbbf24';
+                        const color = relationColor(c.graphData?.verdict);
                         return <path key={`e-${ci}-${si}`} d={`M 150 ${y1} Q 300 ${(y1 + y2) / 2}, 450 ${y2}`} stroke={color} strokeWidth="1.5" fill="none" opacity="0.5" />;
                       }))}
                       {graphData.claims.filter(c => graphFilter === 'all' || c.graphData?.verdict === graphFilter).map((c, ci) => {
                         const verdict = c.graphData?.verdict;
-                        const bc = verdict === 'SUPPORTED' ? '#34d399' : verdict === 'REFUTED' ? '#fb7185' : verdict ? '#fbbf24' : '#334155';
+                        const bc = verdict ? relationColor(verdict) : '#334155';
                         const sectionColor = ['#6366f1','#8b5cf6','#a855f7','#d946ef','#ec4899','#f43f5e','#14b8a6','#06b6d4','#3b82f6'][(c.sectionId || 0) % 9];
                         return (
-                          <g key={`c-${ci}`} onClick={() => { setSelectedPaper(c); handleFetchMatches(c.id); }} style={{ cursor: 'pointer' }}>
-                            <title>{c.content?.slice(0,120)} — {verdict || 'Unanalyzed'}{c.graphData?.confidence ? ` (${(c.graphData.confidence * 100).toFixed(0)}%)` : ''}</title>
+                          <g key={`c-${ci}`} onClick={() => { if (onSelectClaim) onSelectClaim(c); }} style={{ cursor: 'pointer' }}>
+                            <title>{c.content?.slice(0,120)} — {verdict || 'Unanalyzed'}{c.graphData?.confidence != null ? ` (${c.graphData.confidence}%)` : ''}</title>
                             <rect x="10" y={ci * 80 + 10} width="140" height="80" rx="8" fill="#1e293b" stroke={bc} strokeWidth="1.5" />
                             <rect x="10" y={ci * 80 + 10} width="4" height="80" rx="2" fill={sectionColor} />
                             <foreignObject x="18" y={ci * 80 + 15} width="127" height="45">
                               <div style={{ color: '#e2e8f0', fontSize: '10px', lineHeight: '1.3', overflow: 'hidden' }}>{c.content}</div>
                             </foreignObject>
-                            <text x="80" y={ci * 80 + 75} fill={bc} fontSize="9" textAnchor="middle" fontWeight="bold">{verdict || 'Unanalyzed'}{c.graphData?.confidence ? ` (${(c.graphData.confidence * 100).toFixed(0)}%)` : ''}</text>
+                            <text x="80" y={ci * 80 + 75} fill={bc} fontSize="9" textAnchor="middle" fontWeight="bold">{verdict || 'Unanalyzed'}{c.graphData?.confidence != null ? ` (${c.graphData.confidence}%)` : ''}</text>
                           </g>
                         );
                       })}
@@ -412,9 +462,9 @@ export default function ContextPanel({
                       ))}
                     </svg>
                     <div className="flex gap-4 mt-3 pt-2 border-t border-slate-800">
-                      <div className="flex items-center gap-1.5 text-[10px]"><div className="w-3 h-0.5 rounded bg-emerald-400" /><span className="text-slate-400">SUPPORTED</span></div>
+                      <div className="flex items-center gap-1.5 text-[10px]"><div className="w-3 h-0.5 rounded bg-emerald-400" /><span className="text-slate-400">SUPPORTS / EXTENDS / DETAILS / GENERALIZES</span></div>
                       <div className="flex items-center gap-1.5 text-[10px]"><div className="w-3 h-0.5 rounded bg-amber-400" /><span className="text-slate-400">NEUTRAL</span></div>
-                      <div className="flex items-center gap-1.5 text-[10px]"><div className="w-3 h-0.5 rounded bg-rose-400" /><span className="text-slate-400">REFUTED</span></div>
+                      <div className="flex items-center gap-1.5 text-[10px]"><div className="w-3 h-0.5 rounded bg-rose-400" /><span className="text-slate-400">CONTRADICTS</span></div>
                     </div>
                   </div>
                   <div className="bg-(--surface) border border-(--border) rounded-xl p-4 shadow-sm">
@@ -423,13 +473,13 @@ export default function ContextPanel({
                       <div className="space-y-2 max-h-60 overflow-y-auto">
                         {claimMatches.map((m, i) => (
                           <div key={i} className="flex items-start gap-2 p-2 bg-(--surface-secondary) rounded-lg text-xs">
-                            <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${m.score >= 0.7 ? 'bg-emerald-400' : m.score >= 0.4 ? 'bg-amber-400' : 'bg-rose-400'}`} />
+                            <div className="mt-1 w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: relationColor(m.relation) }} />
                             <div className="flex-1 min-w-0">
-                              <div className="font-medium text-(--text-primary)">{m.filename}{m.page ? ` (p.${m.page})` : ''}</div>
+                              <div className="font-medium text-(--text-primary)">{m.sourceFilename}</div>
                               <div className="text-(--text-secondary) text-[10px] mt-0.5 line-clamp-2">"{m.excerpt}"</div>
                               {m.explanation && <div className="text-indigo-600 text-[10px] mt-0.5 italic">{m.explanation}</div>}
                             </div>
-                            <span className="text-[10px] font-bold text-(--text-secondary) shrink-0">{(m.score * 100).toFixed(0)}%</span>
+                            <span className="text-[10px] font-bold text-(--text-secondary) shrink-0">{m.relation || 'UNKNOWN'}{m.strengthScore != null ? ` · ${m.strengthScore}%` : ''}</span>
                           </div>
                         ))}
                       </div>
@@ -451,7 +501,7 @@ export default function ContextPanel({
                 <div className="text-xs text-(--text-tertiary) text-center py-8 space-y-2">
                   <svg className="w-8 h-8 mx-auto text-(--border)" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                   <p>No graph data yet.</p>
-                  <p className="text-[10px]">Go to the <strong>Claims</strong> tab, select a claim, and run <strong>AI Analyze</strong> to generate the source-claim network.</p>
+                  <p className="text-[10px]">Find a source match, evaluate it, then Accept the suggestion to create the source-claim network.</p>
                 </div>
               )}
 

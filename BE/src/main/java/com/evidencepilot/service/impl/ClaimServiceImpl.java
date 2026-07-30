@@ -4,6 +4,7 @@ import com.evidencepilot.dto.request.ClaimCreationRequest;
 import com.evidencepilot.dto.request.MappingReviewRequest;
 import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.dto.response.ClaimEvidenceMappingResponse;
+import com.evidencepilot.dto.response.ClaimMatchCandidateResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
 import com.evidencepilot.dto.response.ClaimSourceAuditResponse;
 import com.evidencepilot.dto.response.ClaimSourceAuditResponse.ClaimAuditItem;
@@ -18,7 +19,6 @@ import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
-import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.MappingReviewStatus;
 import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.model.enums.SuggestionStatus;
@@ -26,7 +26,6 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.ClaimRepository;
-import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectMemberRepository;
 import com.evidencepilot.repository.ProjectRepository;
@@ -46,6 +45,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -62,7 +62,6 @@ public class ClaimServiceImpl implements ClaimService {
     private final PaperSectionRepository paperSectionRepository;
     private final AiSuggestionRepository aiSuggestionRepository;
     private final ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
-    private final DocumentChunkRepository documentChunkRepository;
     private final ClaimMatchingService claimMatchingService;
     private final CurrentUserService currentUserService;
     private final ClaimMapper claimMapper;
@@ -184,6 +183,18 @@ public class ClaimServiceImpl implements ClaimService {
         }
         claim.setClaimVersion(claim.getClaimVersion() + 1);
 
+        List<AiSuggestion> invalidated = aiSuggestionRepository.findByClaimId(id).stream()
+                .filter(suggestion -> suggestion.getStatus() == SuggestionStatus.PENDING)
+                .peek(suggestion -> suggestion.setStatus(SuggestionStatus.INVALIDATED))
+                .toList();
+        aiSuggestionRepository.saveAll(invalidated);
+
+        List<ClaimEvidenceMapping> deactivated = claimEvidenceMappingRepository.findByClaimId(id).stream()
+                .filter(mapping -> mapping.getStatus() == MappingStatus.ACTIVE)
+                .peek(mapping -> mapping.setStatus(MappingStatus.INACTIVE))
+                .toList();
+        claimEvidenceMappingRepository.saveAll(deactivated);
+
         return claimMapper.toClaimResponse(claimRepository.save(claim));
     }
 
@@ -203,45 +214,33 @@ public class ClaimServiceImpl implements ClaimService {
 
     @Override
     public List<AiSuggestionResponse> getSuggestionsForClaim(UUID claimId) {
-        requireClaimAccess(claimId);
-        return aiSuggestionRepository.findByClaimId(claimId).stream()
+        Claim claim = requireClaimAccess(claimId);
+        return aiSuggestionRepository
+                .findByClaimIdAndClaimVersionOrderByCreatedAtDesc(
+                        claimId, claim.getClaimVersion())
+                .stream()
                 .map(claimMapper::toAiSuggestionResponse)
                 .toList();
     }
 
     @Override
-    @Transactional
-    public AiSuggestionResponse createSuggestion(UUID claimId, UUID documentChunkId,
-            Float score, String explanation) {
+    public List<ClaimMatchCandidateResponse> searchMatches(UUID claimId) {
         Claim claim = requireClaimWriteAccess(claimId);
+        return claimMatchingService.searchMatches(claimId, claim.getProject().getId());
+    }
 
-        DocumentChunk chunk = documentChunkRepository.findById(documentChunkId)
-                .orElseThrow(() -> new ResourceNotFoundException(documentChunkId, "DocumentChunk"));
-        if (!chunk.isActive() || chunk.getDocument() == null || !chunk.getDocument().isActive()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Document chunk is not active or belongs to an inactive document");
-        }
-        if (chunk.getDocument().getDocType() != DocumentType.SOURCE) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Document chunk must belong to a SOURCE document");
-        }
-
-        AiSuggestion suggestion = new AiSuggestion();
-        suggestion.setClaim(claim);
-        suggestion.setDocumentChunk(chunk);
-        suggestion.setStatus(SuggestionStatus.PENDING);
-        suggestion.setScore(score);
-        suggestion.setExplanation(explanation);
-        suggestion.setClaimVersion(claim.getClaimVersion());
-        suggestion.setCreatedAt(LocalDateTime.now());
-
-        return claimMapper.toAiSuggestionResponse(aiSuggestionRepository.save(suggestion));
+    @Override
+    public AiSuggestionResponse evaluateMatch(UUID claimId, UUID documentChunkId) {
+        Claim claim = requireClaimWriteAccess(claimId);
+        return claimMatchingService.evaluateMatch(
+                claimId, claim.getProject().getId(), documentChunkId);
     }
 
     @Override
     @Transactional
     public void acceptSuggestion(UUID suggestionId) {
         AiSuggestion suggestion = requireSuggestionWriteAccess(suggestionId);
+        requirePendingCurrentSuggestion(suggestion);
         suggestion.setStatus(SuggestionStatus.ACCEPTED);
         aiSuggestionRepository.save(suggestion);
 
@@ -254,27 +253,33 @@ public class ClaimServiceImpl implements ClaimService {
 
         List<ClaimEvidenceMapping> existing = claimEvidenceMappingRepository
                 .findByClaimIdAndDocumentChunkId(suggestion.getClaim().getId(), chunk.getId());
-        if (existing.isEmpty()) {
-            ClaimEvidenceMapping mapping = new ClaimEvidenceMapping();
-            mapping.setClaim(suggestion.getClaim());
-            mapping.setDocumentChunk(chunk);
-            mapping.setSuggestion(suggestion);
-            mapping.setCreatedBy(currentUser);
-            mapping.setRelation(suggestion.getRelation());
-            mapping.setStrengthScore(suggestion.getStrengthScore());
-            mapping.setStrengthBand(suggestion.getStrengthBand());
-            mapping.setScoreBreakdown(suggestion.getScoreBreakdown());
-            mapping.setStatus(MappingStatus.ACTIVE);
-            mapping.setReviewStatus(MappingReviewStatus.PENDING);
-            mapping.setCreatedAt(LocalDateTime.now());
-            claimEvidenceMappingRepository.save(mapping);
-        }
+        ClaimEvidenceMapping mapping = existing.isEmpty()
+                ? new ClaimEvidenceMapping()
+                : existing.get(0);
+        mapping.setClaim(suggestion.getClaim());
+        mapping.setDocumentChunk(chunk);
+        mapping.setSuggestion(suggestion);
+        mapping.setCreatedBy(currentUser);
+        mapping.setRelation(suggestion.getRelation());
+        mapping.setStrengthScore(suggestion.getStrengthScore());
+        mapping.setStrengthBand(suggestion.getStrengthBand());
+        mapping.setScoreBreakdown(suggestion.getScoreBreakdown());
+        mapping.setStatus(MappingStatus.ACTIVE);
+        mapping.setReviewStatus(MappingReviewStatus.PENDING);
+        mapping.setInstructorRejected(false);
+        mapping.setReviewedBy(null);
+        mapping.setReviewedAt(null);
+        mapping.setReviewNote(null);
+        mapping.setRelationOverride(null);
+        mapping.setCreatedAt(LocalDateTime.now());
+        claimEvidenceMappingRepository.save(mapping);
     }
 
     @Override
     @Transactional
     public void rejectSuggestion(UUID suggestionId) {
         AiSuggestion suggestion = requireSuggestionWriteAccess(suggestionId);
+        requirePendingCurrentSuggestion(suggestion);
         suggestion.setStatus(SuggestionStatus.REJECTED);
         aiSuggestionRepository.save(suggestion);
     }
@@ -292,6 +297,10 @@ public class ClaimServiceImpl implements ClaimService {
             acceptSuggestion(suggestionId);
         } else if (newStatus == SuggestionStatus.REJECTED) {
             rejectSuggestion(suggestionId);
+        } else {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Status must be ACCEPTED or REJECTED");
         }
     }
 
@@ -336,15 +345,6 @@ public class ClaimServiceImpl implements ClaimService {
                 claimEvidenceMappingRepository.save(mapping));
     }
 
-    @Override
-    @Transactional
-    public List<AiSuggestionResponse> generateSuggestions(UUID claimId) {
-        Claim claim = findActiveClaim(claimId);
-        User currentUser = currentUserService.requireCurrentUser();
-        requireProjectContentWriteAccess(currentUser, claim.getProject());
-        return claimMatchingService.matchClaim(claimId, claim.getProject().getId());
-    }
-
     private Claim requireClaimAccess(UUID claimId) {
         Claim claim = findActiveClaim(claimId);
         User currentUser = currentUserService.requireCurrentUser();
@@ -365,6 +365,21 @@ public class ClaimServiceImpl implements ClaimService {
         User currentUser = currentUserService.requireCurrentUser();
         requireProjectContentWriteAccess(currentUser, suggestion.getClaim().getProject());
         return suggestion;
+    }
+
+    private void requirePendingCurrentSuggestion(AiSuggestion suggestion) {
+        if (suggestion.getStatus() != SuggestionStatus.PENDING) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Suggestion decision is final");
+        }
+        if (!Objects.equals(
+                suggestion.getClaimVersion(),
+                suggestion.getClaim().getClaimVersion())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Suggestion belongs to an older claim version");
+        }
     }
 
     private void requireProjectContentWriteAccess(User currentUser, Project project) {

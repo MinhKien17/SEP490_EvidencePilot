@@ -15,6 +15,21 @@ import { hasActiveExtraction } from './extractionPolling.js';
 
 const DEFAULT_SAMPLE_LATEX = `% Select a paper from the file panel to start editing.`;
 
+async function loadAllProjectSources(projectId) {
+  const sources = [];
+  let page = 0;
+  let last = false;
+  while (!last) {
+    const response = await api.get(`/api/projects/${projectId}/sources`, {
+      params: { page, size: 100, active: true },
+    });
+    sources.push(...(response.data?.content || []));
+    last = response.data?.last ?? true;
+    page += 1;
+  }
+  return sources;
+}
+
 export default function WorkspaceLayout() {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -78,6 +93,10 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const [selectedClaim, setSelectedClaim] = useState(null);
   const [claimMatches, setClaimMatches] = useState([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
+  const [claimCandidates, setClaimCandidates] = useState([]);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [evaluatingChunkId, setEvaluatingChunkId] = useState(null);
+  const [updatingSuggestionId, setUpdatingSuggestionId] = useState(null);
   const [sections, setSections] = useState([]);
   const [selectedSectionId, setSelectedSectionId] = useState('');
   const [notifications, setNotifications] = useState([]);
@@ -170,12 +189,13 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       setSelectedPaper(null);
       setSelectedClaim(null);
       setClaimMatches([]);
+      setClaimCandidates([]);
       setCitationResult(null);
       setAiReviewResult(null);
       setGraphData(null);
       const projRes = await api.get(`/api/projects/${projId}`);
       setProject(projRes.data);
-      try { const r = await api.get(`/api/projects/${projId}/sources`); setSources(r.data?.content || []); } catch {}
+      try { setSources(await loadAllProjectSources(projId)); } catch {}
       try { const r = await api.get(`/api/media/projects/${projId}`); setMediaAssets(r.data || []); } catch {}
       try {
         const r = await api.get(`/api/projects/${projId}/papers`);
@@ -216,12 +236,12 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     let timer;
     const refresh = async () => {
       try {
-        const [sourceResponse, mediaResponse] = await Promise.all([
-          api.get(`/api/projects/${project.id}/sources`),
+        const [sourceList, mediaResponse] = await Promise.all([
+          loadAllProjectSources(project.id),
           api.get(`/api/media/projects/${project.id}`),
         ]);
         if (!cancelled) {
-          setSources(sourceResponse.data?.content || []);
+          setSources(sourceList);
           setMediaAssets(mediaResponse.data || []);
         }
       } catch {
@@ -315,7 +335,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
   const fetchSources = useCallback(async () => {
     if (!project) return;
-    try { const r = await api.get(`/api/projects/${project.id}/sources`); setSources(r.data?.content || []); } catch {}
+    try { setSources(await loadAllProjectSources(project.id)); } catch {}
   }, [project]);
 
   // CRUD handlers
@@ -358,8 +378,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     try {
       await api.post('/api/sources', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       showToast("Source uploaded.");
-      const r = await api.get(`/api/projects/${project.id}/sources`);
-      setSources(r.data?.content || []);
+      setSources(await loadAllProjectSources(project.id));
       const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
       setGraphData(g.data);
     } catch { showToast("Upload failed."); }
@@ -370,8 +389,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     try {
       await api.delete(`/api/documents/${sourceId}`);
       showToast("Source deleted.");
-      const r = await api.get(`/api/projects/${project.id}/sources`);
-      setSources(r.data?.content || []);
+      setSources(await loadAllProjectSources(project.id));
       const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
       setGraphData(g.data);
     } catch { showToast("Delete failed."); }
@@ -427,9 +445,14 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const handleUpdateClaim = async () => {
     if (!editingClaim || !editClaimContent.trim()) return;
     try {
-      await api.put(`/api/claims/${editingClaim.id}`, { id: editingClaim.id, content: editClaimContent, active: true, aiConfidenceScore: editingClaim.aiConfidenceScore });
+      const updated = await api.put(`/api/claims/${editingClaim.id}`, { id: editingClaim.id, content: editClaimContent, active: true, aiConfidenceScore: editingClaim.aiConfidenceScore });
       showToast("Claim updated.");
       setEditingClaim(null); setEditClaimContent('');
+      if (selectedClaim?.id === editingClaim.id) {
+        setSelectedClaim(updated.data);
+        setClaimCandidates([]);
+        setClaimMatches([]);
+      }
       const r = await api.get(`/api/projects/${project.id}/claims`);
       setClaims(r.data?.content || []);
       const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
@@ -446,7 +469,11 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       setClaims(r.data?.content || []);
       const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
       setGraphData(g.data);
-      if (selectedClaim && selectedClaim.id === claimId) { setSelectedClaim(null); setClaimMatches([]); }
+      if (selectedClaim && selectedClaim.id === claimId) {
+        setSelectedClaim(null);
+        setClaimMatches([]);
+        setClaimCandidates([]);
+      }
     } catch { showToast("Delete failed."); }
   };
 
@@ -536,7 +563,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     const rows = [['Claim ID', 'Claim Content', 'Verdict', 'Confidence', 'Section', 'Matched Sources']];
     const srcMap = {}; (graphData.sources || []).forEach(s => { srcMap[s.id] = s.filename; });
     (graphData.claims || []).forEach(c => {
-      const g = c.graphData || {}; const verdict = g.verdict || ''; const conf = g.confidence ? (g.confidence * 100).toFixed(0) : '';
+      const g = c.graphData || {}; const verdict = g.verdict || ''; const conf = g.confidence ?? '';
       const sourceNames = (g.matched_source_ids || []).map(sid => srcMap[sid] || sid).join('; ');
       rows.push([esc(c.id), esc(c.content), esc(verdict), conf, esc(c.sectionTitle || ''), esc(sourceNames)]);
     });
@@ -561,17 +588,20 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     if (activeTab === 'Graph' && project?.id && !graphData) fetchGraphData(project.id);
   }, [activeTab, project?.id, graphData, fetchGraphData]);
 
-  const handleAnalyzeClaim = async (claimId) => {
-    showToast("AI analyzing...");
+  const handleSearchClaimMatches = async (claim) => {
+    setSelectedClaim(claim);
+    setClaimCandidates([]);
+    setLoadingCandidates(true);
+    await handleFetchMatches(claim.id);
     try {
-      await api.post(`/api/claims/${claimId}/suggestions/generate`);
-      showToast("AI analysis complete.");
-      const r = await api.get(`/api/projects/${project.id}/claims`);
-      setClaims(r.data?.content || []);
-      const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
-      setGraphData(g.data);
-      if (selectedClaim && selectedClaim.id === claimId) handleFetchMatches(claimId);
-    } catch { showToast("AI analysis failed."); }
+      const response = await api.post(`/api/claims/${claim.id}/matches/search`);
+      const candidates = response.data || [];
+      setClaimCandidates(candidates);
+      showToast(candidates.length > 0
+        ? `Found ${candidates.length} source match${candidates.length > 1 ? 'es' : ''}.`
+        : 'No matches found. Check that source extraction is ready.');
+    } catch { showToast("Find matches failed."); }
+    finally { setLoadingCandidates(false); }
   };
 
   const handleFetchMatches = async (claimId) => {
@@ -580,7 +610,37 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     finally { setLoadingMatches(false); }
   };
 
-  const handleSelectClaim = (claim) => {
+  const handleEvaluateMatch = async (claimId, documentChunkId) => {
+    setEvaluatingChunkId(documentChunkId);
+    try {
+      await api.post(`/api/claims/${claimId}/suggestions/evaluate`, { documentChunkId });
+      showToast("AI evaluation complete. Review it before accepting.");
+      await handleFetchMatches(claimId);
+    } catch { showToast("AI evaluation failed."); }
+    finally { setEvaluatingChunkId(null); }
+  };
+
+  const handleSuggestionStatus = async (suggestionId, status) => {
+    if (!selectedClaim) return;
+    setUpdatingSuggestionId(suggestionId);
+    try {
+      await api.patch(`/api/claims/suggestions/${suggestionId}/status`, null, { params: { status } });
+      showToast(status === 'ACCEPTED' ? 'Evidence accepted.' : 'Suggestion rejected.');
+      await handleFetchMatches(selectedClaim.id);
+      if (status === 'ACCEPTED') {
+        const graph = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
+        setGraphData(graph.data);
+      }
+    } catch { showToast("Update suggestion failed."); }
+    finally { setUpdatingSuggestionId(null); }
+  };
+
+  const handleSelectClaim = async (claim) => {
+    if (selectedClaim?.id !== claim.id) {
+      setClaimCandidates([]);
+    }
+    setSelectedClaim(claim);
+    await handleFetchMatches(claim.id);
     if (claim.sectionId) {
       setSelectedSectionId(claim.sectionId);
       loadCode('');
@@ -811,8 +871,9 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
           sources={sources} isUploading={isUploading} setIsUploading={setIsUploading} project={project} setViewerFile={setViewerFile} fetchSources={fetchSources} isLocked={isLocked}
           newClaimContent={newClaimContent} setNewClaimContent={setNewClaimContent} handleCreateClaim={handleCreateClaim}
           claims={claims} selectedClaim={selectedClaim} claimMatches={claimMatches} loadingMatches={loadingMatches}
-          handleFetchMatches={handleFetchMatches} handleAnalyzeClaim={handleAnalyzeClaim} canEditClaim={canEditClaim}
-          editingClaim={editingClaim} setEditingClaim={setEditingClaim} editClaimContent={editClaimContent} setEditClaimContent={setEditClaimContent} handleDeleteClaim={handleDeleteClaim}
+          claimCandidates={claimCandidates} loadingCandidates={loadingCandidates} evaluatingChunkId={evaluatingChunkId} updatingSuggestionId={updatingSuggestionId}
+          handleSearchClaimMatches={handleSearchClaimMatches} handleEvaluateMatch={handleEvaluateMatch} handleSuggestionStatus={handleSuggestionStatus} canEditClaim={canEditClaim}
+          editingClaim={editingClaim} setEditingClaim={setEditingClaim} editClaimContent={editClaimContent} setEditClaimContent={setEditClaimContent} handleDeleteClaim={handleDeleteClaim} handleUpdateClaim={handleUpdateClaim}
           onSelectClaim={handleSelectClaim}
           feedbacks={feedbacks} setShowSubmitReviewModal={setShowSubmitReviewModal} userProjectRole={project?.currentUserRole}
           graphData={graphData} fetchGraphData={fetchGraphData} graphScope={graphScope} onGraphScopeToggle={handleGraphScopeToggle} dynamicNodes={dynamicNodes} hoveredNodeId={hoveredNodeId} setHoveredNodeId={setHoveredNodeId}

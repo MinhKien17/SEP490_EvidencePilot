@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class QdrantClientImplTest {
 
     @Test
-    void findClosestChunksUsesNamedDenseQueryInsideScope() throws Exception {
+    void findClosestChunksUsesNamedDenseQueryAndDocumentFilter() throws Exception {
         AtomicReference<String> queryBody = new AtomicReference<>();
         HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
         server.createContext("/collections/source_chunks", exchange -> {
@@ -41,7 +41,7 @@ class QdrantClientImplTest {
                     "");
 
             List<QdrantSearchResult> results = client.findClosestChunks(
-                    List.of(0.25f, -0.5f), "PROJECT", "project-1", 5);
+                    List.of(0.25f, -0.5f), List.of("doc-1", "doc-2"), 5);
 
             assertThat(results)
                     .singleElement()
@@ -51,10 +51,8 @@ class QdrantClientImplTest {
                     });
             assertThat(queryBody.get()).contains(
                     "\"using\":\"dense\"",
-                    "\"scope_type\"",
-                    "\"PROJECT\"",
-                    "\"scope_id\"",
-                    "\"project-1\"");
+                    "\"document_id\"",
+                    "\"any\":[\"doc-1\",\"doc-2\"]");
         } finally {
             server.stop(0);
         }

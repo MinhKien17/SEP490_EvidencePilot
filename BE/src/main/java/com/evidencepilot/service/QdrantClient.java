@@ -8,11 +8,16 @@ import java.util.Map;
 
 public interface QdrantClient {
 
-    void upsertVector(String chunkId, List<Float> denseVector, SparseVector sparseVector, String scopeType, String scopeId, Map<String, Object> extraPayload);
+    void upsertVector(
+            String chunkId,
+            List<Float> denseVector,
+            SparseVector sparseVector,
+            Map<String, Object> payload);
 
-    String findClosestChunkId(List<Float> queryVector, String projectId);
-
-    List<QdrantSearchResult> findClosestChunks(List<Float> queryVector, String scopeType, String scopeId, int topK);
+    List<QdrantSearchResult> findClosestChunks(
+            List<Float> queryVector,
+            List<String> documentIds,
+            int topK);
 
     Map<String, Object> health();
 }

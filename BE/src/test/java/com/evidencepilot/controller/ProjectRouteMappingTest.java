@@ -33,7 +33,6 @@ class ProjectRouteMappingTest {
             OpenAlexController.class,
             PaperController.class,
             ProjectController.class,
-            RagController.class,
             CollectionCategoryController.class,
             SourceController.class,
             SystemNotificationController.class,
@@ -129,14 +128,12 @@ class ProjectRouteMappingTest {
                 "PUT /api/claims/{id}",
                 "DELETE /api/claims/{id}",
                 "GET /api/claims/{id}/suggestions",
-                "POST /api/claims/{id}/suggestions",
-                "POST /api/claims/{id}/suggestions/generate",
+                "POST /api/claims/{id}/matches/search",
+                "POST /api/claims/{id}/suggestions/evaluate",
                 "PATCH /api/claims/suggestions/{suggestionId}/status",
                 "GET /api/claims/{id}/mappings",
                 "GET /api/claims/audit/{projectId}",
                 "PATCH /api/claims/mappings/{mappingId}/review",
-                "POST /api/paper/{documentId}/claims/match",
-                "POST /api/sources/{documentId}/claims/match",
                 "GET /api/feedback-requests",
                 "POST /api/projects/{projectId}/reviews",
                 "POST /api/feedback-requests/{id}/feedback",
@@ -160,7 +157,7 @@ class ProjectRouteMappingTest {
                 "PUT /api/papers/{id}",
                 "POST /api/projects/{projectId}/papers/init",
                 "POST /api/projects/{projectId}/papers/reset-standard"));
-        assertThat(routes).hasSize(112);
+        assertThat(routes).hasSize(110);
     }
 
     @Test

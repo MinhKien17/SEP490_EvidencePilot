@@ -73,14 +73,22 @@ class ClaimControllerTest {
     }
 
     @Test
-    void createSuggestion_returns201AndBindsParameters() throws Exception {
+    void searchMatches_delegatesClaimId() throws Exception {
+        UUID claimId = UUID.randomUUID();
+        mockMvc.perform(post("/api/claims/{id}/matches/search", claimId))
+                .andExpect(status().isOk());
+        verify(service).searchMatches(claimId);
+    }
+
+    @Test
+    void evaluateMatch_bindsSelectedChunk() throws Exception {
         UUID claimId = UUID.randomUUID();
         UUID chunkId = UUID.randomUUID();
-        mockMvc.perform(post("/api/claims/{id}/suggestions", claimId)
-                        .param("documentChunkId", chunkId.toString())
-                        .param("score", "0.9").param("explanation", "Strong match"))
-                .andExpect(status().isCreated());
-        verify(service).createSuggestion(claimId, chunkId, 0.9f, "Strong match");
+        mockMvc.perform(post("/api/claims/{id}/suggestions/evaluate", claimId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"documentChunkId\":\"" + chunkId + "\"}"))
+                .andExpect(status().isOk());
+        verify(service).evaluateMatch(claimId, chunkId);
     }
 
     @Test

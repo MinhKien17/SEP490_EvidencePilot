@@ -3,6 +3,7 @@ package com.evidencepilot.service;
 import com.evidencepilot.dto.request.ClaimCreationRequest;
 import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.dto.response.ClaimEvidenceMappingResponse;
+import com.evidencepilot.dto.response.ClaimMatchCandidateResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
 import com.evidencepilot.dto.response.ClaimSourceAuditResponse;
 import com.evidencepilot.dto.request.MappingReviewRequest;
@@ -31,12 +32,12 @@ public interface ClaimService {
     ClaimResponse updateClaim(UUID id, String content, Float aiConfidenceScore);
     void deleteClaim(UUID id);
     List<AiSuggestionResponse> getSuggestionsForClaim(UUID claimId);
-    AiSuggestionResponse createSuggestion(UUID claimId, UUID documentChunkId, Float score, String explanation);
+    List<ClaimMatchCandidateResponse> searchMatches(UUID claimId);
+    AiSuggestionResponse evaluateMatch(UUID claimId, UUID documentChunkId);
     void acceptSuggestion(UUID suggestionId);
     void rejectSuggestion(UUID suggestionId);
     void updateSuggestionStatus(UUID suggestionId, String status);
     List<ClaimEvidenceMappingResponse> getMappingsForClaim(UUID claimId);
-    List<AiSuggestionResponse> generateSuggestions(UUID claimId);
     ClaimEvidenceMappingResponse reviewMapping(UUID mappingId, MappingReviewRequest request);
     ClaimSourceAuditResponse auditClaimSources(UUID projectId);
 }
