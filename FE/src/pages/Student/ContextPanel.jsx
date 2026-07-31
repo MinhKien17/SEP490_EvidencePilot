@@ -227,6 +227,11 @@ export default function ContextPanel({
                       <div className="flex justify-between items-center mb-1.5 pl-1">
                         <span className="text-[9px] font-black text-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 uppercase tracking-wide">ID: {claim.id}</span>
                         <div className="flex items-center gap-1.5">
+                          {claim.contentStatus && (
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${CLAIM_STATUS_CLASSES[claim.contentStatus] || 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+                              {claim.contentStatus}
+                            </span>
+                          )}
                           {isSelected && claimMatches.length > 0 && (
                             <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
                               {claimMatches.length} match{claimMatches.length > 1 ? 'es' : ''}

@@ -2,6 +2,7 @@ package com.evidencepilot.dto.response;
 
 import com.evidencepilot.model.FeedbackStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
+import com.evidencepilot.model.enums.ClaimContentStatus;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +13,7 @@ public record TraceabilityExportResponse(
     String projectTitle,
     ProjectStatus projectStatus,
     Instant generatedAt,
+    SourceCategoryRadarResponse radar,
     List<TraceabilityClaim> claims,
     List<TraceabilitySource> sources,
     List<TraceabilityFeedback> feedback
@@ -20,6 +22,9 @@ public record TraceabilityExportResponse(
         UUID id,
         String content,
         Float aiConfidenceScore,
+        UUID sectionId,
+        String sectionTitle,
+        ClaimContentStatus contentStatus,
         Map<String, Object> graphData,
         List<TraceabilityMatch> matches,
         boolean unsupported,

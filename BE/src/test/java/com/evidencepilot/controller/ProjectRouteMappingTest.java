@@ -34,6 +34,7 @@ class ProjectRouteMappingTest {
             PaperController.class,
             ProjectController.class,
             CollectionCategoryController.class,
+            SourceCategoryController.class,
             SourceController.class,
             SystemNotificationController.class,
             TraceabilityExportController.class,
@@ -70,6 +71,7 @@ class ProjectRouteMappingTest {
                 "GET /api/projects/{projectId}/claims",
                 "POST /api/projects/{id}/members",
                 "GET /api/projects/{projectId}/export",
+                "GET /api/projects/{projectId}/export-preflight",
                 "DELETE /api/projects/{id}/members/{userId}",
                 "GET /api/collections",
                 "POST /api/collections",
@@ -107,12 +109,18 @@ class ProjectRouteMappingTest {
                 "GET /api/sources/projects/{projectId}",
                 "GET /api/sources/{id}",
                 "POST /api/sources",
+                "PUT /api/sources/{id}/category",
                 "DELETE /api/sources/projects/{projectId}/sources/{sourceId}",
                 "GET /api/collection-categories",
                 "GET /api/admin/collection-categories",
                 "POST /api/admin/collection-categories",
                 "PUT /api/admin/collection-categories/{id}",
                 "DELETE /api/admin/collection-categories/{id}",
+                "GET /api/source-categories",
+                "GET /api/admin/source-categories",
+                "POST /api/admin/source-categories",
+                "PUT /api/admin/source-categories/{id}",
+                "DELETE /api/admin/source-categories/{id}",
                 "GET /api/admin/users",
                 "POST /api/admin/users",
                 "PATCH /api/admin/users/{id}/role",
@@ -157,7 +165,7 @@ class ProjectRouteMappingTest {
                 "PUT /api/papers/{id}",
                 "POST /api/projects/{projectId}/papers/init",
                 "POST /api/projects/{projectId}/papers/reset-standard"));
-        assertThat(routes).hasSize(110);
+        assertThat(routes).hasSize(117);
     }
 
     @Test

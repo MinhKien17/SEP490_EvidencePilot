@@ -2,9 +2,11 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.request.ProjectCreateRequest;
 import com.evidencepilot.dto.request.ProjectUpdateRequest;
+import com.evidencepilot.dto.response.ClaimConsistencyResponse;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.service.ClaimService;
+import com.evidencepilot.service.ClaimContentConsistencyService;
 import com.evidencepilot.service.CollectionService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.PaperProcessingService;
@@ -21,6 +23,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,13 +44,18 @@ class ProjectControllerTest {
     private final ClaimService claimService = mock(ClaimService.class);
     private final CollectionService collectionService = mock(CollectionService.class);
     private final PaperProcessingService paperProcessingService = mock(PaperProcessingService.class);
+    private final ClaimContentConsistencyService claimContentConsistencyService =
+            mock(ClaimContentConsistencyService.class);
     private ProjectController controller;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         controller = new ProjectController(
-                projectService, documentService, claimService, collectionService, paperProcessingService);
+                projectService, documentService, claimService, collectionService,
+                paperProcessingService, claimContentConsistencyService);
+        when(claimContentConsistencyService.preflight(any()))
+                .thenReturn(new ClaimConsistencyResponse(0, List.of()));
         mockMvc = standaloneSetup(controller).build();
     }
 

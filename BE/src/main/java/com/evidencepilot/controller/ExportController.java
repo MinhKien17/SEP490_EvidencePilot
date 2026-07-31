@@ -1,6 +1,7 @@
 package com.evidencepilot.controller;
 
 import com.evidencepilot.model.ExportJob;
+import com.evidencepilot.service.ClaimContentConsistencyService;
 import com.evidencepilot.service.ExportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -22,6 +23,7 @@ import java.util.UUID;
 public class ExportController {
 
     private final ExportService exportService;
+    private final ClaimContentConsistencyService claimContentConsistencyService;
 
     @PostMapping
     @Operation(summary = "Start async export", description = "Creates an export job and returns a jobId (202).")
@@ -30,7 +32,11 @@ public class ExportController {
             @RequestParam(defaultValue = "tex") String format) {
         ExportJob job = exportService.createExportJob(projectId, format);
         return ResponseEntity.accepted()
-                .body(Map.of("jobId", job.getId(), "status", job.getStatus().name()));
+                .body(Map.of(
+                        "jobId", job.getId(),
+                        "status", job.getStatus().name(),
+                        "warningCount",
+                        claimContentConsistencyService.preflight(projectId).warningCount()));
     }
 
     @GetMapping("/{jobId}/status")

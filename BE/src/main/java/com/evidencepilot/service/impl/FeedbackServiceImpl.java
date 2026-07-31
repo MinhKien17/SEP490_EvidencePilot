@@ -22,6 +22,7 @@ import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.CurrentUserService;
+import com.evidencepilot.service.ClaimContentConsistencyService;
 import com.evidencepilot.service.FeedbackService;
 import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.SystemNotificationService;
@@ -50,6 +51,7 @@ public class FeedbackServiceImpl implements FeedbackService {
     private final CurrentUserService currentUserService;
     private final SystemNotificationService systemNotificationService;
     private final PaperProcessingService paperProcessingService;
+    private final ClaimContentConsistencyService claimContentConsistencyService;
 
     @Override
     public List<FeedbackRequestResponseDto> findAllForCurrentUser() {
@@ -94,6 +96,7 @@ public class FeedbackServiceImpl implements FeedbackService {
         if (student == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project has no student.");
         }
+        claimContentConsistencyService.requireAllPresent(projectId);
 
         List<Document> papers = documentRepository
                 .findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.PAPER);

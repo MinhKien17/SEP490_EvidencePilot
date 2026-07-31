@@ -338,7 +338,10 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       const url = URL.createObjectURL(r.data);
       const a = document.createElement('a'); a.href = url; a.download = `papers-${project?.title || 'export'}.zip`;
       a.click(); URL.revokeObjectURL(url);
-      showToast('Downloaded paper archive.');
+      const warningCount = Number(r.headers?.['x-claim-warning-count'] || 0);
+      showToast(warningCount > 0
+        ? `Downloaded with ${warningCount} Claim usage warning${warningCount > 1 ? 's' : ''}; see CLAIM_WARNINGS.md.`
+        : 'Downloaded paper archive.');
     } catch { showToast('Export failed.'); }
   };
 
@@ -891,6 +894,9 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     { element: '[data-tour="header-dark-mode"]', popover: { title: t('tour.darkMode'), description: t('tour.darkModeDesc'), side: 'bottom' } },
     { element: '[data-tour="header-language"]', popover: { title: t('tour.language'), description: t('tour.languageDesc'), side: 'bottom' } },
   ], [t]);
+  const blockingClaimAlerts = claims
+    .filter(claim => claim.contentStatus && claim.contentStatus !== 'PRESENT')
+    .map(claim => ({ claimId: claim.id, type: claim.contentStatus }));
 
   return (
     <div className="h-screen w-full flex flex-col bg-(--surface-secondary) overflow-hidden font-sans antialiased text-(--text-primary)">
@@ -1114,9 +1120,17 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
             <p className="text-sm text-(--text-secondary) mb-6 leading-relaxed">
               This will seal your entire paper for the instructor to review. No further edits will be possible until the instructor returns it. Are you sure?
             </p>
+            {blockingClaimAlerts.length > 0 && (
+              <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                <p className="font-bold">Submission blocked: {blockingClaimAlerts.length} claim{blockingClaimAlerts.length > 1 ? 's are' : ' is'} missing from the owning section.</p>
+                <ul className="mt-2 list-disc space-y-1 pl-4">
+                  {blockingClaimAlerts.slice(0, 5).map(alert => <li key={`${alert.claimId}-${alert.type}`}>{alert.claimId}: {alert.type}</li>)}
+                </ul>
+              </div>
+            )}
             <div className="flex justify-end gap-3">
               <button onClick={() => setShowSubmitReviewModal(false)} className="px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors">{t('cancel')}</button>
-              <button onClick={handleSubmitReview} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm shadow-indigo-200 transition-colors">{t('submitReview')}</button>
+              <button onClick={handleSubmitReview} disabled={blockingClaimAlerts.length > 0} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40 rounded-lg shadow-sm shadow-indigo-200 transition-colors">{t('submitReview')}</button>
             </div>
           </div>
         </div>

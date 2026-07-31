@@ -8,16 +8,22 @@ import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.ClaimEvidenceMapping;
 import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.model.enums.SuggestionStatus;
+import com.evidencepilot.service.ClaimContentConsistencyService;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Mapper(componentModel = "spring")
-public interface ClaimMapper {
+public abstract class ClaimMapper {
+
+    @Autowired
+    protected ClaimContentConsistencyService claimContentConsistencyService;
 
     @Mapping(target = "projectId", source = "project.id")
     @Mapping(target = "sectionId", source = "section.id")
     @Mapping(target = "createdById", source = "createdBy.id")
-    ClaimResponse toClaimResponse(Claim entity);
+    @Mapping(target = "contentStatus", expression = "java(claimContentConsistencyService.evaluate(entity))")
+    public abstract ClaimResponse toClaimResponse(Claim entity);
 
     @Mapping(target = "claimId", source = "claim.id")
     @Mapping(target = "documentChunkId", source = "documentChunk.id")
@@ -35,20 +41,20 @@ public interface ClaimMapper {
     @Mapping(target = "relation", source = "relation")
     @Mapping(target = "strengthScore", source = "strengthScore")
     @Mapping(target = "strengthBand", source = "strengthBand")
-    AiSuggestionResponse toAiSuggestionResponse(AiSuggestion entity);
+    public abstract AiSuggestionResponse toAiSuggestionResponse(AiSuggestion entity);
 
     @Mapping(target = "claimId", source = "claim.id")
     @Mapping(target = "documentChunkId", source = "documentChunk.id")
     @Mapping(target = "suggestionId", source = "suggestion.id")
     @Mapping(target = "createdBy", source = "createdBy.id")
     @Mapping(target = "status", source = "status")
-    ClaimEvidenceMappingResponse toClaimEvidenceMappingResponse(ClaimEvidenceMapping entity);
+    public abstract ClaimEvidenceMappingResponse toClaimEvidenceMappingResponse(ClaimEvidenceMapping entity);
 
-    default String mapSuggestionStatus(SuggestionStatus status) {
+    public String mapSuggestionStatus(SuggestionStatus status) {
         return status != null ? status.name() : null;
     }
 
-    default String mapMappingStatus(MappingStatus status) {
+    public String mapMappingStatus(MappingStatus status) {
         return status != null ? status.name() : null;
     }
 }

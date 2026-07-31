@@ -19,6 +19,8 @@ import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.CurrentUserService;
+import com.evidencepilot.service.ClaimContentConsistencyService;
+import com.evidencepilot.service.SourceCategoryRadarService;
 import com.evidencepilot.service.GapDetectionService;
 import com.evidencepilot.service.TraceabilityExportService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -53,6 +55,8 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
     private final ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
     private final CurrentUserService currentUserService;
     private final GapDetectionService gapDetectionService;
+    private final ClaimContentConsistencyService claimContentConsistencyService;
+    private final SourceCategoryRadarService sourceCategoryRadarService;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -113,6 +117,7 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
                 missingIfBlank(project.getTitle()),
                 project.getStatus(),
                 Instant.now(),
+                sourceCategoryRadarService.calculate(projectId),
                 claims,
                 sources,
                 feedback);
@@ -188,6 +193,9 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
                 claim.getId(),
                 claim.getContent(),
                 claim.getAiConfidenceScore(),
+                claim.getSection() == null ? null : claim.getSection().getId(),
+                claim.getSection() == null ? null : claim.getSection().getSectionTitle(),
+                claimContentConsistencyService.evaluate(claim),
                 graphData,
                 matches,
                 gaps.unsupported(),
@@ -201,7 +209,7 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
         TraceabilityExportResponse data = exportTraceability(projectId);
         StringBuilder csv = new StringBuilder();
         csv.append('\uFEFF'); // BOM for Excel
-        csv.append("Claim ID,Claim Content,Verdict,Confidence,AI Score,Unsupported,Weak,Contradicted,Matched Sources,Feedback Status\n");
+        csv.append("Claim ID,Claim Content,Section ID,Section Title,Content Status,Verdict,Confidence,AI Score,Unsupported,Weak,Contradicted,Matched Sources,Feedback Status\n");
         for (var claim : data.claims()) {
             String verdict = "MISSING";
             String confidence = "";
@@ -218,6 +226,9 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
                     .collect(Collectors.joining("; "));
             csv.append(escCsv(claim.id().toString())).append(',')
                .append(escCsv(claim.content())).append(',')
+               .append(escCsv(claim.sectionId() == null ? "" : claim.sectionId().toString())).append(',')
+               .append(escCsv(claim.sectionTitle())).append(',')
+               .append(claim.contentStatus()).append(',')
                .append(escCsv(verdict)).append(',')
                .append(escCsv(confidence)).append(',')
                .append(claim.aiConfidenceScore() != null ? claim.aiConfidenceScore() : "").append(',')

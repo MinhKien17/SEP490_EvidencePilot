@@ -37,6 +37,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 @ExtendWith(MockitoExtension.class)
 class FeedbackServiceImplTest {
@@ -68,6 +69,9 @@ class FeedbackServiceImplTest {
     @Mock
     private PaperProcessingService paperProcessingService;
 
+    @Mock
+    private ClaimContentConsistencyService claimContentConsistencyService;
+
     @Test
     void submitForReviewUsesProjectInstructorAndStudent() {
         User instructor = user(UserRole.INSTRUCTOR);
@@ -91,6 +95,23 @@ class FeedbackServiceImplTest {
         assertThat(requestCaptor.getValue().getStudent()).isEqualTo(student);
         assertThat(response.instructorId()).isEqualTo(instructor.getId());
         assertThat(response.studentId()).isEqualTo(student.getId());
+    }
+
+    @Test
+    void submitForReviewRejectsClaimsMissingFromTheirSections() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        when(currentUserService.requireCurrentUser()).thenReturn(student);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        doThrow(new ResponseStatusException(
+                org.springframework.http.HttpStatus.CONFLICT,
+                "Claims must appear in their owning sections: claim=MISSING"))
+                .when(claimContentConsistencyService).requireAllPresent(project.getId());
+
+        assertThatThrownBy(() -> service().submitForReview(project.getId(), null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("MISSING");
     }
 
     @Test
@@ -280,7 +301,8 @@ class FeedbackServiceImplTest {
                 userRepository,
                 currentUserService,
                 systemNotificationService,
-                paperProcessingService);
+                paperProcessingService,
+                claimContentConsistencyService);
     }
 
     private User user(UserRole role) {

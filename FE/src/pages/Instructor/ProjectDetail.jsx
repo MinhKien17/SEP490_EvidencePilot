@@ -937,6 +937,8 @@ export default function ProjectDetail() {
               const url = URL.createObjectURL(r.data);
               const a = document.createElement('a'); a.href = url; a.download = `papers-${project?.title || 'export'}.zip`;
               a.click(); URL.revokeObjectURL(url);
+              const warningCount = Number(r.headers?.['x-claim-warning-count'] || 0);
+              if (warningCount > 0) alert(`Exported with ${warningCount} Claim usage warning(s). See CLAIM_WARNINGS.md in the ZIP.`);
               setShowExportModal(false);
             } catch { alert('Export failed.'); }
           }} className="w-full text-left px-4 py-3 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition font-medium text-indigo-700">

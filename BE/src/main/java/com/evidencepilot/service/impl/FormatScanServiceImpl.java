@@ -4,14 +4,13 @@ import com.evidencepilot.dto.response.CitationValidationResponse;
 import com.evidencepilot.dto.response.FormatScanResponse;
 import com.evidencepilot.dto.response.FormatScanResponse.ScanFinding;
 import com.evidencepilot.exception.ResourceNotFoundException;
-import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.User;
-import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.service.CitationValidationService;
+import com.evidencepilot.service.ClaimContentConsistencyService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.FormatScanService;
 import lombok.RequiredArgsConstructor;
@@ -35,9 +34,9 @@ public class FormatScanServiceImpl implements FormatScanService {
 
     private final DocumentRepository documentRepository;
     private final PaperSectionRepository paperSectionRepository;
-    private final ClaimRepository claimRepository;
     private final CitationValidationService citationValidationService;
     private final CurrentUserService currentUserService;
+    private final ClaimContentConsistencyService claimContentConsistencyService;
 
     @Override
     public FormatScanResponse scanFormat(UUID documentId) {
@@ -62,7 +61,7 @@ public class FormatScanServiceImpl implements FormatScanService {
         }
 
         checkCitationCoverage(citationResult, findings);
-        checkClaimCoverage(doc, sections, findings);
+        checkClaimCoverage(doc, findings);
 
         String paperTitle = doc.getTitle() != null ? doc.getTitle() : doc.getOriginalFilename();
         return new FormatScanResponse(paperTitle, findings);
@@ -119,24 +118,14 @@ public class FormatScanServiceImpl implements FormatScanService {
         }
     }
 
-    private void checkClaimCoverage(Document doc, List<PaperSection> sections, List<ScanFinding> findings) {
-        List<Claim> claims = claimRepository.findByProjectId(doc.getProject().getId());
-        if (claims.isEmpty()) return;
-
-        StringBuilder allTex = new StringBuilder();
-        for (PaperSection s : sections) {
-            if (s.getContentTex() != null) allTex.append(s.getContentTex()).append("\n");
-        }
-        String fullText = allTex.toString().toLowerCase();
-
-        for (Claim claim : claims) {
-            String claimKey = claim.getContent().toLowerCase().trim();
-            if (claimKey.length() < 10) continue;
-            if (!fullText.contains(claimKey)) {
+    private void checkClaimCoverage(Document doc, List<ScanFinding> findings) {
+        for (var result : claimContentConsistencyService.evaluateProject(doc.getProject().getId())) {
+            if (result.status() != com.evidencepilot.model.enums.ClaimContentStatus.PRESENT) {
+                var claim = result.claim();
                 String secName = claim.getSection() != null ? claim.getSection().getSectionTitle() : "general";
                 findings.add(new ScanFinding("CLAIMS", "INFO",
                         secName,
-                        "Claim \"" + truncate(claim.getContent(), 80) + "\" not found in paper text.",
+                        "Claim \"" + truncate(claim.getContent(), 80) + "\" is " + result.status() + ".",
                         "Add text supporting this claim to the relevant section."));
             }
         }

@@ -3,6 +3,7 @@ package com.evidencepilot.controller;
 import com.evidencepilot.dto.request.ProjectCreateRequest;
 import com.evidencepilot.dto.request.ProjectUpdateRequest;
 import com.evidencepilot.dto.response.ClaimResponse;
+import com.evidencepilot.dto.response.ClaimConsistencyResponse;
 import com.evidencepilot.dto.response.CollectionResponse;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.PagedResponse;
@@ -13,6 +14,7 @@ import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.service.ClaimService;
+import com.evidencepilot.service.ClaimContentConsistencyService;
 import com.evidencepilot.service.CollectionService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.PaperProcessingService;
@@ -58,6 +60,7 @@ public class ProjectController {
     private final ClaimService claimService;
     private final CollectionService collectionService;
     private final PaperProcessingService paperProcessingService;
+    private final ClaimContentConsistencyService claimContentConsistencyService;
 
     @Operation(summary = "List all projects",
             description = "Returns all active projects accessible to the current user. "
@@ -216,6 +219,15 @@ public class ProjectController {
         return claimService.getClaimsByProject(projectId, page, size, sort, q, active);
     }
 
+    @Operation(summary = "Preflight Claim usage before export",
+            description = "Returns active Claims that are missing from, or orphaned from, their owning Section.")
+    @GetMapping("/{projectId}/export-preflight")
+    public ClaimConsistencyResponse exportPreflight(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
+        projectService.getProjectById(projectId);
+        return claimContentConsistencyService.preflight(projectId);
+    }
+
     @Operation(summary = "Export project as .tex archive",
             description = "Returns a ZIP of .tex files for all papers in the project.")
     @GetMapping("/{projectId}/export")
@@ -223,6 +235,7 @@ public class ProjectController {
             @Parameter(description = "Project UUID") @PathVariable UUID projectId,
             @RequestParam(defaultValue = "tex") String format) {
         Path archive = paperProcessingService.exportTexArchive(projectId);
+        int warningCount = claimContentConsistencyService.preflight(projectId).warningCount();
         StreamingResponseBody body = output -> {
             try (InputStream content = Files.newInputStream(archive)) {
                 content.transferTo(output);
@@ -232,6 +245,7 @@ public class ProjectController {
         };
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"export.zip\"")
+                .header("X-Claim-Warning-Count", String.valueOf(warningCount))
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(body);
     }

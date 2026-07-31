@@ -1,6 +1,7 @@
 package com.evidencepilot.controller;
 
 import com.evidencepilot.service.ExportService;
+import com.evidencepilot.service.ClaimContentConsistencyService;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
@@ -23,7 +24,8 @@ class ExportControllerTest {
     @Test
     void downloadStreamsOriginalArchiveWithAttachmentFilename() throws Exception {
         ExportService service = mock(ExportService.class);
-        MockMvc mockMvc = standaloneSetup(new ExportController(service)).build();
+        MockMvc mockMvc = standaloneSetup(new ExportController(
+                service, mock(ClaimContentConsistencyService.class))).build();
         UUID jobId = UUID.randomUUID();
         byte[] archive = {1, 2, 3, 4};
         when(service.downloadExport(jobId))
