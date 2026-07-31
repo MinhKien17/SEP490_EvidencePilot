@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { AppHeader, LoadingSkeleton, StatusBadge, Modal, TourLauncher, EvidenceGraph, Spinner, SourceCategoryRadar } from '../../components';
+import { AppHeader, LoadingSkeleton, StatusBadge, Modal, TourLauncher, EvidenceGraph, Spinner, FunctionalTypeRadar } from '../../components';
 import { Marker, MarkerIcon, MarkerContent } from '../../components/Marker';
 import { instructorText, commonText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
@@ -26,6 +26,9 @@ export default function ProjectDetail() {
   const [feedbackRequests, setFeedbackRequests] = useState([]);
   const [traceability, setTraceability] = useState(null);
   const [graphData, setGraphData] = useState(null);
+  const [claimStats, setClaimStats] = useState(null);
+  const [progressReport, setProgressReport] = useState(null);
+  const [checkpointDiff, setCheckpointDiff] = useState(null);
   const [users, setUsers] = useState([]);
   const [showAddMember, setShowAddMember] = useState(false);
   const [newMemberId, setNewMemberId] = useState('');
@@ -35,8 +38,6 @@ export default function ProjectDetail() {
   const [doiInput, setDoiInput] = useState('');
   const [standard, setStandard] = useState('');
   const [sources, setSources] = useState([]);
-  const [sourceCategories, setSourceCategories] = useState([]);
-  const [sourceCategoryId, setSourceCategoryId] = useState('');
   const [showSourceDetail, setShowSourceDetail] = useState(false);
   const [sourceDetail, setSourceDetail] = useState(null);
   const [showAddSource, setShowAddSource] = useState(false);
@@ -89,15 +90,28 @@ export default function ProjectDetail() {
 
   const loadFeedbackAndTraceability = useCallback(async () => {
     try {
-      const [fbRes, traceRes, graphRes] = await Promise.all([
+      const [fbRes, traceRes, graphRes, statsRes] = await Promise.all([
         api.get('/api/feedback-requests'),
         api.get(`/api/projects/${id}/traceability`).catch(() => null),
         api.get(`/api/projects/${id}/graph?scope=all`).catch(() => null),
+        api.get(`/api/projects/${id}/graph/claim-stats`).catch(() => null),
       ]);
       const projectFbs = (fbRes.data || []).filter(fb => fb.projectId === id);
       setFeedbackRequests(projectFbs);
       setTraceability(traceRes?.data || null);
       setGraphData(graphRes?.data || null);
+      setClaimStats(statsRes?.data || null);
+    } catch { }
+  }, [id]);
+
+  const loadProgressReport = useCallback(async () => {
+    try {
+      const [progRes, diffRes] = await Promise.all([
+        api.get(`/api/projects/${id}/progress-report`).catch(() => null),
+        api.get(`/api/projects/${id}/checkpoints/diff`).catch(() => null),
+      ]);
+      setProgressReport(progRes?.data || null);
+      setCheckpointDiff(diffRes?.data || null);
     } catch { }
   }, [id]);
 
@@ -124,15 +138,11 @@ export default function ProjectDetail() {
 
   useEffect(() => { loadProject(); }, [loadProject]);
   useEffect(() => { if (project) { loadPapers(); loadSources(); loadUsers(); } }, [project, loadPapers, loadSources, loadUsers]);
-  useEffect(() => {
-    api.get('/api/source-categories')
-      .then(response => setSourceCategories(response.data || []))
-      .catch(() => setSourceCategories([]));
-  }, []);
 
   useEffect(() => {
     if (activeTab === 'review') loadFeedbackAndTraceability();
-  }, [activeTab, loadFeedbackAndTraceability]);
+    if (activeTab === 'progress') loadProgressReport();
+  }, [activeTab, loadFeedbackAndTraceability, loadProgressReport]);
 
   const handleUpdateStandard = async () => {
     if (!standard || !project) return;
@@ -161,12 +171,10 @@ export default function ProjectDetail() {
       const payload = {
         doi: doiInput.trim(),
         projectId: id,
-        categoryId: asSource && sourceCategoryId ? sourceCategoryId : null,
       };
       if (asSource) payload.docType = 'SOURCE';
       await api.post('/api/documents/ingest/doi', payload);
       setDoiInput('');
-      setSourceCategoryId('');
       if (asSource) {
         await loadSources();
       } else {
@@ -184,11 +192,9 @@ export default function ProjectDetail() {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('projectId', id);
-    if (sourceCategoryId) formData.append('categoryId', sourceCategoryId);
     try {
       await api.post('/api/sources', formData);
       await loadSources();
-      setSourceCategoryId('');
     } catch { alert('Upload failed.'); }
   };
 
@@ -205,6 +211,7 @@ export default function ProjectDetail() {
       setUploadState('processing');
       loadPapers();
       loadProject();
+      if (doc?.id) loadSections(doc.id);
     } catch (err) {
       const msg = err?.response?.data?.message || err?.response?.data || 'Upload failed.';
       if (err?.response?.status === 409) {
@@ -446,6 +453,7 @@ export default function ProjectDetail() {
             { key: 'setup', label: 'Setup' },
             { key: 'sections', label: 'Sections' },
             { key: 'review', label: 'Review' },
+            { key: 'progress', label: 'Project Process Report' },
             { key: 'settings', label: 'Settings' },
           ].map(tab => (
             <button
@@ -476,7 +484,6 @@ export default function ProjectDetail() {
                     <button key={s.id} onClick={() => { setSourceDetail(s); setShowSourceDetail(true); }} className="w-full text-left bg-gray-50 rounded-lg px-3 py-2 text-xs hover:bg-gray-100 transition flex items-center justify-between">
                       <span className="font-medium">{s.title || s.originalFilename || s.id}</span>
                       <span className="flex items-center gap-2">
-                        {s.sourceCategory && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700">{s.sourceCategory.code}</span>}
                         <StatusBadge status={s.processingStatus || 'READY'} />
                       </span>
                     </button>
@@ -599,7 +606,7 @@ export default function ProjectDetail() {
                 </div>
               ) : sections.length === 0 ? (
                 <div className="text-xs text-gray-400 italic">
-                  <p>No sections yet. Add one manually or choose a paper standard in <strong>Setup</strong>.</p>
+                  <p>No sections yet. Sections are detected automatically from the uploaded paper after processing — or add one manually, or choose a paper standard in <strong>Setup</strong>.</p>
                 </div>
               ) : (
                 <DragDropContext onDragEnd={handleDragEnd}>
@@ -693,7 +700,7 @@ export default function ProjectDetail() {
         {activeTab === 'review' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-3">
-              <SourceCategoryRadar radar={graphData?.radar || traceability?.radar} />
+              <FunctionalTypeRadar stats={claimStats} />
             </div>
             <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
               <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Feedback Requests</h2>
@@ -716,6 +723,152 @@ export default function ProjectDetail() {
             <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
               <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Evidence Map</h2>
               <EvidenceGraph traceabilityData={traceability} height={500} />
+            </div>
+          </div>
+        )}
+
+        {/* Tab: Project Process Report */}
+        {activeTab === 'progress' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {progressReport?.readiness && (
+              <div className="lg:col-span-3 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+                <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Readiness</h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[
+                    { label: 'Overall Score', value: `${progressReport.readiness.score} / 100` },
+                    { label: 'Content Coverage', value: `${progressReport.readiness.contentCoveragePercent}%` },
+                    { label: 'Claims Present', value: `${progressReport.readiness.claimsPresentPercent}%` },
+                    { label: 'Claims With Evidence', value: `${progressReport.readiness.claimsWithEvidencePercent}%` },
+                  ].map(stat => (
+                    <div key={stat.label} className="bg-gray-50 rounded-xl p-4 text-center">
+                      <p className="text-2xl font-black text-[#1e3a8a]">{stat.value}</p>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">{stat.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+              <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Claim Matrix</h2>
+              {!progressReport ? <p className="text-xs text-gray-400 italic">Loading...</p> : progressReport.matrix?.length === 0 ? (
+                <p className="text-xs text-gray-400 italic">No claims yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200">
+                        <th className="py-2 pr-3">Claim</th>
+                        <th className="py-2 pr-3">Section</th>
+                        <th className="py-2 pr-3">Status</th>
+                        <th className="py-2 pr-3">Evidence</th>
+                        <th className="py-2 pr-3">Strongest Match</th>
+                        <th className="py-2">Author</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(progressReport.matrix || []).map(row => (
+                        <tr key={row.claimId} className="border-b border-gray-100">
+                          <td className="py-2 pr-3 text-gray-700 max-w-[220px]"><span className="line-clamp-2">{row.content}</span></td>
+                          <td className="py-2 pr-3 text-gray-500">{row.sectionTitle}</td>
+                          <td className="py-2 pr-3"><StatusBadge status={row.contentStatus} /></td>
+                          <td className="py-2 pr-3 text-gray-700">{row.activeEvidenceCount}</td>
+                          <td className="py-2 pr-3 text-gray-700">{row.strongestRelation || '-'}{row.strongestScore != null ? ` (${row.strongestScore}%)` : ''}</td>
+                          <td className="py-2 text-gray-500">{row.createdByName || row.createdById}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+              <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Sections</h2>
+              {!progressReport ? <p className="text-xs text-gray-400 italic">Loading...</p> : progressReport.sections?.length === 0 ? (
+                <p className="text-xs text-gray-400 italic">No sections yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {(progressReport.sections || []).map(section => (
+                    <div key={section.sectionId} className="bg-gray-50 rounded-xl p-3 text-xs">
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="font-bold text-gray-700">{section.sectionTitle}</span>
+                        <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">v{section.version}</span>
+                      </div>
+                      <p className="text-gray-400 mt-1 text-[10px]">
+                        {section.wordCount} words &middot; {section.claimCount} claims{section.assignedUserName ? ` &middot; ${section.assignedUserName}` : ''}
+                      </p>
+                      <p className="text-gray-400 text-[10px] mt-0.5">
+                        {section.feedbackAnswered}/{section.feedbackAnswered + section.feedbackUnanswered} feedback answered
+                        {section.lastUpdated ? ` &middot; ${new Date(section.lastUpdated).toLocaleDateString()}` : ''}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="lg:col-span-3 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+              <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Changes Since Last Checkpoint</h2>
+              {!checkpointDiff ? (
+                <p className="text-xs text-gray-400 italic">Checkpoints are captured when the project is submitted for review. Need at least two checkpoints to compare — none found yet.</p>
+              ) : (
+                <div className="space-y-4 text-xs">
+                  <div className="flex flex-wrap gap-4 text-gray-500">
+                    <span>{checkpointDiff.from ? `From: ${new Date(checkpointDiff.from).toLocaleString()}` : 'From: start'} ({checkpointDiff.fromTrigger || 'initial'})</span>
+                    <span>{checkpointDiff.to ? `To: ${new Date(checkpointDiff.to).toLocaleString()}` : 'To: now'} ({checkpointDiff.toTrigger || 'latest'})</span>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {[
+                      { label: 'Claims Added', value: (checkpointDiff.claimsAdded || []).length, color: 'text-emerald-600' },
+                      { label: 'Claims Removed', value: (checkpointDiff.claimsRemoved || []).length, color: 'text-rose-600' },
+                      { label: 'Claims Changed', value: (checkpointDiff.claimsChanged || []).length, color: 'text-amber-600' },
+                      { label: 'Word Count Δ', value: (checkpointDiff.sectionWordDeltas || []).reduce((sum, d) => sum + (d.toWords - d.fromWords), 0), color: 'text-indigo-600' },
+                    ].map(stat => (
+                      <div key={stat.label} className="bg-gray-50 rounded-xl p-4 text-center">
+                        <p className={`text-2xl font-black ${stat.color}`}>{stat.value}</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">{stat.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {[
+                    { label: 'Mappings Accepted', value: checkpointDiff.mappingsAcceptedDelta },
+                    { label: 'Mappings Rejected', value: checkpointDiff.mappingsRejectedDelta },
+                    { label: 'Feedback Answered', value: checkpointDiff.feedbackAnsweredDelta },
+                  ].map(item => (
+                    <div key={item.label} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2">
+                      <span className="text-gray-500">{item.label}</span>
+                      <span className={`font-black ${item.value > 0 ? 'text-emerald-600' : item.value < 0 ? 'text-rose-600' : 'text-gray-400'}`}>{item.value > 0 ? `+${item.value}` : item.value}</span>
+                    </div>
+                  ))}
+                  {(checkpointDiff.sectionWordDeltas || []).filter(d => d.toWords !== d.fromWords).length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Word Count by Section</p>
+                      <div className="space-y-1">
+                        {(checkpointDiff.sectionWordDeltas || []).filter(d => d.toWords !== d.fromWords).map(d => (
+                          <div key={d.sectionId} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-1.5 text-[10px]">
+                            <span className="text-gray-500">Section {String(d.sectionId).slice(0, 8)}</span>
+                            <span className="text-gray-700">{d.fromWords} → {d.toWords}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {(checkpointDiff.claimsChanged || []).length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Changed Claims</p>
+                      <div className="space-y-1">
+                        {(checkpointDiff.claimsChanged || []).map(claim => (
+                          <div key={claim.id} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-1.5 text-[10px]">
+                            <span className="font-mono text-gray-500">#{String(claim.id).slice(0, 8)}</span>
+                            <span className="text-gray-700">{claim.version > 1 ? `v${claim.version - 1}` : 'new'} → v{claim.version}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -809,20 +962,6 @@ export default function ProjectDetail() {
             <div><span className="font-bold text-gray-500">DOI:</span> <span className="text-gray-800 font-mono">{sourceDetail.doi || '-'}</span></div>
             <div><span className="font-bold text-gray-500">Status:</span> <StatusBadge status={sourceDetail.processingStatus || 'READY'} /></div>
             <div><span className="font-bold text-gray-500">Type:</span> <span className="text-gray-800">{sourceDetail.docType || 'SOURCE'}</span></div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-gray-500">Category:</span>
-              <select value={sourceDetail.sourceCategory?.id || ''} onChange={async event => {
-                if (!event.target.value) return;
-                try {
-                  const response = await api.put(`/api/sources/${sourceDetail.id}/category`, { categoryId: event.target.value });
-                  setSourceDetail(response.data);
-                  await loadSources();
-                } catch { alert('Failed to update Source category.'); }
-              }} className="rounded border border-gray-200 px-2 py-1 text-xs">
-                <option value="" disabled>Auto-classifying</option>
-                {sourceCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
-              </select>
-            </div>
             <div><span className="font-bold text-gray-500">ID:</span> <span className="text-gray-800 font-mono text-[9px]">{sourceDetail.id}</span></div>
             <div className="flex justify-end gap-2 pt-2">
               <button onClick={() => setShowSourceDetail(false)} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">Close</button>
@@ -831,7 +970,7 @@ export default function ProjectDetail() {
         )}
       </Modal>
 
-      <Modal open={showAddSource} onClose={() => { setShowAddSource(false); setDoiInput(''); setSourceCategoryId(''); }} title="Add Source">
+      <Modal open={showAddSource} onClose={() => { setShowAddSource(false); setDoiInput(''); }} title="Add Source">
         <div className="space-y-5 text-xs">
           <div className="border border-gray-200 rounded-xl p-4 space-y-3">
             <h3 className="font-bold text-indigo-700">① Import by DOI</h3>
@@ -856,18 +995,11 @@ export default function ProjectDetail() {
               </button>
             </div>
             {addSourceDocType === 'SOURCE' && (
-              <select value={sourceCategoryId} onChange={event => setSourceCategoryId(event.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none">
-                <option value="">Auto classify</option>
-                {sourceCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
-              </select>
+              <p className="text-[10px] text-gray-400 italic">Sources are auto-classified by the system.</p>
             )}
           </div>
           <div className="border border-gray-200 rounded-xl p-4 space-y-3">
             <h3 className="font-bold text-amber-700">② Upload Source (PDF/DOCX)</h3>
-            <select value={sourceCategoryId} onChange={event => setSourceCategoryId(event.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none">
-              <option value="">Auto classify</option>
-              {sourceCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
-            </select>
             <input type="file" accept=".pdf,.docx" onChange={async (e) => { await handleUploadSource(e); setShowAddSource(false); }} className="text-xs" />
           </div>
           <div className="border border-gray-200 rounded-xl p-4 space-y-3">

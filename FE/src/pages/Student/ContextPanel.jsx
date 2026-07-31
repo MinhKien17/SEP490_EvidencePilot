@@ -1,13 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../../api.js';
-import SourceCategoryRadar from '../../components/SourceCategoryRadar.jsx';
+import FunctionalTypeRadar from '../../components/FunctionalTypeRadar.jsx';
 
 const CLAIM_STATUS_CLASSES = {
   PRESENT: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   MISSING: 'border-amber-200 bg-amber-50 text-amber-700',
   ORPHANED: 'border-rose-200 bg-rose-50 text-rose-700',
 };
+
+const FUNCTIONAL_TYPES = [
+  { value: 'EMPIRICAL', label: 'EMPIRICAL — Data, experiments, results' },
+  { value: 'THEORETICAL', label: 'THEORETICAL — Literature, background, concepts' },
+  { value: 'METHODOLOGICAL', label: 'METHODOLOGICAL — Tools, frameworks, implementation' },
+  { value: 'ANALYTICAL', label: 'ANALYTICAL — Evaluations, comparisons, interpretations' },
+  { value: 'APPLIED', label: 'APPLIED — Real-world applications, user feedback, impact' },
+];
 
 export default function ContextPanel({
   isOpen, width, onResizeStart,
@@ -16,16 +24,16 @@ export default function ContextPanel({
   // Source tab
   sources, isUploading, setIsUploading, project, setViewerFile, fetchSources,
   // Claims tab
-  newClaimContent, setNewClaimContent, handleCreateClaim, handleUseSelectedText, canCreateClaim,
+  newClaimContent, setNewClaimContent, newClaimFunctionalType, setNewClaimFunctionalType, handleCreateClaim, handleUseSelectedText, canCreateClaim,
   claims, selectedClaim, claimMatches, loadingMatches,
   claimCandidates, loadingCandidates, evaluatingChunkId, updatingSuggestionId,
   handleSearchClaimMatches, handleEvaluateMatch, handleSuggestionStatus, canEditClaim,
-  editingClaim, setEditingClaim, editClaimContent, setEditClaimContent, handleDeleteClaim, handleUpdateClaim,
+  editingClaim, setEditingClaim, editClaimContent, setEditClaimContent, editClaimFunctionalType, setEditClaimFunctionalType, handleDeleteClaim, handleUpdateClaim,
   onSelectClaim,
   // Feedback tab
   feedbacks, setShowSubmitReviewModal, userProjectRole,
   // Graph tab
-  graphData, fetchGraphData, graphScope, onGraphScopeToggle, dynamicNodes, hoveredNodeId, setHoveredNodeId,
+  graphData, fetchGraphData, graphScope, onGraphScopeToggle, dynamicNodes, hoveredNodeId, setHoveredNodeId, claimStats,
   exports, fetchExports, api,
   papers, selectedPaperDetail, setSelectedPaperDetail,
   handleExportCsv, handleExportJson, setSelectedPaper, loadCode,
@@ -36,18 +44,9 @@ export default function ContextPanel({
   const [doiInput, setDoiInput] = useState('');
   const [doiPreview, setDoiPreview] = useState(null);
   const [sourceBusy, setSourceBusy] = useState(false);
-  const [sourceCategories, setSourceCategories] = useState([]);
-  const [sourceCategoryId, setSourceCategoryId] = useState('');
   const fileInputRef = useRef(null);
   const { t } = useTranslation();
   const [graphFilter, setGraphFilter] = useState('all');
-
-  useEffect(() => {
-    if (!showSourceModal) return;
-    api.get('/api/source-categories')
-      .then(response => setSourceCategories(response.data || []))
-      .catch(() => setSourceCategories([]));
-  }, [showSourceModal, api]);
 
   if (!isOpen) return null;
 
@@ -116,16 +115,6 @@ export default function ContextPanel({
                     ))}
                   </div>
 
-                  <div>
-                    <label className="text-[10px] font-bold text-(--text-secondary) block mb-1">Category</label>
-                    <select value={sourceCategoryId} onChange={event => setSourceCategoryId(event.target.value)} className="w-full text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) text-(--text-primary)">
-                      <option value="">Auto classify</option>
-                      {sourceCategories.map(category => (
-                        <option key={category.id} value={category.id}>{category.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
                   <div className="space-y-2">
                     {sourceMode !== 'file' && (
                       <div>
@@ -168,18 +157,16 @@ export default function ContextPanel({
                         await api.post('/api/documents/ingest/doi', {
                           doi: doiInput.trim(),
                           projectId: project.id,
-                          categoryId: sourceCategoryId || null,
                         });
                         showToast('Source queued from DOI.');
                       } else {
                         const file = fileInputRef.current?.files?.[0];
                         if (!file) { showToast('Please select a file.'); setSourceBusy(false); return; }
                         const fd = new FormData(); fd.append('file', file); fd.append('projectId', project.id);
-                        if (sourceCategoryId) fd.append('categoryId', sourceCategoryId);
                         await api.post('/api/sources', fd);
                         showToast('Source uploaded.');
                       }
-                      setShowSourceModal(false); setDoiPreview(null); setDoiInput(''); setSourceCategoryId('');
+                      setShowSourceModal(false); setDoiPreview(null); setDoiInput('');
                       if (fetchSources) fetchSources();
                     } catch { showToast('Failed to add source.'); }
                     finally { setSourceBusy(false); }
@@ -196,7 +183,6 @@ export default function ContextPanel({
                     sources.map(src => (
                       <div key={src.id} onClick={() => src.fileUrl ? setViewerFile({ fileUrl: src.fileUrl, fileName: src.originalFilename }) : showToast('File URL not available')} className="bg-(--surface) border border-(--border) rounded-xl p-3.5 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-700 transition-all cursor-pointer transform hover:-translate-y-0.5">
                         <p className="text-sm font-bold text-(--text-primary) flex items-center gap-2"><svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>{src.originalFilename}</p>
-                        {src.sourceCategory && <span className="mt-1 inline-flex rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-bold text-indigo-700">{src.sourceCategory.code}</span>}
                         <p className="text-xs text-(--text-secondary) mt-1.5 line-clamp-2 leading-relaxed">Source file uploaded to this project.</p>
                       </div>
                     ))
@@ -211,10 +197,15 @@ export default function ContextPanel({
               {canCreateClaim && (
                 <div className="bg-(--surface) border border-(--border) rounded-xl p-3.5 shadow-sm">
                   <h4 className="text-[11px] font-bold text-(--text-secondary) mb-2 uppercase tracking-wider">Add Claim</h4>
-                  <div className="flex gap-2 flex-wrap">
-                    <input value={newClaimContent} onChange={(e) => setNewClaimContent(e.target.value)} placeholder="Claim content..." className="flex-1 text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 min-w-[120px] text-(--text-primary)" />
-                    <button onClick={handleUseSelectedText} className="text-xs font-semibold text-indigo-700 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition-colors">Use selection</button>
-                    <button onClick={handleCreateClaim} disabled={!newClaimContent.trim()} className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-(--border) disabled:dark:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">Add</button>
+                  <div className="flex flex-col gap-2">
+                    <input value={newClaimContent} onChange={(e) => setNewClaimContent(e.target.value)} placeholder="Claim content..." className="text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 min-w-[120px] text-(--text-primary)" />
+                    <div className="flex gap-2">
+                      <select value={newClaimFunctionalType} onChange={(e) => setNewClaimFunctionalType(e.target.value)} className="flex-1 text-[10px] border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 text-(--text-primary)">
+                        {FUNCTIONAL_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                      </select>
+                      <button onClick={handleUseSelectedText} className="text-xs font-semibold text-indigo-700 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition-colors">Use selection</button>
+                      <button onClick={handleCreateClaim} disabled={!newClaimContent.trim()} className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-(--border) disabled:dark:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">Add</button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -251,7 +242,7 @@ export default function ContextPanel({
                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                             Find matches
                           </button>
-                          <button onClick={(e) => { e.stopPropagation(); setEditingClaim(claim); setEditClaimContent(claim.content); }} className="text-[10px] text-(--text-secondary) hover:text-(--text-primary) flex items-center gap-0.5 ml-auto">Edit</button>
+                          <button onClick={(e) => { e.stopPropagation(); setEditingClaim(claim); setEditClaimContent(claim.content); setEditClaimFunctionalType(claim.functionalType || 'EMPIRICAL'); }} className="text-[10px] text-(--text-secondary) hover:text-(--text-primary) flex items-center gap-0.5 ml-auto">Edit</button>
                           <button onClick={(e) => { e.stopPropagation(); handleDeleteClaim(claim.id); }} className="text-[10px] text-rose-500 hover:text-rose-700 flex items-center gap-0.5">Delete</button>
                         </>}
                       </div>
@@ -324,6 +315,9 @@ export default function ContextPanel({
                       {editingClaim && editingClaim.id === claim.id && (
                         <div className="mt-3 pt-3 border-t border-dashed border-(--border)">
                           <input value={editClaimContent} onChange={(e) => setEditClaimContent(e.target.value)} className="w-full text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 mb-2 text-(--text-primary)" />
+                          <select value={editClaimFunctionalType} onChange={(e) => setEditClaimFunctionalType(e.target.value)} className="w-full text-[10px] border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 mb-2 text-(--text-primary)">
+                            {FUNCTIONAL_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                          </select>
                           <div className="flex gap-2 justify-end">
                             <button onClick={() => setEditingClaim(null)} className="text-[10px] text-(--text-secondary) hover:text-(--text-primary) font-bold">Cancel</button>
                             <button onClick={handleUpdateClaim} className="text-[10px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-1 rounded-lg">Save</button>
@@ -376,7 +370,33 @@ export default function ContextPanel({
 
           {activeTab === 'Graph' && (
             <div className="flex flex-col gap-4 animate-in fade-in duration-200">
-              <SourceCategoryRadar radar={graphData?.radar} compact />
+              <FunctionalTypeRadar stats={claimStats} compact />
+              {graphData && graphData.sectionSummaries && graphData.sectionSummaries.length > 0 && (
+                <div className="bg-(--surface) border border-(--border) rounded-xl p-4 shadow-sm">
+                  <h4 className="font-bold text-xs text-(--text-primary) mb-3">Section Coverage</h4>
+                  <div className="space-y-2">
+                    {graphData.sectionSummaries.map(summary => {
+                      const coverage = summary.claimCount > 0 ? Math.round((summary.presentCount / summary.claimCount) * 100) : 0;
+                      const status = summary.orphanedCount > 0 || summary.unsupportedCount > 0 ? 'bg-rose-50 text-rose-700 border-rose-200'
+                        : summary.missingCount > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                      return (
+                        <div key={summary.sectionId} className="p-2 bg-(--surface-secondary) border border-(--border-light) rounded-lg">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-[11px] font-bold text-(--text-primary) truncate">{summary.sectionTitle || summary.sectionId}</span>
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${status}`}>{coverage}%</span>
+                          </div>
+                          <div className="h-1.5 bg-(--border)/50 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${summary.orphanedCount > 0 || summary.unsupportedCount > 0 ? 'bg-rose-400' : summary.missingCount > 0 ? 'bg-amber-400' : 'bg-emerald-400'}`} style={{ width: `${coverage}%` }} />
+                          </div>
+                          <p className="mt-1 text-[9px] text-(--text-tertiary)">
+                            {summary.presentCount} supported &middot; {summary.missingCount} missing &middot; {summary.orphanedCount} orphaned &middot; {summary.unsupportedCount} unsupported{summary.assignedUserName ? ` &middot; ${summary.assignedUserName}` : ''}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="bg-slate-900 rounded-xl p-4 border border-slate-800 text-slate-200 shadow-lg">
                 <div className="flex justify-between items-center mb-3">
                   <h4 className="font-bold text-xs text-indigo-400 flex items-center gap-1">

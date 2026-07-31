@@ -88,8 +88,11 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const [rollingBack, setRollingBack] = useState(false);
   const [aiReviewResult, setAiReviewResult] = useState(null);
   const [newClaimContent, setNewClaimContent] = useState('');
+  const [newClaimFunctionalType, setNewClaimFunctionalType] = useState('EMPIRICAL');
   const [editingClaim, setEditingClaim] = useState(null);
   const [editClaimContent, setEditClaimContent] = useState('');
+  const [editClaimFunctionalType, setEditClaimFunctionalType] = useState('EMPIRICAL');
+  const [claimStats, setClaimStats] = useState(null);
   const [selectedClaim, setSelectedClaim] = useState(null);
   const [claimMatches, setClaimMatches] = useState([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
@@ -456,7 +459,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     const sectionId = selectedSectionId;
     try {
       const rawSelection = editorRef.current?.getSelection() || '';
-      const created = await api.post('/api/claims', { sectionId, content: newClaimContent });
+      const created = await api.post('/api/claims', { sectionId, content: newClaimContent, functionalType: newClaimFunctionalType });
       let nextContent = codeContent;
       if (rawSelection.trim() && rawSelection.trim() === newClaimContent.trim()) {
         nextContent = editorRef.current?.insertAtCursor(
@@ -470,14 +473,16 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       }
       showToast("Claim added.");
       setNewClaimContent('');
-      const [claimResponse, sectionResponse, graphResponse] = await Promise.all([
+      const [claimResponse, sectionResponse, graphResponse, statsResponse] = await Promise.all([
         api.get(`/api/projects/${project.id}/claims`),
         api.get(`/api/papers/${selectedPaper.id}/sections`),
         api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`),
+        api.get(`/api/projects/${project.id}/graph/claim-stats`),
       ]);
       setClaims(claimResponse.data?.content || []);
       setSections(sectionResponse.data || []);
       setGraphData(graphResponse.data);
+      setClaimStats(statsResponse.data);
     } catch { showToast("Add claim failed."); }
   };
 
@@ -494,7 +499,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const handleUpdateClaim = async () => {
     if (!editingClaim || !editClaimContent.trim()) return;
     try {
-      const updated = await api.put(`/api/claims/${editingClaim.id}`, { id: editingClaim.id, content: editClaimContent, active: true, aiConfidenceScore: editingClaim.aiConfidenceScore });
+      const updated = await api.put(`/api/claims/${editingClaim.id}`, { id: editingClaim.id, content: editClaimContent, active: true, aiConfidenceScore: editingClaim.aiConfidenceScore, functionalType: editClaimFunctionalType });
       showToast("Claim updated.");
       setEditingClaim(null); setEditClaimContent('');
       if (selectedClaim?.id === editingClaim.id) {
@@ -506,6 +511,8 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       setClaims(r.data?.content || []);
       const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
       setGraphData(g.data);
+      const s = await api.get(`/api/projects/${project.id}/graph/claim-stats`);
+      setClaimStats(s.data);
     } catch { showToast("Update failed."); }
   };
 
@@ -518,6 +525,8 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       setClaims(r.data?.content || []);
       const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
       setGraphData(g.data);
+      const s = await api.get(`/api/projects/${project.id}/graph/claim-stats`);
+      setClaimStats(s.data);
       if (selectedClaim && selectedClaim.id === claimId) {
         setSelectedClaim(null);
         setClaimMatches([]);
@@ -632,6 +641,10 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     try { const r = await api.get(`/api/projects/${projId}/graph?scope=${scope}`); setGraphData(r.data); } catch {}
   }, [graphScope]);
 
+  const fetchClaimStats = useCallback(async (projId) => {
+    try { const r = await api.get(`/api/projects/${projId}/graph/claim-stats`); setClaimStats(r.data); } catch {}
+  }, []);
+
   const handleGraphScopeToggle = () => {
     const next = graphScope === 'own' ? 'all' : 'own';
     setGraphScope(next);
@@ -641,6 +654,10 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   useEffect(() => {
     if (activeTab === 'Graph' && project?.id && !graphData) fetchGraphData(project.id);
   }, [activeTab, project?.id, graphData, fetchGraphData]);
+
+  useEffect(() => {
+    if (activeTab === 'Graph' && project?.id && !claimStats) fetchClaimStats(project.id);
+  }, [activeTab, project?.id, claimStats, fetchClaimStats]);
 
   const handleSearchClaimMatches = async (claim) => {
     setSelectedClaim(claim);
@@ -726,7 +743,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     } catch {
       showToast("AI Review failed.");
       setAiReviewResult({
-        reviewVersion: 'paper-claim-review-v2',
+        reviewVersion: 'paper-claim-review-v4',
         complete: false,
         direction: 'INSUFFICIENT_DATA',
         summary: 'AI review service is unavailable.',
@@ -938,14 +955,14 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
         <ContextPanel isOpen={isDrawerOpen} width={rightDrawerWidth} onResizeStart={handleRightDividerMouseDown} activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); localStorage.setItem('student_workspace_active_tab', tab); }} showToast={showToast}
           sources={sources} isUploading={isUploading} setIsUploading={setIsUploading} project={project} setViewerFile={setViewerFile} fetchSources={fetchSources} isLocked={isLocked}
-          newClaimContent={newClaimContent} setNewClaimContent={setNewClaimContent} handleCreateClaim={handleCreateClaim} handleUseSelectedText={handleUseSelectedText} canCreateClaim={canEditCurrentSection}
+          newClaimContent={newClaimContent} setNewClaimContent={setNewClaimContent} newClaimFunctionalType={newClaimFunctionalType} setNewClaimFunctionalType={setNewClaimFunctionalType} handleCreateClaim={handleCreateClaim} handleUseSelectedText={handleUseSelectedText} canCreateClaim={canEditCurrentSection}
           claims={claims} selectedClaim={selectedClaim} claimMatches={claimMatches} loadingMatches={loadingMatches}
           claimCandidates={claimCandidates} loadingCandidates={loadingCandidates} evaluatingChunkId={evaluatingChunkId} updatingSuggestionId={updatingSuggestionId}
           handleSearchClaimMatches={handleSearchClaimMatches} handleEvaluateMatch={handleEvaluateMatch} handleSuggestionStatus={handleSuggestionStatus} canEditClaim={canEditClaim}
-          editingClaim={editingClaim} setEditingClaim={setEditingClaim} editClaimContent={editClaimContent} setEditClaimContent={setEditClaimContent} handleDeleteClaim={handleDeleteClaim} handleUpdateClaim={handleUpdateClaim}
+          editingClaim={editingClaim} setEditingClaim={setEditingClaim} editClaimContent={editClaimContent} setEditClaimContent={setEditClaimContent} editClaimFunctionalType={editClaimFunctionalType} setEditClaimFunctionalType={setEditClaimFunctionalType} handleDeleteClaim={handleDeleteClaim} handleUpdateClaim={handleUpdateClaim}
           onSelectClaim={handleSelectClaim}
           feedbacks={feedbacks} setShowSubmitReviewModal={setShowSubmitReviewModal} userProjectRole={project?.currentUserRole}
-          graphData={graphData} fetchGraphData={fetchGraphData} graphScope={graphScope} onGraphScopeToggle={handleGraphScopeToggle} dynamicNodes={dynamicNodes} hoveredNodeId={hoveredNodeId} setHoveredNodeId={setHoveredNodeId}
+          graphData={graphData} fetchGraphData={fetchGraphData} graphScope={graphScope} onGraphScopeToggle={handleGraphScopeToggle} dynamicNodes={dynamicNodes} hoveredNodeId={hoveredNodeId} setHoveredNodeId={setHoveredNodeId} claimStats={claimStats}
           exports={exports} fetchExports={fetchExports} api={api} showToast={showToast}
           papers={papers} selectedPaperDetail={selectedPaperDetail} setSelectedPaperDetail={setSelectedPaperDetail}
           handleExportCsv={handleExportCsv} handleExportJson={handleExportJson} setSelectedPaper={setSelectedPaper} loadCode={loadCode}
@@ -1178,6 +1195,17 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                       <span className={`border text-[10px] font-bold px-2 py-0.5 rounded ${aiReviewResult.direction === 'ON_TRACK' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : aiReviewResult.direction === 'NEEDS_ATTENTION' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>{(aiReviewResult.direction || 'UNKNOWN').replaceAll('_', ' ')}</span>
                     </div>
                     <p className="text-xs text-(--text-secondary) leading-relaxed bg-(--surface-secondary) p-3.5 rounded-lg border border-(--border-light)">{aiReviewResult.summary}</p>
+                    {aiReviewResult.rubricScore != null && (
+                      <div className={`mt-3 rounded-xl border p-3.5 flex items-center justify-between ${aiReviewResult.passes ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-(--text-tertiary)">Rubric Score</p>
+                          <p className={`text-lg font-black ${aiReviewResult.passes ? 'text-emerald-700' : 'text-amber-700'}`}>{aiReviewResult.rubricScore.toFixed(1)} / 5.0</p>
+                        </div>
+                        <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${aiReviewResult.passes ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-amber-500 text-white border-amber-500'}`}>
+                          {aiReviewResult.passes ? 'PASS' : 'REVISE'}
+                        </span>
+                      </div>
+                    )}
                     {aiReviewResult.coverage && (
                       <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[10px]">
                         <div className="rounded-lg bg-indigo-50 p-2 text-indigo-700"><strong>{aiReviewResult.coverage.sectionsScanned}/{aiReviewResult.coverage.totalSections}</strong><br />Sections</div>
@@ -1197,7 +1225,10 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                     }} className="w-full text-left bg-(--surface) border border-(--border) rounded-xl p-5 shadow-sm hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors">
                       <div className="flex justify-between items-start gap-3 mb-2">
                         <h3 className="text-sm font-bold text-(--text-primary)">{(finding.type || 'OTHER').replaceAll('_', ' ')}</h3>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${finding.severity === 'CRITICAL' ? 'bg-rose-50 text-rose-700 border-rose-200' : finding.severity === 'WARNING' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>{finding.severity}</span>
+                        <span className="flex items-center gap-1.5 shrink-0">
+                          {finding.score != null && <span className="text-[10px] font-black px-2 py-0.5 rounded bg-slate-900 text-white">{finding.score}/5</span>}
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${finding.severity === 'CRITICAL' ? 'bg-rose-50 text-rose-700 border-rose-200' : finding.severity === 'WARNING' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>{finding.severity}</span>
+                        </span>
                       </div>
                       <p className="text-xs text-(--text-secondary) leading-relaxed">{finding.message}</p>
                       {finding.excerpt && <blockquote className="mt-2 border-l-2 border-indigo-300 pl-2 text-[11px] italic text-(--text-tertiary)">“{finding.excerpt}”</blockquote>}
