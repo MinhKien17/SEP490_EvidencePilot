@@ -7,9 +7,7 @@ import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.ExportFormat;
 import com.evidencepilot.model.enums.ExportStatus;
-import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ExportJobRepository;
-import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.impl.ExportServiceImpl;
@@ -25,7 +23,8 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
@@ -52,21 +51,19 @@ class ExportServiceImplTest {
 
     private final ExportJobRepository exportJobs = mock(ExportJobRepository.class);
     private final ProjectRepository projects = mock(ProjectRepository.class);
-    private final DocumentRepository documents = mock(DocumentRepository.class);
-    private final PaperSectionRepository sections = mock(PaperSectionRepository.class);
     private final CurrentUserService currentUsers = mock(CurrentUserService.class);
     private final SystemNotificationService notifications = mock(SystemNotificationService.class);
     private final DocumentObjectStorage storage = mock(DocumentObjectStorage.class);
     private final UserRepository users = mock(UserRepository.class);
     private final RabbitTemplate rabbitTemplate = mock(RabbitTemplate.class);
-    private final TexArchiveMediaWriter mediaWriter = mock(TexArchiveMediaWriter.class);
+    private final TexArchiveBuilder texArchiveBuilder = mock(TexArchiveBuilder.class);
     private ExportServiceImpl service;
 
     @BeforeEach
     void setUp() {
         service = new ExportServiceImpl(
-                exportJobs, projects, documents, sections, currentUsers,
-                notifications, storage, users, rabbitTemplate, mediaWriter);
+                exportJobs, projects, currentUsers, notifications, storage,
+                users, rabbitTemplate, texArchiveBuilder);
     }
 
     @Test
@@ -76,16 +73,21 @@ class ExportServiceImplTest {
         project.setId(job.getProjectId());
         project.setTitle("Streaming export");
         when(projects.findById(job.getProjectId())).thenReturn(Optional.of(project));
-        when(documents.findByProjectId(job.getProjectId())).thenReturn(List.of());
         when(storage.presignedGetUrl("exports/" + job.getId() + ".zip", 60))
                 .thenReturn("https://example.test/export.zip");
         doAnswer(invocation -> {
-            ZipOutputStream archive = invocation.getArgument(1);
-            archive.putNextEntry(new ZipEntry("images/figure.jpg"));
-            archive.write(new byte[] {1, 2, 3});
-            archive.closeEntry();
+            Path destination = invocation.getArgument(1);
+            try (ZipOutputStream archive = new ZipOutputStream(
+                    Files.newOutputStream(destination), StandardCharsets.UTF_8)) {
+                archive.putNextEntry(new ZipEntry("main.tex"));
+                archive.write("\\title{Streaming export}".getBytes(StandardCharsets.UTF_8));
+                archive.closeEntry();
+                archive.putNextEntry(new ZipEntry("images/figure.jpg"));
+                archive.write(new byte[] {1, 2, 3});
+                archive.closeEntry();
+            }
             return null;
-        }).when(mediaWriter).writeProjectMedia(eq(job.getProjectId()), any(ZipOutputStream.class));
+        }).when(texArchiveBuilder).write(eq(job.getProjectId()), any(Path.class));
         var uploaded = new ByteArrayOutputStream();
         var uploadedSize = new AtomicLong();
         doAnswer(invocation -> {

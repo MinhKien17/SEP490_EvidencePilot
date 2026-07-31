@@ -1,11 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { AppHeader, LoadingSkeleton, StatusBadge, Modal, TourLauncher, SectionTree, EvidenceGraph, LatexEditor, Spinner } from '../../components';
+import { AppHeader, LoadingSkeleton, StatusBadge, Modal, TourLauncher, EvidenceGraph, Spinner, SourceCategoryRadar } from '../../components';
 import { Marker, MarkerIcon, MarkerContent } from '../../components/Marker';
 import { instructorText, commonText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
-import { useAuth } from '../../context/AuthContext';
 import api from '../../api';
 
 const STANDARDS = ['IEEE', 'ACM', 'SPRINGER_LNCS', 'APA', 'MLA', 'CUSTOM'];
@@ -16,8 +14,6 @@ export default function ProjectDetail() {
   const { language } = useLanguage();
   const ct = commonText[language];
   const t = instructorText[language];
-  const { user: currentUser } = useAuth();
-
   const [activeTab, setActiveTab] = useState('setup');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -28,6 +24,7 @@ export default function ProjectDetail() {
   const [selectedPaper, setSelectedPaper] = useState(null);
   const [feedbackRequests, setFeedbackRequests] = useState([]);
   const [traceability, setTraceability] = useState(null);
+  const [graphData, setGraphData] = useState(null);
   const [users, setUsers] = useState([]);
   const [showAddMember, setShowAddMember] = useState(false);
   const [newMemberId, setNewMemberId] = useState('');
@@ -48,12 +45,8 @@ export default function ProjectDetail() {
   const [collectionSources, setCollectionSources] = useState([]);
   const [showSetUpPaper, setShowSetUpPaper] = useState(false);
   const [setupMode, setSetupMode] = useState('standard');
-  const [saveOrderLoading, setSaveOrderLoading] = useState(false);
   const [editingPaperId, setEditingPaperId] = useState(null);
   const [editingPaperTitle, setEditingPaperTitle] = useState('');
-  const [editingSectionId, setEditingSectionId] = useState(null);
-  const [editingSectionTitle, setEditingSectionTitle] = useState('');
-  const [tempSections, setTempSections] = useState(new Set());
   const [uploadState, setUploadState] = useState(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [addSourceDocType, setAddSourceDocType] = useState('SOURCE');
@@ -92,13 +85,15 @@ export default function ProjectDetail() {
 
   const loadFeedbackAndTraceability = useCallback(async () => {
     try {
-      const [fbRes, traceRes] = await Promise.all([
+      const [fbRes, traceRes, graphRes] = await Promise.all([
         api.get('/api/feedback-requests'),
         api.get(`/api/projects/${id}/traceability`).catch(() => null),
+        api.get(`/api/projects/${id}/graph?scope=all`).catch(() => null),
       ]);
       const projectFbs = (fbRes.data || []).filter(fb => fb.projectId === id);
       setFeedbackRequests(projectFbs);
       setTraceability(traceRes?.data || null);
+      setGraphData(graphRes?.data || null);
     } catch { }
   }, [id]);
 
@@ -241,79 +236,6 @@ export default function ProjectDetail() {
       setCollectionSources([]);
       setSelectedSourceIds([]);
     } catch { alert('Operation failed. Reload and try again.'); }
-  };
-
-  const handleDragEnd = (result) => {
-    if (!result.destination) return;
-    const reordered = Array.from(sections);
-    const [removed] = reordered.splice(result.source.index, 1);
-    reordered.splice(result.destination.index, 0, removed);
-    setSections(reordered);
-  };
-
-  const handleSaveAllChanges = async () => {
-    if (!selectedPaper) return;
-    setSaveOrderLoading(true);
-    try {
-      const tempItems = sections.filter(s => tempSections.has(s.id));
-      const realIds = await Promise.all(tempItems.map(s =>
-        api.post(`/api/papers/${selectedPaper.id}/sections/create`, null, { params: { title: s.sectionTitle } })
-          .then(r => r.data.id)
-      ));
-      const idMap = {};
-      tempItems.forEach((s, i) => { idMap[s.id] = realIds[i]; });
-      await Promise.all(sections.map((s, i) => {
-        const realId = idMap[s.id] || s.id;
-        return api.put(`/api/papers/${selectedPaper.id}/sections/${realId}`, null, { params: { order: i } });
-      }));
-      await loadSections(selectedPaper.id);
-      setTempSections(new Set());
-    } catch { alert('Failed to save changes'); }
-    finally { setSaveOrderLoading(false); }
-  };
-
-  const handleStartSectionRename = (section) => {
-    setEditingSectionId(section.id);
-    setEditingSectionTitle(section.sectionTitle);
-  };
-
-  const handleSaveSectionRename = async (sectionId) => {
-    if (!editingSectionTitle.trim() || !selectedPaper) return;
-    if (tempSections.has(sectionId)) {
-      setSections(prev => prev.map(s => s.id === sectionId ? { ...s, sectionTitle: editingSectionTitle.trim() } : s));
-      setEditingSectionId(null);
-      return;
-    }
-    try {
-      await api.put(`/api/papers/${selectedPaper.id}/sections/${sectionId}`, null, { params: { title: editingSectionTitle.trim() } });
-      setEditingSectionId(null);
-      await loadSections(selectedPaper.id);
-    } catch { alert('Failed to rename section'); }
-  };
-
-  const handleDeleteSection = async (sectionId) => {
-    if (!selectedPaper) return;
-    if (tempSections.has(sectionId)) {
-      setSections(prev => prev.filter(s => s.id !== sectionId));
-      setTempSections(prev => { const n = new Set(prev); n.delete(sectionId); return n; });
-      return;
-    }
-    if (!confirm('Delete this section? This action cannot be undone.')) return;
-    try {
-      await api.delete(`/api/papers/${selectedPaper.id}/sections/${sectionId}`);
-      await loadSections(selectedPaper.id);
-    } catch { alert('Failed to delete section'); }
-  };
-
-  const handleAddSection = () => {
-    if (!selectedPaper) return;
-    if (selectedPaper.processingStatus === 'QUEUED' || selectedPaper.processingStatus === 'PROCESSING') return;
-    const tempId = 'temp_' + Date.now();
-    setSections(prev => [...prev, {
-      id: tempId, sectionTitle: 'New Section', sectionOrder: prev.length,
-      contentTex: '', assignedUser: null, version: 1, active: true
-    }]);
-    setTempSections(prev => new Set(prev).add(tempId));
   };
 
   const handleStartRename = (paper) => {
@@ -562,12 +484,6 @@ export default function ProjectDetail() {
                 <h2 className="text-sm font-bold text-[#1e3a8a]">Sections</h2>
                 <div className="flex gap-2">
                   {selectedPaper && (
-                    <button onClick={handleAddSection} disabled={selectedPaper.processingStatus === 'QUEUED' || selectedPaper.processingStatus === 'PROCESSING'} className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed">+ Section</button>
-                  )}
-                  {selectedPaper && sections.length > 0 && (
-                    <button onClick={handleSaveAllChanges} disabled={saveOrderLoading} className="px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 disabled:opacity-50">{saveOrderLoading ? '...' : 'Save All Changes'}</button>
-                  )}
-                  {selectedPaper && (
                     <button onClick={async () => {
                       try {
                         const res = await api.get(`/api/papers/${selectedPaper.id}/validate`);
@@ -586,60 +502,36 @@ export default function ProjectDetail() {
                 </div>
               ) : sections.length === 0 ? (
                 <div className="text-xs text-gray-400 italic">
-                  <p>No sections yet. Click <strong>+ Section</strong> to add one manually, or go to <strong>Setup</strong> to choose a standard that auto-generates section templates.</p>
+                  <p>No sections yet. Go to <strong>Setup</strong> and choose a paper standard to generate its Section template.</p>
                 </div>
               ) : (
-                <DragDropContext onDragEnd={handleDragEnd}>
-                  <Droppable droppableId="sections">
-                    {(provided) => (
-                      <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
-                        {sections.map((s, index) => (
-                          <Draggable key={s.id} draggableId={s.id} index={index}>
-                            {(provided, snapshot) => (
-                              <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} className={`flex items-center justify-between rounded-lg px-4 py-3 text-xs ${snapshot.isDragging ? 'bg-indigo-50 shadow-lg border border-indigo-200' : tempSections.has(s.id) ? 'bg-gray-50 border border-dashed border-gray-300' : 'bg-gray-50'}`}>
-                                <div className="flex items-center gap-3">
-                                  <span className="text-gray-300 cursor-grab active:cursor-grabbing">{'\u283F'}</span>
-                                  {editingSectionId === s.id ? (
-                                    <div className="flex items-center gap-1">
-                                      <input autoFocus value={editingSectionTitle} onChange={e => setEditingSectionTitle(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleSaveSectionRename(s.id); if (e.key === 'Escape') setEditingSectionId(null); }} className="bg-transparent outline-none border-b border-indigo-300 text-xs" />
-                                      <button onClick={() => handleSaveSectionRename(s.id)} className="text-emerald-600 hover:text-emerald-800 font-bold text-xs px-1" title="Save">{'\u2713'}</button>
-                                      <button onClick={() => setEditingSectionId(null)} className="text-gray-400 hover:text-gray-600 text-xs px-1" title="Cancel">{'\u2715'}</button>
-                                    </div>
-                                  ) : (
-                                    <span className="font-medium">{s.sectionTitle}</span>
-                                  )}
-                                  {s.version > 1 && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">v{s.version}</span>}
-                                  {s.assignedUserId && (
-                                    <span className="flex items-center gap-1 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-bold">
-                                      {'\u{1F512}'} {displayName(projectMembers.find(m => m.userId === s.assignedUserId))}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  {editingSectionId !== s.id && (
-                                    <button onClick={e => { e.stopPropagation(); handleStartSectionRename(s); }} className="text-gray-400 hover:text-indigo-600 text-xs px-1" title="Rename">{'\u270E'}</button>
-                                  )}
-                                  <button onClick={() => handleDeleteSection(s.id)} className="text-gray-400 hover:text-rose-600 text-xs px-1" title="Delete">{'\u2715'}</button>
-                                  <select
-                                    value={s.assignedUserId || ''}
-                                    onChange={e => handleAssignSection(s.id, e.target.value)}
-                                    className="border border-gray-200 rounded px-2 py-1 text-[10px] outline-none"
-                                  >
-                                    <option value="">Unassigned</option>
-                                    {projectMembers.filter(m => m.userId !== currentUser?.id).map(m => (
-                                      <option key={m.id} value={m.userId}>{displayName(m)} <span className="text-gray-400">({m.role})</span></option>
-                                    ))}
-                                  </select>
-                                </div>
-                              </div>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
+                <div className="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
+                  {sections.map(s => (
+                    <div key={s.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3 text-xs">
+                      <div className="flex items-center gap-3">
+                        <span className="font-medium">{s.sectionTitle}</span>
+                        {s.version > 1 && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">v{s.version}</span>}
+                        {s.assignedUserId && (
+                          <span className="flex items-center gap-1 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-bold">
+                            {'\u{1F512}'} {displayName(projectMembers.find(m => m.userId === s.assignedUserId))}
+                          </span>
+                        )}
                       </div>
-                    )}
-                  </Droppable>
-                </DragDropContext>
+                      <select
+                        value={s.assignedUserId || ''}
+                        onChange={e => handleAssignSection(s.id, e.target.value)}
+                        className="border border-gray-200 rounded px-2 py-1 text-[10px] outline-none"
+                      >
+                        <option value="">Unassigned</option>
+                        {projectMembers
+                          .filter(member => users.some(user => String(user.id) === String(member.userId)))
+                          .map(member => (
+                            <option key={member.id} value={member.userId}>{displayName(member)}</option>
+                          ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
@@ -648,6 +540,9 @@ export default function ProjectDetail() {
         {/* Tab: Review */}
         {activeTab === 'review' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-3">
+              <SourceCategoryRadar radar={graphData?.radar || traceability?.radar} />
+            </div>
             <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
               <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Feedback Requests</h2>
               {feedbackRequests.length === 0 ? (

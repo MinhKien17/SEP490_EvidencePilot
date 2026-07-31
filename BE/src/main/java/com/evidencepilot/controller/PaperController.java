@@ -335,6 +335,11 @@ public class PaperController {
             return ResponseEntity.ok(DocumentResponse.from(existing.getFirst()));
         }
         var currentUser = currentUserService.requireCurrentUser();
+        if (!currentUserService.isInstructor(currentUser)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Only instructors can initialize paper templates.");
+        }
         currentUserService.requireProjectWriteAccess(currentUser, project);
         Document stub = new Document();
         stub.setProject(project);

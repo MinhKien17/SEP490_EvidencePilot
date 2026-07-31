@@ -2,26 +2,40 @@ package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.response.PaperSectionResponse;
 import com.evidencepilot.dto.response.PaperValidationResponse;
+import com.evidencepilot.dto.response.SourceCategoryRadarResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.ProjectMapper;
+import com.evidencepilot.model.Claim;
+import com.evidencepilot.model.ClaimEvidenceMapping;
 import com.evidencepilot.model.Document;
+import com.evidencepilot.model.InstructorFeedback;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.ClaimContentStatus;
+import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.repository.DocumentRepository;
+import com.evidencepilot.repository.ClaimRepository;
+import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
+import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.SectionFeedbackRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.AiModelClient;
+import com.evidencepilot.service.AuditService;
 import com.evidencepilot.service.CurrentUserService;
+import com.evidencepilot.service.ClaimContentConsistencyService;
 import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.PaperStandardService;
+import com.evidencepilot.service.SourceCategoryRadarService;
 import com.evidencepilot.service.SystemNotificationService;
-import com.evidencepilot.service.TexArchiveMediaWriter;
+import com.evidencepilot.service.TexArchiveBuilder;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -29,23 +43,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.Locale;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
 @Service
 @RequiredArgsConstructor
@@ -56,6 +64,13 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
 
     private final AiModelClient aiModelClient;
     private final PaperSectionRepository paperSectionRepository;
+    private final ClaimRepository claimRepository;
+    private final ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
+    private final InstructorFeedbackRepository instructorFeedbackRepository;
+    private final ClaimContentConsistencyService claimContentConsistencyService;
+    private final SourceCategoryRadarService sourceCategoryRadarService;
+    private final AuditService auditService;
+    private final ObjectMapper objectMapper;
     private final SectionFeedbackRepository sectionFeedbackRepository;
     private final DocumentRepository documentRepository;
     private final ProjectMapper projectMapper;
@@ -64,7 +79,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
     private final SystemNotificationService systemNotificationService;
-    private final TexArchiveMediaWriter texArchiveMediaWriter;
+    private final TexArchiveBuilder texArchiveBuilder;
 
     @Override
     public List<PaperSectionResponse> getPaperSections(UUID documentId) {
@@ -191,8 +206,8 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         if (mergeIntoId != null) {
             PaperSection target = requireSectionInDocument(mergeIntoId, documentId);
             PaperSection source = requireSectionInDocument(sectionId, documentId);
-            currentUserService.requireSectionAssignment(currentUser, source);
-            currentUserService.requireSectionAssignment(currentUser, target);
+            currentUserService.requireSectionContentWriteAccess(currentUser, source);
+            currentUserService.requireSectionContentWriteAccess(currentUser, target);
             target.setContentTex(
                     (target.getContentTex() != null ? target.getContentTex() : "")
                     + "\n\n" + (source.getContentTex() != null ? source.getContentTex() : ""));
@@ -201,6 +216,11 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             paperSectionRepository.save(target);
             source.setActive(false);
             paperSectionRepository.save(source);
+            List<com.evidencepilot.model.Claim> movedClaims = claimRepository.findBySectionId(source.getId()).stream()
+                    .filter(com.evidencepilot.model.Claim::isActive)
+                    .peek(claim -> claim.setSection(target))
+                    .toList();
+            claimRepository.saveAll(movedClaims);
             return projectMapper.toPaperSectionResponse(target);
         }
 
@@ -213,6 +233,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             section.setSectionOrder(order);
         }
         if (content != null) {
+            currentUserService.requireSectionContentWriteAccess(currentUser, section);
             section.setPreviousContentTex(section.getContentTex());
             section.setContentTex(content);
             // ponytail: cap at version 2 per requirement, no further increment
@@ -226,12 +247,17 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     @Override
     @Transactional
     public PaperSectionResponse assignSection(UUID documentId, UUID sectionId, UUID assignedUserId) {
-        requireDocumentWriteAccess(documentId);
+        Document document = requireInstructorDocumentWriteAccess(documentId);
         User currentUser = currentUserService.requireCurrentUser();
         PaperSection section = requireSectionInDocument(sectionId, documentId);
         if (assignedUserId != null) {
             User user = userRepository.findById(assignedUserId)
                     .orElseThrow(() -> new ResourceNotFoundException(assignedUserId, "User"));
+            if (user.getRole() != com.evidencepilot.model.enums.UserRole.STUDENT) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Sections can only be assigned to students.");
+            }
+            currentUserService.requireProjectAccess(user, document.getProject());
             section.setAssignedUser(user);
         } else {
             section.setAssignedUser(null);
@@ -255,7 +281,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         requireDocumentWriteAccess(documentId);
         User currentUser = currentUserService.requireCurrentUser();
         PaperSection section = requireSectionInDocument(sectionId, documentId);
-        currentUserService.requireSectionAssignment(currentUser, section);
+        currentUserService.requireSectionContentWriteAccess(currentUser, section);
         if (section.getPreviousContentTex() == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "No previous version to rollback to.");
         }
@@ -274,6 +300,11 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         User currentUser = currentUserService.requireCurrentUser();
         PaperSection section = requireSectionInDocument(sectionId, documentId);
         currentUserService.requireSectionAssignment(currentUser, section);
+        if (claimRepository.findBySectionId(sectionId).stream().anyMatch(com.evidencepilot.model.Claim::isActive)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Section has active claims.");
+        }
         section.setActive(false);
         section.setUpdatedAt(LocalDateTime.now());
         paperSectionRepository.save(section);
@@ -282,7 +313,16 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     @Override
     @Transactional
     public PaperSectionResponse createSection(UUID documentId, String title, UUID parentSectionId) {
-        Document document = requireDocumentWriteAccess(documentId);
+        Document document = requireDocumentAccess(documentId);
+        User currentUser = currentUserService.requireCurrentUser();
+        currentUserService.requireProjectWriteAccess(currentUser, document.getProject());
+        if (parentSectionId == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Top-level sections must be created from a paper template.");
+        }
+        PaperSection parent = requireSectionInDocument(parentSectionId, documentId);
+        currentUserService.requireSectionContentWriteAccess(currentUser, parent);
 
         List<PaperSection> existing = paperSectionRepository
                 .findByDocumentIdOrderBySectionOrderAsc(documentId);
@@ -295,24 +335,29 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         section.setDocument(document);
         section.setSectionTitle(title != null ? title : "New Section");
         section.setSectionOrder(maxOrder + 1);
-        section.setContentTex("");
+        PaperStandard standard = document.getProject().getTargetStandard();
+        section.setContentTex(paperStandardService.getSectionTemplate(
+                standard == null ? PaperStandard.CUSTOM : standard,
+                section.getSectionTitle()));
         section.setUpdatedAt(LocalDateTime.now());
-        if (parentSectionId != null) {
-            PaperSection parent = requireSectionInDocument(parentSectionId, documentId);
-            section.setSectionOrder(parent.getSectionOrder() + 1);
-        }
+        section.setAssignedUser(parent.getAssignedUser());
+        section.setSectionOrder(parent.getSectionOrder() + 1);
         return projectMapper.toPaperSectionResponse(paperSectionRepository.save(section));
     }
 
     @Override
     @Transactional
     public List<PaperSectionResponse> createSectionsFromStandard(UUID documentId, String standard) {
-        Document document = requireDocumentWriteAccess(documentId);
+        Document document = requireInstructorDocumentWriteAccess(documentId);
         PaperStandard paperStandard;
         try {
             paperStandard = PaperStandard.valueOf(standard);
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown standard: " + standard);
+        }
+        if (document.getProject() != null) {
+            document.getProject().setTargetStandard(paperStandard);
+            projectRepository.save(document.getProject());
         }
 
         List<String> requiredSections = paperStandardService.getRequiredSections(paperStandard);
@@ -333,7 +378,9 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             section.setDocument(document);
             section.setSectionTitle(requiredSections.get(i));
             section.setSectionOrder(startOrder + i);
-            section.setContentTex("");
+            section.setContentTex(
+                    paperStandardService.getSectionTemplate(
+                            paperStandard, section.getSectionTitle()));
             section.setUpdatedAt(LocalDateTime.now());
             sections.add(section);
         }
@@ -358,6 +405,11 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
         User currentUser = currentUserService.requireCurrentUser();
+        if (!currentUserService.isInstructor(currentUser)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Only instructors can reset paper templates.");
+        }
         currentUserService.requireProjectWriteAccess(currentUser, project);
 
         // 3. Find the project's single active Paper (1 Project : 1 Paper invariant).
@@ -404,11 +456,21 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
 
         // ponytail: guard — refuse if any section contains student work content
         boolean hasContent = existingSections.stream()
-                .anyMatch(s -> s.getContentTex() != null && !s.getContentTex().isBlank());
+                .anyMatch(section -> paperStandardService.hasStudentContent(
+                        section.getContentTex()));
         if (hasContent) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Cannot reset standard: one or more sections contain student work. "
                     + "Clear section content before changing the standard.");
+        }
+
+        boolean hasActiveClaims = existingSections.stream()
+                .anyMatch(section -> claimRepository.findBySectionId(section.getId()).stream()
+                        .anyMatch(Claim::isActive));
+        if (hasActiveClaims) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Cannot reset standard: one or more sections have active claims.");
         }
 
         // 7. Delete SectionFeedback rows first.
@@ -504,95 +566,24 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         return document;
     }
 
+    private Document requireInstructorDocumentWriteAccess(UUID documentId) {
+        Document document = requireDocumentAccess(documentId);
+        User currentUser = currentUserService.requireCurrentUser();
+        if (!currentUserService.isInstructor(currentUser)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Only instructors can manage section assignment and templates.");
+        }
+        currentUserService.requireProjectWriteAccess(currentUser, document.getProject());
+        return document;
+    }
+
     @Override
     public Path exportTexArchive(UUID projectId) {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
         currentUserService.requireProjectAccess(currentUser, project);
-
-        List<Document> docs = documentRepository
-                .findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER);
-        Path destination;
-        try {
-            destination = Files.createTempFile("evidencepilot-project-export-", ".zip");
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to create export archive", e);
-        }
-        try (OutputStream output = Files.newOutputStream(destination);
-                ZipOutputStream zos = new ZipOutputStream(output, StandardCharsets.UTF_8)) {
-
-            StringBuilder mainTex = new StringBuilder();
-            String projectTitle = project.getTitle() != null ? project.getTitle() : "Untitled";
-            mainTex.append("\\documentclass{article}\n")
-                    .append("\\usepackage[utf8]{inputenc}\n")
-                    .append("\\usepackage{graphicx}\n")
-                    .append("\\usepackage{xcolor}\n")
-                    .append("\\usepackage{soul}\n")
-                    .append("\\graphicspath{{images/}}\n\n")
-                    .append("\\title{").append(escapeLatex(projectTitle)).append("}\n")
-                    .append("\\date{\\today}\n\n")
-                    .append("\\begin{document}\n\n")
-                    .append("\\maketitle\n\n");
-
-            for (Document doc : docs) {
-                String docTitle = doc.getTitle() != null ? doc.getTitle() :
-                        (doc.getOriginalFilename() != null ? doc.getOriginalFilename() : "Untitled");
-                if (docs.size() > 1) {
-                    mainTex.append("\\section{").append(escapeLatex(docTitle)).append("}\n\n");
-                }
-                List<PaperSection> sections = paperSectionRepository
-                        .findByDocumentIdOrderBySectionOrderAsc(doc.getId());
-                int idx = 1;
-                for (PaperSection section : sections) {
-                    if (section.getContentTex() == null || section.getContentTex().isBlank()) continue;
-                    String sectionFilename = String.format("%02d-%s.tex", idx,
-                            sanitizeFilename(section.getSectionTitle()));
-                    idx++;
-                    mainTex.append("\\input{sections/").append(sectionFilename).append("}\n\n");
-                    String sectionContent = "\\section{" + escapeLatex(section.getSectionTitle()) + "}\n\n"
-                            + section.getContentTex() + "\n";
-                    ZipEntry sectionEntry = new ZipEntry("sections/" + sectionFilename);
-                    sectionEntry.setTime(System.currentTimeMillis());
-                    zos.putNextEntry(sectionEntry);
-                    zos.write(sectionContent.getBytes(StandardCharsets.UTF_8));
-                    zos.closeEntry();
-                }
-            }
-            mainTex.append("\\end{document}\n");
-            ZipEntry mainEntry = new ZipEntry("main.tex");
-            mainEntry.setTime(System.currentTimeMillis());
-            zos.putNextEntry(mainEntry);
-            zos.write(mainTex.toString().getBytes(StandardCharsets.UTF_8));
-            zos.closeEntry();
-
-            texArchiveMediaWriter.writeProjectMedia(projectId, zos);
-            return destination;
-        } catch (Exception e) {
-            try {
-                Files.deleteIfExists(destination);
-            } catch (Exception cleanupException) {
-                e.addSuppressed(cleanupException);
-            }
-            if (e instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            throw new RuntimeException("Failed to create export archive", e);
-        }
-    }
-
-    private static String escapeLatex(String s) {
-        return s.replace("\\", "\\textbackslash{}")
-                .replace("&", "\\&").replace("%", "\\%")
-                .replace("$", "\\$").replace("#", "\\#")
-                .replace("_", "\\_").replace("{", "\\{")
-                .replace("}", "\\}").replace("~", "\\textasciitilde{}")
-                .replace("^", "\\textasciicircum{}");
-    }
-
-    private static String sanitizeFilename(String s) {
-        return s == null ? "untitled" : s.toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9]+", "-")
-                .replaceAll("^-|-$", "");
+        return texArchiveBuilder.build(projectId);
     }
 }

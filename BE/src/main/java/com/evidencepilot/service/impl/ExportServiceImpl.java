@@ -22,14 +22,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
 @Slf4j
 @Service
@@ -40,14 +37,12 @@ public class ExportServiceImpl implements ExportService {
 
     private final ExportJobRepository exportJobRepository;
     private final ProjectRepository projectRepository;
-    private final DocumentRepository documentRepository;
-    private final PaperSectionRepository paperSectionRepository;
     private final CurrentUserService currentUserService;
     private final SystemNotificationService systemNotificationService;
     private final DocumentObjectStorage documentObjectStorage;
     private final UserRepository userRepository;
     private final RabbitTemplate rabbitTemplate;
-    private final TexArchiveMediaWriter texArchiveMediaWriter;
+    private final TexArchiveBuilder texArchiveBuilder;
 
     @Override
     @Transactional
@@ -122,7 +117,7 @@ public class ExportServiceImpl implements ExportService {
         Path archivePath = null;
         try {
             archivePath = Files.createTempFile("evidencepilot-export-", ".zip");
-            writeTexArchive(job.getProjectId(), archivePath);
+            texArchiveBuilder.write(job.getProjectId(), archivePath);
             String objectKey = EXPORT_MINIO_PREFIX + job.getId() + ".zip";
             try (InputStream content = Files.newInputStream(archivePath)) {
                 documentObjectStorage.write(
@@ -156,53 +151,4 @@ public class ExportServiceImpl implements ExportService {
         }
     }
 
-    private void writeTexArchive(UUID projectId, Path destination) {
-        Project project = projectRepository.findById(projectId)
-                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
-        List<Document> docs = documentRepository.findByProjectId(projectId);
-        try (ZipOutputStream zos = new ZipOutputStream(
-                Files.newOutputStream(destination), StandardCharsets.UTF_8)) {
-            zos.putNextEntry(new ZipEntry("main.tex"));
-            StringBuilder mainTex = new StringBuilder();
-            mainTex.append("\\documentclass{article}\n")
-                    .append("\\usepackage[utf8]{inputenc}\n")
-                    .append("\\usepackage{graphicx}\n")
-                    .append("\\usepackage{xcolor}\n")
-                    .append("\\usepackage{soul}\n")
-                    .append("\\usepackage{hyperref}\n\n")
-                    .append("\\title{").append(escapeLatex(
-                            project.getTitle() != null ? project.getTitle() : "Untitled")).append("}\n")
-                    .append("\\date{\\today}\n\n")
-                    .append("\\begin{document}\n\n")
-                    .append("\\maketitle\n\n");
-            for (Document doc : docs) {
-                String docTitle = doc.getTitle() != null ? doc.getTitle()
-                        : (doc.getOriginalFilename() != null ? doc.getOriginalFilename() : "Untitled");
-                mainTex.append("\\section{").append(escapeLatex(docTitle)).append("}\n\n");
-                List<PaperSection> sections = paperSectionRepository
-                        .findByDocumentIdOrderBySectionOrderAsc(doc.getId());
-                for (PaperSection section : sections) {
-                    if (section.getContentTex() != null && !section.getContentTex().isBlank()) {
-                        mainTex.append("\\subsection{").append(escapeLatex(section.getSectionTitle())).append("}\n\n");
-                        mainTex.append(section.getContentTex()).append("\n\n");
-                    }
-                }
-            }
-            mainTex.append("\\end{document}\n");
-            zos.write(mainTex.toString().getBytes(StandardCharsets.UTF_8));
-            zos.closeEntry();
-            texArchiveMediaWriter.writeProjectMedia(projectId, zos);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to build export archive", e);
-        }
-    }
-
-    private static String escapeLatex(String s) {
-        return s.replace("\\", "\\textbackslash{}")
-                .replace("&", "\\&").replace("%", "\\%")
-                .replace("$", "\\$").replace("#", "\\#")
-                .replace("_", "\\_").replace("{", "\\{")
-                .replace("}", "\\}").replace("~", "\\textasciitilde{}")
-                .replace("^", "\\textasciicircum{}");
-    }
 }
