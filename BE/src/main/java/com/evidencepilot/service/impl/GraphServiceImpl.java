@@ -12,6 +12,7 @@ import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.repository.*;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.GraphService;
+import com.evidencepilot.service.SourceCategoryRadarService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,7 @@ public class GraphServiceImpl implements GraphService {
     private final DocumentRepository documentRepository;
     private final DocumentReferenceRepository documentReferenceRepository;
     private final CurrentUserService currentUserService;
+    private final SourceCategoryRadarService sourceCategoryRadarService;
 
     @Override
     public GraphResponse getGraph(UUID projectId, String scope) {
@@ -42,6 +44,7 @@ public class GraphServiceImpl implements GraphService {
             throw new ResourceNotFoundException(projectId, "Project");
         }
         currentUserService.requireProjectAccess(currentUser, project);
+        var radar = sourceCategoryRadarService.calculate(projectId);
 
         List<Claim> claims = claimRepository.findByProjectId(projectId).stream()
                 .filter(Claim::isActive)
@@ -53,7 +56,8 @@ public class GraphServiceImpl implements GraphService {
                 .toList();
 
         if (claims.isEmpty()) {
-            return new GraphResponse(List.of(), List.of(), List.of(), 0, false);
+            return new GraphResponse(
+                    List.of(), List.of(), List.of(), 0, false, radar);
         }
 
         Map<UUID, Long> referenceCountBySource = documentReferenceRepository
@@ -151,7 +155,8 @@ public class GraphServiceImpl implements GraphService {
                         referenceCountBySource.getOrDefault(doc.getId(), 0L).intValue()))
                 .toList();
 
-        return new GraphResponse(graphClaims, sources, edges, totalEdges, hasMore);
+        return new GraphResponse(
+                graphClaims, sources, edges, totalEdges, hasMore, radar);
     }
 
 }

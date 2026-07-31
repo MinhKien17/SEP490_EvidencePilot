@@ -9,7 +9,8 @@ public record GraphResponse(
     List<GraphSource> sources,
     List<GraphEdge> edges,
     int totalEdges,
-    boolean hasMore
+    boolean hasMore,
+    SourceCategoryRadarResponse radar
 ) {
     public record GraphClaim(
         UUID id,

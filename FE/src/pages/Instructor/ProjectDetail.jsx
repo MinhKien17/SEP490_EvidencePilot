@@ -37,6 +37,8 @@ export default function ProjectDetail() {
   const [doiInput, setDoiInput] = useState('');
   const [standard, setStandard] = useState('');
   const [sources, setSources] = useState([]);
+  const [sourceCategories, setSourceCategories] = useState([]);
+  const [sourceCategoryId, setSourceCategoryId] = useState('');
   const [showSourceDetail, setShowSourceDetail] = useState(false);
   const [sourceDetail, setSourceDetail] = useState(null);
   const [showAddSource, setShowAddSource] = useState(false);
@@ -123,6 +125,11 @@ export default function ProjectDetail() {
 
   useEffect(() => { loadProject(); }, [loadProject]);
   useEffect(() => { if (project) { loadPapers(); loadSources(); loadUsers(); } }, [project, loadPapers, loadSources, loadUsers]);
+  useEffect(() => {
+    api.get('/api/source-categories')
+      .then(response => setSourceCategories(response.data || []))
+      .catch(() => setSourceCategories([]));
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'review') loadFeedbackAndTraceability();
@@ -152,10 +159,15 @@ export default function ProjectDetail() {
     if (!doiInput.trim()) return;
     setAddSourceLoading(true);
     try {
-      const payload = { doi: doiInput.trim(), projectId: id };
+      const payload = {
+        doi: doiInput.trim(),
+        projectId: id,
+        categoryId: asSource && sourceCategoryId ? sourceCategoryId : null,
+      };
       if (asSource) payload.docType = 'SOURCE';
       await api.post('/api/documents/ingest/doi', payload);
       setDoiInput('');
+      setSourceCategoryId('');
       if (asSource) {
         await loadSources();
       } else {
@@ -173,9 +185,11 @@ export default function ProjectDetail() {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('projectId', id);
+    if (sourceCategoryId) formData.append('categoryId', sourceCategoryId);
     try {
       await api.post('/api/sources', formData);
       await loadSources();
+      setSourceCategoryId('');
     } catch { alert('Upload failed.'); }
   };
 
@@ -464,7 +478,10 @@ export default function ProjectDetail() {
                   {sources.map(s => (
                     <button key={s.id} onClick={() => { setSourceDetail(s); setShowSourceDetail(true); }} className="w-full text-left bg-gray-50 rounded-lg px-3 py-2 text-xs hover:bg-gray-100 transition flex items-center justify-between">
                       <span className="font-medium">{s.title || s.originalFilename || s.id}</span>
-                      <StatusBadge status={s.processingStatus || 'READY'} />
+                      <span className="flex items-center gap-2">
+                        {s.sourceCategory && <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700">{s.sourceCategory.code}</span>}
+                        <StatusBadge status={s.processingStatus || 'READY'} />
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -745,6 +762,20 @@ export default function ProjectDetail() {
             <div><span className="font-bold text-gray-500">DOI:</span> <span className="text-gray-800 font-mono">{sourceDetail.doi || '-'}</span></div>
             <div><span className="font-bold text-gray-500">Status:</span> <StatusBadge status={sourceDetail.processingStatus || 'READY'} /></div>
             <div><span className="font-bold text-gray-500">Type:</span> <span className="text-gray-800">{sourceDetail.docType || 'SOURCE'}</span></div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-gray-500">Category:</span>
+              <select value={sourceDetail.sourceCategory?.id || ''} onChange={async event => {
+                if (!event.target.value) return;
+                try {
+                  const response = await api.put(`/api/sources/${sourceDetail.id}/category`, { categoryId: event.target.value });
+                  setSourceDetail(response.data);
+                  await loadSources();
+                } catch { alert('Failed to update Source category.'); }
+              }} className="rounded border border-gray-200 px-2 py-1 text-xs">
+                <option value="" disabled>Auto-classifying</option>
+                {sourceCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+            </div>
             <div><span className="font-bold text-gray-500">ID:</span> <span className="text-gray-800 font-mono text-[9px]">{sourceDetail.id}</span></div>
             <div className="flex justify-end gap-2 pt-2">
               <button onClick={() => setShowSourceDetail(false)} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">Close</button>
@@ -753,7 +784,7 @@ export default function ProjectDetail() {
         )}
       </Modal>
 
-      <Modal open={showAddSource} onClose={() => { setShowAddSource(false); setDoiInput(''); }} title="Add Source">
+      <Modal open={showAddSource} onClose={() => { setShowAddSource(false); setDoiInput(''); setSourceCategoryId(''); }} title="Add Source">
         <div className="space-y-5 text-xs">
           <div className="border border-gray-200 rounded-xl p-4 space-y-3">
             <h3 className="font-bold text-indigo-700">① Import by DOI</h3>
@@ -777,9 +808,19 @@ export default function ProjectDetail() {
                 {addSourceLoading ? '...' : 'Import'}
               </button>
             </div>
+            {addSourceDocType === 'SOURCE' && (
+              <select value={sourceCategoryId} onChange={event => setSourceCategoryId(event.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none">
+                <option value="">Auto classify</option>
+                {sourceCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+            )}
           </div>
           <div className="border border-gray-200 rounded-xl p-4 space-y-3">
             <h3 className="font-bold text-amber-700">② Upload Source (PDF/DOCX)</h3>
+            <select value={sourceCategoryId} onChange={event => setSourceCategoryId(event.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none">
+              <option value="">Auto classify</option>
+              {sourceCategories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
             <input type="file" accept=".pdf,.docx" onChange={async (e) => { await handleUploadSource(e); setShowAddSource(false); }} className="text-xs" />
           </div>
           <div className="border border-gray-200 rounded-xl p-4 space-y-3">

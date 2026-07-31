@@ -77,6 +77,7 @@ const t = {
     guideProjectsTable: 'Each row shows project title, status, and creation date. Admins can delete projects.',
     guideProjectsDone: 'Projects walkthrough complete.',
     collectionCategories: 'Collection Categories', categoryName: 'Name', categoryDescription: 'Description',
+    sourceCategories: 'Source Categories', categoryCode: 'Code',
     addCategory: 'Add Category', editCategory: 'Edit Category',
     noCategories: 'No categories', categorySaved: 'Category saved', categoryDeleted: 'Category deleted',
     guideCategoriesDesc: 'Manage collection categories used to organize evidence collections.',
@@ -174,6 +175,7 @@ const t = {
     guideProjectsTable: 'Mỗi dòng hiển thị tiêu đề, trạng thái và ngày tạo. Quản trị viên có thể xóa dự án.',
     guideProjectsDone: 'Đã hoàn thành hướng dẫn dự án.',
     collectionCategories: 'Danh mục bộ sưu tập', categoryName: 'Tên', categoryDescription: 'Mô tả',
+    sourceCategories: 'Thể loại nguồn', categoryCode: 'Mã',
     addCategory: 'Thêm danh mục', editCategory: 'Sửa danh mục',
     noCategories: 'Không có danh mục', categorySaved: 'Đã lưu danh mục', categoryDeleted: 'Đã xóa danh mục',
     guideCategoriesDesc: 'Quản lý danh mục bộ sưu tập dùng để phân loại bộ sưu tập bằng chứng.',
@@ -1116,6 +1118,11 @@ function SettingsSection({ lang, api }) {
   const [showCatForm, setShowCatForm] = useState(false);
   const [catForm, setCatForm] = useState({ id: null, name: '', description: '' });
   const [catErr, setCatErr] = useState('');
+  const [sourceCats, setSourceCats] = useState([]);
+  const [sourceCatsLoading, setSourceCatsLoading] = useState(true);
+  const [showSourceCatForm, setShowSourceCatForm] = useState(false);
+  const [sourceCatForm, setSourceCatForm] = useState({ id: null, code: '', name: '', description: '' });
+  const [sourceCatErr, setSourceCatErr] = useState('');
   const [config, setConfig] = useState(null);
   const [configLoading, setConfigLoading] = useState(true);
 
@@ -1133,11 +1140,18 @@ function SettingsSection({ lang, api }) {
     finally { setConfigLoading(false); }
   }, [api]);
 
+  const fetchSourceCats = useCallback(async (signal) => {
+    setSourceCatsLoading(true);
+    try { const r = await api.get('/api/admin/source-categories?active=true', { signal }); setSourceCats(r.data || []); }
+    catch (e) { /* silent */ }
+    finally { setSourceCatsLoading(false); }
+  }, [api]);
+
   useEffect(() => {
     const ac = new AbortController();
-    fetchCats(ac.signal); fetchConfig(ac.signal);
+    fetchCats(ac.signal); fetchSourceCats(ac.signal); fetchConfig(ac.signal);
     return () => ac.abort();
-  }, [fetchCats, fetchConfig]);
+  }, [fetchCats, fetchSourceCats, fetchConfig]);
 
   const doSave = (e) => { e.preventDefault(); setSaved(true); setTimeout(() => setSaved(false), 2000); };
 
@@ -1154,6 +1168,34 @@ function SettingsSection({ lang, api }) {
     if (!confirm(lang.confirmDelete)) return;
     try { await api.delete(`/api/admin/collection-categories/${id}`); fetchCats(new AbortController().signal); }
     catch (e) { /* silent */ }
+  };
+
+  const doSourceCatSave = async (event) => {
+    event.preventDefault(); setSourceCatErr('');
+    const payload = {
+      code: sourceCatForm.code,
+      name: sourceCatForm.name,
+      description: sourceCatForm.description,
+    };
+    try {
+      if (sourceCatForm.id) await api.put(`/api/admin/source-categories/${sourceCatForm.id}`, payload);
+      else await api.post('/api/admin/source-categories', payload);
+      setShowSourceCatForm(false);
+      setSourceCatForm({ id: null, code: '', name: '', description: '' });
+      fetchSourceCats(new AbortController().signal);
+    } catch (error) {
+      setSourceCatErr(error.response?.data?.message || error.message);
+    }
+  };
+
+  const doSourceCatDelete = async (id) => {
+    if (!confirm(lang.confirmDelete)) return;
+    try {
+      await api.delete(`/api/admin/source-categories/${id}`);
+      fetchSourceCats(new AbortController().signal);
+    } catch (error) {
+      alert(error.response?.data?.message || error.message);
+    }
   };
 
   const startProcessGuide = () => {
@@ -1221,6 +1263,34 @@ function SettingsSection({ lang, api }) {
             </div>
           )}
         </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{lang.sourceCategories}</span>
+            <button onClick={() => { setSourceCatForm({ id: null, code: '', name: '', description: '' }); setShowSourceCatForm(true); }} className="px-2.5 py-1 text-xs font-bold bg-[#1e3a8a] text-white rounded-lg hover:bg-[#1e40af] transition">{lang.addCategory}</button>
+          </div>
+          {sourceCatsLoading ? (
+            <div className="animate-pulse space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-8 bg-gray-200 rounded w-full" />)}</div>
+          ) : sourceCats.length === 0 ? (
+            <div className="text-sm text-gray-400 text-center py-4">{lang.noCategories}</div>
+          ) : (
+            <div className="divide-y divide-gray-100 text-sm max-h-64 overflow-y-auto">
+              {sourceCats.map(category => (
+                <div key={category.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <div className="min-w-0">
+                    <span className="mr-2 rounded bg-indigo-50 px-1.5 py-0.5 font-mono text-[10px] font-bold text-indigo-700">{category.code}</span>
+                    <span className="font-semibold text-gray-900">{category.name}</span>
+                    {category.description && <p className="mt-1 truncate text-xs text-gray-400">{category.description}</p>}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button onClick={() => { setSourceCatForm({ id: category.id, code: category.code, name: category.name, description: category.description || '' }); setShowSourceCatForm(true); }} className="px-2 py-1 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition">{lang.editCategory}</button>
+                    <button disabled={category.code === 'OTHER'} onClick={() => doSourceCatDelete(category.id)} className="px-2 py-1 text-xs text-gray-400 border border-gray-200 rounded-lg hover:border-rose-200 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40 transition">{lang.delete}</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div data-guide="settings-config" className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
@@ -1253,6 +1323,24 @@ function SettingsSection({ lang, api }) {
               <div className="flex gap-2 justify-end">
                 <button type="button" onClick={() => setShowCatForm(false)} className="px-3 py-1.5 text-xs font-bold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">{lang.cancel}</button>
                 <button type="submit" className="px-3 py-1.5 text-xs font-bold bg-[#1e3a8a] text-white rounded-lg hover:bg-[#1e40af]">{catForm.id ? lang.save : lang.addCategory}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showSourceCatForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowSourceCatForm(false)}>
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md mx-4" onClick={event => event.stopPropagation()}>
+            <h3 className="font-bold text-gray-900 mb-4">{sourceCatForm.id ? lang.editCategory : lang.addCategory}</h3>
+            <form onSubmit={doSourceCatSave} className="space-y-3">
+              <input placeholder={lang.categoryCode} value={sourceCatForm.code} onChange={event => setSourceCatForm(previous => ({ ...previous, code: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') }))} disabled={Boolean(sourceCatForm.id)} required className="w-full border border-gray-300 rounded-lg px-3 py-2 font-mono text-sm disabled:bg-gray-100" />
+              <input placeholder={lang.categoryName} value={sourceCatForm.name} onChange={event => setSourceCatForm(previous => ({ ...previous, name: event.target.value }))} required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              <textarea placeholder={lang.categoryDescription} value={sourceCatForm.description} onChange={event => setSourceCatForm(previous => ({ ...previous, description: event.target.value }))} rows={2} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none" />
+              {sourceCatErr && <div className="text-xs text-rose-600 bg-rose-50 p-2 rounded">{sourceCatErr}</div>}
+              <div className="flex gap-2 justify-end">
+                <button type="button" onClick={() => setShowSourceCatForm(false)} className="px-3 py-1.5 text-xs font-bold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">{lang.cancel}</button>
+                <button type="submit" className="px-3 py-1.5 text-xs font-bold bg-[#1e3a8a] text-white rounded-lg hover:bg-[#1e40af]">{sourceCatForm.id ? lang.save : lang.addCategory}</button>
               </div>
             </form>
           </div>

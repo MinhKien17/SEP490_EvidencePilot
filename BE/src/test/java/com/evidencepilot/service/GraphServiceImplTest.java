@@ -46,6 +46,8 @@ class GraphServiceImplTest {
     private DocumentReferenceRepository documentReferenceRepository;
     @Mock
     private CurrentUserService currentUserService;
+    @Mock
+    private SourceCategoryRadarService sourceCategoryRadarService;
 
     @InjectMocks
     private GraphServiceImpl service;

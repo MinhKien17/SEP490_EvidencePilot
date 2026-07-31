@@ -63,6 +63,8 @@ class DocumentExtractionWorkerTest {
     private PaperProcessingService paperProcessingService;
     @Mock
     private MediaAssetService mediaAssetService;
+    @Mock
+    private SourceCategoryClassifier sourceCategoryClassifier;
 
     @Test
     void processImportsProjectSourcePdfImagesBeforeWritingCheckpointAndDeletesArchive() throws IOException {
@@ -335,7 +337,8 @@ class DocumentExtractionWorkerTest {
                 persistence,
                 new ObjectMapper(),
                 paperProcessingService,
-                mediaAssetService);
+                mediaAssetService,
+                sourceCategoryClassifier);
         ReflectionTestUtils.setField(w, "baseUrl", "http://localhost:8080");
         return w;
     }

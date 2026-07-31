@@ -45,14 +45,16 @@ class SourceControllerTest {
     void upload_bindsAllOptionalScopes() throws Exception {
         UUID projectId = UUID.randomUUID();
         UUID collectionId = UUID.randomUUID();
+        UUID categoryId = UUID.randomUUID();
         MockMultipartFile file = new MockMultipartFile("file", "source.pdf", "application/pdf", "pdf".getBytes());
 
         mockMvc.perform(multipart("/api/sources").file(file)
                         .param("projectId", projectId.toString())
-                        .param("collectionId", collectionId.toString()))
+                        .param("collectionId", collectionId.toString())
+                        .param("categoryId", categoryId.toString()))
                 .andExpect(status().isCreated());
 
         verify(service).uploadDocument(
-                eq(projectId), eq(collectionId), any(), eq(DocumentType.SOURCE));
+                eq(projectId), eq(collectionId), any(), eq(DocumentType.SOURCE), eq(categoryId));
     }
 }

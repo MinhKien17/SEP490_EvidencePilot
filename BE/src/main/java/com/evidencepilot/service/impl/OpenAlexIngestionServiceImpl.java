@@ -19,9 +19,11 @@ import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.DocumentReferenceRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.repository.SourceCategoryRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentObjectStorage;
 import com.evidencepilot.service.OpenAlexIngestionService;
+import com.evidencepilot.service.SourceCategoryClassifier;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -52,6 +54,8 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
     private final DocumentPersistenceService documentPersistenceService;
     private final DocumentReferenceRepository documentReferenceRepository;
     private final ObjectMapper objectMapper;
+    private final SourceCategoryRepository sourceCategoryRepository;
+    private final SourceCategoryClassifier sourceCategoryClassifier;
 
     @Override
     public OpenAlexPreview lookupByDoi(String doi) {
@@ -74,7 +78,8 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
 
     @Override
     @Transactional
-    public DocumentResponse ingestByDoi(UUID projectId, UUID collectionId, String doi) {
+    public DocumentResponse ingestByDoi(
+            UUID projectId, UUID collectionId, String doi, UUID categoryId) {
         User currentUser = currentUserService.requireCurrentUser();
 
         Document document = new Document();
@@ -86,6 +91,12 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
         document.setActive(true);
         document.setCreatedAt(LocalDateTime.now());
         document.setDownloadToken(UUID.randomUUID().toString());
+        if (categoryId != null) {
+            document.setSourceCategory(sourceCategoryRepository.findByIdAndActiveTrue(categoryId)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST,
+                            "Source category is missing or inactive.")));
+        }
 
         if (collectionId != null) {
             Collection collection = collectionRepository.findById(collectionId)
@@ -129,6 +140,7 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
             document.setProcessingStatus(ProcessingStatus.METADATA_FETCHED);
             document.setProcessingError("No open-access PDF available for this DOI");
             document = documentRepository.save(document);
+            sourceCategoryClassifier.classifyIfMissing(document.getId(), "");
             return DocumentResponse.from(document);
         }
 
@@ -151,6 +163,10 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
 
         persistReferences(document, work);
         persistCitedBy(document, work);
+        if (document.getProcessingStatus() == ProcessingStatus.METADATA_FETCHED) {
+            sourceCategoryClassifier.classifyIfMissing(document.getId(), "");
+            document = documentRepository.findById(document.getId()).orElse(document);
+        }
 
         return DocumentResponse.from(document);
     }

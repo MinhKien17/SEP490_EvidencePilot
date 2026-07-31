@@ -62,6 +62,15 @@ CREATE TABLE collection_categories (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE source_categories (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    code VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE collections (
     id BINARY(16) NOT NULL PRIMARY KEY,
     project_id BINARY(16),
@@ -80,6 +89,7 @@ CREATE TABLE documents (
     id BINARY(16) NOT NULL PRIMARY KEY,
     project_id BINARY(16),
     collection_id BINARY(16),
+    source_category_id BINARY(16),
     uploaded_by BINARY(16) NOT NULL,
     doc_type VARCHAR(50) NOT NULL CHECK (doc_type IN ('PAPER', 'SOURCE')),
     file_url VARCHAR(500) NOT NULL,
@@ -108,10 +118,12 @@ CREATE TABLE documents (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_documents_project_id (project_id),
     INDEX idx_documents_collection_id (collection_id),
+    INDEX idx_documents_source_category_id (source_category_id),
     INDEX idx_documents_file_hash_sha256 (file_hash_sha256),
     INDEX idx_documents_processing_status (processing_status),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE SET NULL,
+    FOREIGN KEY (source_category_id) REFERENCES source_categories(id) ON DELETE SET NULL,
     FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
 );
 

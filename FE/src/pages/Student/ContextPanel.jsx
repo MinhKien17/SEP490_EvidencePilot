@@ -1,6 +1,13 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../../api.js';
+import SourceCategoryRadar from '../../components/SourceCategoryRadar.jsx';
+
+const CLAIM_STATUS_CLASSES = {
+  PRESENT: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  MISSING: 'border-amber-200 bg-amber-50 text-amber-700',
+  ORPHANED: 'border-rose-200 bg-rose-50 text-rose-700',
+};
 
 export default function ContextPanel({
   isOpen, width, onResizeStart,
@@ -29,9 +36,19 @@ export default function ContextPanel({
   const [doiInput, setDoiInput] = useState('');
   const [doiPreview, setDoiPreview] = useState(null);
   const [sourceBusy, setSourceBusy] = useState(false);
+  const [sourceCategories, setSourceCategories] = useState([]);
+  const [sourceCategoryId, setSourceCategoryId] = useState('');
   const fileInputRef = useRef(null);
   const { t } = useTranslation();
   const [graphFilter, setGraphFilter] = useState('all');
+
+  useEffect(() => {
+    if (!showSourceModal) return;
+    api.get('/api/source-categories')
+      .then(response => setSourceCategories(response.data || []))
+      .catch(() => setSourceCategories([]));
+  }, [showSourceModal, api]);
+
   if (!isOpen) return null;
 
   const relationColor = (relation) => {
@@ -99,6 +116,16 @@ export default function ContextPanel({
                     ))}
                   </div>
 
+                  <div>
+                    <label className="text-[10px] font-bold text-(--text-secondary) block mb-1">Category</label>
+                    <select value={sourceCategoryId} onChange={event => setSourceCategoryId(event.target.value)} className="w-full text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) text-(--text-primary)">
+                      <option value="">Auto classify</option>
+                      {sourceCategories.map(category => (
+                        <option key={category.id} value={category.id}>{category.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div className="space-y-2">
                     {sourceMode !== 'file' && (
                       <div>
@@ -138,16 +165,21 @@ export default function ContextPanel({
                     setSourceBusy(true);
                     try {
                       if (sourceMode === 'doi') {
-                        await api.post('/api/documents/ingest/doi', { doi: doiInput.trim(), projectId: project.id });
+                        await api.post('/api/documents/ingest/doi', {
+                          doi: doiInput.trim(),
+                          projectId: project.id,
+                          categoryId: sourceCategoryId || null,
+                        });
                         showToast('Source queued from DOI.');
                       } else {
                         const file = fileInputRef.current?.files?.[0];
                         if (!file) { showToast('Please select a file.'); setSourceBusy(false); return; }
                         const fd = new FormData(); fd.append('file', file); fd.append('projectId', project.id);
+                        if (sourceCategoryId) fd.append('categoryId', sourceCategoryId);
                         await api.post('/api/sources', fd);
                         showToast('Source uploaded.');
                       }
-                      setShowSourceModal(false); setDoiPreview(null); setDoiInput('');
+                      setShowSourceModal(false); setDoiPreview(null); setDoiInput(''); setSourceCategoryId('');
                       if (fetchSources) fetchSources();
                     } catch { showToast('Failed to add source.'); }
                     finally { setSourceBusy(false); }
@@ -164,6 +196,7 @@ export default function ContextPanel({
                     sources.map(src => (
                       <div key={src.id} onClick={() => src.fileUrl ? setViewerFile({ fileUrl: src.fileUrl, fileName: src.originalFilename }) : showToast('File URL not available')} className="bg-(--surface) border border-(--border) rounded-xl p-3.5 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-700 transition-all cursor-pointer transform hover:-translate-y-0.5">
                         <p className="text-sm font-bold text-(--text-primary) flex items-center gap-2"><svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>{src.originalFilename}</p>
+                        {src.sourceCategory && <span className="mt-1 inline-flex rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-bold text-indigo-700">{src.sourceCategory.code}</span>}
                         <p className="text-xs text-(--text-secondary) mt-1.5 line-clamp-2 leading-relaxed">Source file uploaded to this project.</p>
                       </div>
                     ))
@@ -338,6 +371,7 @@ export default function ContextPanel({
 
           {activeTab === 'Graph' && (
             <div className="flex flex-col gap-4 animate-in fade-in duration-200">
+              <SourceCategoryRadar radar={graphData?.radar} compact />
               <div className="bg-slate-900 rounded-xl p-4 border border-slate-800 text-slate-200 shadow-lg">
                 <div className="flex justify-between items-center mb-3">
                   <h4 className="font-bold text-xs text-indigo-400 flex items-center gap-1">

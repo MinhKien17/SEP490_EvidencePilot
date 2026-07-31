@@ -46,6 +46,7 @@ public class OpenAlexController {
     @PostMapping("/ingest/doi")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public DocumentResponse ingestByDoi(@Valid @RequestBody DoiIngestionRequest request) {
-        return ingestionService.ingestByDoi(request.projectId(), request.collectionId(), request.doi());
+        return ingestionService.ingestByDoi(
+                request.projectId(), request.collectionId(), request.doi(), request.categoryId());
     }
 }

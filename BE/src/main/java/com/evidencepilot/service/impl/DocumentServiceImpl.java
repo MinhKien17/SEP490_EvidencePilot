@@ -12,6 +12,7 @@ import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.DocumentText;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectDocument;
+import com.evidencepilot.model.SourceCategory;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
@@ -24,6 +25,7 @@ import com.evidencepilot.repository.DocumentTextRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.repository.SourceCategoryRepository;
 
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
@@ -76,6 +78,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final CurrentUserService currentUserService;
     private final DocumentPersistenceService documentPersistenceService;
     private final DocumentMapper documentMapper;
+    private final SourceCategoryRepository sourceCategoryRepository;
     private final MinioClient minioClient;
 
     @PostConstruct
@@ -258,11 +261,21 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     public DocumentResponse uploadDocument(UUID projectId, MultipartFile file, DocumentType docType) {
-        return uploadDocument(projectId, null, file, docType);
+        return uploadDocument(projectId, null, file, docType, null);
     }
 
     @Override
     public DocumentResponse uploadDocument(UUID projectId, UUID collectionId, MultipartFile file, DocumentType docType) {
+        return uploadDocument(projectId, collectionId, file, docType, null);
+    }
+
+    @Override
+    public DocumentResponse uploadDocument(
+            UUID projectId,
+            UUID collectionId,
+            MultipartFile file,
+            DocumentType docType,
+            UUID categoryId) {
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File is empty");
         }
@@ -286,12 +299,26 @@ public class DocumentServiceImpl implements DocumentService {
             }
         }
 
+        SourceCategory sourceCategory = null;
+        if (categoryId != null) {
+            if (docType != DocumentType.SOURCE) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Only Source documents can have a Source category.");
+            }
+            sourceCategory = requireActiveSourceCategory(categoryId);
+        }
+
         String originalName = file.getOriginalFilename();
 
         // Step A: Save pending document (transactional)
         Document document = documentPersistenceService.savePendingDocument(
                 project, collection, currentUser, docType, originalName,
                 file.getContentType(), file.getSize());
+        if (sourceCategory != null) {
+            document.setSourceCategory(sourceCategory);
+            document = documentRepository.save(document);
+        }
 
         // Step B: Upload to MinIO (non-transactional — holds no DB connection)
         String objectKey = "sources/raw/" + document.getId().toString() + fileExtension(originalName);
@@ -315,6 +342,19 @@ public class DocumentServiceImpl implements DocumentService {
         }
 
         return DocumentResponse.from(document);
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse updateSourceCategory(UUID sourceId, UUID categoryId) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Document source = findDocument(sourceId);
+        if (!source.isActive() || source.getDocType() != DocumentType.SOURCE) {
+            throw new ResourceNotFoundException(sourceId, "Source");
+        }
+        requireDocumentWriteAccess(currentUser, source);
+        source.setSourceCategory(requireActiveSourceCategory(categoryId));
+        return DocumentResponse.from(documentRepository.save(source));
     }
 
     @Override
@@ -530,6 +570,13 @@ public class DocumentServiceImpl implements DocumentService {
     private Document findDocument(UUID id) {
         return documentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(id, "Document"));
+    }
+
+    private com.evidencepilot.model.SourceCategory requireActiveSourceCategory(UUID categoryId) {
+        return sourceCategoryRepository.findByIdAndActiveTrue(categoryId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Source category is missing or inactive."));
     }
 
     private void requireDocumentAccess(User currentUser, Document doc) {

@@ -52,7 +52,7 @@ export default function WorkspaceLayout() {
   const [claims, setClaims] = useState([]);
   const [feedbacks, setFeedbacks] = useState([]);
   const [graphData, setGraphData] = useState(null);
-  const [graphScope, setGraphScope] = useState('own');
+  const [graphScope, setGraphScope] = useState('all');
   const [exports, setExports] = useState([]);
   const [loadingProject, setLoadingProject] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -625,14 +625,14 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     a.click(); URL.revokeObjectURL(url);
   };
 
-  const fetchGraphData = useCallback(async (projId) => {
-    try { const r = await api.get(`/api/projects/${projId}/graph?scope=${graphScope}`); setGraphData(r.data); } catch {}
+  const fetchGraphData = useCallback(async (projId, scope = graphScope) => {
+    try { const r = await api.get(`/api/projects/${projId}/graph?scope=${scope}`); setGraphData(r.data); } catch {}
   }, [graphScope]);
 
   const handleGraphScopeToggle = () => {
     const next = graphScope === 'own' ? 'all' : 'own';
     setGraphScope(next);
-    if (project) fetchGraphData(project.id);
+    if (project) fetchGraphData(project.id, next);
   };
 
   useEffect(() => {

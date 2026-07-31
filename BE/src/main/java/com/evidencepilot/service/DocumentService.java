@@ -41,8 +41,15 @@ public interface DocumentService {
     DocumentResponse uploadDocument(UUID projectId, MultipartFile file, DocumentType docType);
 
     DocumentResponse uploadDocument(UUID projectId, UUID collectionId, MultipartFile file, DocumentType docType);
+    DocumentResponse uploadDocument(
+            UUID projectId,
+            UUID collectionId,
+            MultipartFile file,
+            DocumentType docType,
+            UUID categoryId);
 
     DocumentResponse attachFileToDocument(UUID documentId, MultipartFile file);
+    DocumentResponse updateSourceCategory(UUID sourceId, UUID categoryId);
     Map<String, Object> shareToProject(UUID collectionId, UUID sourceId, UUID projectId);
     void removeSharedDocument(UUID projectId, UUID sourceId);
     List<DocumentChunkResponse> getDocumentChunks(UUID documentId);

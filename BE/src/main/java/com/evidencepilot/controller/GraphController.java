@@ -21,7 +21,7 @@ public class GraphController {
     @Operation(summary = "Get project graph data", description = "Returns claims, sources, and edges for the project graph view")
     public GraphResponse getGraph(
             @PathVariable UUID projectId,
-            @RequestParam(defaultValue = "own") String scope) {
+            @RequestParam(defaultValue = "all") String scope) {
         return graphService.getGraph(projectId, scope);
     }
 }
