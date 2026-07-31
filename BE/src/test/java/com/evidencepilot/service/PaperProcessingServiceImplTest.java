@@ -124,6 +124,24 @@ class PaperProcessingServiceImplTest {
     }
 
     @Test
+    void getPaperSectionsHidesSoftDeletedSections() {
+        User user = user();
+        Document document = document(project());
+        PaperSection active = section(document);
+        PaperSection deleted = section(document);
+        deleted.setActive(false);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(active, deleted));
+
+        service().getPaperSections(document.getId());
+
+        verify(projectMapper).toPaperSectionResponse(active);
+        verify(projectMapper, never()).toPaperSectionResponse(deleted);
+    }
+
+    @Test
     void reviewUsesCurrentSectionsEligibleEvidenceAndSectionFeedback() {
         User user = user();
         Project project = project();
@@ -278,11 +296,12 @@ class PaperProcessingServiceImplTest {
 
     @Test
     void archivedProjectRejectsSectionMutation() {
-        User user = user();
+        User user = instructor();
         Project project = project();
         project.setStatus(ProjectStatus.ARCHIVED);
         Document document = document(project);
         when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(currentUserService.isInstructor(user)).thenReturn(true);
         when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
         doThrow(new org.springframework.web.server.ResponseStatusException(
                 org.springframework.http.HttpStatus.CONFLICT, "Project is read-only."))
@@ -295,11 +314,14 @@ class PaperProcessingServiceImplTest {
 
     @Test
     void updateSectionRejectsSectionFromAnotherDocument() {
-        User user = user();
+        User user = instructor();
         Document authorized = document(project());
         PaperSection foreign = section(document(project()));
         when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(currentUserService.isInstructor(user)).thenReturn(true);
         when(documentRepository.findById(authorized.getId())).thenReturn(Optional.of(authorized));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(authorized.getId()))
+                .thenReturn(List.of());
         when(paperSectionRepository.findById(foreign.getId())).thenReturn(Optional.of(foreign));
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().updateSection(
@@ -311,12 +333,15 @@ class PaperProcessingServiceImplTest {
 
     @Test
     void mergeRejectsTargetFromAnotherDocument() {
-        User user = user();
+        User user = instructor();
         Document authorized = document(project());
         PaperSection source = section(authorized);
         PaperSection foreignTarget = section(document(project()));
         when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(currentUserService.isInstructor(user)).thenReturn(true);
         when(documentRepository.findById(authorized.getId())).thenReturn(Optional.of(authorized));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(authorized.getId()))
+                .thenReturn(List.of());
         when(paperSectionRepository.findById(foreignTarget.getId())).thenReturn(Optional.of(foreignTarget));
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().updateSection(
@@ -342,8 +367,97 @@ class PaperProcessingServiceImplTest {
     }
 
     @Test
-    void mergeMovesActiveClaimsToTargetSection() {
+    void instructorCanRenameUnassignedSection() {
+        User user = instructor();
+        Document document = document(project());
+        PaperSection section = section(document);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(currentUserService.isInstructor(user)).thenReturn(true);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
+        when(paperSectionRepository.save(section)).thenReturn(section);
+
+        service().updateSection(
+                document.getId(), section.getId(), "Renamed", null, null, null);
+
+        assertThat(section.getSectionTitle()).isEqualTo("Renamed");
+        verify(currentUserService, never()).requireSectionContentWriteAccess(any(), any());
+    }
+
+    @Test
+    void studentCannotRenameSection() {
         User user = user();
+        Document document = document(project());
+        PaperSection section = section(document);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+
+        assertThatThrownBy(() -> service().updateSection(
+                document.getId(), section.getId(), "Renamed", null, null, null))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("Only instructors");
+
+        verify(paperSectionRepository, never()).save(any(PaperSection.class));
+    }
+
+    @Test
+    void structureChangesAreLockedWhenAnySectionIsAssigned() {
+        User user = instructor();
+        Document document = document(project());
+        PaperSection assigned = section(document);
+        assigned.setAssignedUser(user());
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(currentUserService.isInstructor(user)).thenReturn(true);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(assigned));
+
+        assertThatThrownBy(() -> service().updateSection(
+                document.getId(), assigned.getId(), "Renamed", null, null, null))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("structure is locked");
+
+        verify(paperSectionRepository, never()).save(any(PaperSection.class));
+    }
+
+    @Test
+    void updateRejectsMixedStructureAndContent() {
+        assertThatThrownBy(() -> service().updateSection(
+                UUID.randomUUID(), UUID.randomUUID(), "Renamed", null, null, "Content"))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("must be updated separately");
+    }
+
+    @Test
+    void instructorCanCreateTopLevelSectionWhileStructureIsUnlocked() {
+        User user = instructor();
+        Document document = document(project());
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(currentUserService.isInstructor(user)).thenReturn(true);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of());
+        when(paperStandardService.getSectionTemplate(
+                com.evidencepilot.model.enums.PaperStandard.CUSTOM, "New Section"))
+                .thenReturn("% template");
+        when(paperSectionRepository.save(any(PaperSection.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service().createSection(document.getId(), "New Section", null);
+
+        verify(paperSectionRepository).save(argThat(section ->
+                section.getDocument() == document
+                        && section.getAssignedUser() == null
+                        && section.getSectionOrder() == 0
+                        && "New Section".equals(section.getSectionTitle())
+                        && "% template".equals(section.getContentTex())));
+    }
+
+    @Test
+    void mergeMovesActiveClaimsToTargetSection() {
+        User user = instructor();
         Document document = document(project());
         PaperSection source = section(document);
         PaperSection target = section(document);
@@ -351,7 +465,10 @@ class PaperProcessingServiceImplTest {
         claim.setActive(true);
         claim.setSection(source);
         when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(currentUserService.isInstructor(user)).thenReturn(true);
         when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(source, target));
         when(paperSectionRepository.findById(source.getId())).thenReturn(Optional.of(source));
         when(paperSectionRepository.findById(target.getId())).thenReturn(Optional.of(target));
         when(claimRepository.findBySectionId(source.getId())).thenReturn(List.of(claim));
@@ -364,19 +481,48 @@ class PaperProcessingServiceImplTest {
 
     @Test
     void deleteSectionRejectsActiveClaims() {
-        User user = user();
+        User user = instructor();
         Document document = document(project());
         PaperSection section = section(document);
+        section.setContentTex("");
         Claim claim = new Claim();
         claim.setActive(true);
         when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(currentUserService.isInstructor(user)).thenReturn(true);
         when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
         when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
         when(claimRepository.findBySectionId(section.getId())).thenReturn(List.of(claim));
 
         assertThatThrownBy(() -> service().deleteSection(document.getId(), section.getId()))
                 .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
                 .hasMessageContaining("active claims");
+        verify(paperSectionRepository, never()).save(section);
+    }
+
+    @Test
+    void deleteSectionRejectsInstructorFeedback() {
+        User user = instructor();
+        Document document = document(project());
+        PaperSection section = section(document);
+        section.setContentTex("");
+        InstructorFeedback feedback = new InstructorFeedback();
+        feedback.setSection(section);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(currentUserService.isInstructor(user)).thenReturn(true);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
+        when(sectionFeedbackRepository.findBySectionId(section.getId())).thenReturn(List.of());
+        when(instructorFeedbackRepository.findByRequestProjectId(document.getProject().getId()))
+                .thenReturn(List.of(feedback));
+
+        assertThatThrownBy(() -> service().deleteSection(document.getId(), section.getId()))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("feedback");
+
         verify(paperSectionRepository, never()).save(section);
     }
 
@@ -420,11 +566,14 @@ class PaperProcessingServiceImplTest {
 
     @Test
     void createSectionRejectsParentFromAnotherDocument() {
-        User user = user();
+        User user = instructor();
         Document authorized = document(project());
         PaperSection foreignParent = section(document(project()));
         when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(currentUserService.isInstructor(user)).thenReturn(true);
         when(documentRepository.findById(authorized.getId())).thenReturn(Optional.of(authorized));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(authorized.getId()))
+                .thenReturn(List.of());
         when(paperSectionRepository.findById(foreignParent.getId())).thenReturn(Optional.of(foreignParent));
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().createSection(
@@ -462,6 +611,12 @@ class PaperProcessingServiceImplTest {
         user.setId(UUID.randomUUID());
         user.setEmail(user.getId() + "@example.com");
         user.setRole(UserRole.STUDENT);
+        return user;
+    }
+
+    private User instructor() {
+        User user = user();
+        user.setRole(UserRole.INSTRUCTOR);
         return user;
     }
 

@@ -95,6 +95,55 @@ class PaperControllerTest {
     }
 
     @Test
+    void updateSection_bindsStructureParameters() throws Exception {
+        UUID paperId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+
+        mockMvc.perform(put("/api/papers/{paperId}/sections/{sectionId}", paperId, sectionId)
+                        .param("title", "Methods")
+                        .param("order", "2"))
+                .andExpect(status().isOk());
+
+        verify(paperService).updateSection(
+                paperId, sectionId, "Methods", 2, null, null);
+    }
+
+    @Test
+    void createSection_allowsMissingParentParameter() throws Exception {
+        UUID paperId = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/papers/{paperId}/sections/create", paperId)
+                        .param("title", "Conclusion"))
+                .andExpect(status().isCreated());
+
+        verify(paperService).createSection(paperId, "Conclusion", null);
+    }
+
+    @Test
+    void assignSection_bindsAssignedStudent() throws Exception {
+        UUID paperId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        UUID studentId = UUID.randomUUID();
+
+        mockMvc.perform(put("/api/papers/{paperId}/sections/{sectionId}/assign", paperId, sectionId)
+                        .param("assignedUserId", studentId.toString()))
+                .andExpect(status().isOk());
+
+        verify(paperService).assignSection(paperId, sectionId, studentId);
+    }
+
+    @Test
+    void deleteSection_returns204() throws Exception {
+        UUID paperId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+
+        mockMvc.perform(delete("/api/papers/{paperId}/sections/{sectionId}", paperId, sectionId))
+                .andExpect(status().isNoContent());
+
+        verify(paperService).deleteSection(paperId, sectionId);
+    }
+
+    @Test
     void review_bindsTargetStyle() throws Exception {
         UUID id = UUID.randomUUID();
         mockMvc.perform(post("/api/papers/{id}/review", id).param("targetStyle", "APA"))
