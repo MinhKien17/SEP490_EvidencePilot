@@ -719,17 +719,29 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     setLoadingAiReview(true); setShowAiReviewModal(true);
     try {
       const r = await api.post(`/api/papers/${selectedPaper.id}/review`);
-      setAiReviewResult(r.data); showToast("AI Review complete.");
+      setAiReviewResult(r.data);
+      const graph = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
+      setGraphData(graph.data);
+      showToast("AI Review complete.");
     } catch {
       showToast("AI Review failed.");
-      setAiReviewResult({ styleFeedback: "AI service unavailable.", structureFeedback: "Connection error." });
+      setAiReviewResult({
+        reviewVersion: 'paper-claim-review-v2',
+        complete: false,
+        direction: 'INSUFFICIENT_DATA',
+        summary: 'AI review service is unavailable.',
+        findings: [],
+        limitations: ['No review was generated. Try again later.'],
+      });
     } finally { setLoadingAiReview(false); }
   };
 
   const handleSubmitReview = async () => {
     if (!project) return;
     setShowSubmitReviewModal(false);
-    if (assignedSections.length > 0) await handleSaveDraft();
+    if (canEditSection(sections.find(section => String(section.id) === String(selectedSectionId)))) {
+      await handleSaveDraft();
+    }
     try {
       await api.post(`/api/projects/${project.id}/reviews`);
       showToast("Submitted for review.");
@@ -1155,25 +1167,59 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                   <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
                   <div className="text-center">
                     <p className="text-sm font-bold text-(--text-primary)">AI is analyzing...</p>
-                    <p className="text-xs text-(--text-tertiary) mt-1">Evaluating structure, evidence, and academic tone...</p>
+                    <p className="text-xs text-(--text-tertiary) mt-1">Scanning every Section chunk, stored Claim, active Source mapping, and instructor feedback...</p>
                   </div>
                 </div>
               ) : aiReviewResult ? (
                 <>
                   <div className="bg-(--surface) border border-(--border) rounded-xl p-5 shadow-sm hover:border-indigo-200 transition-colors">
                     <div className="flex justify-between items-start mb-3">
-                      <h3 className="text-sm font-bold text-(--text-primary) flex items-center gap-1.5"><span className="w-1.5 h-3 bg-indigo-600 rounded"></span>1. Academic Tone</h3>
-                      <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded">Pass</span>
+                      <h3 className="text-sm font-bold text-(--text-primary) flex items-center gap-1.5"><span className="w-1.5 h-3 bg-indigo-600 rounded"></span>Project assessment</h3>
+                      <span className={`border text-[10px] font-bold px-2 py-0.5 rounded ${aiReviewResult.direction === 'ON_TRACK' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : aiReviewResult.direction === 'NEEDS_ATTENTION' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>{(aiReviewResult.direction || 'UNKNOWN').replaceAll('_', ' ')}</span>
                     </div>
-                    <p className="text-xs text-(--text-secondary) leading-relaxed bg-(--surface-secondary) p-3.5 rounded-lg border border-(--border-light) italic">"{aiReviewResult.styleFeedback}"</p>
+                    <p className="text-xs text-(--text-secondary) leading-relaxed bg-(--surface-secondary) p-3.5 rounded-lg border border-(--border-light)">{aiReviewResult.summary}</p>
+                    {aiReviewResult.coverage && (
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[10px]">
+                        <div className="rounded-lg bg-indigo-50 p-2 text-indigo-700"><strong>{aiReviewResult.coverage.sectionsScanned}/{aiReviewResult.coverage.totalSections}</strong><br />Sections</div>
+                        <div className="rounded-lg bg-indigo-50 p-2 text-indigo-700"><strong>{aiReviewResult.coverage.chunksScanned}/{aiReviewResult.coverage.totalChunks}</strong><br />Chunks</div>
+                        <div className="rounded-lg bg-indigo-50 p-2 text-indigo-700"><strong>{aiReviewResult.coverage.claimsChecked}/{aiReviewResult.coverage.totalClaims}</strong><br />Claims</div>
+                      </div>
+                    )}
                   </div>
-                  <div className="bg-(--surface) border border-(--border) rounded-xl p-5 shadow-sm hover:border-indigo-200 transition-colors">
-                    <div className="flex justify-between items-start mb-3">
-                      <h3 className="text-sm font-bold text-(--text-primary) flex items-center gap-1.5"><span className="w-1.5 h-3 bg-indigo-600 rounded"></span>2. Evidence Mapping</h3>
-                      <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold px-2 py-0.5 rounded">Gaps Found</span>
+                  {(aiReviewResult.findings || []).map((finding, index) => (
+                    <button key={`${finding.claimId || 'general'}-${index}`} type="button" onClick={() => {
+                      const claim = claims.find(item => String(item.id) === String(finding.claimId));
+                      if (claim) {
+                        handleSelectClaim(claim);
+                        setActiveTab('Claims');
+                        setShowAiReviewModal(false);
+                      }
+                    }} className="w-full text-left bg-(--surface) border border-(--border) rounded-xl p-5 shadow-sm hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors">
+                      <div className="flex justify-between items-start gap-3 mb-2">
+                        <h3 className="text-sm font-bold text-(--text-primary)">{(finding.type || 'OTHER').replaceAll('_', ' ')}</h3>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${finding.severity === 'CRITICAL' ? 'bg-rose-50 text-rose-700 border-rose-200' : finding.severity === 'WARNING' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>{finding.severity}</span>
+                      </div>
+                      <p className="text-xs text-(--text-secondary) leading-relaxed">{finding.message}</p>
+                      {finding.excerpt && <blockquote className="mt-2 border-l-2 border-indigo-300 pl-2 text-[11px] italic text-(--text-tertiary)">“{finding.excerpt}”</blockquote>}
+                      <p className="mt-2 text-xs font-semibold text-indigo-700">Next: {finding.recommendedAction}</p>
+                      <div className="mt-3 flex flex-wrap gap-2 text-[9px] text-(--text-tertiary)">
+                        {finding.claimId && <span>Claim {finding.claimId}</span>}
+                        {finding.sourceIds?.length > 0 && <span>{finding.sourceIds.length} source{finding.sourceIds.length > 1 ? 's' : ''}</span>}
+                        {finding.feedbackIds?.length > 0 && <span>{finding.feedbackIds.length} feedback item{finding.feedbackIds.length > 1 ? 's' : ''}</span>}
+                      </div>
+                    </button>
+                  ))}
+                  {(aiReviewResult.findings || []).length === 0 && (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-800">No specific findings were returned.</div>
+                  )}
+                  {(aiReviewResult.limitations || []).length > 0 && (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <h3 className="mb-2 text-xs font-bold text-slate-700">Limitations</h3>
+                      <ul className="list-disc space-y-1 pl-4 text-[11px] text-slate-600">
+                        {aiReviewResult.limitations.map((limitation, index) => <li key={index}>{limitation}</li>)}
+                      </ul>
                     </div>
-                    <p className="text-xs text-(--text-secondary) leading-relaxed bg-(--surface-secondary) p-3.5 rounded-lg border border-(--border-light) italic">"{aiReviewResult.structureFeedback}"</p>
-                  </div>
+                  )}
                 </>
               ) : null}
             </div>

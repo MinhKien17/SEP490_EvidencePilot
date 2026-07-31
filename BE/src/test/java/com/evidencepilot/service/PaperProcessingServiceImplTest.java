@@ -1,16 +1,26 @@
 package com.evidencepilot.service;
 
 import com.evidencepilot.mapper.ProjectMapper;
+import com.evidencepilot.dto.response.SourceCategoryRadarResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
+import com.evidencepilot.model.ClaimEvidenceMapping;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentText;
+import com.evidencepilot.model.Claim;
+import com.evidencepilot.model.DocumentChunk;
+import com.evidencepilot.model.InstructorFeedback;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.model.enums.ProjectStatus;
+import com.evidencepilot.model.enums.ClaimContentStatus;
+import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.repository.DocumentRepository;
+import com.evidencepilot.repository.ClaimRepository;
+import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
+import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.SectionFeedbackRepository;
@@ -19,19 +29,13 @@ import com.evidencepilot.service.impl.PaperProcessingServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
-import java.util.zip.ZipFile;
-import java.util.zip.ZipOutputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -44,6 +48,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class PaperProcessingServiceImplTest {
@@ -53,6 +58,27 @@ class PaperProcessingServiceImplTest {
 
     @Mock
     private PaperSectionRepository paperSectionRepository;
+
+    @Mock
+    private ClaimRepository claimRepository;
+
+    @Mock
+    private ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
+
+    @Mock
+    private InstructorFeedbackRepository instructorFeedbackRepository;
+
+    @Mock
+    private ClaimContentConsistencyService claimContentConsistencyService;
+
+    @Mock
+    private SourceCategoryRadarService sourceCategoryRadarService;
+
+    @Mock
+    private AuditService auditService;
+
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 
     @Mock
     private SectionFeedbackRepository sectionFeedbackRepository;
@@ -79,7 +105,7 @@ class PaperProcessingServiceImplTest {
     private SystemNotificationService systemNotificationService;
 
     @Mock
-    private TexArchiveMediaWriter texArchiveMediaWriter;
+    private TexArchiveBuilder texArchiveBuilder;
 
     @Test
     void getPaperSectionsRequiresProjectAccess() {
@@ -98,22 +124,103 @@ class PaperProcessingServiceImplTest {
     }
 
     @Test
-    void reviewRequiresProjectAccess() {
+    void reviewUsesCurrentSectionsEligibleEvidenceAndSectionFeedback() {
         User user = user();
         Project project = project();
         Document document = document(project);
         DocumentText text = new DocumentText();
         text.setDocument(document);
-        text.setExtractedText("Paper text");
+        text.setExtractedText("Stale extracted text");
         document.setDocumentText(text);
+        PaperSection section = section(document);
+        section.setContentTex("Latest saved section content");
+        Claim claim = new Claim();
+        claim.setId(UUID.randomUUID());
+        claim.setProject(project);
+        claim.setSection(section);
+        claim.setContent("Latest saved section content");
+        claim.setActive(true);
+        ClaimEvidenceMapping eligible = mapping("Verified source snippet", MappingStatus.ACTIVE);
+        ClaimEvidenceMapping excluded = mapping("Rejected source snippet", MappingStatus.INACTIVE);
+        InstructorFeedback feedback = new InstructorFeedback();
+        feedback.setId(UUID.randomUUID());
+        feedback.setSection(section);
+        feedback.setContent("Clarify this claim.");
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
-        when(aiModelClient.generate(anyString())).thenReturn("ok");
+        when(sourceCategoryRadarService.calculate(project.getId())).thenReturn(radar());
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of(feedback));
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of(claim));
+        when(claimEvidenceMappingRepository.findByClaimId(claim.getId()))
+                .thenReturn(List.of(eligible, excluded));
+        when(claimContentConsistencyService.evaluate(claim)).thenReturn(ClaimContentStatus.PRESENT);
+        when(aiModelClient.generate(anyString())).thenReturn(validReviewJson());
 
-        service().review(document.getId(), null);
+        var response = service().review(document.getId(), null);
 
         verify(currentUserService).requireProjectAccess(user, project);
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(aiModelClient).generate(prompt.capture());
+        assertThat(prompt.getValue())
+                .contains("Latest saved section content")
+                .contains("Verified source snippet")
+                .contains("Clarify this claim.")
+                .doesNotContain("Stale extracted text", "Rejected source snippet");
+        assertThat(response.complete()).isTrue();
+        assertThat(response.coverage().sectionsScanned()).isEqualTo(1);
+        assertThat(response.summary()).contains("checked 1/1 active Claims");
+    }
+
+    @Test
+    void reviewRetriesInvalidJsonOnce() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(sourceCategoryRadarService.calculate(project.getId())).thenReturn(radar());
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(aiModelClient.generate(anyString())).thenReturn("not-json");
+
+        assertThatThrownBy(() -> service().review(document.getId(), null))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("invalid JSON");
+        verify(aiModelClient, times(2)).generate(anyString());
+    }
+
+    @Test
+    void reviewScansEveryPaperChunkWithoutSilentTruncation() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        section.setContentTex("x".repeat(8_100) + "TAIL_MARKER");
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(sourceCategoryRadarService.calculate(project.getId())).thenReturn(radar());
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(aiModelClient.generate(anyString())).thenReturn(validReviewJson());
+
+        var response = service().review(document.getId(), "IEEE");
+
+        ArgumentCaptor<String> prompts = ArgumentCaptor.forClass(String.class);
+        verify(aiModelClient, times(2)).generate(prompts.capture());
+        assertThat(prompts.getAllValues()).anyMatch(prompt -> prompt.contains("TAIL_MARKER"));
+        assertThat(response.coverage().totalChunks()).isEqualTo(2);
+        assertThat(response.coverage().chunksScanned()).isEqualTo(2);
     }
 
     @Test
@@ -220,14 +327,104 @@ class PaperProcessingServiceImplTest {
     }
 
     @Test
+    void contentUpdateUsesSectionContentPermission() {
+        User user = user();
+        Document document = document(project());
+        PaperSection section = section(document);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
+        when(paperSectionRepository.save(section)).thenReturn(section);
+
+        service().updateSection(document.getId(), section.getId(), null, null, null, "Updated");
+
+        verify(currentUserService).requireSectionContentWriteAccess(user, section);
+    }
+
+    @Test
+    void mergeMovesActiveClaimsToTargetSection() {
+        User user = user();
+        Document document = document(project());
+        PaperSection source = section(document);
+        PaperSection target = section(document);
+        Claim claim = new Claim();
+        claim.setActive(true);
+        claim.setSection(source);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(paperSectionRepository.findById(target.getId())).thenReturn(Optional.of(target));
+        when(claimRepository.findBySectionId(source.getId())).thenReturn(List.of(claim));
+
+        service().updateSection(document.getId(), source.getId(), null, null, target.getId(), null);
+
+        assertThat(claim.getSection()).isSameAs(target);
+        verify(claimRepository).saveAll(List.of(claim));
+    }
+
+    @Test
+    void deleteSectionRejectsActiveClaims() {
+        User user = user();
+        Document document = document(project());
+        PaperSection section = section(document);
+        Claim claim = new Claim();
+        claim.setActive(true);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
+        when(claimRepository.findBySectionId(section.getId())).thenReturn(List.of(claim));
+
+        assertThatThrownBy(() -> service().deleteSection(document.getId(), section.getId()))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("active claims");
+        verify(paperSectionRepository, never()).save(section);
+    }
+
+    @Test
+    void resetStandardRejectsSectionsWithActiveClaims() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        section.setContentTex("");
+        Claim claim = new Claim();
+        claim.setActive(true);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(currentUserService.isInstructor(user)).thenReturn(true);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
+                project.getId(), DocumentType.PAPER)).thenReturn(List.of(document));
+        when(documentRepository.save(document)).thenReturn(document);
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(claimRepository.findBySectionId(section.getId())).thenReturn(List.of(claim));
+
+        assertThatThrownBy(() -> service().resetSectionsForStandard(project.getId(), "IEEE"))
+                .hasMessageContaining("active claims");
+        verify(paperSectionRepository, never()).deleteAll(any());
+    }
+
+    @Test
+    void texExportRemainsAvailableWhenClaimsAreInconsistent() {
+        User user = user();
+        Project project = project();
+        project.setStatus(ProjectStatus.APPROVED);
+        Path archive = Path.of("export.zip");
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(texArchiveBuilder.build(project.getId())).thenReturn(archive);
+
+        assertThat(service().exportTexArchive(project.getId())).isEqualTo(archive);
+        verify(texArchiveBuilder).build(project.getId());
+    }
+
+    @Test
     void createSectionRejectsParentFromAnotherDocument() {
         User user = user();
         Document authorized = document(project());
         PaperSection foreignParent = section(document(project()));
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(documentRepository.findById(authorized.getId())).thenReturn(Optional.of(authorized));
-        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(authorized.getId()))
-                .thenReturn(List.of());
         when(paperSectionRepository.findById(foreignParent.getId())).thenReturn(Optional.of(foreignParent));
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service().createSection(
@@ -238,76 +435,17 @@ class PaperProcessingServiceImplTest {
     }
 
     @Test
-    void exportTexArchiveWritesGraphicxPreambleAndProjectMedia() throws Exception {
-        User user = user();
-        Project project = project();
-        Document document = document(project);
-        document.setOriginalFilename("paper.pdf");
-        PaperSection section = section(document);
-
-        when(currentUserService.requireCurrentUser()).thenReturn(user);
-        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
-        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
-                project.getId(), DocumentType.PAPER)).thenReturn(List.of(document));
-        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
-                .thenReturn(List.of(section));
-
-        Path archive = service().exportTexArchive(project.getId());
-        try (ZipFile zip = new ZipFile(archive.toFile(), StandardCharsets.UTF_8)) {
-            String tex = new String(
-                    zip.getInputStream(zip.getEntry("main.tex")).readAllBytes(),
-                    StandardCharsets.UTF_8);
-            assertThat(tex).contains("\\usepackage{graphicx}");
-        } finally {
-            Files.deleteIfExists(archive);
-        }
-        verify(texArchiveMediaWriter).writeProjectMedia(
-                eq(project.getId()),
-                any(ZipOutputStream.class));
-    }
-
-    @Test
-    void exportTexArchiveDeletesPartialFileAfterUncheckedFailure() throws Exception {
-        User user = user();
-        Project project = project();
-        RuntimeException failure = new IllegalStateException("media failed");
-
-        when(currentUserService.requireCurrentUser()).thenReturn(user);
-        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
-        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
-                project.getId(), DocumentType.PAPER)).thenReturn(List.of());
-        doThrow(failure).when(texArchiveMediaWriter).writeProjectMedia(
-                eq(project.getId()),
-                any(ZipOutputStream.class));
-        Set<Path> before = projectExportArchives();
-
-        try {
-            assertThatThrownBy(() -> service().exportTexArchive(project.getId()))
-                    .isSameAs(failure);
-            assertThat(projectExportArchives()).isEqualTo(before);
-        } finally {
-            for (Path archive : projectExportArchives()) {
-                if (!before.contains(archive)) {
-                    Files.deleteIfExists(archive);
-                }
-            }
-        }
-    }
-
-    private static Set<Path> projectExportArchives() throws IOException {
-        try (var files = Files.list(Path.of(System.getProperty("java.io.tmpdir")))) {
-            return files
-                    .filter(path -> path.getFileName().toString()
-                            .startsWith("evidencepilot-project-export-"))
-                    .filter(path -> path.getFileName().toString().endsWith(".zip"))
-                    .collect(Collectors.toSet());
-        }
-    }
-
     private PaperProcessingServiceImpl service() {
         return new PaperProcessingServiceImpl(
                 aiModelClient,
                 paperSectionRepository,
+                claimRepository,
+                claimEvidenceMappingRepository,
+                instructorFeedbackRepository,
+                claimContentConsistencyService,
+                sourceCategoryRadarService,
+                auditService,
+                objectMapper,
                 sectionFeedbackRepository,
                 documentRepository,
                 projectMapper,
@@ -316,7 +454,7 @@ class PaperProcessingServiceImplTest {
                 userRepository,
                 projectRepository,
                 systemNotificationService,
-                texArchiveMediaWriter);
+                texArchiveBuilder);
     }
 
     private User user() {
@@ -350,5 +488,35 @@ class PaperProcessingServiceImplTest {
         section.setSectionOrder(0);
         section.setContentTex("Content");
         return section;
+    }
+
+    private ClaimEvidenceMapping mapping(String snippet, MappingStatus status) {
+        Document source = new Document();
+        source.setId(UUID.randomUUID());
+        source.setOriginalFilename("source.pdf");
+        source.setDocType(DocumentType.SOURCE);
+        source.setActive(true);
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setDocument(source);
+        chunk.setText(snippet);
+        chunk.setActive(true);
+        ClaimEvidenceMapping mapping = new ClaimEvidenceMapping();
+        mapping.setId(UUID.randomUUID());
+        mapping.setDocumentChunk(chunk);
+        mapping.setStrengthScore(80);
+        mapping.setStatus(status);
+        return mapping;
+    }
+
+    private SourceCategoryRadarResponse radar() {
+        return new SourceCategoryRadarResponse("Source categories", 0, List.of());
+    }
+
+    private String validReviewJson() {
+        return """
+                {
+                  "findings":[]
+                }
+                """;
     }
 }

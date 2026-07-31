@@ -2,10 +2,10 @@ package com.evidencepilot.service;
 
 import com.evidencepilot.dto.response.PaperSectionResponse;
 import com.evidencepilot.dto.response.PaperValidationResponse;
+import com.evidencepilot.dto.response.AiReviewResponse;
 
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 public interface PaperProcessingService {
@@ -18,7 +18,7 @@ public interface PaperProcessingService {
 
     List<PaperSectionResponse> detectAndPersistSections(UUID documentId);
 
-    Map<String, Object> review(UUID documentId, String targetStyle);
+    AiReviewResponse review(UUID documentId, String targetStyle);
 
     PaperValidationResponse validateSections(UUID documentId);
 

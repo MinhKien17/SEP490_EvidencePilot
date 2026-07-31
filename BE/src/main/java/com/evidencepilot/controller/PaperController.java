@@ -5,6 +5,7 @@ import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.FormatScanResponse;
 import com.evidencepilot.dto.response.PaperSectionResponse;
 import com.evidencepilot.dto.response.PaperValidationResponse;
+import com.evidencepilot.dto.response.AiReviewResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.PaperSection;
@@ -291,7 +292,7 @@ public class PaperController {
             @ApiResponse(responseCode = "404", description = "Paper not found")
     })
     @PostMapping("/papers/{id}/review")
-    public Map<String, Object> review(
+    public AiReviewResponse review(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id,
             @Parameter(description = "Target output style (optional)") @RequestParam(required = false) String targetStyle) {
         return paperProcessingService.review(id, targetStyle);
