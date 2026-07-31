@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../../api.js';
 import FunctionalTypeRadar from '../../components/FunctionalTypeRadar.jsx';
@@ -17,6 +17,52 @@ const FUNCTIONAL_TYPES = [
   { value: 'APPLIED', label: 'APPLIED — Real-world applications, user feedback, impact' },
 ];
 
+const BREAKDOWN_LABELS = [
+  ['relation', 'Relation'],
+  ['evidence_anchor', 'Evidence anchor'],
+  ['source_type_authority', 'Source authority'],
+  ['citation_metadata', 'Citation metadata'],
+  ['link_availability', 'Link availability'],
+];
+
+function parseScoreBreakdown(s) {
+  if (!s) return null;
+  try { return JSON.parse(s); } catch { return null; }
+}
+
+function FunctionalTypeDropdown({ value, onChange, className }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  const selected = FUNCTIONAL_TYPES.find(t => t.value === value) || FUNCTIONAL_TYPES[0];
+  return (
+    <div ref={ref} className={`relative ${className || ''}`}>
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="w-full text-[10px] border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 text-(--text-primary) flex items-center justify-between gap-1">
+        <span className="truncate">{selected.value}</span>
+        <svg className={`w-3 h-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+      </button>
+      {open && (
+        <ul className="absolute z-20 left-0 right-0 mt-1 bg-(--surface) border border-(--border) rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          {FUNCTIONAL_TYPES.map(t => (
+            <li key={t.value}>
+              <button type="button" onClick={() => { onChange(t.value); setOpen(false); }}
+                className={`w-full text-left text-[10px] px-2 py-1.5 hover:bg-(--surface-secondary) ${t.value === selected.value ? 'font-bold text-indigo-600' : 'text-(--text-primary)'}`}>
+                {t.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function ContextPanel({
   isOpen, width, onResizeStart,
   activeTab, setActiveTab,
@@ -33,10 +79,10 @@ export default function ContextPanel({
   // Feedback tab
   feedbacks, setShowSubmitReviewModal, userProjectRole,
   // Graph tab
-  graphData, fetchGraphData, graphScope, onGraphScopeToggle, dynamicNodes, hoveredNodeId, setHoveredNodeId, claimStats,
+  graphData, fetchGraphData, graphScope, onGraphScopeToggle, claimStats,
   exports, fetchExports, api,
-  papers, selectedPaperDetail, setSelectedPaperDetail,
-  handleExportCsv, handleExportJson, setSelectedPaper, loadCode,
+  selectedPaperDetail, setSelectedPaperDetail,
+  handleExportCsv, handleExportJson,
   renderModalPaperPdf, isLocked,
 }) {
   const [showSourceModal, setShowSourceModal] = useState(false);
@@ -47,6 +93,7 @@ export default function ContextPanel({
   const fileInputRef = useRef(null);
   const { t } = useTranslation();
   const [graphFilter, setGraphFilter] = useState('all');
+  const [breakdownOpenId, setBreakdownOpenId] = useState(null);
 
   if (!isOpen) return null;
 
@@ -200,9 +247,7 @@ export default function ContextPanel({
                   <div className="flex flex-col gap-2">
                     <input value={newClaimContent} onChange={(e) => setNewClaimContent(e.target.value)} placeholder="Claim content..." className="text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 min-w-[120px] text-(--text-primary)" />
                     <div className="flex gap-2">
-                      <select value={newClaimFunctionalType} onChange={(e) => setNewClaimFunctionalType(e.target.value)} className="flex-1 text-[10px] border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 text-(--text-primary)">
-                        {FUNCTIONAL_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
-                      </select>
+                      <FunctionalTypeDropdown value={newClaimFunctionalType} onChange={setNewClaimFunctionalType} className="flex-1" />
                       <button onClick={handleUseSelectedText} className="text-xs font-semibold text-indigo-700 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition-colors">Use selection</button>
                       <button onClick={handleCreateClaim} disabled={!newClaimContent.trim()} className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-(--border) disabled:dark:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">Add</button>
                     </div>
@@ -299,6 +344,37 @@ export default function ContextPanel({
                                     </div>
                                     <p className="text-[10px] text-(--text-secondary) line-clamp-3 italic leading-relaxed">"{match.excerpt}"</p>
                                     {match.explanation && <p className="text-[10px] text-indigo-600 mt-1 leading-relaxed">{match.explanation}</p>}
+                                    {(() => {
+                                      const breakdown = parseScoreBreakdown(match.scoreBreakdown);
+                                      if (!breakdown) return null;
+                                      const open = breakdownOpenId === match.id;
+                                      return (
+                                        <div className="mt-1.5">
+                                          <button onClick={() => setBreakdownOpenId(open ? null : match.id)} className="text-[9px] font-bold text-(--text-secondary) hover:text-indigo-600 flex items-center gap-1">
+                                            <svg className={`w-2.5 h-2.5 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                                            Score breakdown
+                                          </button>
+                                          {open && (
+                                            <div className="mt-1.5 space-y-1">
+                                              {BREAKDOWN_LABELS.map(([key, label]) => {
+                                                const item = breakdown[key];
+                                                if (!item || item.max == null) return null;
+                                                const pct = item.max > 0 ? Math.round((item.earned / item.max) * 100) : 0;
+                                                return (
+                                                  <div key={key} className="flex items-center gap-2">
+                                                    <span className="w-24 text-[9px] text-(--text-secondary) shrink-0">{label}</span>
+                                                    <div className="flex-1 h-1 bg-(--border) rounded-full overflow-hidden">
+                                                      <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${pct}%` }} />
+                                                    </div>
+                                                    <span className="text-[9px] font-bold text-(--text-primary) shrink-0 w-12 text-right">{item.earned}/{item.max}</span>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
                                     {match.status === 'PENDING' && canEditClaim(claim) && (
                                       <div className="flex justify-end gap-2 mt-2">
                                         <button onClick={(event) => { event.stopPropagation(); handleSuggestionStatus(match.id, 'REJECTED'); }} disabled={isLocked || updatingSuggestionId === match.id} className="text-[9px] font-bold text-rose-600 hover:text-rose-700 disabled:opacity-40">Reject</button>
@@ -315,9 +391,7 @@ export default function ContextPanel({
                       {editingClaim && editingClaim.id === claim.id && (
                         <div className="mt-3 pt-3 border-t border-dashed border-(--border)">
                           <input value={editClaimContent} onChange={(e) => setEditClaimContent(e.target.value)} className="w-full text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 mb-2 text-(--text-primary)" />
-                          <select value={editClaimFunctionalType} onChange={(e) => setEditClaimFunctionalType(e.target.value)} className="w-full text-[10px] border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 mb-2 text-(--text-primary)">
-                            {FUNCTIONAL_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
-                          </select>
+                          <FunctionalTypeDropdown value={editClaimFunctionalType} onChange={setEditClaimFunctionalType} className="w-full mb-2" />
                           <div className="flex gap-2 justify-end">
                             <button onClick={() => setEditingClaim(null)} className="text-[10px] text-(--text-secondary) hover:text-(--text-primary) font-bold">Cancel</button>
                             <button onClick={handleUpdateClaim} className="text-[10px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-1 rounded-lg">Save</button>
@@ -397,71 +471,6 @@ export default function ContextPanel({
                   </div>
                 </div>
               )}
-              <div className="bg-slate-900 rounded-xl p-4 border border-slate-800 text-slate-200 shadow-lg">
-                <div className="flex justify-between items-center mb-3">
-                  <h4 className="font-bold text-xs text-indigo-400 flex items-center gap-1">
-                    <svg className="w-3.5 h-3.5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
-                    Paper Connection Map <span className="text-[9px] text-slate-500 font-medium">(keyword heuristic)</span>
-                  </h4>
-                  <span className="text-[9px] text-slate-500 font-mono font-semibold">Total: {papers.length} files</span>
-                </div>
-                <div className="bg-slate-950/50 border border-slate-800 rounded-lg px-3 py-2.5 mb-3 min-h-[54px] flex items-center justify-center transition-all duration-300">
-                  {hoveredNodeId ? ((() => {
-                    const node = dynamicNodes.find(p => p.id === hoveredNodeId);
-                    if (!node) return null;
-                    return (
-                      <div className="w-full flex items-center justify-between gap-3 text-left animate-in fade-in duration-200">
-                        <div className="truncate">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <span className="text-[9px] font-black text-white px-1.5 py-0.2 rounded uppercase tracking-wider" style={{ backgroundColor: node.color }}>Paper #{node.num}</span>
-                            <span className="text-[9px] text-slate-400 font-bold font-mono truncate">{node.name}</span>
-                          </div>
-                          <p className="text-[11px] font-bold text-slate-200 line-clamp-1 leading-snug">{node.title}</p>
-                        </div>
-                        <span className="text-[9px] text-indigo-400 font-bold shrink-0">View detail</span>
-                      </div>
-                    );
-                  })()) : (
-                    <p className="text-[11px] text-slate-400 italic text-center font-medium">Hover over numbers to inspect draft titles...</p>
-                  )}
-                </div>
-                <div className="bg-slate-950 border border-slate-800 rounded-lg p-2 flex justify-center items-center relative overflow-hidden select-none">
-                  <svg className="w-full max-w-[340px] h-[320px]" viewBox="0 0 340 320">
-                    {(() => {
-                      const links = [];
-                      const cats = {};
-                      dynamicNodes.forEach(n => { if (!cats[n.category]) cats[n.category] = []; cats[n.category].push(n); });
-                      Object.values(cats).forEach(nodes => { for (let i = 0; i < nodes.length; i++) { for (let j = i + 1; j < nodes.length; j++) { links.push({ source: nodes[i].id, target: nodes[j].id, color: nodes[i].color }); } } });
-                      return links.map((link, idx) => {
-                        const sn = dynamicNodes.find(p => p.id === link.source), tn = dynamicNodes.find(p => p.id === link.target);
-                        if (!sn || !tn) return null;
-                        const h = hoveredNodeId === null || hoveredNodeId === link.source || hoveredNodeId === link.target;
-                        return <line key={idx} x1={sn.x} y1={sn.y} x2={tn.x} y2={tn.y} stroke={link.color} strokeWidth={h ? 2.5 : 1} strokeOpacity={h ? 0.75 : 0.08} className="transition-all duration-300" />;
-                      });
-                    })()}
-                    {dynamicNodes.map(node => {
-                      const h = hoveredNodeId === null || hoveredNodeId === node.id;
-                      return (
-                        <g key={node.id} className="cursor-pointer transition-all duration-300" style={{ opacity: h ? 1 : 0.25 }}
-                          onMouseEnter={() => setHoveredNodeId(node.id)}
-                          onMouseLeave={() => setHoveredNodeId(null)}
-                          onClick={() => {
-                            const mp = papers.find(p => p.id === node.id);
-                            if (mp) { setSelectedPaper(mp); loadCode(mp.content || mp.extractedText || ''); showToast(`Switched to: ${node.title}`); }
-                          }}>
-                          <circle cx={node.x} cy={node.y} r={16} fill="#1e293b" stroke={node.color} strokeWidth={hoveredNodeId === node.id ? 3.5 : 2} className="transition-all duration-300" />
-                          <text x={node.x} y={node.y + 4} textAnchor="middle" fill="#f8fafc" fontSize="11px" fontWeight="bold" fontFamily="sans-serif">{node.num}</text>
-                        </g>
-                      );
-                    })}
-                  </svg>
-                  <div className="absolute bottom-2 left-2 right-2 bg-slate-900/95 border border-slate-800 rounded-md p-1.5 flex justify-between text-[9px] text-slate-400">
-                    <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#38bdf8]"></span> ReactJS</div>
-                    <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#10b981]"></span> DevOps</div>
-                    <div className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#ec4899]"></span> Microservices</div>
-                  </div>
-                </div>
-              </div>
               <label className="flex items-center gap-2 mb-3 px-1 text-[11px] text-(--text-tertiary) cursor-pointer select-none">
                 <input type="checkbox" checked={graphScope === 'all'} onChange={onGraphScopeToggle}
                   className="w-3.5 h-3.5 rounded border-(--border) text-indigo-600 focus:ring-indigo-500" />

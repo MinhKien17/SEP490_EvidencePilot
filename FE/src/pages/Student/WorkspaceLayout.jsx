@@ -76,7 +76,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const [historyIndex, setHistoryIndex] = useState(0);
 
   const [selectedPaperDetail, setSelectedPaperDetail] = useState(null);
-  const [hoveredNodeId, setHoveredNodeId] = useState(null);
 
   const [showSubmitReviewModal, setShowSubmitReviewModal] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -712,10 +711,11 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     }
     setSelectedClaim(claim);
     await handleFetchMatches(claim.id);
-    if (claim.sectionId) {
-      setSelectedSectionId(claim.sectionId);
-      loadCode('');
-    }
+    if (!claim.sectionId) return;
+    const sec = sections.find(s => String(s.id) === String(claim.sectionId));
+    if (!sec) return;
+    setSelectedSectionId(claim.sectionId);
+    loadCode(sec.contentTex || '');
   };
 
   const handleScanCitations = async () => {
@@ -819,39 +819,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     const idx = text.indexOf(searchQuery);
     if (idx !== -1) { updateCode(text.substring(0, idx) + replaceQuery + text.substring(idx + searchQuery.length)); } else showToast('Not found.');
   };
-
-  const getPaperCategory = (paper) => {
-    const t = ((paper.title || paper.name || '') + ' ' + (paper.content || '')).toLowerCase();
-    if (t.includes('react')) return 'ReactJS';
-    if (t.includes('devops') || t.includes('agile') || t.includes('scrum') || t.includes('cicd') || t.includes('test')) return 'DevOps';
-    if (t.includes('microservice') || t.includes('gateway') || t.includes('consensus') || t.includes('raft') || t.includes('kafka')) return 'Microservices';
-    return 'General';
-  };
-
-  const getCategoryColor = (cat) => ({ ReactJS: '#38bdf8', DevOps: '#10b981', Microservices: '#ec4899', General: '#818cf8' }[cat] || '#818cf8');
-
-  const sortedPapers = [...papers].sort((a, b) => new Date(a.uploadedAt) - new Date(b.uploadedAt));
-  const clusterCounts = {};
-  sortedPapers.forEach(p => { const cat = getPaperCategory(p); clusterCounts[cat] = (clusterCounts[cat] || 0) + 1; });
-  const tempNodes = [];
-  const cc2 = {};
-  sortedPapers.forEach((paper, index) => {
-    const cat = getPaperCategory(paper);
-    const numInCluster = cc2[cat] || 0; cc2[cat] = numInCluster + 1;
-    let summary = 'Research draft.';
-    if (paper.extractedText) summary = paper.extractedText.replace(/\\hl\{([^}]+)\}/g, '$1').slice(0, 160) + '...';
-    tempNodes.push({ id: paper.id, num: index + 1, name: paper.filename || paper.name || paper.originalFilename || 'document.tex', title: paper.title || paper.originalFilename || 'document.tex', category: cat, color: getCategoryColor(cat), created: paper.uploadedAt ? new Date(paper.uploadedAt).toLocaleString() : 'Unknown', summary, clusterIndex: numInCluster });
-  });
-
-  const clusterCenters = { ReactJS: { x: 95, y: 95 }, DevOps: { x: 245, y: 95 }, Microservices: { x: 170, y: 225 }, General: { x: 170, y: 160 } };
-
-  const dynamicNodes = tempNodes.map(node => {
-    const total = clusterCounts[node.category] || 1;
-    const center = clusterCenters[node.category] || { x: 170, y: 160 };
-    if (total <= 1) return { ...node, x: center.x, y: center.y };
-    const angle = (node.clusterIndex / total) * 2 * Math.PI;
-    return { ...node, x: Math.round(center.x + 35 * Math.cos(angle)), y: Math.round(center.y + 35 * Math.sin(angle)) };
-  });
 
   const generateRichTextHtml = (latexCode) => {
     let body = latexCode.replace(/\\documentclass.*?\n/g, '').replace(/\\usepackage.*?\n/g, '').replace(/\\title\{.*?\}/g, '').replace(/\\author\{.*?\}/g, '').replace(/\\date\{.*?\}/g, '').replace(/\\begin\{document\}/g, '').replace(/\\end\{document\}/g, '').replace(/\\maketitle/g, '');
@@ -962,10 +929,10 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
           editingClaim={editingClaim} setEditingClaim={setEditingClaim} editClaimContent={editClaimContent} setEditClaimContent={setEditClaimContent} editClaimFunctionalType={editClaimFunctionalType} setEditClaimFunctionalType={setEditClaimFunctionalType} handleDeleteClaim={handleDeleteClaim} handleUpdateClaim={handleUpdateClaim}
           onSelectClaim={handleSelectClaim}
           feedbacks={feedbacks} setShowSubmitReviewModal={setShowSubmitReviewModal} userProjectRole={project?.currentUserRole}
-          graphData={graphData} fetchGraphData={fetchGraphData} graphScope={graphScope} onGraphScopeToggle={handleGraphScopeToggle} dynamicNodes={dynamicNodes} hoveredNodeId={hoveredNodeId} setHoveredNodeId={setHoveredNodeId} claimStats={claimStats}
+          graphData={graphData} fetchGraphData={fetchGraphData} graphScope={graphScope} onGraphScopeToggle={handleGraphScopeToggle} claimStats={claimStats}
           exports={exports} fetchExports={fetchExports} api={api} showToast={showToast}
-          papers={papers} selectedPaperDetail={selectedPaperDetail} setSelectedPaperDetail={setSelectedPaperDetail}
-          handleExportCsv={handleExportCsv} handleExportJson={handleExportJson} setSelectedPaper={setSelectedPaper} loadCode={loadCode}
+          selectedPaperDetail={selectedPaperDetail} setSelectedPaperDetail={setSelectedPaperDetail}
+          handleExportCsv={handleExportCsv} handleExportJson={handleExportJson}
           renderModalPaperPdf={renderModalPaperPdf} />
       </div>
 

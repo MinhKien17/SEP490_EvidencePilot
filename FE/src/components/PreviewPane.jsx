@@ -28,7 +28,7 @@ function renderLatexToHtml(latex, mediaUrlMap) {
     .replace(/\\label\{([^}]*)\}/g, '')
 
     // includegraphics → <img>
-    .replace(/\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}/g, (_, fn) => {
+    .replace(/\\includegraphics(?:\[.*?\])?\{([^}]+)\}/g, (_, fn) => {
       const url = mediaUrlMap ? mediaUrlMap[fn] : null;
       const alt = escHtml(fn);
       if (!url) return `<span class="text-red-500 text-xs">[missing image: ${alt}]</span>`;
@@ -80,8 +80,20 @@ function renderLatexToHtml(latex, mediaUrlMap) {
     catch { return `<span class="text-red-500">${eq}</span>`; }
   });
 
+  const tables = [];
+  body = body.replace(/<table[\s\S]*?<\/table>|<tr[\s\S]*?<\/tr>/gi, (m) => {
+    tables.push(m);
+    return `\u0000TBL${tables.length - 1}\u0000`;
+  });
   const paragraphs = body.split(/\n\n+/).filter(p => p.trim());
-  return paragraphs.map(p => `<p class="mb-4 leading-relaxed text-slate-700">${p}</p>`).join('\n');
+  return paragraphs.map(p => {
+    if (p.includes('\u0000TBL')) {
+      let chunk = p.replace(/\u0000TBL(\d+)\u0000/g, (_, i) => tables[Number(i)]);
+      if (!/<\/table>/i.test(chunk)) chunk = `<table class="w-full">${chunk}</table>`;
+      return `<div class="mb-4 overflow-x-auto">${chunk}</div>`;
+    }
+    return `<p class="mb-4 leading-relaxed text-slate-700">${p}</p>`;
+  }).join('\n');
 }
 
 export default function PreviewPane({ latex, mediaAssets }) {
@@ -111,7 +123,7 @@ export default function PreviewPane({ latex, mediaAssets }) {
 
   return (
     <div className="h-full overflow-y-auto bg-white p-8">
-      <div className="max-w-prose mx-auto whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: html }} />
+      <div className="max-w-prose mx-auto whitespace-pre-wrap break-words preview-content" dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   );
 }

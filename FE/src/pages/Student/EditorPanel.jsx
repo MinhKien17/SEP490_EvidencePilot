@@ -17,7 +17,7 @@ export default function EditorPanel({
     ?? (assignedSections && assignedSections.some(s => String(s.id) === String(selectedSectionId)));
   const [previewZoom, setPreviewZoom] = useState(100);
   return (
-    <div id="editor-preview-container" className="flex-1 flex overflow-hidden bg-(--surface-tertiary)/50 p-2 gap-2">
+    <div id="editor-preview-container" className="flex-1 min-w-0 flex overflow-hidden bg-(--surface-tertiary)/50 p-2 gap-2">
       <div style={{ width: `${editorWidth}%`, flexGrow: 0, flexShrink: 0 }} className="bg-(--surface) rounded-lg shadow-sm border border-(--border) flex flex-col overflow-hidden">
         <div data-tour="editor-toolbar" className="h-10 border-b border-(--border-light) flex items-center justify-between px-3 bg-(--surface) shadow-sm shrink-0 z-10">
           <div className="flex items-center gap-2 truncate">
