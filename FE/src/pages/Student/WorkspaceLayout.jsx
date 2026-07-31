@@ -260,6 +260,20 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
   const assignedSections = user ? sections.filter(s => String(s.assignedUserId) === String(user.id)) : [];
   const isLocked = project?.status === 'SUBMITTED_FOR_REVIEW' || project?.status === 'APPROVED' || project?.status === 'ARCHIVED';
+  const canEditSection = (section) => {
+    if (isLocked || !section) return false;
+    return role === 'STUDENT'
+      && Boolean(section.assignedUserId)
+      && String(section.assignedUserId) === String(user?.id);
+  };
+  const currentSection = sections.find(section =>
+    String(section.id) === String(selectedSectionId));
+  const canEditCurrentSection = canEditSection(currentSection);
+  const requireEditableCurrentSection = () => {
+    if (canEditCurrentSection) return true;
+    showToast('This section is read-only.');
+    return false;
+  };
 
   useEffect(() => {
     if (!selectedPaper) { setSections([]); return; }
@@ -420,6 +434,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   };
 
   const handleInsertMedia = (texFilename) => {
+    if (!requireEditableCurrentSection()) return;
     const ed = editorRef.current;
     if (!ed) return;
     ed.insertAtCursor(`\\includegraphics{${texFilename}}`, 0);
@@ -429,17 +444,48 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const handleCreateClaim = async () => {
     if (isLocked) { showToast("Project is locked."); return; }
     if (!newClaimContent.trim() || !project) return;
-    if (assignedSections.length === 0) { showToast("No section assigned to you."); return; }
+    const section = currentSection;
+    if (!section) { showToast("Select a section first."); return; }
+    if (!canEditSection(section)) {
+      showToast("You cannot edit claims in this section.");
+      return;
+    }
     const sectionId = selectedSectionId;
     try {
-      await api.post('/api/claims', { sectionId, content: newClaimContent });
+      const rawSelection = editorRef.current?.getSelection() || '';
+      const created = await api.post('/api/claims', { sectionId, content: newClaimContent });
+      let nextContent = codeContent;
+      if (rawSelection.trim() && rawSelection.trim() === newClaimContent.trim()) {
+        nextContent = editorRef.current?.insertAtCursor(
+          `\\epclaim{${created.data.id}}{${rawSelection}}`,
+        ) ?? codeContent;
+      }
+      if (nextContent !== (section.contentTex || '')) {
+        await api.put(`/api/papers/${selectedPaper.id}/sections/${sectionId}`, null, {
+          params: { content: nextContent },
+        });
+      }
       showToast("Claim added.");
       setNewClaimContent('');
-      const r = await api.get(`/api/projects/${project.id}/claims`);
-      setClaims(r.data?.content || []);
-      const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
-      setGraphData(g.data);
+      const [claimResponse, sectionResponse, graphResponse] = await Promise.all([
+        api.get(`/api/projects/${project.id}/claims`),
+        api.get(`/api/papers/${selectedPaper.id}/sections`),
+        api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`),
+      ]);
+      setClaims(claimResponse.data?.content || []);
+      setSections(sectionResponse.data || []);
+      setGraphData(graphResponse.data);
     } catch { showToast("Add claim failed."); }
+  };
+
+  const handleUseSelectedText = () => {
+    const selectedText = editorRef.current?.getSelection()?.trim();
+    if (!selectedText) {
+      showToast("Select text in the editor first.");
+      return;
+    }
+    setNewClaimContent(selectedText);
+    setActiveTab('Claims');
   };
 
   const handleUpdateClaim = async () => {
@@ -504,21 +550,26 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   };
 
   const canEditClaim = (claim) => {
-    if (isLocked) return false;
-    if (role === 'ADMIN' || role === 'INSTRUCTOR') return true;
-    return sections.filter(s => String(s.assignedUserId) === String(user?.id)).map(s => s.id).includes(claim.sectionId);
+    const section = sections.find(s => String(s.id) === String(claim.sectionId));
+    return canEditSection(section);
   };
 
   const handleSaveDraft = async () => {
-    if (isLocked) { showToast("Project is locked."); return; }
+    if (!requireEditableCurrentSection()) return;
     if (!selectedPaper) { showToast("No paper selected."); return; }
     if (!selectedSectionId) { showToast("No section selected."); return; }
     setSaveStatus('saving');
     try {
       await api.put(`/api/papers/${selectedPaper.id}/sections/${selectedSectionId}`, null, { params: { content: codeContent } });
       setSaveStatus('saved'); setLastSaved(new Date());
-      const r = await api.get(`/api/papers/${selectedPaper.id}/sections`);
-      setSections(r.data || []);
+      const [sectionResponse, claimResponse, graphResponse] = await Promise.all([
+        api.get(`/api/papers/${selectedPaper.id}/sections`),
+        api.get(`/api/projects/${project.id}/claims`),
+        api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`),
+      ]);
+      setSections(sectionResponse.data || []);
+      setClaims(claimResponse.data?.content || []);
+      setGraphData(graphResponse.data);
       setTimeout(() => setSaveStatus(''), 3000);
     } catch { setSaveStatus('error'); showToast("Save failed."); }
   };
@@ -693,7 +744,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   };
 
   const insertLatexTag = (tagType) => {
-    if (selectedPaper?.status === 'APPROVED') { showToast('Document is approved, cannot edit.'); return; }
+    if (!requireEditableCurrentSection()) return;
     const ed = editorRef.current;
     if (!ed) return;
     const sel = ed.getSelection() || '';
@@ -709,7 +760,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   };
 
   const insertSymbol = (sym) => {
-    if (selectedPaper?.status === 'APPROVED') { showToast('Cannot edit.'); return; }
+    if (!requireEditableCurrentSection()) return;
     const ed = editorRef.current;
     if (!ed) return;
     ed.insertAtCursor(sym);
@@ -724,7 +775,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   };
 
   const handleFindReplace = (replaceAll = false) => {
-    if (selectedPaper?.status === 'APPROVED') { showToast('Cannot edit.'); return; }
+    if (!requireEditableCurrentSection()) return;
     if (!searchQuery) return;
     const text = codeContent;
     if (replaceAll) { updateCode(text.replaceAll(searchQuery, replaceQuery)); showToast('Replaced all.'); return; }
@@ -863,13 +914,13 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
           </div>
         </div>
 
-        <FilePanel isOpen={isFileTreeOpen} width={fileTreeWidth} onResizeStart={handleLeftDividerMouseDown} sections={sections} assignedSections={assignedSections} selectedSectionId={selectedSectionId} onSelectSection={(sec) => { setSelectedSectionId(sec.id); loadCode(sec.contentTex || ''); }} selectedPaper={selectedPaper} onSelectPaper={(p) => { setSelectedPaper(p); setShowHistoryModal(false); loadCode(p.extractedText || ''); }} papers={papers} onUploadPaper={isLocked ? undefined : handleUploadPaper} sources={sources} onUploadSource={isLocked ? undefined : handleUploadSource} onDeleteSource={handleDeleteSource} mediaAssets={mediaAssets} onUploadMedia={isLocked ? undefined : handleUploadMedia} onDeleteMedia={handleDeleteMedia} onInsertMedia={handleInsertMedia} showToast={showToast} isLocked={isLocked} />
+        <FilePanel isOpen={isFileTreeOpen} width={fileTreeWidth} onResizeStart={handleLeftDividerMouseDown} sections={sections} assignedSections={assignedSections} selectedSectionId={selectedSectionId} onSelectSection={(sec) => { setSelectedSectionId(sec.id); loadCode(sec.contentTex || ''); }} selectedPaper={selectedPaper} onSelectPaper={(p) => { setSelectedPaper(p); setShowHistoryModal(false); loadCode(p.extractedText || ''); }} papers={papers} onUploadPaper={isLocked ? undefined : handleUploadPaper} sources={sources} onUploadSource={isLocked ? undefined : handleUploadSource} onDeleteSource={handleDeleteSource} mediaAssets={mediaAssets} onUploadMedia={isLocked ? undefined : handleUploadMedia} onDeleteMedia={handleDeleteMedia} onInsertMedia={canEditCurrentSection ? handleInsertMedia : undefined} showToast={showToast} isLocked={isLocked} />
 
-        <EditorPanel editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSections={assignedSections} currentSection={sections.find(s => String(s.id) === String(selectedSectionId))} displayContent={displayContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} handleScanCitations={handleScanCitations} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} isLocked={isLocked} />
+        <EditorPanel editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSections={assignedSections} canEditCurrentSection={canEditCurrentSection} currentSection={currentSection} displayContent={displayContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} handleScanCitations={handleScanCitations} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} isLocked={isLocked} />
 
         <ContextPanel isOpen={isDrawerOpen} width={rightDrawerWidth} onResizeStart={handleRightDividerMouseDown} activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); localStorage.setItem('student_workspace_active_tab', tab); }} showToast={showToast}
           sources={sources} isUploading={isUploading} setIsUploading={setIsUploading} project={project} setViewerFile={setViewerFile} fetchSources={fetchSources} isLocked={isLocked}
-          newClaimContent={newClaimContent} setNewClaimContent={setNewClaimContent} handleCreateClaim={handleCreateClaim}
+          newClaimContent={newClaimContent} setNewClaimContent={setNewClaimContent} handleCreateClaim={handleCreateClaim} handleUseSelectedText={handleUseSelectedText} canCreateClaim={canEditCurrentSection}
           claims={claims} selectedClaim={selectedClaim} claimMatches={claimMatches} loadingMatches={loadingMatches}
           claimCandidates={claimCandidates} loadingCandidates={loadingCandidates} evaluatingChunkId={evaluatingChunkId} updatingSuggestionId={updatingSuggestionId}
           handleSearchClaimMatches={handleSearchClaimMatches} handleEvaluateMatch={handleEvaluateMatch} handleSuggestionStatus={handleSuggestionStatus} canEditClaim={canEditClaim}

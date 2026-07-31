@@ -151,7 +151,7 @@ public class ClaimServiceImpl implements ClaimService {
                 .orElseThrow(() -> new ResourceNotFoundException(request.sectionId(), "PaperSection"));
         Project project = section.getDocument().getProject();
 
-        requireSectionWriteAccess(currentUser, section);
+        currentUserService.requireSectionContentWriteAccess(currentUser, section);
 
         Claim claim = new Claim();
         claim.setProject(project);
@@ -171,11 +171,7 @@ public class ClaimServiceImpl implements ClaimService {
     public ClaimResponse updateClaim(UUID id, String content, Float aiConfidenceScore) {
         Claim claim = findActiveClaim(id);
         User currentUser = currentUserService.requireCurrentUser();
-        if (claim.getSection() != null) {
-            requireSectionWriteAccess(currentUser, claim.getSection());
-        } else {
-            requireProjectContentWriteAccess(currentUser, claim.getProject());
-        }
+        requireClaimContentWriteAccess(currentUser, claim);
 
         claim.setContent(content);
         if (aiConfidenceScore != null) {
@@ -203,11 +199,7 @@ public class ClaimServiceImpl implements ClaimService {
     public void deleteClaim(UUID id) {
         Claim claim = findActiveClaim(id);
         User currentUser = currentUserService.requireCurrentUser();
-        if (claim.getSection() != null) {
-            requireSectionWriteAccess(currentUser, claim.getSection());
-        } else {
-            requireProjectContentWriteAccess(currentUser, claim.getProject());
-        }
+        requireClaimContentWriteAccess(currentUser, claim);
         claim.setActive(false);
         claimRepository.save(claim);
     }
@@ -318,13 +310,16 @@ public class ClaimServiceImpl implements ClaimService {
         ClaimEvidenceMapping mapping = claimEvidenceMappingRepository.findById(mappingId)
                 .orElseThrow(() -> new ResourceNotFoundException(mappingId, "ClaimEvidenceMapping"));
         User currentUser = currentUserService.requireCurrentUser();
-        currentUserService.requireProjectWriteAccess(currentUser, mapping.getClaim().getProject());
+        Project project = mapping.getClaim().getProject();
+        if (project.getStatus().isReadOnly()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
+        }
         if (!currentUserService.isAdmin(currentUser)) {
             if (!currentUserService.isInstructor(currentUser)) {
                 throw new ResponseStatusException(
                         HttpStatus.FORBIDDEN, "Only instructors can review mappings");
             }
-            currentUserService.requireProjectAccess(currentUser, mapping.getClaim().getProject());
+            currentUserService.requireProjectAccess(currentUser, project);
         }
 
         mapping.setReviewStatus(request.reviewStatus());
@@ -355,7 +350,7 @@ public class ClaimServiceImpl implements ClaimService {
     private Claim requireClaimWriteAccess(UUID claimId) {
         Claim claim = findActiveClaim(claimId);
         User currentUser = currentUserService.requireCurrentUser();
-        requireProjectContentWriteAccess(currentUser, claim.getProject());
+        requireClaimContentWriteAccess(currentUser, claim);
         return claim;
     }
 
@@ -363,7 +358,7 @@ public class ClaimServiceImpl implements ClaimService {
         AiSuggestion suggestion = aiSuggestionRepository.findById(suggestionId)
                 .orElseThrow(() -> new ResourceNotFoundException(suggestionId, "AiSuggestion"));
         User currentUser = currentUserService.requireCurrentUser();
-        requireProjectContentWriteAccess(currentUser, suggestion.getClaim().getProject());
+        requireClaimContentWriteAccess(currentUser, suggestion.getClaim());
         return suggestion;
     }
 
@@ -382,13 +377,13 @@ public class ClaimServiceImpl implements ClaimService {
         }
     }
 
-    private void requireProjectContentWriteAccess(User currentUser, Project project) {
-        currentUserService.requireProjectWriteAccess(currentUser, project);
-    }
-
-    private void requireSectionWriteAccess(User currentUser, PaperSection section) {
-        requireProjectContentWriteAccess(currentUser, section.getDocument().getProject());
-        currentUserService.requireSectionAssignment(currentUser, section);
+    private void requireClaimContentWriteAccess(User currentUser, Claim claim) {
+        if (claim.getSection() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Claim has no owning section and is read-only.");
+        }
+        currentUserService.requireSectionContentWriteAccess(currentUser, claim.getSection());
     }
 
     private Claim findActiveClaim(UUID id) {

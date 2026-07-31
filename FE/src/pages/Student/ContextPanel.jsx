@@ -9,7 +9,7 @@ export default function ContextPanel({
   // Source tab
   sources, isUploading, setIsUploading, project, setViewerFile, fetchSources,
   // Claims tab
-  newClaimContent, setNewClaimContent, handleCreateClaim,
+  newClaimContent, setNewClaimContent, handleCreateClaim, handleUseSelectedText, canCreateClaim,
   claims, selectedClaim, claimMatches, loadingMatches,
   claimCandidates, loadingCandidates, evaluatingChunkId, updatingSuggestionId,
   handleSearchClaimMatches, handleEvaluateMatch, handleSuggestionStatus, canEditClaim,
@@ -175,13 +175,16 @@ export default function ContextPanel({
 
           {activeTab === 'Claims' && (
             <div className="space-y-3">
-              <div className="bg-(--surface) border border-(--border) rounded-xl p-3.5 shadow-sm">
-                <h4 className="text-[11px] font-bold text-(--text-secondary) mb-2 uppercase tracking-wider">Add Claim</h4>
-                <div className="flex gap-2 flex-wrap">
-                  <input value={newClaimContent} onChange={(e) => setNewClaimContent(e.target.value)} placeholder="Claim content..." disabled={isLocked} className="flex-1 text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 min-w-[120px] text-(--text-primary) disabled:opacity-50" />
-                  <button onClick={handleCreateClaim} disabled={!newClaimContent.trim() || isLocked} className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-(--border) disabled:dark:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">Add</button>
+              {canCreateClaim && (
+                <div className="bg-(--surface) border border-(--border) rounded-xl p-3.5 shadow-sm">
+                  <h4 className="text-[11px] font-bold text-(--text-secondary) mb-2 uppercase tracking-wider">Add Claim</h4>
+                  <div className="flex gap-2 flex-wrap">
+                    <input value={newClaimContent} onChange={(e) => setNewClaimContent(e.target.value)} placeholder="Claim content..." className="flex-1 text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 min-w-[120px] text-(--text-primary)" />
+                    <button onClick={handleUseSelectedText} className="text-xs font-semibold text-indigo-700 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition-colors">Use selection</button>
+                    <button onClick={handleCreateClaim} disabled={!newClaimContent.trim()} className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-(--border) disabled:dark:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">Add</button>
+                  </div>
                 </div>
-              </div>
+              )}
               {claims.length === 0 ? <div className="text-xs text-(--text-tertiary) italic text-center py-8">No claims yet.</div> : (
                 claims.map(claim => {
                   const isSelected = selectedClaim?.id === claim.id;
@@ -205,11 +208,11 @@ export default function ContextPanel({
                       </div>
                       <p className="text-xs font-semibold text-(--text-primary) pl-1 leading-relaxed">{claim.content}</p>
                       <div className="flex gap-2 mt-3 pt-2.5 border-t border-(--border-light) pl-1">
-                        <button onClick={(e) => { e.stopPropagation(); handleSearchClaimMatches(claim); }} disabled={isLocked || loadingCandidates} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-40 flex items-center gap-1">
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                          Find matches
-                        </button>
                         {canEditClaim(claim) && <>
+                          <button onClick={(e) => { e.stopPropagation(); handleSearchClaimMatches(claim); }} disabled={isLocked || loadingCandidates} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-40 flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                            Find matches
+                          </button>
                           <button onClick={(e) => { e.stopPropagation(); setEditingClaim(claim); setEditClaimContent(claim.content); }} className="text-[10px] text-(--text-secondary) hover:text-(--text-primary) flex items-center gap-0.5 ml-auto">Edit</button>
                           <button onClick={(e) => { e.stopPropagation(); handleDeleteClaim(claim.id); }} className="text-[10px] text-rose-500 hover:text-rose-700 flex items-center gap-0.5">Delete</button>
                         </>}
@@ -233,12 +236,14 @@ export default function ContextPanel({
                                       <p className="text-[10px] text-(--text-secondary) line-clamp-4 italic leading-relaxed">"{candidate.excerpt}"</p>
                                       <div className="flex justify-between items-center mt-2">
                                         <span className="text-[9px] text-(--text-tertiary)">Chunk {candidate.chunkIndex}</span>
-                                        <button
-                                          onClick={(event) => { event.stopPropagation(); handleEvaluateMatch(claim.id, candidate.documentChunkId); }}
-                                          disabled={isLocked || evaluated || evaluatingChunkId === candidate.documentChunkId}
-                                          className="text-[9px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-(--border) px-2 py-1 rounded transition-colors">
-                                          {evaluated ? 'Evaluated' : evaluatingChunkId === candidate.documentChunkId ? 'Evaluating...' : 'Select & evaluate'}
-                                        </button>
+                                        {canEditClaim(claim) && (
+                                          <button
+                                            onClick={(event) => { event.stopPropagation(); handleEvaluateMatch(claim.id, candidate.documentChunkId); }}
+                                            disabled={isLocked || evaluated || evaluatingChunkId === candidate.documentChunkId}
+                                            className="text-[9px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-(--border) px-2 py-1 rounded transition-colors">
+                                            {evaluated ? 'Evaluated' : evaluatingChunkId === candidate.documentChunkId ? 'Evaluating...' : 'Select & evaluate'}
+                                          </button>
+                                        )}
                                       </div>
                                     </div>
                                   );
@@ -265,7 +270,7 @@ export default function ContextPanel({
                                     </div>
                                     <p className="text-[10px] text-(--text-secondary) line-clamp-3 italic leading-relaxed">"{match.excerpt}"</p>
                                     {match.explanation && <p className="text-[10px] text-indigo-600 mt-1 leading-relaxed">{match.explanation}</p>}
-                                    {match.status === 'PENDING' && (
+                                    {match.status === 'PENDING' && canEditClaim(claim) && (
                                       <div className="flex justify-end gap-2 mt-2">
                                         <button onClick={(event) => { event.stopPropagation(); handleSuggestionStatus(match.id, 'REJECTED'); }} disabled={isLocked || updatingSuggestionId === match.id} className="text-[9px] font-bold text-rose-600 hover:text-rose-700 disabled:opacity-40">Reject</button>
                                         <button onClick={(event) => { event.stopPropagation(); handleSuggestionStatus(match.id, 'ACCEPTED'); }} disabled={isLocked || updatingSuggestionId === match.id} className="text-[9px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 px-2 py-1 rounded">Accept</button>

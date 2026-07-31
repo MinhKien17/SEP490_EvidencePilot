@@ -177,13 +177,23 @@ public class CurrentUserServiceImpl implements CurrentUserService {
 
     @Override
     public void requireSectionAssignment(User currentUser, PaperSection section) {
-        if (isAdmin(currentUser)) return;
-        if (isInstructor(currentUser)) return;
-        if (section.getAssignedUser() == null) return;
-        if (!currentUser.getId().equals(section.getAssignedUser().getId())) {
+        if (currentUser.getRole() != UserRole.STUDENT
+                || section.getAssignedUser() == null
+                || !currentUser.getId().equals(section.getAssignedUser().getId())) {
             throw new ResponseStatusException(
                     org.springframework.http.HttpStatus.FORBIDDEN,
-                    "You are not assigned to this section");
+                    "Only the assigned student can edit this section");
         }
+    }
+
+    @Override
+    public void requireSectionContentWriteAccess(User currentUser, PaperSection section) {
+        requireProjectWriteAccess(currentUser, section.getDocument().getProject());
+        if (!section.isActive()) {
+            throw new ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "Section is inactive.");
+        }
+        requireSectionAssignment(currentUser, section);
     }
 }

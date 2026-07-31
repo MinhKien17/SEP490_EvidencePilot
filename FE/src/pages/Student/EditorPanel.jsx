@@ -4,7 +4,7 @@ import PreviewPane from '../../components/PreviewPane';
 import { useTranslation } from 'react-i18next';
 
 export default function EditorPanel({
-  selectedPaper, selectedSectionId, assignedSections, currentSection, displayContent, updateCode,
+  selectedPaper, selectedSectionId, assignedSections, canEditCurrentSection, currentSection, displayContent, updateCode,
   editorWidth, onEditorResizeStart,
   saveStatus, lastSaved, handleSaveDraft, handleScanCitations,
   insertLatexTag, insertSymbol, handleFindReplace, handleDownloadTex,
@@ -13,7 +13,8 @@ export default function EditorPanel({
   textSize, setTextSize, showToast, editorRef, mediaAssets, isLocked
 }) {
   const { t } = useTranslation();
-  const isOwnSection = assignedSections && assignedSections.some(s => String(s.id) === String(selectedSectionId));
+  const isOwnSection = canEditCurrentSection
+    ?? (assignedSections && assignedSections.some(s => String(s.id) === String(selectedSectionId)));
   const [previewZoom, setPreviewZoom] = useState(100);
   return (
     <div id="editor-preview-container" className="flex-1 flex overflow-hidden bg-(--surface-tertiary)/50 p-2 gap-2">
@@ -43,7 +44,7 @@ export default function EditorPanel({
         </div>
         <div className="bg-(--surface-secondary) border-b border-(--border) flex flex-col shrink-0 select-none">
           <div className="h-9 flex items-center justify-between px-3 border-b border-(--border-light) gap-1">
-            <div className="flex-1 flex items-center gap-1 min-w-0 pr-2">
+            <div className={`flex-1 flex items-center gap-1 min-w-0 pr-2 ${!isOwnSection || isLocked ? 'pointer-events-none opacity-30' : ''}`}>
               <div className="relative">
                 <button onClick={() => { if (!isOwnSection || isLocked) return; setShowTextSizeMenu(!showTextSizeMenu); setShowSymbolMenu(false); }} className={`h-7 px-1.5 flex items-center gap-1 hover:bg-(--surface-tertiary) rounded text-(--text-primary) font-extrabold text-[11px] transition-colors cursor-pointer ${!isOwnSection || isLocked ? 'opacity-30 pointer-events-none' : ''}`} title={t('headingFontSize')}>
                   <span>TT</span><span className="text-[7px]">▼</span>
@@ -120,8 +121,8 @@ export default function EditorPanel({
                 <input type="text" placeholder={t('replacePlaceholder')} value={replaceQuery} onChange={(e) => setReplaceQuery(e.target.value)} className="flex-1 bg-(--surface) border border-(--border) rounded px-2 py-1 text-xs outline-none focus:border-indigo-400 font-mono text-(--text-primary)" />
               </div>
               <div className="flex justify-end gap-2">
-                <button onClick={() => handleFindReplace(false)} className="bg-(--surface) border border-(--border) hover:bg-(--surface-secondary) text-(--text-secondary) text-[10px] font-bold px-2 py-1 rounded cursor-pointer">{t('replace')}</button>
-                <button onClick={() => handleFindReplace(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold px-2 py-1 rounded cursor-pointer shadow-sm">{t('replaceAll')}</button>
+                <button onClick={() => handleFindReplace(false)} disabled={!isOwnSection || isLocked} className="bg-(--surface) border border-(--border) hover:bg-(--surface-secondary) text-(--text-secondary) text-[10px] font-bold px-2 py-1 rounded cursor-pointer disabled:cursor-not-allowed disabled:opacity-40">{t('replace')}</button>
+                <button onClick={() => handleFindReplace(true)} disabled={!isOwnSection || isLocked} className="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold px-2 py-1 rounded cursor-pointer shadow-sm disabled:cursor-not-allowed disabled:opacity-40">{t('replaceAll')}</button>
               </div>
             </div>
           )}

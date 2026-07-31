@@ -24,12 +24,13 @@ const LatexEditor = forwardRef(function LatexEditor({ content, onChange, readOnl
     },
     insertAtCursor: (text, cursorOffset) => {
       const v = viewRef.current;
-      if (!v) return;
+      if (!v) return null;
       const from = v.state.selection.main.from;
       v.dispatch({
         changes: { from, to: v.state.selection.main.to, insert: text },
         selection: { anchor: cursorOffset != null ? from + cursorOffset : from + text.length },
       });
+      return v.state.doc.toString();
     },
   }));
 

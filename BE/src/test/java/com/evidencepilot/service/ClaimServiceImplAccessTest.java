@@ -105,7 +105,7 @@ class ClaimServiceImplAccessTest {
     }
 
     @Test
-    void searchMatchesRequiresProjectWriteAccess() {
+    void searchMatchesRequiresSectionContentWriteAccess() {
         User user = user();
         Claim claim = claim();
 
@@ -116,11 +116,11 @@ class ClaimServiceImplAccessTest {
 
         service().searchMatches(claim.getId());
 
-        verify(currentUserService).requireProjectWriteAccess(user, claim.getProject());
+        verify(currentUserService).requireSectionContentWriteAccess(user, claim.getSection());
     }
 
     @Test
-    void updateSuggestionStatusRequiresProjectWriteAccess() {
+    void updateSuggestionStatusRequiresSectionContentWriteAccess() {
         User user = user();
         Claim claim = claim();
         AiSuggestion suggestion = suggestion(claim);
@@ -134,7 +134,7 @@ class ClaimServiceImplAccessTest {
 
         service().updateSuggestionStatus(suggestion.getId(), "ACCEPTED");
 
-        verify(currentUserService).requireProjectWriteAccess(user, claim.getProject());
+        verify(currentUserService).requireSectionContentWriteAccess(user, claim.getSection());
     }
 
     @Test
@@ -147,7 +147,7 @@ class ClaimServiceImplAccessTest {
         when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
         doThrow(new org.springframework.web.server.ResponseStatusException(
                 org.springframework.http.HttpStatus.CONFLICT, "Project is read-only."))
-                .when(currentUserService).requireProjectWriteAccess(user, claim.getProject());
+                .when(currentUserService).requireSectionContentWriteAccess(user, claim.getSection());
 
         assertThatThrownBy(() -> service().updateClaim(claim.getId(), "Updated", null))
                 .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
@@ -166,13 +166,33 @@ class ClaimServiceImplAccessTest {
 
         when(currentUserService.requireCurrentUser()).thenReturn(admin);
         when(claimEvidenceMappingRepository.findById(mapping.getId())).thenReturn(Optional.of(mapping));
-        doThrow(new org.springframework.web.server.ResponseStatusException(
-                org.springframework.http.HttpStatus.CONFLICT, "Project is read-only."))
-                .when(currentUserService).requireProjectWriteAccess(admin, claim.getProject());
 
         assertThatThrownBy(() -> service().reviewMapping(
                 mapping.getId(), new MappingReviewRequest(MappingReviewStatus.VERIFIED, null, null)))
                 .hasMessageContaining("Project is read-only.");
+    }
+
+    @Test
+    void instructorCanReviewMappingWhileProjectIsSubmitted() {
+        User instructor = user();
+        instructor.setRole(com.evidencepilot.model.enums.UserRole.INSTRUCTOR);
+        Claim claim = claim();
+        claim.getProject().setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
+        ClaimEvidenceMapping mapping = new ClaimEvidenceMapping();
+        mapping.setId(UUID.randomUUID());
+        mapping.setClaim(claim);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(currentUserService.isInstructor(instructor)).thenReturn(true);
+        when(claimEvidenceMappingRepository.findById(mapping.getId())).thenReturn(Optional.of(mapping));
+
+        service().reviewMapping(
+                mapping.getId(),
+                new MappingReviewRequest(MappingReviewStatus.VERIFIED, "Reviewed", "SUPPORTS"));
+
+        verify(currentUserService).requireProjectAccess(instructor, claim.getProject());
+        verify(claimEvidenceMappingRepository).save(mapping);
+        assertThat(mapping.getReviewStatus()).isEqualTo(MappingReviewStatus.VERIFIED);
+        assertThat(mapping.getRelationOverride()).isEqualTo(EvidenceRelation.SUPPORTS);
     }
 
     @Test
@@ -233,6 +253,7 @@ class ClaimServiceImplAccessTest {
 
         service().createClaim(new ClaimCreationRequest(section.getId(), "content", 0.5f));
 
+        verify(currentUserService).requireSectionContentWriteAccess(user, section);
         verify(claimRepository).save(argThat(saved -> saved.getProject() == project
                 && saved.getSection() == section && saved.getClaimVersion() == 1 && saved.isActive()));
     }
@@ -260,6 +281,8 @@ class ClaimServiceImplAccessTest {
 
         service().deleteClaim(claim.getId());
         assertThat(claim.isActive()).isFalse();
+        verify(currentUserService, org.mockito.Mockito.times(2))
+                .requireSectionContentWriteAccess(user, claim.getSection());
     }
 
     @Test
@@ -320,6 +343,12 @@ class ClaimServiceImplAccessTest {
         Claim claim = new Claim();
         claim.setId(UUID.randomUUID());
         claim.setProject(project);
+        Document document = new Document();
+        document.setProject(project);
+        PaperSection section = new PaperSection();
+        section.setId(UUID.randomUUID());
+        section.setDocument(document);
+        claim.setSection(section);
         claim.setActive(true);
         return claim;
     }

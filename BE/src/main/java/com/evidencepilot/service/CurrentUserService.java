@@ -35,4 +35,6 @@ public interface CurrentUserService {
     void requireClaimAccess(User currentUser, Claim claim);
 
     void requireSectionAssignment(User currentUser, PaperSection section);
+
+    void requireSectionContentWriteAccess(User currentUser, PaperSection section);
 }

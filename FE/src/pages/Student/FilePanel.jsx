@@ -51,7 +51,7 @@ export default function FilePanel({ isOpen, width, onResizeStart, sections, assi
             <div className="text-xs text-(--text-tertiary) italic text-center py-4">{t('noMedia')}</div>
           ) : (
             mediaAssets.map(m => (
-              <div key={m.id} onClick={() => onInsertMedia(m.texFilename)} className="flex items-center justify-between text-xs font-medium p-2 rounded-md hover:bg-(--surface-tertiary) cursor-pointer transition-all mt-1 group text-(--text-secondary)">
+              <div key={m.id} onClick={() => onInsertMedia?.(m.texFilename)} className={`flex items-center justify-between text-xs font-medium p-2 rounded-md transition-all mt-1 group text-(--text-secondary) ${onInsertMedia ? 'hover:bg-(--surface-tertiary) cursor-pointer' : 'cursor-default opacity-60'}`}>
                 <div className="flex items-center gap-2 truncate">
                   <svg className="w-3.5 h-3.5 shrink-0 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                   <span className="truncate" title={m.texFilename}>{m.texFilename}</span>

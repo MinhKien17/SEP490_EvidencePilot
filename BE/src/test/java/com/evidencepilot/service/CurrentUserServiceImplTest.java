@@ -3,6 +3,8 @@ package com.evidencepilot.service;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.Claim;
+import com.evidencepilot.model.Document;
+import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
@@ -76,6 +78,39 @@ class CurrentUserServiceImplTest {
 
         assertThatCode(() -> service.requireProjectWriteAccess(student, project))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void sectionContentWriteFollowsAssignmentAndRejectsInstructor() {
+        User assigned = user(UserRole.STUDENT);
+        User otherStudent = user(UserRole.STUDENT);
+        User instructor = user(UserRole.INSTRUCTOR);
+        Project project = projectWithMembers(
+                member(assigned, ProjectRole.MEMBER),
+                member(otherStudent, ProjectRole.MEMBER),
+                member(instructor, ProjectRole.INSTRUCTOR));
+        Document document = new Document();
+        document.setProject(project);
+        PaperSection section = new PaperSection();
+        section.setDocument(document);
+        section.setAssignedUser(assigned);
+
+        assertThatCode(() -> service().requireSectionContentWriteAccess(assigned, section))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> service().requireSectionContentWriteAccess(otherStudent, section))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(HttpStatus.FORBIDDEN));
+        assertThatThrownBy(() -> service().requireSectionContentWriteAccess(instructor, section))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(HttpStatus.FORBIDDEN));
+
+        section.setAssignedUser(null);
+        assertThatThrownBy(() -> service().requireSectionContentWriteAccess(otherStudent, section))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(HttpStatus.FORBIDDEN));
     }
 
     @Test
