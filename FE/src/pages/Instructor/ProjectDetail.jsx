@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { AppHeader, LoadingSkeleton, StatusBadge, Modal, TourLauncher, EvidenceGraph, Spinner, SourceCategoryRadar } from '../../components';
 import { Marker, MarkerIcon, MarkerContent } from '../../components/Marker';
 import { instructorText, commonText } from '../../locales';
@@ -47,6 +48,9 @@ export default function ProjectDetail() {
   const [setupMode, setSetupMode] = useState('standard');
   const [editingPaperId, setEditingPaperId] = useState(null);
   const [editingPaperTitle, setEditingPaperTitle] = useState('');
+  const [editingSectionId, setEditingSectionId] = useState(null);
+  const [editingSectionTitle, setEditingSectionTitle] = useState('');
+  const [sectionStructureSaving, setSectionStructureSaving] = useState(false);
   const [uploadState, setUploadState] = useState(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [addSourceDocType, setAddSourceDocType] = useState('SOURCE');
@@ -254,6 +258,75 @@ export default function ProjectDetail() {
     } catch { alert('Failed to rename'); }
   };
 
+  const handleDragEnd = async (result) => {
+    if (!result.destination || result.destination.index === result.source.index || !selectedPaper) return;
+    const reordered = Array.from(sections);
+    const [moved] = reordered.splice(result.source.index, 1);
+    reordered.splice(result.destination.index, 0, moved);
+    setSections(reordered);
+    setSectionStructureSaving(true);
+    try {
+      await Promise.all(reordered.map((section, index) =>
+        api.put(`/api/papers/${selectedPaper.id}/sections/${section.id}`, null, { params: { order: index } })
+      ));
+      await loadSections(selectedPaper.id);
+    } catch (err) {
+      alert(err?.response?.data?.message || 'Failed to reorder sections.');
+      await loadSections(selectedPaper.id);
+    } finally {
+      setSectionStructureSaving(false);
+    }
+  };
+
+  const handleAddSection = async () => {
+    if (!selectedPaper) return;
+    setSectionStructureSaving(true);
+    try {
+      await api.post(`/api/papers/${selectedPaper.id}/sections/create`, null, {
+        params: { title: 'New Section' },
+      });
+      await loadSections(selectedPaper.id);
+    } catch (err) {
+      alert(err?.response?.data?.message || 'Failed to add section.');
+    } finally {
+      setSectionStructureSaving(false);
+    }
+  };
+
+  const handleStartSectionRename = (section) => {
+    setEditingSectionId(section.id);
+    setEditingSectionTitle(section.sectionTitle);
+  };
+
+  const handleSaveSectionRename = async (sectionId) => {
+    if (!editingSectionTitle.trim() || !selectedPaper) return;
+    setSectionStructureSaving(true);
+    try {
+      await api.put(`/api/papers/${selectedPaper.id}/sections/${sectionId}`, null, {
+        params: { title: editingSectionTitle.trim() },
+      });
+      setEditingSectionId(null);
+      await loadSections(selectedPaper.id);
+    } catch (err) {
+      alert(err?.response?.data?.message || 'Failed to rename section.');
+    } finally {
+      setSectionStructureSaving(false);
+    }
+  };
+
+  const handleDeleteSection = async (sectionId) => {
+    if (!selectedPaper || !confirm('Delete this empty section? This action cannot be undone.')) return;
+    setSectionStructureSaving(true);
+    try {
+      await api.delete(`/api/papers/${selectedPaper.id}/sections/${sectionId}`);
+      await loadSections(selectedPaper.id);
+    } catch (err) {
+      alert(err?.response?.data?.message || 'Failed to delete section.');
+    } finally {
+      setSectionStructureSaving(false);
+    }
+  };
+
   const handleAssignSection = async (sectionId, userId) => {
     const section = sections.find(s => s.id === sectionId);
     if (!userId) return handleConfirmAssign(null, sectionId);
@@ -344,6 +417,8 @@ export default function ProjectDetail() {
   const projectMembers = members;
   const displayName = m => [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email || m.userId?.slice(0, 8);
   const hasAssignedSections = sections.some(s => s.assignedUserId);
+  const projectReadOnly = ['SUBMITTED_FOR_REVIEW', 'APPROVED', 'ARCHIVED'].includes(project.status);
+  const sectionStructureLocked = hasAssignedSections || projectReadOnly;
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-[#0f172a] font-sans">
@@ -431,9 +506,11 @@ export default function ProjectDetail() {
               {!standard && papers.length === 0 && (
                 <p className="text-xs text-gray-400 italic mb-3">No standard or paper configured.</p>
               )}
-              {hasAssignedSections ? (
+              {sectionStructureLocked ? (
                 <div className="w-full px-4 py-2 bg-gray-200 text-gray-500 text-xs font-bold rounded-lg text-center flex items-center justify-center gap-1">
-                  {'\u{1F512}'} Setup locked — sections have been assigned
+                  {'\u{1F512}'} {projectReadOnly
+                    ? 'Setup locked — project is read-only'
+                    : 'Setup locked — sections have been assigned'}
                 </div>
               ) : (
                 <button onClick={() => { setSetupMode(standard ? 'standard' : 'paper'); setShowSetUpPaper(true); }} className="w-full px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700">
@@ -481,8 +558,28 @@ export default function ProjectDetail() {
             </div>
             <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-sm font-bold text-[#1e3a8a]">Sections</h2>
+                <div>
+                  <h2 className="text-sm font-bold text-[#1e3a8a]">Sections</h2>
+                  {selectedPaper && sectionStructureLocked && (
+                    <p className="text-[10px] text-amber-700 mt-1">
+                      {projectReadOnly
+                        ? 'Project is read-only.'
+                        : 'Structure is locked until every Section is unassigned.'}
+                    </p>
+                  )}
+                </div>
                 <div className="flex gap-2">
+                  {selectedPaper && (
+                    <button
+                      onClick={handleAddSection}
+                      disabled={sectionStructureLocked || sectionStructureSaving
+                        || selectedPaper.processingStatus === 'QUEUED'
+                        || selectedPaper.processingStatus === 'PROCESSING'}
+                      className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      + Section
+                    </button>
+                  )}
                   {selectedPaper && (
                     <button onClick={async () => {
                       try {
@@ -502,36 +599,91 @@ export default function ProjectDetail() {
                 </div>
               ) : sections.length === 0 ? (
                 <div className="text-xs text-gray-400 italic">
-                  <p>No sections yet. Go to <strong>Setup</strong> and choose a paper standard to generate its Section template.</p>
+                  <p>No sections yet. Add one manually or choose a paper standard in <strong>Setup</strong>.</p>
                 </div>
               ) : (
-                <div className="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
-                  {sections.map(s => (
-                    <div key={s.id} className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3 text-xs">
-                      <div className="flex items-center gap-3">
-                        <span className="font-medium">{s.sectionTitle}</span>
-                        {s.version > 1 && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">v{s.version}</span>}
-                        {s.assignedUserId && (
-                          <span className="flex items-center gap-1 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-bold">
-                            {'\u{1F512}'} {displayName(projectMembers.find(m => m.userId === s.assignedUserId))}
-                          </span>
-                        )}
+                <DragDropContext onDragEnd={handleDragEnd}>
+                  <Droppable droppableId="sections">
+                    {(provided) => (
+                      <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-2 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1">
+                        {sections.map((s, index) => (
+                          <Draggable
+                            key={s.id}
+                            draggableId={String(s.id)}
+                            index={index}
+                            isDragDisabled={sectionStructureLocked || sectionStructureSaving}
+                          >
+                            {(dragProvided, snapshot) => (
+                              <div
+                                ref={dragProvided.innerRef}
+                                {...dragProvided.draggableProps}
+                                className={`flex items-center justify-between rounded-lg px-4 py-3 text-xs ${
+                                  snapshot.isDragging ? 'bg-indigo-50 shadow-lg border border-indigo-200' : 'bg-gray-50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <span
+                                    {...dragProvided.dragHandleProps}
+                                    className={`text-gray-300 ${sectionStructureLocked ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'}`}
+                                    title={sectionStructureLocked ? 'Unassign all Sections to reorder' : 'Drag to reorder'}
+                                  >
+                                    {'\u283F'}
+                                  </span>
+                                  {editingSectionId === s.id ? (
+                                    <div className="flex items-center gap-1">
+                                      <input
+                                        autoFocus
+                                        value={editingSectionTitle}
+                                        onChange={e => setEditingSectionTitle(e.target.value)}
+                                        onKeyDown={e => {
+                                          if (e.key === 'Enter') handleSaveSectionRename(s.id);
+                                          if (e.key === 'Escape') setEditingSectionId(null);
+                                        }}
+                                        className="bg-transparent outline-none border-b border-indigo-300 text-xs"
+                                      />
+                                      <button onClick={() => handleSaveSectionRename(s.id)} disabled={sectionStructureSaving} className="text-emerald-600 hover:text-emerald-800 font-bold text-xs px-1 disabled:opacity-50" title="Save">{'\u2713'}</button>
+                                      <button onClick={() => setEditingSectionId(null)} className="text-gray-400 hover:text-gray-600 text-xs px-1" title="Cancel">{'\u2715'}</button>
+                                    </div>
+                                  ) : (
+                                    <span className="font-medium truncate">{s.sectionTitle}</span>
+                                  )}
+                                  {s.version > 1 && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">v{s.version}</span>}
+                                  {s.assignedUserId && (
+                                    <span className="flex items-center gap-1 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-bold">
+                                      {'\u{1F512}'} {displayName(projectMembers.find(m => m.userId === s.assignedUserId))}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {!sectionStructureLocked && editingSectionId !== s.id && (
+                                    <button onClick={() => handleStartSectionRename(s)} disabled={sectionStructureSaving} className="text-gray-400 hover:text-indigo-600 text-xs px-1 disabled:opacity-50" title="Rename">{'\u270E'}</button>
+                                  )}
+                                  {!sectionStructureLocked && (
+                                    <button onClick={() => handleDeleteSection(s.id)} disabled={sectionStructureSaving} className="text-gray-400 hover:text-rose-600 text-xs px-1 disabled:opacity-50" title="Delete">{'\u2715'}</button>
+                                  )}
+                                  <select
+                                    value={s.assignedUserId || ''}
+                                    onChange={e => handleAssignSection(s.id, e.target.value)}
+                                    disabled={projectReadOnly || sectionStructureSaving}
+                                    className="border border-gray-200 rounded px-2 py-1 text-[10px] outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                                  >
+                                    <option value="">Unassigned</option>
+                                    {projectMembers
+                                      .filter(member => users.some(user => String(user.id) === String(member.userId)))
+                                      .map(member => (
+                                        <option key={member.id} value={member.userId}>{displayName(member)}</option>
+                                      ))}
+                                  </select>
+                                </div>
+                              </div>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
                       </div>
-                      <select
-                        value={s.assignedUserId || ''}
-                        onChange={e => handleAssignSection(s.id, e.target.value)}
-                        className="border border-gray-200 rounded px-2 py-1 text-[10px] outline-none"
-                      >
-                        <option value="">Unassigned</option>
-                        {projectMembers
-                          .filter(member => users.some(user => String(user.id) === String(member.userId)))
-                          .map(member => (
-                            <option key={member.id} value={member.userId}>{displayName(member)}</option>
-                          ))}
-                      </select>
-                    </div>
-                  ))}
-                </div>
+                    )}
+                  </Droppable>
+                </DragDropContext>
               )}
             </div>
           </div>
@@ -640,7 +792,7 @@ export default function ProjectDetail() {
             Assign section to <strong>{pendingAssign?.userName}</strong>?
           </p>
           <p className="text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            Once assigned, only the assigned student can edit this section. Instructors will have read-only access.
+            Once assigned, only that student can edit its content and Claims. Section structure stays locked until every Section is unassigned.
           </p>
           <div className="flex justify-end gap-2">
             <button onClick={() => setPendingAssign(null)} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">{ct.cancel}</button>
@@ -729,11 +881,15 @@ export default function ProjectDetail() {
       </Modal>
 
       <Modal open={showSetUpPaper} onClose={() => setShowSetUpPaper(false)} title="Set up Paper">
-        {hasAssignedSections ? (
+        {sectionStructureLocked ? (
           <div className="space-y-4 text-xs">
             <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center gap-2">
               <span>{'\u{1F512}'}</span>
-              <span className="text-amber-800">Setup is locked because sections have been assigned to students. Unassign all sections to make changes.</span>
+              <span className="text-amber-800">
+                {projectReadOnly
+                  ? 'Setup is locked because the project is read-only.'
+                  : 'Setup is locked because sections have been assigned to students. Unassign all sections to make changes.'}
+              </span>
             </div>
             <div className="flex justify-end">
               <button onClick={() => setShowSetUpPaper(false)} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">{ct.close || 'Close'}</button>

@@ -189,9 +189,9 @@ public class PaperController {
     }
 
     @Operation(summary = "Update a paper section",
-            description = "Rename, reorder, merge, or edit content of a paper section. "
-                    + "Set mergeIntoId to merge this section into another. "
-                    + "Set content to save LaTeX content with version tracking.")
+            description = "Assigned students may update content. Instructors may rename, reorder, "
+                    + "or merge sections only while every section is unassigned. "
+                    + "Structure and content changes must be sent separately.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Section updated"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
@@ -227,7 +227,7 @@ public class PaperController {
 
     @Operation(summary = "Rollback a paper section to its previous version",
             description = "Swaps the current content with the previous version. "
-                    + "Only the assigned student or an instructor can rollback.")
+                    + "Only the assigned student can rollback.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Section rolled back"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
@@ -243,7 +243,8 @@ public class PaperController {
     }
 
     @Operation(summary = "Soft-delete a paper section",
-            description = "Sets the section's active flag to false. Requires write access.")
+            description = "Instructors may delete an unassigned setup section only when it has "
+                    + "no student content, active Claims, or feedback.")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Section soft-deleted"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
@@ -259,8 +260,8 @@ public class PaperController {
     }
 
     @Operation(summary = "Create a new paper section",
-            description = "Adds a new section to a paper document. "
-                    + "Optionally specify a parent section ID for ordering. "
+            description = "Allows an instructor to add a section while every section is unassigned. "
+                    + "Optionally specify a parent section ID for validation. "
                     + "If standard is provided, creates all required sections for that standard.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Section(s) created"),

@@ -89,6 +89,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     public List<PaperSectionResponse> getPaperSections(UUID documentId) {
         requireDocumentAccess(documentId);
         return paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(documentId).stream()
+                .filter(PaperSection::isActive)
                 .map(projectMapper::toPaperSectionResponse)
                 .toList();
     }
@@ -99,6 +100,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         return paperSectionRepository
                 .findByDocumentIdAndAssignedUserIdOrderBySectionOrderAsc(documentId, userId)
                 .stream()
+                .filter(PaperSection::isActive)
                 .map(projectMapper::toPaperSectionResponse)
                 .toList();
     }
@@ -584,14 +586,23 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     @Transactional
     public PaperSectionResponse updateSection(UUID documentId, UUID sectionId,
             String title, Integer order, UUID mergeIntoId, String content) {
-        requireDocumentWriteAccess(documentId);
+        boolean structureChange = title != null || order != null || mergeIntoId != null;
+        if (structureChange && content != null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Section structure and content must be updated separately.");
+        }
+        if (structureChange) {
+            requireInstructorDocumentWriteAccess(documentId);
+            requireSectionStructureUnlocked(documentId);
+        } else {
+            requireDocumentWriteAccess(documentId);
+        }
         User currentUser = currentUserService.requireCurrentUser();
 
         if (mergeIntoId != null) {
             PaperSection target = requireSectionInDocument(mergeIntoId, documentId);
             PaperSection source = requireSectionInDocument(sectionId, documentId);
-            currentUserService.requireSectionContentWriteAccess(currentUser, source);
-            currentUserService.requireSectionContentWriteAccess(currentUser, target);
             target.setContentTex(
                     (target.getContentTex() != null ? target.getContentTex() : "")
                     + "\n\n" + (source.getContentTex() != null ? source.getContentTex() : ""));
@@ -609,7 +620,6 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         }
 
         PaperSection section = requireSectionInDocument(sectionId, documentId);
-        currentUserService.requireSectionAssignment(currentUser, section);
         if (title != null && !title.isBlank()) {
             section.setSectionTitle(title);
         }
@@ -680,14 +690,27 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     @Override
     @Transactional
     public void deleteSection(UUID documentId, UUID sectionId) {
-        requireDocumentWriteAccess(documentId);
-        User currentUser = currentUserService.requireCurrentUser();
+        Document document = requireInstructorDocumentWriteAccess(documentId);
+        requireSectionStructureUnlocked(documentId);
         PaperSection section = requireSectionInDocument(sectionId, documentId);
-        currentUserService.requireSectionAssignment(currentUser, section);
+        if (paperStandardService.hasStudentContent(section.getContentTex())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Section contains student work.");
+        }
         if (claimRepository.findBySectionId(sectionId).stream().anyMatch(com.evidencepilot.model.Claim::isActive)) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Section has active claims.");
+        }
+        boolean hasFeedback = !sectionFeedbackRepository.findBySectionId(sectionId).isEmpty()
+                || instructorFeedbackRepository.findByRequestProjectId(
+                        document.getProject().getId()).stream()
+                .anyMatch(feedback -> sectionId.equals(feedback.getSection().getId()));
+        if (hasFeedback) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Section has feedback.");
         }
         section.setActive(false);
         section.setUpdatedAt(LocalDateTime.now());
@@ -697,17 +720,11 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     @Override
     @Transactional
     public PaperSectionResponse createSection(UUID documentId, String title, UUID parentSectionId) {
-        Document document = requireDocumentAccess(documentId);
-        User currentUser = currentUserService.requireCurrentUser();
-        currentUserService.requireProjectWriteAccess(currentUser, document.getProject());
-        if (parentSectionId == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Top-level sections must be created from a paper template.");
+        Document document = requireInstructorDocumentWriteAccess(documentId);
+        requireSectionStructureUnlocked(documentId);
+        if (parentSectionId != null) {
+            requireSectionInDocument(parentSectionId, documentId);
         }
-        PaperSection parent = requireSectionInDocument(parentSectionId, documentId);
-        currentUserService.requireSectionContentWriteAccess(currentUser, parent);
-
         List<PaperSection> existing = paperSectionRepository
                 .findByDocumentIdOrderBySectionOrderAsc(documentId);
         int maxOrder = existing.stream()
@@ -724,8 +741,6 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
                 standard == null ? PaperStandard.CUSTOM : standard,
                 section.getSectionTitle()));
         section.setUpdatedAt(LocalDateTime.now());
-        section.setAssignedUser(parent.getAssignedUser());
-        section.setSectionOrder(parent.getSectionOrder() + 1);
         return projectMapper.toPaperSectionResponse(paperSectionRepository.save(section));
     }
 
@@ -733,6 +748,9 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     @Transactional
     public List<PaperSectionResponse> createSectionsFromStandard(UUID documentId, String standard) {
         Document document = requireInstructorDocumentWriteAccess(documentId);
+        List<PaperSection> existing = paperSectionRepository
+                .findByDocumentIdOrderBySectionOrderAsc(documentId);
+        requireSectionStructureUnlocked(existing);
         PaperStandard paperStandard;
         try {
             paperStandard = PaperStandard.valueOf(standard);
@@ -749,8 +767,6 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             return List.of();
         }
 
-        List<PaperSection> existing = paperSectionRepository
-                .findByDocumentIdOrderBySectionOrderAsc(documentId);
         int startOrder = existing.stream()
                 .mapToInt(PaperSection::getSectionOrder)
                 .max()
@@ -830,13 +846,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         // 6. Guard: refuse if any section is currently assigned to a student.
         //    The frontend enforces this via hasAssignedSections lock, but the backend
         //    must be the authoritative gate to prevent data loss from direct API calls.
-        boolean hasAssigned = existingSections.stream()
-                .anyMatch(s -> s.getAssignedUser() != null);
-        if (hasAssigned) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Cannot reset standard: one or more sections are assigned to students. "
-                    + "Unassign all sections before changing the standard.");
-        }
+        requireSectionStructureUnlocked(existingSections);
 
         // ponytail: guard — refuse if any section contains student work content
         boolean hasContent = existingSections.stream()
@@ -885,6 +895,21 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             throw new ResourceNotFoundException(sectionId, "PaperSection");
         }
         return section;
+    }
+
+    private void requireSectionStructureUnlocked(UUID documentId) {
+        requireSectionStructureUnlocked(
+                paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(documentId));
+    }
+
+    private void requireSectionStructureUnlocked(List<PaperSection> sections) {
+        if (sections.stream().anyMatch(
+                section -> section.isActive() && section.getAssignedUser() != null)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Section structure is locked while one or more sections are assigned. "
+                    + "Unassign all sections before making structural changes.");
+        }
     }
 
     private List<PaperSection> parseSections(String text, Document document) {
@@ -956,7 +981,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         if (!currentUserService.isInstructor(currentUser)) {
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
-                    "Only instructors can manage section assignment and templates.");
+                    "Only instructors can manage section structure, assignment, and templates.");
         }
         currentUserService.requireProjectWriteAccess(currentUser, document.getProject());
         return document;
