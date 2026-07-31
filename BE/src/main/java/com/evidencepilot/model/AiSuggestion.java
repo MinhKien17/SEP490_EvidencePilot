@@ -38,6 +38,7 @@ public class AiSuggestion {
     private boolean instructorRejected = false;
 
     private Float score;
+    @Column(name = "explanation", columnDefinition = "TEXT")
     private String explanation;
 
     @Column(name = "claim_version", nullable = false)

@@ -110,7 +110,11 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
         EvaluationResult evaluation = parseEvaluation(
                 aiModelClient.generate(buildEvaluationPrompt(claim.getContent(), chunk.getText())));
         EvidenceScoringService.ScoreResult strength = evidenceScoringService.computeScore(
-                evaluation.relation(), chunk, List.of(), false);
+                evaluation.relation(), chunk,
+                chunk.getChunkIndex() != null,
+                hasCitationMetadata(chunk.getDocument()),
+                hasLink(chunk.getDocument()),
+                sourceAuthorityScore(chunk.getDocument()));
 
         Claim currentClaim = claimRepository.findByIdWithProject(claimId)
                 .filter(Claim::isActive)
@@ -251,6 +255,31 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Failed to serialize evidence score breakdown", e);
         }
+    }
+
+    private boolean hasCitationMetadata(Document document) {
+        return document != null && (isNotBlank(document.getDoi())
+                || isNotBlank(document.getTitle())
+                || isNotBlank(document.getAuthors())
+                || document.getPublicationYear() != null);
+    }
+
+    private boolean hasLink(Document document) {
+        return document != null && isNotBlank(document.getDoi());
+    }
+
+    private int sourceAuthorityScore(Document document) {
+        if (document == null) return 0;
+        return isNotBlank(document.getDoi())
+                || isNotBlank(document.getOpenAlexTopic())
+                || isNotBlank(document.getOpenAlexSubfield())
+                || isNotBlank(document.getOpenAlexField())
+                || isNotBlank(document.getOpenAlexDomain())
+                ? 25 : 0;
+    }
+
+    private static boolean isNotBlank(String value) {
+        return value != null && !value.isBlank();
     }
 
     private String sourceName(DocumentChunk chunk) {

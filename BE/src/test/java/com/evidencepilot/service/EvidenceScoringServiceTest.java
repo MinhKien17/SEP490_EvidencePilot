@@ -5,7 +5,7 @@ import com.evidencepilot.model.enums.EvidenceRelation;
 import com.evidencepilot.model.enums.StrengthBand;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -17,7 +17,7 @@ class EvidenceScoringServiceTest {
         chunk.setText("Evidence text");
 
         EvidenceScoringService.ScoreResult result = new EvidenceScoringService()
-                .computeScore(EvidenceRelation.SUPPORTS, chunk, List.of(), false);
+                .computeScore(EvidenceRelation.SUPPORTS, chunk, false, false, false, 0);
 
         assertThat(result.strengthScore()).isEqualTo(45);
         assertThat(result.strengthBand()).isEqualTo(StrengthBand.MEDIUM);
@@ -25,5 +25,20 @@ class EvidenceScoringServiceTest {
         assertThat(result.scoreBreakdown()).containsKeys(
                 "relation", "evidence_anchor", "source_type_authority",
                 "citation_metadata", "link_availability");
+    }
+
+    @Test
+    void fullMetadataAndLocatorYieldHundredPoints() {
+        DocumentChunk chunk = new DocumentChunk();
+        chunk.setChunkIndex(7);
+        chunk.setText("Evidence text");
+
+        EvidenceScoringService.ScoreResult result = new EvidenceScoringService()
+                .computeScore(EvidenceRelation.SUPPORTS, chunk, true, true, true, 25);
+
+        assertThat(result.strengthScore()).isEqualTo(100);
+        assertThat(result.strengthBand()).isEqualTo(StrengthBand.HIGH);
+        assertThat(result.scoreBreakdown())
+                .containsEntry("source_type_authority", Map.of("max", 25, "earned", 25));
     }
 }

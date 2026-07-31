@@ -37,6 +37,7 @@ import com.evidencepilot.service.PaperStandardService;
 import com.evidencepilot.service.SystemNotificationService;
 import com.evidencepilot.service.TexArchiveBuilder;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -449,7 +450,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             String raw = aiModelClient.generate(prompt + retryInstruction);
             try {
                 AssertionsResponse response =
-                        objectMapper.readValue(extractJson(raw), AssertionsResponse.class);
+                        aiObjectMapper().readValue(extractJson(raw), AssertionsResponse.class);
                 if (response.valid()) {
                     return response;
                 }
@@ -654,7 +655,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             String raw = aiModelClient.generate(prompt + retryInstruction);
             try {
                 ChunkReview response =
-                        objectMapper.readValue(extractJson(raw), ChunkReview.class);
+                        aiObjectMapper().readValue(extractJson(raw), ChunkReview.class);
                 boolean invalid = false;
                 String reason = null;
                 if (response.findings() != null) {
@@ -807,11 +808,36 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
                 .strip();
     }
 
-    private static String extractJson(String raw) {
+    private ObjectMapper aiObjectMapper() {
+        return objectMapper.copy().enable(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS);
+    }
+
+    static String extractJson(String raw) {
         if (raw == null) return "";
-        int start = raw.indexOf('{');
-        int end = raw.lastIndexOf('}');
-        return start >= 0 && end > start ? raw.substring(start, end + 1) : raw;
+        int start = -1;
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (c == '{' || c == '[') { start = i; break; }
+        }
+        if (start < 0) return raw;
+        char open = raw.charAt(start);
+        char close = open == '{' ? '}' : ']';
+        int depth = 0;
+        boolean inString = false;
+        boolean escaped = false;
+        for (int i = start; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (inString) {
+                if (escaped) escaped = false;
+                else if (c == '\\') escaped = true;
+                else if (c == '"') inString = false;
+                continue;
+            }
+            if (c == '"') inString = true;
+            else if (c == open) depth++;
+            else if (c == close && --depth == 0) return raw.substring(start, i + 1);
+        }
+        return raw.substring(start);
     }
 
     private static String invalidFindingReason(

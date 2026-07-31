@@ -132,7 +132,7 @@ class ClaimMatchingServiceImplTest {
         verify(aiSuggestionRepository).save(saved.capture());
         assertThat(saved.getValue().getScore()).isNull();
         assertThat(saved.getValue().getRelation()).isEqualTo(EvidenceRelation.SUPPORTS);
-        assertThat(saved.getValue().getStrengthScore()).isEqualTo(45);
+        assertThat(saved.getValue().getStrengthScore()).isEqualTo(55);
         assertThat(saved.getValue().getStrengthBand()).isEqualTo(StrengthBand.MEDIUM);
         assertThat(response.status()).isEqualTo("PENDING");
         assertThat(response.documentChunkId()).isEqualTo(chunk.getId());
