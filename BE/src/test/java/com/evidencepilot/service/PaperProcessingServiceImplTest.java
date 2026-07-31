@@ -1,7 +1,7 @@
 package com.evidencepilot.service;
 
+import com.evidencepilot.dto.response.AiReviewResponse;
 import com.evidencepilot.mapper.ProjectMapper;
-import com.evidencepilot.dto.response.SourceCategoryRadarResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.ClaimEvidenceMapping;
 import com.evidencepilot.model.Document;
@@ -11,6 +11,7 @@ import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.InstructorFeedback;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
+import com.evidencepilot.model.ReviewSnapshot;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.UserRole;
@@ -23,6 +24,7 @@ import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.repository.ReviewSnapshotRepository;
 import com.evidencepilot.repository.SectionFeedbackRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.impl.PaperProcessingServiceImpl;
@@ -72,7 +74,7 @@ class PaperProcessingServiceImplTest {
     private ClaimContentConsistencyService claimContentConsistencyService;
 
     @Mock
-    private SourceCategoryRadarService sourceCategoryRadarService;
+    private EvidenceFilterService evidenceFilterService;
 
     @Mock
     private AuditService auditService;
@@ -106,6 +108,9 @@ class PaperProcessingServiceImplTest {
 
     @Mock
     private TexArchiveBuilder texArchiveBuilder;
+
+    @Mock
+    private ReviewSnapshotRepository reviewSnapshotRepository;
 
     @Test
     void getPaperSectionsRequiresProjectAccess() {
@@ -167,27 +172,26 @@ class PaperProcessingServiceImplTest {
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
-        when(sourceCategoryRadarService.calculate(project.getId())).thenReturn(radar());
         when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
                 .thenReturn(List.of(section));
         when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
                 .thenReturn(List.of(feedback));
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of(claim));
-        when(claimEvidenceMappingRepository.findByClaimId(claim.getId()))
-                .thenReturn(List.of(eligible, excluded));
+        when(evidenceFilterService.activeMappings(claim)).thenReturn(List.of(eligible));
         when(claimContentConsistencyService.evaluate(claim)).thenReturn(ClaimContentStatus.PRESENT);
-        when(aiModelClient.generate(anyString())).thenReturn(validReviewJson());
+        when(aiModelClient.generate(anyString())).thenAnswer(reviewAnswers());
 
         var response = service().review(document.getId(), null);
 
         verify(currentUserService).requireProjectAccess(user, project);
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
-        verify(aiModelClient).generate(prompt.capture());
-        assertThat(prompt.getValue())
-                .contains("Latest saved section content")
-                .contains("Verified source snippet")
-                .contains("Clarify this claim.")
-                .doesNotContain("Stale extracted text", "Rejected source snippet");
+        verify(aiModelClient, times(2)).generate(prompt.capture());
+        assertThat(prompt.getAllValues())
+                .anyMatch(value -> value.contains("Latest saved section content")
+                        && value.contains("Verified source snippet")
+                        && value.contains("Clarify this claim.")
+                        && !value.contains("Stale extracted text")
+                        && !value.contains("Rejected source snippet"));
         assertThat(response.complete()).isTrue();
         assertThat(response.coverage().sectionsScanned()).isEqualTo(1);
         assertThat(response.summary()).contains("checked 1/1 active Claims");
@@ -201,7 +205,6 @@ class PaperProcessingServiceImplTest {
         PaperSection section = section(document);
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
-        when(sourceCategoryRadarService.calculate(project.getId())).thenReturn(radar());
         when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
                 .thenReturn(List.of(section));
         when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
@@ -211,7 +214,7 @@ class PaperProcessingServiceImplTest {
 
         assertThatThrownBy(() -> service().review(document.getId(), null))
                 .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
-                .hasMessageContaining("invalid JSON");
+                .hasMessageContaining("invalid assertions JSON");
         verify(aiModelClient, times(2)).generate(anyString());
     }
 
@@ -224,74 +227,208 @@ class PaperProcessingServiceImplTest {
         section.setContentTex("x".repeat(8_100) + "TAIL_MARKER");
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
-        when(sourceCategoryRadarService.calculate(project.getId())).thenReturn(radar());
         when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
                 .thenReturn(List.of(section));
         when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
                 .thenReturn(List.of());
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
-        when(aiModelClient.generate(anyString())).thenReturn(validReviewJson());
+        when(aiModelClient.generate(anyString())).thenAnswer(reviewAnswers());
 
         var response = service().review(document.getId(), "IEEE");
 
         ArgumentCaptor<String> prompts = ArgumentCaptor.forClass(String.class);
-        verify(aiModelClient, times(2)).generate(prompts.capture());
+        verify(aiModelClient, times(4)).generate(prompts.capture());
         assertThat(prompts.getAllValues()).anyMatch(prompt -> prompt.contains("TAIL_MARKER"));
         assertThat(response.coverage().totalChunks()).isEqualTo(2);
         assertThat(response.coverage().chunksScanned()).isEqualTo(2);
     }
 
     @Test
-    void detectAndPersistSectionsReturnsEmptyWithoutExtractedText() {
-        Document document = document(project());
-        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
-
-        org.assertj.core.api.Assertions.assertThat(service().detectAndPersistSections(document.getId())).isEmpty();
-    }
-
-    @Test
-    void detectAndPersistSectionsCreatesFullTextSection() {
-        Document document = document(project());
-        DocumentText text = new DocumentText();
-        text.setDocument(document);
-        text.setExtractedText("lowercase content without a heading");
-        document.setDocumentText(text);
-        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
-        when(paperSectionRepository.saveAll(org.mockito.ArgumentMatchers.anyList()))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        service().detectAndPersistSections(document.getId());
-
-        verify(paperSectionRepository).saveAll(argThat(sections -> {
-            var iterator = sections.iterator();
-            return iterator.hasNext()
-                    && iterator.next().getSectionTitle().equals("Full Text")
-                    && !iterator.hasNext();
-        }));
-    }
-
-    @Test
-    void detectAndPersistSectionsKeepsExistingSectionsOnRetry() {
-        Document document = document(project());
-        DocumentText text = new DocumentText();
-        text.setDocument(document);
-        text.setExtractedText("Introduction\nExtracted content");
-        document.setDocumentText(text);
-        PaperSection existing = new PaperSection();
-        existing.setId(UUID.randomUUID());
-        existing.setDocument(document);
-        existing.setSectionTitle("Edited Introduction");
-        existing.setSectionOrder(0);
-
+    void reviewFlagsAssertionWithNoMatchingClaim() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        section.setSectionTitle("Methodology");
+        section.setContentTex("The system processes documents asynchronously.");
+        Claim claim = new Claim();
+        claim.setId(UUID.randomUUID());
+        claim.setProject(project);
+        claim.setSection(section);
+        claim.setContent("Evidence is stored in object storage.");
+        claim.setActive(true);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
         when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
-                .thenReturn(List.of(existing));
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of(claim));
+        when(evidenceFilterService.activeMappings(claim)).thenReturn(List.of());
+        when(claimContentConsistencyService.evaluate(claim)).thenReturn(ClaimContentStatus.PRESENT);
+        when(aiModelClient.generate(anyString())).thenAnswer(invocation -> {
+            String prompt = invocation.getArgument(0);
+            return prompt.contains("\"assertions\":")
+                    ? "{\"assertions\":[\"The system processes documents asynchronously.\"]}"
+                    : validReviewJson();
+        });
+        when(aiModelClient.generateEmbeddings(any())).thenAnswer(invocation -> {
+            List<String> texts = invocation.getArgument(0);
+            return texts.stream().map(text -> text.contains("object storage")
+                    ? List.of(1f, 0f) : List.of(0f, 1f)).toList();
+        });
 
-        org.assertj.core.api.Assertions.assertThat(service().detectAndPersistSections(document.getId()))
-                .hasSize(1);
+        var response = service().review(document.getId(), null);
 
-        verify(paperSectionRepository).findByDocumentIdOrderBySectionOrderAsc(document.getId());
-        verifyNoMoreInteractions(paperSectionRepository);
+        assertThat(response.findings())
+                .anyMatch(finding -> finding.type()
+                        == com.evidencepilot.dto.response.AiReviewResponse.FindingType.MISSING_CLAIM
+                        && section.getId().equals(finding.sectionId())
+                        && finding.excerpt().contains("asynchronously"));
+    }
+
+    @Test
+    void reviewDoesNotFlagAssertionCoveredByMatchingClaim() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        section.setContentTex("The system processes documents asynchronously.");
+        Claim claim = new Claim();
+        claim.setId(UUID.randomUUID());
+        claim.setProject(project);
+        claim.setSection(section);
+        claim.setContent("The system processes documents asynchronously.");
+        claim.setActive(true);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of(claim));
+        when(evidenceFilterService.activeMappings(claim)).thenReturn(List.of());
+        when(claimContentConsistencyService.evaluate(claim)).thenReturn(ClaimContentStatus.PRESENT);
+        when(aiModelClient.generate(anyString())).thenAnswer(invocation -> {
+            String prompt = invocation.getArgument(0);
+            return prompt.contains("\"assertions\":")
+                    ? "{\"assertions\":[\"The system processes documents asynchronously.\"]}"
+                    : validReviewJson();
+        });
+        when(aiModelClient.generateEmbeddings(any())).thenAnswer(invocation -> {
+            List<String> texts = invocation.getArgument(0);
+            return texts.stream().map(text -> List.of(1f, 1f)).toList();
+        });
+
+        var response = service().review(document.getId(), null);
+
+        assertThat(response.findings())
+                .noneMatch(finding -> finding.type()
+                        == com.evidencepilot.dto.response.AiReviewResponse.FindingType.MISSING_CLAIM);
+    }
+
+    @Test
+    void reviewReusesCachedSnapshotWithoutAiCalls() throws Exception {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        AiReviewResponse cached = new AiReviewResponse(
+                "paper-claim-review-v3", true,
+                new AiReviewResponse.Coverage(1, 1, 1, 1, 0, 0),
+                AiReviewResponse.Direction.ON_TRACK,
+                "Cached summary", List.of(), List.of());
+        ReviewSnapshot snapshot = new ReviewSnapshot();
+        snapshot.setResponseJson(objectMapper.writeValueAsString(cached));
+        when(reviewSnapshotRepository.findByProjectIdAndStyleAndInputFingerprint(
+                eq(project.getId()), eq("default"), anyString())).thenReturn(Optional.of(snapshot));
+
+        var response = service().review(document.getId(), null);
+
+        assertThat(response.summary()).isEqualTo("Cached summary");
+        verify(aiModelClient, never()).generate(anyString());
+        verify(reviewSnapshotRepository, never()).save(any());
+    }
+
+    @Test
+    void reviewCacheLookupFailureFallsBackToFreshReview() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(reviewSnapshotRepository.findByProjectIdAndStyleAndInputFingerprint(
+                eq(project.getId()), eq("default"), anyString()))
+                .thenThrow(new RuntimeException("db down"));
+        when(aiModelClient.generate(anyString())).thenAnswer(reviewAnswers());
+        when(reviewSnapshotRepository.save(any())).thenThrow(new RuntimeException("db down"));
+
+        var response = service().review(document.getId(), null);
+
+        assertThat(response.complete()).isTrue();
+        verify(aiModelClient, times(2)).generate(anyString());
+    }
+
+    @Test
+    void reviewDropsAiEmittedDeterministicFindings() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        Claim claim = new Claim();
+        claim.setId(UUID.randomUUID());
+        claim.setProject(project);
+        claim.setSection(section);
+        claim.setContent("Claim text present in the section content.");
+        claim.setActive(true);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of(claim));
+        when(evidenceFilterService.activeMappings(claim)).thenReturn(List.of());
+        when(claimContentConsistencyService.evaluate(claim)).thenReturn(ClaimContentStatus.PRESENT);
+        when(aiModelClient.generate(anyString())).thenAnswer(invocation -> {
+            String prompt = invocation.getArgument(0);
+            if (prompt.contains("\"assertions\"")) {
+                return "{\"assertions\":[]}";
+            }
+            return """
+                    {
+                      "findings":[
+                        {"type":"UNUSED_CLAIM","severity":"WARNING","claimId":"%s",
+                         "sectionId":"%s","sourceIds":[],"feedbackIds":[],"excerpt":"",
+                         "message":"AI duplicate","recommendedAction":"ignore"},
+                        {"type":"REDUNDANT_CLAIM","severity":"WARNING","claimId":"%s",
+                         "sectionId":"%s","sourceIds":[],"feedbackIds":[],"excerpt":"",
+                         "message":"Duplicate claim","recommendedAction":"keep one"}
+                      ]
+                    }
+                    """.formatted(claim.getId(), section.getId(), claim.getId(), section.getId());
+        });
+
+        var response = service().review(document.getId(), null);
+
+        assertThat(response.findings())
+                .noneMatch(finding -> finding.type()
+                        == com.evidencepilot.dto.response.AiReviewResponse.FindingType.UNUSED_CLAIM)
+                .anyMatch(finding -> finding.type()
+                        == com.evidencepilot.dto.response.AiReviewResponse.FindingType.REDUNDANT_CLAIM);
     }
 
     @Test
@@ -584,6 +721,89 @@ class PaperProcessingServiceImplTest {
     }
 
     @Test
+    void detectAndPersistSectionsReturnsEmptyWithoutExtractedText() {
+        Document document = document(project());
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+
+        org.assertj.core.api.Assertions.assertThat(service().detectAndPersistSections(document.getId())).isEmpty();
+    }
+
+    @Test
+    void detectAndPersistSectionsParsesHeadingsIntoOrderedSections() {
+        Document document = document(project());
+        DocumentText text = new DocumentText();
+        text.setDocument(document);
+        text.setExtractedText("# Introduction\nopening content\n\n# Methodology\nmethod content");
+        document.setDocumentText(text);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.saveAll(org.mockito.ArgumentMatchers.anyList()))
+                .thenAnswer(invocation -> {
+                    List<PaperSection> saved = new java.util.ArrayList<>(invocation.getArgument(0));
+                    saved.forEach(section -> section.setId(UUID.randomUUID()));
+                    return saved;
+                });
+
+        service().detectAndPersistSections(document.getId());
+
+        ArgumentCaptor<Iterable<PaperSection>> captor = ArgumentCaptor.forClass(Iterable.class);
+        verify(paperSectionRepository).saveAll(captor.capture());
+        var saved = java.util.stream.StreamSupport
+                .stream(captor.getValue().spliterator(), false)
+                .toList();
+        assertThat(saved).hasSize(2);
+        assertThat(saved.get(0).getSectionTitle()).isEqualTo("Introduction");
+        assertThat(saved.get(0).getSectionOrder()).isEqualTo(0);
+        assertThat(saved.get(0).getContentTex()).isEqualTo("opening content");
+        assertThat(saved.get(1).getSectionTitle()).isEqualTo("Methodology");
+        assertThat(saved.get(1).getSectionOrder()).isEqualTo(1);
+        assertThat(saved.get(1).getContentTex()).isEqualTo("method content");
+    }
+
+    @Test
+    void detectAndPersistSectionsCreatesFullTextSection() {
+        Document document = document(project());
+        DocumentText text = new DocumentText();
+        text.setDocument(document);
+        text.setExtractedText("lowercase content without a heading");
+        document.setDocumentText(text);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.saveAll(org.mockito.ArgumentMatchers.anyList()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service().detectAndPersistSections(document.getId());
+
+        verify(paperSectionRepository).saveAll(argThat(sections -> {
+            var iterator = sections.iterator();
+            return iterator.hasNext()
+                    && iterator.next().getSectionTitle().equals("Full Text")
+                    && !iterator.hasNext();
+        }));
+    }
+
+    @Test
+    void detectAndPersistSectionsKeepsExistingSectionsOnRetry() {
+        Document document = document(project());
+        DocumentText text = new DocumentText();
+        text.setDocument(document);
+        text.setExtractedText("Introduction\nExtracted content");
+        document.setDocumentText(text);
+        PaperSection existing = new PaperSection();
+        existing.setId(UUID.randomUUID());
+        existing.setDocument(document);
+        existing.setSectionTitle("Edited Introduction");
+        existing.setSectionOrder(0);
+
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(existing));
+
+        org.assertj.core.api.Assertions.assertThat(service().detectAndPersistSections(document.getId()))
+                .hasSize(1);
+
+        verify(paperSectionRepository).findByDocumentIdOrderBySectionOrderAsc(document.getId());
+        verifyNoMoreInteractions(paperSectionRepository);
+    }
+
     private PaperProcessingServiceImpl service() {
         return new PaperProcessingServiceImpl(
                 aiModelClient,
@@ -592,7 +812,7 @@ class PaperProcessingServiceImplTest {
                 claimEvidenceMappingRepository,
                 instructorFeedbackRepository,
                 claimContentConsistencyService,
-                sourceCategoryRadarService,
+                evidenceFilterService,
                 auditService,
                 objectMapper,
                 sectionFeedbackRepository,
@@ -603,7 +823,8 @@ class PaperProcessingServiceImplTest {
                 userRepository,
                 projectRepository,
                 systemNotificationService,
-                texArchiveBuilder);
+                texArchiveBuilder,
+                reviewSnapshotRepository);
     }
 
     private User user() {
@@ -663,15 +884,20 @@ class PaperProcessingServiceImplTest {
         return mapping;
     }
 
-    private SourceCategoryRadarResponse radar() {
-        return new SourceCategoryRadarResponse("Source categories", 0, List.of());
-    }
-
     private String validReviewJson() {
         return """
                 {
                   "findings":[]
                 }
                 """;
+    }
+
+    private org.mockito.stubbing.Answer<String> reviewAnswers() {
+        return invocation -> {
+            String prompt = invocation.getArgument(0);
+            return prompt.contains("\"assertions\":")
+                    ? "{\"assertions\":[]}"
+                    : validReviewJson();
+        };
     }
 }

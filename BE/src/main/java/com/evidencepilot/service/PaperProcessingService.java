@@ -14,9 +14,13 @@ public interface PaperProcessingService {
 
     List<PaperSectionResponse> getPaperSectionsByUser(UUID documentId, UUID userId);
 
-    PaperSectionResponse getSectionHistory(UUID documentId, UUID sectionId);
-
+    /**
+     * Detects the paper's section structure from the extracted text (heading-based)
+     * and persists it. No-op if sections already exist for the document.
+     */
     List<PaperSectionResponse> detectAndPersistSections(UUID documentId);
+
+    PaperSectionResponse getSectionHistory(UUID documentId, UUID sectionId);
 
     AiReviewResponse review(UUID documentId, String targetStyle);
 

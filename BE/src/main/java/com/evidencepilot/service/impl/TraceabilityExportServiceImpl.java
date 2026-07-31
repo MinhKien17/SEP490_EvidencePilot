@@ -20,7 +20,6 @@ import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.ClaimContentConsistencyService;
-import com.evidencepilot.service.SourceCategoryRadarService;
 import com.evidencepilot.service.GapDetectionService;
 import com.evidencepilot.service.TraceabilityExportService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -56,7 +55,6 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
     private final CurrentUserService currentUserService;
     private final GapDetectionService gapDetectionService;
     private final ClaimContentConsistencyService claimContentConsistencyService;
-    private final SourceCategoryRadarService sourceCategoryRadarService;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -117,7 +115,6 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
                 missingIfBlank(project.getTitle()),
                 project.getStatus(),
                 Instant.now(),
-                sourceCategoryRadarService.calculate(projectId),
                 claims,
                 sources,
                 feedback);

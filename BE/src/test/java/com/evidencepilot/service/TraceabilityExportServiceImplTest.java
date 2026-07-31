@@ -5,7 +5,6 @@ import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProjectStatus;
-import com.evidencepilot.dto.response.SourceCategoryRadarResponse;
 import com.evidencepilot.repository.*;
 import com.evidencepilot.service.impl.TraceabilityExportServiceImpl;
 import com.evidencepilot.service.GapDetectionService;
@@ -34,8 +33,6 @@ class TraceabilityExportServiceImplTest {
     private final GapDetectionService gapDetection = mock(GapDetectionService.class);
     private final ClaimContentConsistencyService claimContentConsistency =
             mock(ClaimContentConsistencyService.class);
-    private final SourceCategoryRadarService sourceCategoryRadar =
-            mock(SourceCategoryRadarService.class);
     private TraceabilityExportServiceImpl service;
 
     @BeforeEach
@@ -43,7 +40,7 @@ class TraceabilityExportServiceImplTest {
         service = new TraceabilityExportServiceImpl(
                 projects, claims, documents, references, feedback, chunks,
                 aiSuggestions, claimEvMappings, currentUsers, gapDetection,
-                claimContentConsistency, sourceCategoryRadar, new ObjectMapper());
+                claimContentConsistency, new ObjectMapper());
     }
 
     @Test
@@ -59,15 +56,12 @@ class TraceabilityExportServiceImplTest {
         when(claims.findByProjectId(projectId)).thenReturn(List.of());
         when(documents.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.SOURCE)).thenReturn(List.of());
         when(feedback.findByProjectId(projectId)).thenReturn(List.of());
-        var radar = new SourceCategoryRadarResponse("Source categories", 0, List.of());
-        when(sourceCategoryRadar.calculate(projectId)).thenReturn(radar);
 
         var response = service.exportTraceability(projectId);
 
         assertThat(response.projectId()).isEqualTo(projectId);
         assertThat(response.projectTitle()).isEqualTo("MISSING");
         assertThat(response.claims()).isEmpty();
-        assertThat(response.radar()).isSameAs(radar);
         verify(currentUsers).requireProjectAccess(user, project);
     }
 

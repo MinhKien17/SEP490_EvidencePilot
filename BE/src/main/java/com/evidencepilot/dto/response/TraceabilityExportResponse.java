@@ -13,7 +13,6 @@ public record TraceabilityExportResponse(
     String projectTitle,
     ProjectStatus projectStatus,
     Instant generatedAt,
-    SourceCategoryRadarResponse radar,
     List<TraceabilityClaim> claims,
     List<TraceabilitySource> sources,
     List<TraceabilityFeedback> feedback

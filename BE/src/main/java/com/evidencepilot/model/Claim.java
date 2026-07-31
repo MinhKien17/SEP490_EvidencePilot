@@ -1,5 +1,6 @@
 package com.evidencepilot.model;
 
+import com.evidencepilot.model.enums.FunctionalType;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -35,6 +36,10 @@ public class Claim {
     @Column(name = "ai_confidence_score")
     private Float aiConfidenceScore;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "functional_type")
+    private FunctionalType functionalType;
+
     @Column(name = "claim_version", nullable = false)
     private Integer claimVersion;
 
@@ -46,6 +51,9 @@ public class Claim {
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
 
     @OneToMany(mappedBy = "claim")
     private List<AiSuggestion> aiSuggestions;

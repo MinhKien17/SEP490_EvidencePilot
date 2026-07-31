@@ -19,7 +19,6 @@ public interface DocumentMapper {
     @Mapping(target = "openAlexSubfield", source = "openAlexSubfield")
     @Mapping(target = "openAlexField", source = "openAlexField")
     @Mapping(target = "openAlexDomain", source = "openAlexDomain")
-    @Mapping(target = "sourceCategory", expression = "java(com.evidencepilot.dto.response.SourceCategoryResponse.from(entity.getSourceCategory()))")
     DocumentResponse toDocumentResponse(Document entity);
 
     @Mapping(target = "documentId", source = "document.id")

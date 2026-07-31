@@ -1,9 +1,13 @@
 package com.evidencepilot.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record AiReviewResponse(
         String reviewVersion,
         boolean complete,
@@ -43,6 +47,24 @@ public record AiReviewResponse(
         limitations = limitations == null ? List.of() : List.copyOf(limitations);
     }
 
+    // ponytail: global rubric 0-5, derived so it can never drift from findings; FE reads it from JSON
+    @JsonProperty("rubricScore")
+    public double rubricScore() {
+        if (findings.isEmpty()) {
+            return 5.0;
+        }
+        double sum = 0;
+        for (Finding finding : findings) {
+            sum += finding.score();
+        }
+        return Math.round(sum / findings.size() * 10) / 10.0;
+    }
+
+    @JsonProperty("passes")
+    public boolean passes() {
+        return rubricScore() >= 3.5;
+    }
+
     public record Coverage(
             int totalSections,
             int sectionsScanned,
@@ -52,6 +74,7 @@ public record AiReviewResponse(
             int claimsChecked
     ) {}
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record Finding(
             FindingType type,
             Severity severity,
@@ -66,6 +89,23 @@ public record AiReviewResponse(
         public Finding {
             sourceIds = sourceIds == null ? List.of() : List.copyOf(sourceIds);
             feedbackIds = feedbackIds == null ? List.of() : List.copyOf(feedbackIds);
+        }
+
+        // ponytail: rubric 0-5 per finding, deterministic from type + severity cap
+        @JsonProperty("score")
+        public int score() {
+            int severityCap = switch (severity) {
+                case CRITICAL -> 1;
+                case WARNING -> 3;
+                case INFO -> 4;
+            };
+            int base = switch (type) {
+                case ORPHANED_CLAIM -> 1;
+                case UNUSED_CLAIM, UNSUPPORTED_CLAIM, MISSING_CLAIM, CLAIM_GAP, EXCESSIVE_CLAIMS -> 2;
+                case REDUNDANT_CLAIM, UNNECESSARY_CLAIM, UNRESOLVED_FEEDBACK -> 3;
+                case OTHER -> 4;
+            };
+            return Math.min(base, severityCap);
         }
 
         public boolean valid(

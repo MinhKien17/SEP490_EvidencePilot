@@ -16,7 +16,6 @@ import com.evidencepilot.service.ExtractionBundle;
 import com.evidencepilot.service.MediaAssetService;
 import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.QdrantService;
-import com.evidencepilot.service.SourceCategoryClassifier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -47,9 +46,8 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
     private final QdrantService qdrantService;
     private final DocumentPersistenceService documentPersistenceService;
     private final ObjectMapper objectMapper;
-    private final PaperProcessingService paperProcessingService;
     private final MediaAssetService mediaAssetService;
-    private final SourceCategoryClassifier sourceCategoryClassifier;
+    private final PaperProcessingService paperProcessingService;
 
     @Override
     public void process(UUID documentId) {
@@ -135,8 +133,6 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
         qdrantService.upsertVectors(new ExtractionResultPayload(document.getId(), payloadChunks));
         if (document.getDocType() == DocumentType.PAPER) {
             paperProcessingService.detectAndPersistSections(document.getId());
-        } else {
-            sourceCategoryClassifier.classifyIfMissing(document.getId(), extracted.markdown());
         }
         documentPersistenceService.markReady(document.getId(), payloadChunks.size());
         log.info("Completed extraction for document {} with {} chunks", document.getId(), payloadChunks.size());

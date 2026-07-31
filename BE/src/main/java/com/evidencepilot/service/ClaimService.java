@@ -8,6 +8,7 @@ import com.evidencepilot.dto.response.ClaimResponse;
 import com.evidencepilot.dto.response.ClaimSourceAuditResponse;
 import com.evidencepilot.dto.request.MappingReviewRequest;
 import com.evidencepilot.dto.response.PagedResponse;
+import com.evidencepilot.model.enums.FunctionalType;
 import java.util.List;
 import java.util.UUID;
 
@@ -29,7 +30,7 @@ public interface ClaimService {
             String q,
             Boolean active);
     ClaimResponse createClaim(ClaimCreationRequest request);
-    ClaimResponse updateClaim(UUID id, String content, Float aiConfidenceScore);
+    ClaimResponse updateClaim(UUID id, String content, Float aiConfidenceScore, FunctionalType functionalType);
     void deleteClaim(UUID id);
     List<AiSuggestionResponse> getSuggestionsForClaim(UUID claimId);
     List<ClaimMatchCandidateResponse> searchMatches(UUID claimId);

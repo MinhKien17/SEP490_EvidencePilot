@@ -168,7 +168,6 @@ Ownership rules used by `CurrentUserService`:
 
 | Method | Route | Body / params | Main result |
 | --- | --- | --- | --- |
-| `POST` | `/api/paper/{documentId}/claims/match` | JSON: `claimText` | Evaluates a claim against a paper document. |
 | `POST` | `/api/sources/{documentId}/claims/match` | JSON: `claimText` | Evaluates a claim against a source document. |
 
 ### Feedback
@@ -380,7 +379,6 @@ Explanation:
 - Claim CRUD is project-scoped through `ClaimService`.
 - AI suggestion routes are under `/api/claims/{id}/suggestions` and `/api/claims/suggestions/{suggestionId}/status`.
 - Evidence lookup routes are `/api/claims/{id}/mappings` and `/api/claims/{id}/edges`.
-- Claim evaluation is document-scoped through `RagController` at `/api/paper/{documentId}/claims/match` and `/api/sources/{documentId}/claims/match`.
 - `ClaimEvaluationServiceImpl` gets dense embeddings and generated evaluations through `AiModelClient`, creates sparse vectors with `SparseVectorGenerator`, and searches document context through `QdrantGateway`.
 
 ## 8. Feedback Review Flow

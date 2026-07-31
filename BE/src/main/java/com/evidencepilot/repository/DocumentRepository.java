@@ -1,7 +1,6 @@
 package com.evidencepilot.repository;
 
 import com.evidencepilot.model.Document;
-import com.evidencepilot.model.SourceCategory;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -23,7 +22,6 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
     List<Document> findByUploadedById(UUID uploadedById);
     List<Document> findByProjectIdOrCollectionId(UUID projectId, UUID collectionId);
     List<Document> findByProcessingStatusAndActiveTrue(ProcessingStatus processingStatus);
-    long countBySourceCategoryId(UUID sourceCategoryId);
 
     @Modifying
     @Query("UPDATE Document d SET d.processingStatus = :status, d.chunkCount = :chunkCount WHERE d.id = :documentId")
@@ -32,10 +30,4 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
         @Param("status") ProcessingStatus status,
         @Param("chunkCount") Integer chunkCount
     );
-
-    @Modifying
-    @Query("UPDATE Document d SET d.sourceCategory = :category "
-            + "WHERE d.docType = com.evidencepilot.model.enums.DocumentType.SOURCE "
-            + "AND d.sourceCategory IS NULL")
-    int assignMissingSourceCategory(@Param("category") SourceCategory category);
 }

@@ -72,6 +72,9 @@ class FeedbackServiceImplTest {
     @Mock
     private ClaimContentConsistencyService claimContentConsistencyService;
 
+    @Mock
+    private CheckpointService checkpointService;
+
     @Test
     void submitForReviewUsesProjectInstructorAndStudent() {
         User instructor = user(UserRole.INSTRUCTOR);
@@ -302,7 +305,8 @@ class FeedbackServiceImplTest {
                 currentUserService,
                 systemNotificationService,
                 paperProcessingService,
-                claimContentConsistencyService);
+                claimContentConsistencyService,
+                checkpointService);
     }
 
     private User user(UserRole role) {

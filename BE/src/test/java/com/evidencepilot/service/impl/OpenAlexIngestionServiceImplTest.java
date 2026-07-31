@@ -13,10 +13,8 @@ import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.DocumentReferenceRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
-import com.evidencepilot.repository.SourceCategoryRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentObjectStorage;
-import com.evidencepilot.service.SourceCategoryClassifier;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -61,10 +59,6 @@ class OpenAlexIngestionServiceImplTest {
     private DocumentPersistenceService documentPersistenceService;
     @Mock
     private DocumentReferenceRepository documentReferenceRepository;
-    @Mock
-    private SourceCategoryRepository sourceCategoryRepository;
-    @Mock
-    private SourceCategoryClassifier sourceCategoryClassifier;
 
     private OpenAlexIngestionServiceImpl service;
     private OpenAlexIngestionServiceImpl serviceSpy;
@@ -77,8 +71,7 @@ class OpenAlexIngestionServiceImplTest {
         service = new OpenAlexIngestionServiceImpl(
                 openAlexClient, documentRepository, projectRepository,
                 collectionRepository, currentUserService, documentObjectStorage,
-                documentPersistenceService, documentReferenceRepository, new ObjectMapper(),
-                sourceCategoryRepository, sourceCategoryClassifier);
+                documentPersistenceService, documentReferenceRepository, new ObjectMapper());
         serviceSpy = spy(service);
 
         currentUser = new User();

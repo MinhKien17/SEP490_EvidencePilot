@@ -13,6 +13,7 @@ import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.DocumentRepository;
@@ -22,6 +23,7 @@ import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.CurrentUserService;
+import com.evidencepilot.service.CheckpointService;
 import com.evidencepilot.service.ClaimContentConsistencyService;
 import com.evidencepilot.service.FeedbackService;
 import com.evidencepilot.service.PaperProcessingService;
@@ -52,6 +54,7 @@ public class FeedbackServiceImpl implements FeedbackService {
     private final SystemNotificationService systemNotificationService;
     private final PaperProcessingService paperProcessingService;
     private final ClaimContentConsistencyService claimContentConsistencyService;
+    private final CheckpointService checkpointService;
 
     @Override
     public List<FeedbackRequestResponseDto> findAllForCurrentUser() {
@@ -92,7 +95,13 @@ public class FeedbackServiceImpl implements FeedbackService {
         if (instructor == null || instructor.getRole() != UserRole.INSTRUCTOR) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project has no instructor.");
         }
-        User student = project.getStudent();
+        boolean isStudentMember = project.getProjectMembers() != null
+                && project.getProjectMembers().stream()
+                .anyMatch(pm -> pm.getUser() != null
+                        && currentUser.getId().equals(pm.getUser().getId())
+                        && pm.getRole() != ProjectRole.INSTRUCTOR);
+        User student = currentUser.getRole() == UserRole.STUDENT && isStudentMember
+                ? currentUser : project.getStudent();
         if (student == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project has no student.");
         }
@@ -123,6 +132,7 @@ public class FeedbackServiceImpl implements FeedbackService {
         projectRepository.save(project);
 
         FeedbackRequest saved = feedbackRequestRepository.save(feedbackRequest);
+        checkpointService.capture(projectId, "SUBMIT_FOR_REVIEW");
         systemNotificationService.createNotification(
                 instructor,
                 currentUser,
@@ -253,7 +263,9 @@ public class FeedbackServiceImpl implements FeedbackService {
         project.setStatus(projectStatus);
         project.setUpdatedAt(LocalDateTime.now());
         projectRepository.save(project);
-        return feedbackRequestRepository.save(feedbackRequest);
+        FeedbackRequest saved = feedbackRequestRepository.save(feedbackRequest);
+        checkpointService.capture(project.getId(), "REVIEW_STATUS:" + status);
+        return saved;
     }
 
     private FeedbackRequest requireFeedbackAccess(UUID id, User currentUser, boolean instructorOnly) {

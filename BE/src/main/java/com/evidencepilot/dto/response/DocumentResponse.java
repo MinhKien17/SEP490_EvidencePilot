@@ -23,8 +23,7 @@ public record DocumentResponse(
     String openAlexTopic,
     String openAlexSubfield,
     String openAlexField,
-    String openAlexDomain,
-    SourceCategoryResponse sourceCategory
+    String openAlexDomain
 ) {
     public static DocumentResponse from(Document doc) {
         return new DocumentResponse(
@@ -44,8 +43,7 @@ public record DocumentResponse(
             doc.getOpenAlexTopic(),
             doc.getOpenAlexSubfield(),
             doc.getOpenAlexField(),
-            doc.getOpenAlexDomain(),
-            SourceCategoryResponse.from(doc.getSourceCategory())
+            doc.getOpenAlexDomain()
         );
     }
 }

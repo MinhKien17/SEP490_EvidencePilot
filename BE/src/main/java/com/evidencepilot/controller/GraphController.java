@@ -24,4 +24,10 @@ public class GraphController {
             @RequestParam(defaultValue = "all") String scope) {
         return graphService.getGraph(projectId, scope);
     }
+
+    @GetMapping("/claim-stats")
+    @Operation(summary = "Get claim statistics", description = "Returns active claim counts grouped by functional type")
+    public GraphResponse.ClaimStatsResponse getClaimStats(@PathVariable UUID projectId) {
+        return graphService.getClaimStats(projectId);
+    }
 }

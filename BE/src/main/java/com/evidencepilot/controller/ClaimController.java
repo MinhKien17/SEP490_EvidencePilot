@@ -9,6 +9,7 @@ import com.evidencepilot.dto.response.ClaimMatchCandidateResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
 import com.evidencepilot.dto.response.ClaimSourceAuditResponse;
 import com.evidencepilot.dto.response.PagedResponse;
+import com.evidencepilot.model.enums.FunctionalType;
 import com.evidencepilot.service.ClaimService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -107,7 +108,10 @@ public class ClaimController {
         Float aiConfidenceScore = body.get("aiConfidenceScore") != null
                 ? ((Number) body.get("aiConfidenceScore")).floatValue()
                 : null;
-        return claimService.updateClaim(id, content, aiConfidenceScore);
+        FunctionalType functionalType = body.get("functionalType") != null
+                ? FunctionalType.valueOf((String) body.get("functionalType"))
+                : null;
+        return claimService.updateClaim(id, content, aiConfidenceScore, functionalType);
     }
 
     @Operation(summary = "Soft-delete a claim",

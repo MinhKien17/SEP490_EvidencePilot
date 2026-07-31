@@ -60,11 +60,9 @@ class DocumentExtractionWorkerTest {
     @Mock
     private DocumentPersistenceService persistence;
     @Mock
-    private PaperProcessingService paperProcessingService;
-    @Mock
     private MediaAssetService mediaAssetService;
     @Mock
-    private SourceCategoryClassifier sourceCategoryClassifier;
+    private PaperProcessingService paperProcessingService;
 
     @Test
     void processImportsProjectSourcePdfImagesBeforeWritingCheckpointAndDeletesArchive() throws IOException {
@@ -240,36 +238,6 @@ class DocumentExtractionWorkerTest {
         verify(documentObjectStorage).write(eq(checkpointKey), any(byte[].class), eq("application/json"));
     }
 
-    @Test
-    void processPaperDetectsSectionsAfterQdrantBeforeReady() {
-        UUID documentId = UUID.randomUUID();
-        Document document = document(documentId);
-        document.setDocType(DocumentType.PAPER);
-        document.setOriginalFilename("paper.pdf");
-        String markdown = "Introduction\n\nPaper content.";
-        String checkpointKey = "documents/processed/" + documentId + "/extraction.json";
-        DocumentChunk chunk = chunk(document, markdown);
-        ExtractionBundle extractedBundle = bundle(markdown);
-
-        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
-        when(documentObjectStorage.exists(checkpointKey)).thenReturn(false);
-        when(aiModelClient.extractDocument(eq("paper.pdf"), anyString()))
-                .thenReturn(extractedBundle);
-        when(aiModelClient.generateEmbeddings(List.of(markdown)))
-                .thenReturn(List.of(Collections.nCopies(768, 0.1f)));
-        when(sparseVectorGenerator.generate(markdown))
-                .thenReturn(new SparseVector(List.of(), List.of()));
-        when(persistence.saveExtraction(documentId, "mineru", markdown, List.of(markdown)))
-                .thenReturn(List.of(chunk));
-
-        worker().process(documentId);
-
-        InOrder completion = inOrder(qdrantService, paperProcessingService, persistence);
-        completion.verify(qdrantService).upsertVectors(any(ExtractionResultPayload.class));
-        completion.verify(paperProcessingService).detectAndPersistSections(documentId);
-        completion.verify(persistence).markReady(documentId, 1);
-    }
-
     @ParameterizedTest
     @CsvSource({
             "source.docx, python-docx",
@@ -312,6 +280,62 @@ class DocumentExtractionWorkerTest {
     }
 
     @Test
+    void processPaperDetectsSectionsAfterQdrantBeforeReady() {
+        UUID documentId = UUID.randomUUID();
+        Document document = document(documentId);
+        document.setDocType(DocumentType.PAPER);
+        document.setOriginalFilename("paper.pdf");
+        String markdown = "Introduction\n\nPaper content.";
+        String checkpointKey = "documents/processed/" + documentId + "/extraction.json";
+        DocumentChunk chunk = chunk(document, markdown);
+        ExtractionBundle extractedBundle = bundle(markdown);
+
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(documentObjectStorage.exists(checkpointKey)).thenReturn(false);
+        when(aiModelClient.extractDocument(eq("paper.pdf"), anyString()))
+                .thenReturn(extractedBundle);
+        when(aiModelClient.generateEmbeddings(List.of(markdown)))
+                .thenReturn(List.of(Collections.nCopies(768, 0.1f)));
+        when(sparseVectorGenerator.generate(markdown))
+                .thenReturn(new SparseVector(List.of(), List.of()));
+        when(persistence.saveExtraction(documentId, "mineru", markdown, List.of(markdown)))
+                .thenReturn(List.of(chunk));
+
+        worker().process(documentId);
+
+        InOrder completion = inOrder(qdrantService, paperProcessingService, persistence);
+        completion.verify(qdrantService).upsertVectors(any(ExtractionResultPayload.class));
+        completion.verify(paperProcessingService).detectAndPersistSections(documentId);
+        completion.verify(persistence).markReady(documentId, 1);
+    }
+
+    @Test
+    void processDoesNotDetectSectionsForNonPaperDocuments() {
+        UUID documentId = UUID.randomUUID();
+        Document document = document(documentId);
+        document.setDocType(DocumentType.SOURCE);
+        String markdown = "Extracted source.";
+        String checkpointKey = "documents/processed/" + documentId + "/extraction.json";
+        DocumentChunk chunk = chunk(document, markdown);
+        ExtractionBundle extractedBundle = bundle(markdown);
+
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(documentObjectStorage.exists(checkpointKey)).thenReturn(false);
+        when(aiModelClient.extractDocument(eq("source.pdf"), anyString()))
+                .thenReturn(extractedBundle);
+        when(aiModelClient.generateEmbeddings(List.of(markdown)))
+                .thenReturn(List.of(Collections.nCopies(768, 0.1f)));
+        when(sparseVectorGenerator.generate(markdown))
+                .thenReturn(new SparseVector(List.of(), List.of()));
+        when(persistence.saveExtraction(documentId, "mineru", markdown, List.of(markdown)))
+                .thenReturn(List.of(chunk));
+
+        worker().process(documentId);
+
+        verify(paperProcessingService, never()).detectAndPersistSections(any());
+    }
+
+    @Test
     void processMarksFailedWhenExtractionFails() {
         UUID documentId = UUID.randomUUID();
         Document document = document(documentId);
@@ -336,9 +360,8 @@ class DocumentExtractionWorkerTest {
                 qdrantService,
                 persistence,
                 new ObjectMapper(),
-                paperProcessingService,
                 mediaAssetService,
-                sourceCategoryClassifier);
+                paperProcessingService);
         ReflectionTestUtils.setField(w, "baseUrl", "http://localhost:8080");
         return w;
     }

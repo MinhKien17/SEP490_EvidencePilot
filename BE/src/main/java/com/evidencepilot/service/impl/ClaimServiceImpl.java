@@ -19,6 +19,7 @@ import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
+import com.evidencepilot.model.enums.FunctionalType;
 import com.evidencepilot.model.enums.MappingReviewStatus;
 import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.model.enums.SuggestionStatus;
@@ -159,6 +160,7 @@ public class ClaimServiceImpl implements ClaimService {
         claim.setCreatedBy(currentUser);
         claim.setContent(request.content());
         claim.setAiConfidenceScore(request.aiConfidenceScore());
+        claim.setFunctionalType(request.functionalType());
         claim.setClaimVersion(1);
         claim.setActive(true);
         claim.setCreatedAt(LocalDateTime.now());
@@ -168,7 +170,7 @@ public class ClaimServiceImpl implements ClaimService {
 
     @Override
     @Transactional
-    public ClaimResponse updateClaim(UUID id, String content, Float aiConfidenceScore) {
+    public ClaimResponse updateClaim(UUID id, String content, Float aiConfidenceScore, FunctionalType functionalType) {
         Claim claim = findActiveClaim(id);
         User currentUser = currentUserService.requireCurrentUser();
         requireClaimContentWriteAccess(currentUser, claim);
@@ -177,7 +179,11 @@ public class ClaimServiceImpl implements ClaimService {
         if (aiConfidenceScore != null) {
             claim.setAiConfidenceScore(aiConfidenceScore);
         }
+        if (functionalType != null) {
+            claim.setFunctionalType(functionalType);
+        }
         claim.setClaimVersion(claim.getClaimVersion() + 1);
+        claim.setUpdatedAt(LocalDateTime.now());
 
         List<AiSuggestion> invalidated = aiSuggestionRepository.findByClaimId(id).stream()
                 .filter(suggestion -> suggestion.getStatus() == SuggestionStatus.PENDING)

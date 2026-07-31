@@ -62,15 +62,6 @@ CREATE TABLE collection_categories (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE source_categories (
-    id BINARY(16) NOT NULL PRIMARY KEY,
-    code VARCHAR(50) NOT NULL UNIQUE,
-    name VARCHAR(100) NOT NULL UNIQUE,
-    description TEXT,
-    active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE collections (
     id BINARY(16) NOT NULL PRIMARY KEY,
     project_id BINARY(16),
@@ -89,7 +80,6 @@ CREATE TABLE documents (
     id BINARY(16) NOT NULL PRIMARY KEY,
     project_id BINARY(16),
     collection_id BINARY(16),
-    source_category_id BINARY(16),
     uploaded_by BINARY(16) NOT NULL,
     doc_type VARCHAR(50) NOT NULL CHECK (doc_type IN ('PAPER', 'SOURCE')),
     file_url VARCHAR(500) NOT NULL,
@@ -118,12 +108,10 @@ CREATE TABLE documents (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_documents_project_id (project_id),
     INDEX idx_documents_collection_id (collection_id),
-    INDEX idx_documents_source_category_id (source_category_id),
     INDEX idx_documents_file_hash_sha256 (file_hash_sha256),
     INDEX idx_documents_processing_status (processing_status),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE SET NULL,
-    FOREIGN KEY (source_category_id) REFERENCES source_categories(id) ON DELETE SET NULL,
     FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -202,6 +190,7 @@ CREATE TABLE claims (
     created_by BINARY(16),
     content TEXT NOT NULL,
     ai_confidence_score FLOAT,
+    functional_type VARCHAR(50) CHECK (functional_type IN ('EMPIRICAL','THEORETICAL','METHODOLOGICAL','ANALYTICAL','APPLIED')),
     claim_version INT NOT NULL DEFAULT 1,
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -371,4 +360,31 @@ CREATE TABLE audit_logs (
     INDEX idx_audit_actor (actor_id),
     INDEX idx_audit_occurred (occurred_at),
     FOREIGN KEY (actor_id) REFERENCES users(id)
+);
+
+-- ==========================================
+-- 12. PROJECT CHECKPOINTS
+-- ==========================================
+CREATE TABLE project_checkpoints (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    project_id BINARY(16) NOT NULL,
+    trigger_type VARCHAR(50) NOT NULL,
+    snapshot_json LONGTEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_checkpoint_project (project_id, created_at),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+-- ==========================================
+-- 13. AI REVIEW SNAPSHOTS (result cache)
+-- ==========================================
+CREATE TABLE review_snapshots (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    project_id BINARY(16) NOT NULL,
+    style VARCHAR(50) NOT NULL,
+    input_fingerprint CHAR(64) NOT NULL,
+    response_json LONGTEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_review_snapshot (project_id, style, input_fingerprint),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );

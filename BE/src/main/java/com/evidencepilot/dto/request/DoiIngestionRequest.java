@@ -7,8 +7,7 @@ import java.util.UUID;
 public record DoiIngestionRequest(
         @NotBlank String doi,
         UUID projectId,
-        UUID collectionId,
-        UUID categoryId
+        UUID collectionId
 ) {
     @AssertTrue(message = "Either projectId or collectionId must be provided")
     public boolean isValid() {

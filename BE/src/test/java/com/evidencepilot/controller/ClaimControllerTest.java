@@ -1,6 +1,7 @@
 package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.request.ClaimCreationRequest;
+import com.evidencepilot.model.enums.FunctionalType;
 import com.evidencepilot.service.ClaimService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,7 +56,16 @@ class ClaimControllerTest {
         mockMvc.perform(put("/api/claims/{id}", id).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"content\":\"Updated\",\"aiConfidenceScore\":0.75}"))
                 .andExpect(status().isOk());
-        verify(service).updateClaim(id, "Updated", 0.75f);
+        verify(service).updateClaim(id, "Updated", 0.75f, null);
+    }
+
+    @Test
+    void updateClaim_bindsFunctionalType() throws Exception {
+        UUID id = UUID.randomUUID();
+        mockMvc.perform(put("/api/claims/{id}", id).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"Updated\",\"functionalType\":\"EMPIRICAL\"}"))
+                .andExpect(status().isOk());
+        verify(service).updateClaim(id, "Updated", null, FunctionalType.EMPIRICAL);
     }
 
     @Test

@@ -17,7 +17,6 @@ import com.evidencepilot.repository.DocumentTextRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
-import com.evidencepilot.repository.SourceCategoryRepository;
 import com.evidencepilot.service.impl.DocumentPersistenceService;
 import com.evidencepilot.service.impl.DocumentServiceImpl;
 import io.minio.MinioClient;
@@ -83,9 +82,6 @@ class DocumentServiceImplAccessTest {
 
     @Mock
     private DocumentMapper documentMapper;
-
-    @Mock
-    private SourceCategoryRepository sourceCategoryRepository;
 
     @Mock
     private MinioClient minioClient;
@@ -452,7 +448,6 @@ class DocumentServiceImplAccessTest {
                 currentUserService,
                 documentPersistenceService,
                 documentMapper,
-                sourceCategoryRepository,
                 minioClient);
         ReflectionTestUtils.setField(service, "bucketName", "test-bucket");
         return service;

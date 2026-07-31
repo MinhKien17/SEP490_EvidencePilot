@@ -1,6 +1,5 @@
 package com.evidencepilot.controller;
 
-import com.evidencepilot.dto.request.SourceCategoryAssignmentRequest;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.model.enums.DocumentType;
@@ -117,23 +116,15 @@ public class SourceController {
     public ResponseEntity<DocumentResponse> upload(
             @Parameter(description = "File to upload") @RequestParam("file") MultipartFile file,
             @Parameter(description = "Project UUID") @RequestParam(value = "projectId", required = false) UUID projectId,
-            @Parameter(description = "Collection UUID") @RequestParam(value = "collectionId", required = false) UUID collectionId,
-            @Parameter(description = "Source category UUID") @RequestParam(value = "categoryId", required = false) UUID categoryId) {
+            @Parameter(description = "Collection UUID") @RequestParam(value = "collectionId", required = false) UUID collectionId) {
 
         if (projectId == null && collectionId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Either projectId or collectionId must be provided");
         }
         DocumentResponse response = documentService.uploadDocument(
-                projectId, collectionId, file, DocumentType.SOURCE, categoryId);
+                projectId, collectionId, file, DocumentType.SOURCE);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
-
-    @PutMapping("/{id}/category")
-    public DocumentResponse updateCategory(
-            @PathVariable UUID id,
-            @Valid @RequestBody SourceCategoryAssignmentRequest request) {
-        return documentService.updateSourceCategory(id, request.categoryId());
     }
 
 }

@@ -9,12 +9,7 @@ public interface OpenAlexIngestionService {
 
     OpenAlexPreview lookupByDoi(String doi);
 
-    default DocumentResponse ingestByDoi(UUID projectId, UUID collectionId, String doi) {
-        return ingestByDoi(projectId, collectionId, doi, null);
-    }
-
-    DocumentResponse ingestByDoi(
-            UUID projectId, UUID collectionId, String doi, UUID categoryId);
+    DocumentResponse ingestByDoi(UUID projectId, UUID collectionId, String doi);
 
     void persistReferences(UUID documentId);
 

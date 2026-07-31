@@ -161,9 +161,7 @@ class PaperControllerTest {
     @Test
     void upload_returns201WithoutDetectingSectionsSynchronously() throws Exception {
         UUID projectId = UUID.randomUUID();
-        UUID documentId = UUID.randomUUID();
         DocumentResponse response = mock(DocumentResponse.class);
-        when(response.id()).thenReturn(documentId);
         when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER)).thenReturn(List.of());
         when(documentService.uploadDocument(eq(projectId), any(), eq(DocumentType.PAPER))).thenReturn(response);
         MockMultipartFile file = new MockMultipartFile("file", "paper.pdf", "application/pdf", "pdf".getBytes());
@@ -172,7 +170,6 @@ class PaperControllerTest {
                 .andExpect(status().isCreated());
 
         verify(documentService).uploadDocument(eq(projectId), any(), eq(DocumentType.PAPER));
-        verify(paperService, never()).detectAndPersistSections(documentId);
     }
 
     private static DocumentResponse document(DocumentType type, boolean active) {

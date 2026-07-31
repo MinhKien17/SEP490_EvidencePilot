@@ -16,6 +16,7 @@ import com.evidencepilot.model.enums.StrengthBand;
 import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.MappingReviewStatus;
+import com.evidencepilot.model.enums.FunctionalType;
 import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
@@ -149,7 +150,7 @@ class ClaimServiceImplAccessTest {
                 org.springframework.http.HttpStatus.CONFLICT, "Project is read-only."))
                 .when(currentUserService).requireSectionContentWriteAccess(user, claim.getSection());
 
-        assertThatThrownBy(() -> service().updateClaim(claim.getId(), "Updated", null))
+        assertThatThrownBy(() -> service().updateClaim(claim.getId(), "Updated", null, null))
                 .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
                 .hasMessageContaining("Project is read-only.");
     }
@@ -251,11 +252,12 @@ class ClaimServiceImplAccessTest {
         when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
         when(claimRepository.save(any(Claim.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        service().createClaim(new ClaimCreationRequest(section.getId(), "content", 0.5f));
+        service().createClaim(new ClaimCreationRequest(section.getId(), "content", 0.5f, FunctionalType.THEORETICAL));
 
         verify(currentUserService).requireSectionContentWriteAccess(user, section);
         verify(claimRepository).save(argThat(saved -> saved.getProject() == project
-                && saved.getSection() == section && saved.getClaimVersion() == 1 && saved.isActive()));
+                && saved.getSection() == section && saved.getClaimVersion() == 1 && saved.isActive()
+                && saved.getFunctionalType() == FunctionalType.THEORETICAL));
     }
 
     @Test
@@ -273,8 +275,9 @@ class ClaimServiceImplAccessTest {
         when(claimEvidenceMappingRepository.findByClaimId(claim.getId()))
                 .thenReturn(List.of(activeMapping));
 
-        service().updateClaim(claim.getId(), "updated", 0.9f);
+        service().updateClaim(claim.getId(), "updated", 0.9f, FunctionalType.APPLIED);
         assertThat(claim.getContent()).isEqualTo("updated");
+        assertThat(claim.getFunctionalType()).isEqualTo(FunctionalType.APPLIED);
         assertThat(claim.getClaimVersion()).isEqualTo(2);
         assertThat(pendingSuggestion.getStatus()).isEqualTo(SuggestionStatus.INVALIDATED);
         assertThat(activeMapping.getStatus()).isEqualTo(MappingStatus.INACTIVE);
