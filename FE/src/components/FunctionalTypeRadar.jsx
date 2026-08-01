@@ -31,10 +31,10 @@ export default function FunctionalTypeRadar({ stats, compact = false }) {
     point(index, AXES.length, (count / max) * 100));
 
   return (
-    <section aria-label="Claim functional type radar" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+    <section aria-label="Claim type distribution" className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100">Claim Development Path</h3>
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100">Claim Type Distribution</h3>
           <p className="mt-0.5 text-[10px] text-slate-500">
             {stats.totalClaims || 0} Claim{stats.totalClaims === 1 ? '' : 's'} across 5 functional types
           </p>
@@ -43,7 +43,7 @@ export default function FunctionalTypeRadar({ stats, compact = false }) {
       </div>
 
       <svg viewBox="0 0 300 300" className={`mx-auto w-full ${compact ? 'max-w-[270px]' : 'max-w-[360px]'}`} role="img">
-        <title>Distribution of Claims by functional type</title>
+        <title>Claim Type Distribution</title>
         {[20, 40, 60, 80, 100].map(radius => (
           <polygon key={radius} points={polygon(AXES.length, radius)} fill="none" stroke="#cbd5e1" strokeWidth="0.7" />
         ))}
