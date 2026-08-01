@@ -14,7 +14,6 @@ import com.evidencepilot.service.ClaimContentConsistencyService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.FormatScanService;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -24,7 +23,6 @@ import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class FormatScanServiceImpl implements FormatScanService {
 
     private static final Pattern FIRST_PERSON = Pattern.compile(
