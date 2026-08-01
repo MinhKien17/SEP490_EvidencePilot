@@ -11,6 +11,7 @@ import com.evidencepilot.service.impl.ClaimQualityEvaluationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 import java.io.InputStream;
@@ -79,8 +80,14 @@ class ClaimQualityEvalTest {
         String baseUrl = System.getenv("AI_MODEL_BASE_URL");
         Assumptions.assumeTrue(baseUrl != null && !baseUrl.isBlank(),
                 "AI_MODEL_BASE_URL is required for the manual live-model harness");
+        String apiKey = System.getenv("AI_MODEL_API_KEY");
+        Assumptions.assumeTrue(apiKey != null && !apiKey.isBlank(),
+                "AI_MODEL_API_KEY is required for the manual live-model harness");
 
-        AiModelClient client = new AiModelClientImpl(RestClient.builder().build(), baseUrl);
+        AiModelClient client = new AiModelClientImpl(RestClient.builder()
+                .requestFactory(new SimpleClientHttpRequestFactory())
+                .defaultHeader("X-API-Key", apiKey)
+                .build(), baseUrl);
         ClaimQualityEvaluationService evaluator =
                 new ClaimQualityEvaluationService(client, objectMapper);
         GoldSet gold = goldSet();
@@ -103,6 +110,8 @@ class ClaimQualityEvalTest {
                     criterionMatches.merge(criterion.code(), 1, Integer::sum);
                 }
             }
+            Thread.sleep(Long.parseLong(System.getenv().getOrDefault(
+                    "CLAIM_QUALITY_EVAL_DELAY_MS", "0")));
         }
 
         System.out.printf(
