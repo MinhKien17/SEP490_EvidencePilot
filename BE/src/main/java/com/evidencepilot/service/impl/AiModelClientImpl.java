@@ -42,16 +42,24 @@ public class AiModelClientImpl implements AiModelClient {
     }
 
     @Override
-    public String generate(String prompt) {
+    public GenerationResult generate(String system, String prompt) {
         Map<String, Object> response = call("/ai/generate", () -> restClient.post()
                 .uri(baseUrl + "/ai/generate")
-                .body(Map.of("prompt", prompt))
+                .body(Map.of(
+                        "system", system == null ? "" : system,
+                        "prompt", prompt))
                 .retrieve()
                 .body(Map.class));
-        if (response == null || response.get("response") == null) {
+        if (response == null
+                || !hasText(response.get("provider"))
+                || !hasText(response.get("model"))
+                || !hasText(response.get("response"))) {
             throw new AiApiException("/ai/generate", "returned null or empty response", null);
         }
-        return String.valueOf(response.get("response"));
+        return new GenerationResult(
+                String.valueOf(response.get("provider")),
+                String.valueOf(response.get("model")),
+                String.valueOf(response.get("response")));
     }
 
     @Override
@@ -187,6 +195,10 @@ public class AiModelClientImpl implements AiModelClient {
             return fallback;
         }
         return String.valueOf(value);
+    }
+
+    private static boolean hasText(Object value) {
+        return value != null && !String.valueOf(value).isBlank();
     }
 
     @FunctionalInterface

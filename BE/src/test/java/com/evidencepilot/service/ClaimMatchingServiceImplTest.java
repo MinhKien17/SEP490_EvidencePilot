@@ -34,6 +34,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -94,7 +95,7 @@ class ClaimMatchingServiceImplTest {
                     assertThat(candidate.excerpt()).isEqualTo("Selected evidence");
                     assertThat(candidate.similarityScore()).isEqualTo(0.82f);
                 });
-        verify(aiModelClient, never()).generate(any());
+        verify(aiModelClient, never()).generate(anyString(), anyString());
         verifyNoInteractions(aiSuggestionRepository);
     }
 
@@ -111,8 +112,10 @@ class ClaimMatchingServiceImplTest {
                 .findFirstByClaimIdAndClaimVersionAndDocumentChunkIdOrderByCreatedAtDesc(
                         claim.getId(), claim.getClaimVersion(), chunk.getId()))
                 .thenReturn(Optional.empty());
-        when(aiModelClient.generate(any())).thenReturn(
-                "{\"relation\":\"SUPPORTS\",\"explanation\":\"The chunk directly supports the claim.\"}");
+        when(aiModelClient.generate(anyString(), anyString())).thenReturn(generated(
+                "gemini",
+                "gemini-3.6-flash",
+                "{\"relation\":\"SUPPORTS\",\"explanation\":\"The chunk directly supports the claim.\"}"));
         when(aiSuggestionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(claimMapper.toAiSuggestionResponse(any())).thenAnswer(invocation ->
                 response(invocation.getArgument(0)));
@@ -120,8 +123,12 @@ class ClaimMatchingServiceImplTest {
         AiSuggestionResponse response = service()
                 .evaluateMatch(claim.getId(), projectId, chunk.getId());
 
+        ArgumentCaptor<String> system = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
-        verify(aiModelClient).generate(prompt.capture());
+        verify(aiModelClient).generate(system.capture(), prompt.capture());
+        assertThat(system.getValue())
+                .contains("academic evidence evaluator", "Return raw JSON only")
+                .doesNotContain(claim.getContent(), "Exact selected chunk");
         assertThat(prompt.getValue())
                 .contains(claim.getContent(), "Exact selected chunk")
                 .doesNotContain("Draft text");
@@ -134,6 +141,9 @@ class ClaimMatchingServiceImplTest {
         assertThat(saved.getValue().getRelation()).isEqualTo(EvidenceRelation.SUPPORTS);
         assertThat(saved.getValue().getStrengthScore()).isEqualTo(55);
         assertThat(saved.getValue().getStrengthBand()).isEqualTo(StrengthBand.MEDIUM);
+        assertThat(saved.getValue().getModelName()).isEqualTo("gemini");
+        assertThat(saved.getValue().getModelVersion()).isEqualTo("gemini-3.6-flash");
+        assertThat(saved.getValue().getPromptVersion()).isEqualTo("claim-evidence-v2");
         assertThat(response.status()).isEqualTo("PENDING");
         assertThat(response.documentChunkId()).isEqualTo(chunk.getId());
     }
@@ -153,7 +163,8 @@ class ClaimMatchingServiceImplTest {
                 .findFirstByClaimIdAndClaimVersionAndDocumentChunkIdOrderByCreatedAtDesc(
                         claim.getId(), claim.getClaimVersion(), chunk.getId()))
                 .thenReturn(Optional.empty());
-        when(aiModelClient.generate(any())).thenReturn("Supported");
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenReturn(generated("ollama", "qwen3.5:9b", "Supported"));
 
         assertThatThrownBy(() -> service().evaluateMatch(claim.getId(), projectId, chunk.getId()))
                 .isInstanceOf(ResponseStatusException.class)
@@ -175,8 +186,10 @@ class ClaimMatchingServiceImplTest {
                 .findFirstByClaimIdAndClaimVersionAndDocumentChunkIdOrderByCreatedAtDesc(
                         claim.getId(), claim.getClaimVersion(), chunk.getId()))
                 .thenReturn(Optional.empty());
-        when(aiModelClient.generate(any())).thenReturn(
-                "{\"relation\":\"SUPPORTS\",\"explanation\":\"Direct support.\"}");
+        when(aiModelClient.generate(anyString(), anyString())).thenReturn(generated(
+                "ollama",
+                "qwen3.5:9b",
+                "{\"relation\":\"SUPPORTS\",\"explanation\":\"Direct support.\"}"));
         when(aiSuggestionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(claimMapper.toAiSuggestionResponse(any())).thenAnswer(invocation ->
                 response(invocation.getArgument(0)));
@@ -265,5 +278,10 @@ class ClaimMatchingServiceImplTest {
                 suggestion.getRelation(),
                 suggestion.getStrengthScore(),
                 suggestion.getStrengthBand());
+    }
+
+    private AiModelClient.GenerationResult generated(
+            String provider, String model, String response) {
+        return new AiModelClient.GenerationResult(provider, model, response);
     }
 }

@@ -179,13 +179,19 @@ class PaperProcessingServiceImplTest {
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of(claim));
         when(evidenceFilterService.activeMappings(claim)).thenReturn(List.of(eligible));
         when(claimContentConsistencyService.evaluate(claim)).thenReturn(ClaimContentStatus.PRESENT);
-        when(aiModelClient.generate(anyString())).thenAnswer(reviewAnswers());
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenAnswer(generationAnswers());
 
         var response = service().review(document.getId(), null);
 
         verify(currentUserService).requireProjectAccess(user, project);
+        ArgumentCaptor<String> system = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
-        verify(aiModelClient, times(2)).generate(prompt.capture());
+        verify(aiModelClient, times(2)).generate(system.capture(), prompt.capture());
+        assertThat(system.getAllValues())
+                .anyMatch(value -> value.contains("List the ASSERTIONS"))
+                .anyMatch(value -> value.contains("Review this paper chunk"))
+                .allMatch(value -> !value.contains("Latest saved section content"));
         assertThat(prompt.getAllValues())
                 .anyMatch(value -> value.contains("Latest saved section content")
                         && value.contains("Verified source snippet")
@@ -210,12 +216,18 @@ class PaperProcessingServiceImplTest {
         when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
                 .thenReturn(List.of());
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
-        when(aiModelClient.generate(anyString())).thenReturn("not-json");
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenReturn(generated("not-json"));
 
         assertThatThrownBy(() -> service().review(document.getId(), null))
                 .isInstanceOf(com.evidencepilot.exception.AiValidationException.class)
                 .hasMessageContaining("invalid assertions JSON");
-        verify(aiModelClient, times(2)).generate(anyString());
+        ArgumentCaptor<String> systems = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> prompts = ArgumentCaptor.forClass(String.class);
+        verify(aiModelClient, times(2)).generate(systems.capture(), prompts.capture());
+        assertThat(systems.getAllValues().get(0)).doesNotContain("previous response was invalid");
+        assertThat(systems.getAllValues().get(1)).contains("previous response was invalid");
+        assertThat(prompts.getAllValues()).containsOnly(prompts.getAllValues().get(0));
     }
 
     @Test
@@ -231,12 +243,13 @@ class PaperProcessingServiceImplTest {
         when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
                 .thenReturn(List.of());
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
-        when(aiModelClient.generate(anyString())).thenReturn("null");
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenReturn(generated("null"));
 
         assertThatThrownBy(() -> service().review(document.getId(), null))
                 .isInstanceOf(com.evidencepilot.exception.AiValidationException.class)
                 .hasMessageContaining("invalid assertions JSON");
-        verify(aiModelClient, times(2)).generate(anyString());
+        verify(aiModelClient, times(2)).generate(anyString(), anyString());
     }
 
     @Test
@@ -252,13 +265,16 @@ class PaperProcessingServiceImplTest {
         when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
                 .thenReturn(List.of());
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
-        when(aiModelClient.generate(anyString()))
-                .thenReturn("{\"assertions\":[]}", "null", "null");
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenReturn(
+                        generated("{\"assertions\":[]}"),
+                        generated("null"),
+                        generated("null"));
 
         assertThatThrownBy(() -> service().review(document.getId(), null))
                 .isInstanceOf(com.evidencepilot.exception.AiValidationException.class)
                 .hasMessageContaining("invalid findings JSON");
-        verify(aiModelClient, times(3)).generate(anyString());
+        verify(aiModelClient, times(3)).generate(anyString(), anyString());
     }
 
     @Test
@@ -274,13 +290,16 @@ class PaperProcessingServiceImplTest {
         when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
                 .thenReturn(List.of());
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
-        when(aiModelClient.generate(anyString()))
-                .thenReturn("{\"assertions\":[]}", "{}", "{}");
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenReturn(
+                        generated("{\"assertions\":[]}"),
+                        generated("{}"),
+                        generated("{}"));
 
         assertThatThrownBy(() -> service().review(document.getId(), null))
                 .isInstanceOf(com.evidencepilot.exception.AiValidationException.class)
                 .hasMessageContaining("invalid findings JSON");
-        verify(aiModelClient, times(3)).generate(anyString());
+        verify(aiModelClient, times(3)).generate(anyString(), anyString());
     }
 
     @Test
@@ -304,7 +323,7 @@ class PaperProcessingServiceImplTest {
         assertThat(response.direction()).isEqualTo(AiReviewResponse.Direction.INSUFFICIENT_DATA);
         assertThat(response.rubricScore()).isNull();
         assertThat(response.passes()).isFalse();
-        verify(aiModelClient, never()).generate(anyString());
+        verify(aiModelClient, never()).generate(anyString(), anyString());
     }
 
     @Test
@@ -322,7 +341,8 @@ class PaperProcessingServiceImplTest {
         when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
                 .thenReturn(List.of());
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
-        when(aiModelClient.generate(anyString())).thenAnswer(reviewAnswers());
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenAnswer(generationAnswers());
 
         var response = service().review(document.getId(), null);
 
@@ -330,7 +350,7 @@ class PaperProcessingServiceImplTest {
         assertThat(response.direction()).isEqualTo(AiReviewResponse.Direction.INSUFFICIENT_DATA);
         assertThat(response.coverage().totalSections()).isEqualTo(2);
         assertThat(response.coverage().sectionsScanned()).isEqualTo(1);
-        assertThat(response.reviewVersion()).isEqualTo("paper-claim-review-v5");
+        assertThat(response.reviewVersion()).isEqualTo("paper-claim-review-v6");
         assertThat(response.summary()).contains("Scanned 1/2 Sections");
         assertThat(response.rubricScore()).isNull();
         assertThat(response.passes()).isFalse();
@@ -350,12 +370,13 @@ class PaperProcessingServiceImplTest {
         when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
                 .thenReturn(List.of());
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
-        when(aiModelClient.generate(anyString())).thenAnswer(reviewAnswers());
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenAnswer(generationAnswers());
 
         var response = service().review(document.getId(), "IEEE");
 
         ArgumentCaptor<String> prompts = ArgumentCaptor.forClass(String.class);
-        verify(aiModelClient, times(4)).generate(prompts.capture());
+        verify(aiModelClient, times(4)).generate(anyString(), prompts.capture());
         assertThat(prompts.getAllValues()).anyMatch(prompt -> prompt.contains("TAIL_MARKER"));
         assertThat(response.coverage().totalChunks()).isEqualTo(2);
         assertThat(response.coverage().chunksScanned()).isEqualTo(2);
@@ -384,11 +405,11 @@ class PaperProcessingServiceImplTest {
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of(claim));
         when(evidenceFilterService.activeMappings(claim)).thenReturn(List.of());
         when(claimContentConsistencyService.evaluate(claim)).thenReturn(ClaimContentStatus.PRESENT);
-        when(aiModelClient.generate(anyString())).thenAnswer(invocation -> {
-            String prompt = invocation.getArgument(0);
-            return prompt.contains("\"assertions\":")
+        when(aiModelClient.generate(anyString(), anyString())).thenAnswer(invocation -> {
+            String system = invocation.getArgument(0);
+            return generated(system.contains("List the ASSERTIONS")
                     ? "{\"assertions\":[\"The system processes documents asynchronously.\"]}"
-                    : validReviewJson();
+                    : validReviewJson());
         });
         when(aiModelClient.generateEmbeddings(any())).thenAnswer(invocation -> {
             List<String> texts = invocation.getArgument(0);
@@ -427,11 +448,11 @@ class PaperProcessingServiceImplTest {
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of(claim));
         when(evidenceFilterService.activeMappings(claim)).thenReturn(List.of());
         when(claimContentConsistencyService.evaluate(claim)).thenReturn(ClaimContentStatus.PRESENT);
-        when(aiModelClient.generate(anyString())).thenAnswer(invocation -> {
-            String prompt = invocation.getArgument(0);
-            return prompt.contains("\"assertions\":")
+        when(aiModelClient.generate(anyString(), anyString())).thenAnswer(invocation -> {
+            String system = invocation.getArgument(0);
+            return generated(system.contains("List the ASSERTIONS")
                     ? "{\"assertions\":[\"The system processes documents asynchronously.\"]}"
-                    : validReviewJson();
+                    : validReviewJson());
         });
         when(aiModelClient.generateEmbeddings(any())).thenAnswer(invocation -> {
             List<String> texts = invocation.getArgument(0);
@@ -471,7 +492,7 @@ class PaperProcessingServiceImplTest {
         var response = service().review(document.getId(), null);
 
         assertThat(response.summary()).isEqualTo("Cached summary");
-        verify(aiModelClient, never()).generate(anyString());
+        verify(aiModelClient, never()).generate(anyString(), anyString());
         verify(reviewSnapshotRepository, never()).save(any());
     }
 
@@ -491,13 +512,14 @@ class PaperProcessingServiceImplTest {
         when(reviewSnapshotRepository.findByProjectIdAndStyleAndInputFingerprint(
                 eq(project.getId()), eq("default"), anyString()))
                 .thenThrow(new RuntimeException("db down"));
-        when(aiModelClient.generate(anyString())).thenAnswer(reviewAnswers());
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenAnswer(generationAnswers());
         when(reviewSnapshotRepository.save(any())).thenThrow(new RuntimeException("db down"));
 
         var response = service().review(document.getId(), null);
 
         assertThat(response.complete()).isTrue();
-        verify(aiModelClient, times(2)).generate(anyString());
+        verify(aiModelClient, times(2)).generate(anyString(), anyString());
     }
 
     @Test
@@ -521,12 +543,12 @@ class PaperProcessingServiceImplTest {
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of(claim));
         when(evidenceFilterService.activeMappings(claim)).thenReturn(List.of());
         when(claimContentConsistencyService.evaluate(claim)).thenReturn(ClaimContentStatus.PRESENT);
-        when(aiModelClient.generate(anyString())).thenAnswer(invocation -> {
-            String prompt = invocation.getArgument(0);
-            if (prompt.contains("\"assertions\"")) {
-                return "{\"assertions\":[]}";
+        when(aiModelClient.generate(anyString(), anyString())).thenAnswer(invocation -> {
+            String system = invocation.getArgument(0);
+            if (system.contains("List the ASSERTIONS")) {
+                return generated("{\"assertions\":[]}");
             }
-            return """
+            return generated("""
                     {
                       "findings":[
                         {"type":"UNUSED_CLAIM","severity":"WARNING","claimId":"%s",
@@ -537,7 +559,8 @@ class PaperProcessingServiceImplTest {
                          "message":"Duplicate claim","recommendedAction":"keep one"}
                       ]
                     }
-                    """.formatted(claim.getId(), section.getId(), claim.getId(), section.getId());
+                    """.formatted(
+                            claim.getId(), section.getId(), claim.getId(), section.getId()));
         });
 
         var response = service().review(document.getId(), null);
@@ -1010,12 +1033,17 @@ class PaperProcessingServiceImplTest {
                 """;
     }
 
-    private org.mockito.stubbing.Answer<String> reviewAnswers() {
+    private org.mockito.stubbing.Answer<AiModelClient.GenerationResult> generationAnswers() {
         return invocation -> {
-            String prompt = invocation.getArgument(0);
-            return prompt.contains("\"assertions\":")
+            String system = invocation.getArgument(0);
+            String response = system.contains("List the ASSERTIONS")
                     ? "{\"assertions\":[]}"
                     : validReviewJson();
+            return new AiModelClient.GenerationResult("ollama", "qwen3.5:9b", response);
         };
+    }
+
+    private AiModelClient.GenerationResult generated(String response) {
+        return new AiModelClient.GenerationResult("ollama", "qwen3.5:9b", response);
     }
 }

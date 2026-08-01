@@ -144,10 +144,11 @@ class AiReviewEvalTest {
         when(snapshotRepository.findByProjectIdAndStyleAndInputFingerprint(
                 any(), anyString(), anyString())).thenReturn(Optional.empty());
         AiModelClient aiModelClient = mock(AiModelClient.class);
-        when(aiModelClient.generate(anyString())).thenAnswer(invocation -> {
-            String prompt = invocation.getArgument(0);
-            return prompt.contains("\"assertions\":")
+        when(aiModelClient.generate(anyString(), anyString())).thenAnswer(invocation -> {
+            String system = invocation.getArgument(0);
+            String response = system.contains("List the ASSERTIONS")
                     ? "{\"assertions\":[]}" : "{\"findings\":[]}";
+            return new AiModelClient.GenerationResult("ollama", "qwen3.5:9b", response);
         });
 
         PaperProcessingService service = new PaperProcessingServiceImpl(
