@@ -1,11 +1,4 @@
 -- ==========================================
--- 0. DATABASE
--- ==========================================
-DROP DATABASE IF EXISTS evidence_pilot;
-CREATE DATABASE IF NOT EXISTS evidence_pilot;
-USE evidence_pilot;
-
--- ==========================================
 -- 1. CORE IDENTITY & ACCESS
 -- ==========================================
 CREATE TABLE users (
@@ -162,6 +155,7 @@ CREATE TABLE paper_sections (
     previous_content_tex LONGTEXT,
     version INT DEFAULT 1,
     content_md_cache LONGTEXT,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_paper_sections (document_id, section_order),
     FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
@@ -194,6 +188,7 @@ CREATE TABLE claims (
     claim_version INT NOT NULL DEFAULT 1,
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_claims_project_id (project_id),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (section_id) REFERENCES paper_sections(id) ON DELETE SET NULL,
@@ -382,7 +377,7 @@ CREATE TABLE review_snapshots (
     id BINARY(16) NOT NULL PRIMARY KEY,
     project_id BINARY(16) NOT NULL,
     style VARCHAR(50) NOT NULL,
-    input_fingerprint CHAR(64) NOT NULL,
+    input_fingerprint VARCHAR(64) NOT NULL,
     response_json LONGTEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_review_snapshot (project_id, style, input_fingerprint),
