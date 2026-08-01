@@ -49,7 +49,10 @@ public record AiReviewResponse(
 
     // ponytail: global rubric 0-5, derived so it can never drift from findings; FE reads it from JSON
     @JsonProperty("rubricScore")
-    public double rubricScore() {
+    public Double rubricScore() {
+        if (!isScorable()) {
+            return null;
+        }
         if (findings.isEmpty()) {
             return 5.0;
         }
@@ -62,7 +65,19 @@ public record AiReviewResponse(
 
     @JsonProperty("passes")
     public boolean passes() {
-        return rubricScore() >= 3.5;
+        Double score = rubricScore();
+        return score != null && score >= 3.5;
+    }
+
+    private boolean isScorable() {
+        return complete
+                && direction != Direction.INSUFFICIENT_DATA
+                && coverage != null
+                && coverage.totalSections() > 0
+                && coverage.sectionsScanned() == coverage.totalSections()
+                && coverage.totalChunks() > 0
+                && coverage.chunksScanned() == coverage.totalChunks()
+                && coverage.claimsChecked() == coverage.totalClaims();
     }
 
     public record Coverage(

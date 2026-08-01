@@ -290,7 +290,9 @@ public class PaperController {
             @ApiResponse(responseCode = "200", description = "Review generated"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
             @ApiResponse(responseCode = "403", description = "Access denied"),
-            @ApiResponse(responseCode = "404", description = "Paper not found")
+            @ApiResponse(responseCode = "404", description = "Paper not found"),
+            @ApiResponse(responseCode = "502", description = "AI returned an invalid review"),
+            @ApiResponse(responseCode = "503", description = "AI worker unavailable")
     })
     @PostMapping("/papers/{id}/review")
     public AiReviewResponse review(

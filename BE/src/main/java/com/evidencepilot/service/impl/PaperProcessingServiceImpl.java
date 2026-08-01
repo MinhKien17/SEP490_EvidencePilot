@@ -3,6 +3,7 @@ package com.evidencepilot.service.impl;
 import com.evidencepilot.dto.response.AiReviewResponse;
 import com.evidencepilot.dto.response.PaperSectionResponse;
 import com.evidencepilot.dto.response.PaperValidationResponse;
+import com.evidencepilot.exception.AiValidationException;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.ProjectMapper;
 import com.evidencepilot.model.Claim;
@@ -79,7 +80,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             AiReviewResponse.FindingType.UNUSED_CLAIM,
             AiReviewResponse.FindingType.ORPHANED_CLAIM,
             AiReviewResponse.FindingType.UNSUPPORTED_CLAIM);
-    private static final String REVIEW_VERSION = "paper-claim-review-v4";
+    private static final String REVIEW_VERSION = "paper-claim-review-v5";
 
     private final AiModelClient aiModelClient;
     private final PaperSectionRepository paperSectionRepository;
@@ -245,14 +246,21 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             }
             List<AiReviewResponse.Finding> distinctFindings =
                     distinctFindings(findings);
+            int sectionsScanned = (int) chunks.stream()
+                    .map(ReviewChunk::sectionId)
+                    .distinct()
+                    .count();
             AiReviewResponse.Coverage coverage = new AiReviewResponse.Coverage(
                     sections.size(),
-                    sections.size(),
+                    sectionsScanned,
                     chunks.size(),
                     chunks.size(),
                     claims.size(),
                     claims.size());
-            AiReviewResponse.Direction direction = sections.isEmpty()
+            boolean complete = !sections.isEmpty()
+                    && sectionsScanned == sections.size()
+                    && !chunks.isEmpty();
+            AiReviewResponse.Direction direction = !complete
                     ? AiReviewResponse.Direction.INSUFFICIENT_DATA
                     : distinctFindings.stream().anyMatch(finding ->
                             finding.severity() == AiReviewResponse.Severity.WARNING
@@ -260,21 +268,26 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
                                     == AiReviewResponse.Severity.CRITICAL)
                             ? AiReviewResponse.Direction.NEEDS_ATTENTION
                             : AiReviewResponse.Direction.ON_TRACK;
-            List<String> limitations = hasLongEvidence(claims)
-                    ? List.of("Evidence excerpts are capped at 1,200 characters per "
-                            + "active mapping; every active mapping was still checked.")
-                    : List.of();
+            List<String> limitations = new ArrayList<>();
+            if (!complete) {
+                limitations.add(
+                        "One or more active Sections had no content available for a complete review.");
+            }
+            if (hasLongEvidence(claims)) {
+                limitations.add("Evidence excerpts are capped at 1,200 characters per "
+                        + "active mapping; every active mapping was still checked.");
+            }
             AiReviewResponse review = new AiReviewResponse(
                     REVIEW_VERSION,
-                    true,
+                    complete,
                     coverage,
                     direction,
-                    "Scanned " + sections.size() + "/" + sections.size()
+                    "Scanned " + sectionsScanned + "/" + sections.size()
                             + " Sections in " + chunks.size() + " chunks and checked "
                             + claims.size() + "/" + claims.size() + " active Claims. "
                             + "Found " + distinctFindings.size() + " finding(s).",
                     distinctFindings,
-                    limitations);
+                    List.copyOf(limitations));
             saveSnapshot(project, style, fingerprint, review);
             auditReview(project, currentUser, style, review);
             return review;
@@ -451,7 +464,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             try {
                 AssertionsResponse response =
                         aiObjectMapper().readValue(extractJson(raw), AssertionsResponse.class);
-                if (response.valid()) {
+                if (response != null && response.valid()) {
                     return response;
                 }
                 lastFailure = new IllegalArgumentException(
@@ -464,8 +477,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
                         e);
             }
         }
-        throw new ResponseStatusException(
-                HttpStatus.SERVICE_UNAVAILABLE,
+        throw new AiValidationException(
                 "AI paper review returned invalid assertions JSON",
                 lastFailure);
     }
@@ -656,28 +668,30 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             try {
                 ChunkReview response =
                         aiObjectMapper().readValue(extractJson(raw), ChunkReview.class);
+                if (response == null || response.findings() == null) {
+                    lastFailure = new IllegalArgumentException(
+                            "AI paper review returned invalid findings JSON: "
+                                    + truncate(raw, 500));
+                    continue;
+                }
                 boolean invalid = false;
                 String reason = null;
-                if (response.findings() != null) {
-                    for (AiReviewResponse.Finding finding : response.findings()) {
-                        if (finding == null || !finding.valid(
-                                ids.claimIds(),
-                                ids.sectionIds(),
-                                ids.sourceIds(),
-                                ids.feedbackIds())) {
-                            reason = finding == null ? "null finding entry"
-                                    : invalidFindingReason(finding, ids);
-                            invalid = true;
-                            break;
-                        }
+                for (AiReviewResponse.Finding finding : response.findings()) {
+                    if (finding == null || !finding.valid(
+                            ids.claimIds(),
+                            ids.sectionIds(),
+                            ids.sourceIds(),
+                            ids.feedbackIds())) {
+                        reason = finding == null ? "null finding entry"
+                                : invalidFindingReason(finding, ids);
+                        invalid = true;
+                        break;
                     }
                 }
                 if (!invalid) {
-                    return response.findings() == null ? List.of()
-                            : response.findings().stream()
-                                    .filter(finding -> !DETERMINISTIC_TYPES
-                                            .contains(finding.type()))
-                                    .toList();
+                    return response.findings().stream()
+                            .filter(finding -> !DETERMINISTIC_TYPES.contains(finding.type()))
+                            .toList();
                 }
                 lastFailure = new IllegalArgumentException(
                         "AI paper review returned invalid findings JSON (" + reason + "): "
@@ -689,8 +703,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
                         e);
             }
         }
-        throw new ResponseStatusException(
-                HttpStatus.SERVICE_UNAVAILABLE,
+        throw new AiValidationException(
                 "AI paper review returned invalid findings JSON",
                 lastFailure);
     }
@@ -779,7 +792,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     }
 
     private static List<String> splitReviewText(String content) {
-        if (content.isEmpty()) return List.of("");
+        if (content.isBlank()) return List.of();
         List<String> chunks = new ArrayList<>();
         int start = 0;
         while (start < content.length()) {

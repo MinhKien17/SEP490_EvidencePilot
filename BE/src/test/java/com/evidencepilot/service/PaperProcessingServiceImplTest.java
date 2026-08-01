@@ -213,9 +213,127 @@ class PaperProcessingServiceImplTest {
         when(aiModelClient.generate(anyString())).thenReturn("not-json");
 
         assertThatThrownBy(() -> service().review(document.getId(), null))
-                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .isInstanceOf(com.evidencepilot.exception.AiValidationException.class)
                 .hasMessageContaining("invalid assertions JSON");
         verify(aiModelClient, times(2)).generate(anyString());
+    }
+
+    @Test
+    void reviewMapsNullAiJsonToValidationFailureAfterRetry() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(aiModelClient.generate(anyString())).thenReturn("null");
+
+        assertThatThrownBy(() -> service().review(document.getId(), null))
+                .isInstanceOf(com.evidencepilot.exception.AiValidationException.class)
+                .hasMessageContaining("invalid assertions JSON");
+        verify(aiModelClient, times(2)).generate(anyString());
+    }
+
+    @Test
+    void reviewMapsNullFindingJsonToValidationFailureAfterRetry() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(aiModelClient.generate(anyString()))
+                .thenReturn("{\"assertions\":[]}", "null", "null");
+
+        assertThatThrownBy(() -> service().review(document.getId(), null))
+                .isInstanceOf(com.evidencepilot.exception.AiValidationException.class)
+                .hasMessageContaining("invalid findings JSON");
+        verify(aiModelClient, times(3)).generate(anyString());
+    }
+
+    @Test
+    void reviewRejectsMissingFindingsArrayAfterRetry() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(aiModelClient.generate(anyString()))
+                .thenReturn("{\"assertions\":[]}", "{}", "{}");
+
+        assertThatThrownBy(() -> service().review(document.getId(), null))
+                .isInstanceOf(com.evidencepilot.exception.AiValidationException.class)
+                .hasMessageContaining("invalid findings JSON");
+        verify(aiModelClient, times(3)).generate(anyString());
+    }
+
+    @Test
+    void reviewWithoutSectionContentIsIncompleteAndUnscored() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        section.setContentTex("   ");
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+
+        var response = service().review(document.getId(), null);
+
+        assertThat(response.complete()).isFalse();
+        assertThat(response.direction()).isEqualTo(AiReviewResponse.Direction.INSUFFICIENT_DATA);
+        assertThat(response.rubricScore()).isNull();
+        assertThat(response.passes()).isFalse();
+        verify(aiModelClient, never()).generate(anyString());
+    }
+
+    @Test
+    void reviewWithBlankSectionReportsPartialCoverageAndNoScore() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection populated = section(document);
+        PaperSection blank = section(document);
+        blank.setContentTex("  ");
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(populated, blank));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(aiModelClient.generate(anyString())).thenAnswer(reviewAnswers());
+
+        var response = service().review(document.getId(), null);
+
+        assertThat(response.complete()).isFalse();
+        assertThat(response.direction()).isEqualTo(AiReviewResponse.Direction.INSUFFICIENT_DATA);
+        assertThat(response.coverage().totalSections()).isEqualTo(2);
+        assertThat(response.coverage().sectionsScanned()).isEqualTo(1);
+        assertThat(response.reviewVersion()).isEqualTo("paper-claim-review-v5");
+        assertThat(response.summary()).contains("Scanned 1/2 Sections");
+        assertThat(response.rubricScore()).isNull();
+        assertThat(response.passes()).isFalse();
     }
 
     @Test
