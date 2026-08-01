@@ -1,10 +1,12 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.request.ClaimCreationRequest;
+import com.evidencepilot.dto.request.ClaimEvaluationRequest;
 import com.evidencepilot.dto.request.MappingReviewRequest;
 import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.dto.response.ClaimEvidenceMappingResponse;
 import com.evidencepilot.dto.response.ClaimMatchCandidateResponse;
+import com.evidencepilot.dto.response.ClaimQualityEvaluationResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
 import com.evidencepilot.dto.response.ClaimSourceAuditResponse;
 import com.evidencepilot.dto.response.ClaimSourceAuditResponse.ClaimAuditItem;
@@ -64,6 +66,7 @@ public class ClaimServiceImpl implements ClaimService {
     private final AiSuggestionRepository aiSuggestionRepository;
     private final ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
     private final ClaimMatchingService claimMatchingService;
+    private final ClaimQualityEvaluationService claimQualityEvaluationService;
     private final CurrentUserService currentUserService;
     private final ClaimMapper claimMapper;
 
@@ -166,6 +169,19 @@ public class ClaimServiceImpl implements ClaimService {
         claim.setCreatedAt(LocalDateTime.now());
 
         return claimMapper.toClaimResponse(claimRepository.save(claim));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ClaimQualityEvaluationResponse evaluateClaim(ClaimEvaluationRequest request) {
+        User currentUser = currentUserService.requireCurrentUser();
+        PaperSection section = paperSectionRepository.findById(request.sectionId())
+                .orElseThrow(() -> new ResourceNotFoundException(request.sectionId(), "PaperSection"));
+        currentUserService.requireSectionContentWriteAccess(currentUser, section);
+        return claimQualityEvaluationService.evaluate(
+                section.getDocument().getProject(),
+                section,
+                request.content());
     }
 
     @Override

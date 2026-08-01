@@ -1,6 +1,7 @@
 package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.request.ClaimCreationRequest;
+import com.evidencepilot.dto.request.ClaimEvaluationRequest;
 import com.evidencepilot.model.enums.FunctionalType;
 import com.evidencepilot.service.ClaimService;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,6 +49,17 @@ class ClaimControllerTest {
                         .content("{\"sectionId\":\"" + sectionId + "\",\"content\":\"A supported claim\",\"aiConfidenceScore\":0.8}"))
                 .andExpect(status().isCreated());
         verify(service).createClaim(any(ClaimCreationRequest.class));
+    }
+
+    @Test
+    void evaluateClaim_returns200WithoutCreatingClaim() throws Exception {
+        UUID sectionId = UUID.randomUUID();
+        mockMvc.perform(post("/api/claims/evaluate").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sectionId\":\"" + sectionId
+                                + "\",\"content\":\"A Claim draft\"}"))
+                .andExpect(status().isOk());
+        verify(service).evaluateClaim(any(ClaimEvaluationRequest.class));
+        verify(service, never()).createClaim(any());
     }
 
     @Test

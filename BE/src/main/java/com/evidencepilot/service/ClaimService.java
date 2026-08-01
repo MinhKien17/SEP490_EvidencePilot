@@ -1,9 +1,11 @@
 package com.evidencepilot.service;
 
 import com.evidencepilot.dto.request.ClaimCreationRequest;
+import com.evidencepilot.dto.request.ClaimEvaluationRequest;
 import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.dto.response.ClaimEvidenceMappingResponse;
 import com.evidencepilot.dto.response.ClaimMatchCandidateResponse;
+import com.evidencepilot.dto.response.ClaimQualityEvaluationResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
 import com.evidencepilot.dto.response.ClaimSourceAuditResponse;
 import com.evidencepilot.dto.request.MappingReviewRequest;
@@ -30,6 +32,7 @@ public interface ClaimService {
             String q,
             Boolean active);
     ClaimResponse createClaim(ClaimCreationRequest request);
+    ClaimQualityEvaluationResponse evaluateClaim(ClaimEvaluationRequest request);
     ClaimResponse updateClaim(UUID id, String content, Float aiConfidenceScore, FunctionalType functionalType);
     void deleteClaim(UUID id);
     List<AiSuggestionResponse> getSuggestionsForClaim(UUID claimId);

@@ -1,7 +1,9 @@
 package com.evidencepilot.service;
 
 import com.evidencepilot.dto.request.ClaimCreationRequest;
+import com.evidencepilot.dto.request.ClaimEvaluationRequest;
 import com.evidencepilot.dto.request.MappingReviewRequest;
+import com.evidencepilot.dto.response.ClaimQualityEvaluationResponse;
 import com.evidencepilot.mapper.ClaimMapper;
 import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Claim;
@@ -25,6 +27,7 @@ import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectMemberRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.impl.ClaimServiceImpl;
+import com.evidencepilot.service.impl.ClaimQualityEvaluationService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -44,6 +47,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -71,10 +75,45 @@ class ClaimServiceImplAccessTest {
     private ClaimMatchingService claimMatchingService;
 
     @Mock
+    private ClaimQualityEvaluationService claimQualityEvaluationService;
+
+    @Mock
     private CurrentUserService currentUserService;
 
     @Mock
     private ClaimMapper claimMapper;
+
+    @Test
+    void evaluateClaimChecksSectionWriteAccessWithoutPersisting() {
+        User user = user();
+        Project project = new Project();
+        Document document = new Document();
+        document.setProject(project);
+        PaperSection section = new PaperSection();
+        section.setId(UUID.randomUUID());
+        section.setDocument(document);
+        ClaimEvaluationRequest request = new ClaimEvaluationRequest(
+                section.getId(), "A focused Claim draft");
+        ClaimQualityEvaluationResponse response = ClaimQualityEvaluationResponse.from(
+                List.of(
+                        criterion(ClaimQualityEvaluationResponse.CriterionCode.CLARITY, 2),
+                        criterion(ClaimQualityEvaluationResponse.CriterionCode.SPECIFICITY_SCOPE, 2),
+                        criterion(ClaimQualityEvaluationResponse.CriterionCode.SECTION_RELEVANCE, 2),
+                        criterion(ClaimQualityEvaluationResponse.CriterionCode.VERIFIABILITY_ARGUABILITY, 1),
+                        criterion(ClaimQualityEvaluationResponse.CriterionCode.ATOMICITY, 1)),
+                FunctionalType.EMPIRICAL,
+                "A focused Claim draft");
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
+        when(claimQualityEvaluationService.evaluate(project, section, request.content()))
+                .thenReturn(response);
+
+        assertThat(service().evaluateClaim(request)).isEqualTo(response);
+
+        verify(currentUserService).requireSectionContentWriteAccess(user, section);
+        verify(claimRepository, never()).save(any());
+    }
 
     @Test
     void getSuggestionsForClaimRequiresClaimAccess() {
@@ -329,8 +368,15 @@ class ClaimServiceImplAccessTest {
                 aiSuggestionRepository,
                 claimEvidenceMappingRepository,
                 claimMatchingService,
+                claimQualityEvaluationService,
                 currentUserService,
                 claimMapper);
+    }
+
+    private ClaimQualityEvaluationResponse.Criterion criterion(
+            ClaimQualityEvaluationResponse.CriterionCode code,
+            int score) {
+        return new ClaimQualityEvaluationResponse.Criterion(code, score, "Gold reason");
     }
 
     private User user() {

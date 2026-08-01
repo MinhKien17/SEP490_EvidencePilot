@@ -1,11 +1,13 @@
 package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.request.ClaimCreationRequest;
+import com.evidencepilot.dto.request.ClaimEvaluationRequest;
 import com.evidencepilot.dto.request.ClaimMatchEvaluationRequest;
 import com.evidencepilot.dto.request.MappingReviewRequest;
 import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.dto.response.ClaimEvidenceMappingResponse;
 import com.evidencepilot.dto.response.ClaimMatchCandidateResponse;
+import com.evidencepilot.dto.response.ClaimQualityEvaluationResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
 import com.evidencepilot.dto.response.ClaimSourceAuditResponse;
 import com.evidencepilot.dto.response.PagedResponse;
@@ -88,6 +90,23 @@ public class ClaimController {
     @ResponseStatus(HttpStatus.CREATED)
     public ClaimResponse createClaim(@Valid @RequestBody ClaimCreationRequest request) {
         return claimService.createClaim(request);
+    }
+
+    @Operation(summary = "Evaluate Claim Quality before creation",
+            description = "Scores a Claim draft against the Claim Quality rubric without persisting it.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Claim Quality evaluation returned"),
+            @ApiResponse(responseCode = "400", description = "Validation error"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Section not found"),
+            @ApiResponse(responseCode = "502", description = "AI returned an invalid evaluation"),
+            @ApiResponse(responseCode = "503", description = "AI worker unavailable")
+    })
+    @PostMapping("/evaluate")
+    public ClaimQualityEvaluationResponse evaluateClaim(
+            @Valid @RequestBody ClaimEvaluationRequest request) {
+        return claimService.evaluateClaim(request);
     }
 
     @Operation(summary = "Update a claim",
