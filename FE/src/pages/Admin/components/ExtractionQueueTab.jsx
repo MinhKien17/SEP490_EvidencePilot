@@ -4,7 +4,7 @@ function QueueSection({ lang, api }) {
   const [queue, setQueue] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState('Failed');
+  const [activeTab, setActiveTab] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
   const fetch = useCallback(async (signal) => {
@@ -86,6 +86,8 @@ function QueueSection({ lang, api }) {
   let combinedList = [];
   if (activeTab === 'All') {
     combinedList = [...failedList, ...queuedList, ...processingList, ...readyList];
+  } else if (activeTab === 'Queued') {
+    combinedList = queuedList;
   } else if (activeTab === 'Failed') {
     combinedList = failedList;
   } else if (activeTab === 'Processing') {
@@ -186,10 +188,10 @@ function QueueSection({ lang, api }) {
         {/* Table Header and Filters */}
         <div className="px-6 py-4.5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-4">
-            <h3 className="text-lg font-bold text-slate-800">{lang.failedDocuments}</h3>
+            <h3 className="text-lg font-bold text-slate-800">{activeTab === 'Failed' ? lang.failedDocuments : `${activeTab} Documents`}</h3>
             {/* Status Tabs */}
             <div className="flex bg-slate-100 p-0.5 rounded-xl text-xs font-bold text-slate-600">
-              {['All', 'Failed', 'Processing', 'Ready'].map(tab => (
+              {['All', 'Queued', 'Failed', 'Processing', 'Ready'].map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}

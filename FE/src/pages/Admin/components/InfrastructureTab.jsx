@@ -7,7 +7,7 @@ function InfraSection({ lang, api }) {
 
   const fetch = useCallback(async (signal) => {
     try {
-      const h = await api.get('/api/health', { signal });
+      const h = await api.get('/api/health', { signal, validateStatus: () => true });
       let dash = null;
       let queue = null;
       try {
@@ -15,7 +15,7 @@ function InfraSection({ lang, api }) {
         dash = d.data;
       } catch { /* silent */ }
       try {
-        const q = await api.get('/api/admin/extraction-queue', { signal });
+        const q = await api.get('/api/admin/documents/extraction-queue', { signal });
         queue = q.data;
       } catch { /* silent */ }
       setData({ health: h.data, dashboard: dash, queue });
@@ -23,7 +23,7 @@ function InfraSection({ lang, api }) {
       if (signal && signal.aborted) return;
       try {
         const r = await api.get('/api/admin/dashboard', { signal });
-        setData({ health: { status: 'UP', components: r.data.infrastructureReadiness || {} }, dashboard: r.data, queue: null });
+        setData({ health: r.data.infrastructureReadiness, dashboard: r.data, queue: null });
       } catch { /* silent */ }
     }
   }, [api]);
@@ -37,7 +37,7 @@ function InfraSection({ lang, api }) {
   useEffect(() => {
     const ac = new AbortController();
     setLoading(true);
-    fetch(ac.signal).finally(() => setLoading(false));
+    fetch(ac.signal).finally(() => { if (!ac.signal.aborted) setLoading(false); });
     return () => ac.abort();
   }, [fetch]);
 

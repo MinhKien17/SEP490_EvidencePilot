@@ -3,14 +3,19 @@ import { driver } from 'driver.js';
 import { PageSkeleton, ErrorBlock, StatCard } from './shared.jsx';
 function DashboardSection({ lang, api }) {
   const [data, setData] = useState(null);
+  const [recentLogs, setRecentLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const fetch = useCallback(async (signal) => {
     setLoading(true); setError(null);
     try {
-      const r = await api.get('/api/admin/dashboard', { signal });
-      setData(r.data);
+      const [dashboard, logs] = await Promise.all([
+        api.get('/api/admin/dashboard', { signal }),
+        api.get('/api/admin/audit-logs', { params: { page: 0, size: 5 }, signal }).catch(() => null),
+      ]);
+      setData(dashboard.data);
+      setRecentLogs(logs ? (logs.data?.content ?? []) : null);
     } catch (e) {
       if (signal && signal.aborted) return;
       setError(e.message || lang.loadFailed);
@@ -22,6 +27,7 @@ function DashboardSection({ lang, api }) {
   useEffect(() => { const ac = new AbortController(); fetch(ac.signal); return () => ac.abort(); }, [fetch]);
 
   const display = data;
+  const readinessComponents = Object.entries(data?.infrastructureReadiness?.components || {});
   const sCount = data?.usersByRole?.STUDENT ?? 0;
   const iCount = data?.usersByRole?.INSTRUCTOR ?? 0;
   const userTotal = sCount + iCount;
@@ -128,14 +134,20 @@ function DashboardSection({ lang, api }) {
                 <span className="text-slate-500">from /api/admin/dashboard</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {['database', 'storage', 'cache', 'aiService'].map(k => (
-                  <div key={k} className="flex items-center justify-between bg-slate-50 border border-gray-100 rounded-lg px-3 py-2">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{k}</span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${data.infrastructureReadiness ? (data.infrastructureReadiness[k] ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700') : 'bg-gray-100 text-gray-500'}`}>
-                      {data.infrastructureReadiness ? (data.infrastructureReadiness[k] ? 'Online' : 'Offline') : 'Unknown'}
-                    </span>
-                  </div>
-                ))}
+                {readinessComponents.length === 0 ? (
+                  <div className="sm:col-span-2 text-center py-4 text-xs text-gray-400">No health data available</div>
+                ) : readinessComponents.map(([name, component]) => {
+                  const status = typeof component === 'object' && component !== null ? component.status : component;
+                  const online = status === 'UP' || status === true;
+                  return (
+                    <div key={name} className="flex items-center justify-between bg-slate-50 border border-gray-100 rounded-lg px-3 py-2">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{name}</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${online ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                        {online ? 'Online' : 'Offline'}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -218,12 +230,39 @@ function DashboardSection({ lang, api }) {
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
         <div className="flex justify-between items-center">
           <h3 className="text-sm font-bold text-slate-800">Recent System Logs</h3>
-          <span className="text-[10px] text-gray-400 font-semibold">No log feed on dashboard — see the Audit Logs tab</span>
+          <span className="text-[10px] text-gray-400 font-semibold">
+            {recentLogs === null ? 'Feed unavailable' : `${recentLogs.length} latest events`}
+          </span>
         </div>
 
-        <div className="text-center py-10 text-sm text-gray-400 font-semibold">
-          No system log data available on the dashboard. Open the Audit Logs tab for the full audit trail.
-        </div>
+        {recentLogs === null ? (
+          <div className="text-center py-10 text-sm text-rose-500 font-semibold">Could not load recent system logs.</div>
+        ) : recentLogs.length === 0 ? (
+          <div className="text-center py-10 text-sm text-gray-400 font-semibold">No system logs recorded yet.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="text-[10px] uppercase tracking-wider text-gray-400 border-b border-gray-100">
+                <tr>
+                  <th className="py-2 pr-4">Time</th>
+                  <th className="py-2 pr-4">Actor</th>
+                  <th className="py-2 pr-4">Action</th>
+                  <th className="py-2">Entity</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-slate-600 font-semibold">
+                {recentLogs.map((log, index) => (
+                  <tr key={`${log.occurredAt}-${log.action}-${log.entityId ?? index}`}>
+                    <td className="py-3 pr-4 whitespace-nowrap">{log.occurredAt ? new Date(log.occurredAt).toLocaleString() : '—'}</td>
+                    <td className="py-3 pr-4 text-slate-800">{log.actorEmail || 'System'}</td>
+                    <td className="py-3 pr-4">{log.action || '—'}</td>
+                    <td className="py-3 font-mono">{log.entityType || '—'}{log.entityId ? `#${log.entityId}` : ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
