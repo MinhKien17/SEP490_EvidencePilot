@@ -367,9 +367,15 @@ function DashboardSection({ lang, api }) {
 
   const fetch = useCallback(async (signal) => {
     setLoading(true); setError(null);
-    try { const r = await api.get('/api/admin/dashboard', { signal }); setData(r.data); }
-    catch (e) { if (e.name !== 'CanceledError') setError(e.message || lang.loadFailed); }
-    finally { setLoading(false); }
+    try {
+      const r = await api.get('/api/admin/dashboard', { signal });
+      setData(r.data);
+    } catch (e) {
+      if (signal && signal.aborted) return;
+      setError(e.message || lang.loadFailed);
+    } finally {
+      if (!signal || !signal.aborted) setLoading(false);
+    }
   }, [api, lang.loadFailed]);
 
   useEffect(() => { const ac = new AbortController(); fetch(ac.signal); return () => ac.abort(); }, [fetch]);
@@ -690,9 +696,12 @@ function UsersSection({ lang, api }) {
       if (statusFilter) params.status = statusFilter;
       const r = await api.get('/api/admin/users', { params, signal });
       setUsers(r.data);
+    } catch (e) {
+      if (signal && signal.aborted) return;
+      setError(e.message || lang.loadFailed);
+    } finally {
+      if (!signal || !signal.aborted) setLoading(false);
     }
-    catch (e) { if (e.name !== 'CanceledError') setError(e.message || lang.loadFailed); }
-    finally { setLoading(false); }
   }, [api, q, roleFilter, statusFilter, lang.loadFailed]);
 
   useEffect(() => {
@@ -1070,8 +1079,12 @@ function ProjectsSection({ lang, api }) {
       if (statusFilter) params.status = statusFilter;
       const r = await api.get('/api/projects', { params, signal });
       setProjects(r.data);
-    } catch (e) { if (e.name !== 'CanceledError') setError(e.message || lang.loadFailed); }
-    finally { setLoading(false); }
+    } catch (e) {
+      if (signal && signal.aborted) return;
+      setError(e.message || lang.loadFailed);
+    } finally {
+      if (!signal || !signal.aborted) setLoading(false);
+    }
   }, [api, q, statusFilter, lang.loadFailed]);
 
   useEffect(() => {
@@ -1811,10 +1824,11 @@ function PapersSection({ lang, api }) {
       setData(r.data);
     }
     catch (e) {
+      if (signal && signal.aborted) return;
       setError(e.message || lang.loadFailed);
     }
     finally {
-      setLoading(false);
+      if (!signal || !signal.aborted) setLoading(false);
     }
   }, [api, lang.loadFailed]);
 
@@ -2060,8 +2074,12 @@ function AuditLogsSection({ lang, api }) {
       const params = { page: p, size: 20 };
       const r = await api.get('/api/admin/audit-logs', { params, signal });
       setLogs(r.data);
-    } catch (e) { if (e.name !== 'CanceledError') setError(e.message || lang.loadFailed); }
-    finally { setLoading(false); }
+    } catch (e) {
+      if (signal && signal.aborted) return;
+      setError(e.message || lang.loadFailed);
+    } finally {
+      if (!signal || !signal.aborted) setLoading(false);
+    }
   }, [api, lang.loadFailed]);
 
   useEffect(() => {
@@ -2718,7 +2736,9 @@ function QueueSection({ lang, api }) {
   useEffect(() => {
     const ac = new AbortController();
     setLoading(true);
-    fetch(ac.signal).finally(() => setLoading(false));
+    fetch(ac.signal).finally(() => {
+      if (!ac.signal.aborted) setLoading(false);
+    });
     return () => ac.abort();
   }, [fetch]);
 
@@ -3039,7 +3059,9 @@ function NotificationsSection({ lang, api }) {
       const r = await api.get('/api/admin/notifications/broadcast-history', { signal });
       setBroadcastHistory(r.data);
     } catch (e) { /* silent */ }
-    finally { setBhLoading(false); }
+    finally {
+      if (!signal || !signal.aborted) setBhLoading(false);
+    }
   }, [api]);
 
   useEffect(() => {
@@ -3515,7 +3537,9 @@ function CollectionsSection({ lang, api }) {
       const r = await api.get('/api/admin/collections', { signal });
       setData(r.data);
     } catch (e) { /* silent */ }
-    finally { setLoading(false); }
+    finally {
+      if (!signal || !signal.aborted) setLoading(false);
+    }
   }, [api]);
 
   useEffect(() => {
@@ -3971,7 +3995,9 @@ function SettingsSection({ lang, api }) {
       const r = await api.get('/api/admin/collection-categories?active=true', { signal });
       setCats(r.data);
     } catch (e) { /* silent */ }
-    finally { setCatsLoading(false); }
+    finally {
+      if (!signal || !signal.aborted) setCatsLoading(false);
+    }
   }, [api]);
 
   const fetchConfig = useCallback(async (signal) => {
@@ -3980,7 +4006,9 @@ function SettingsSection({ lang, api }) {
       const r = await api.get('/api/admin/config', { signal });
       setConfig(r.data);
     } catch (e) { /* silent */ }
-    finally { setConfigLoading(false); }
+    finally {
+      if (!signal || !signal.aborted) setConfigLoading(false);
+    }
   }, [api]);
 
   const fetchSourceCats = useCallback(async (signal) => {
@@ -3989,7 +4017,9 @@ function SettingsSection({ lang, api }) {
       const r = await api.get('/api/admin/source-categories?active=true', { signal });
       setSourceCats(r.data || []);
     } catch (e) { /* silent */ }
-    finally { setSourceCatsLoading(false); }
+    finally {
+      if (!signal || !signal.aborted) setSourceCatsLoading(false);
+    }
   }, [api]);
 
   useEffect(() => {
@@ -4580,9 +4610,16 @@ export default function AdminDashboard() {
   const L = t[language] || t.en;
   const label = (item) => language === 'vi' ? item.labelVi : item.labelEn;
 
-  const [active, setActive] = useState('dashboard');
+  const [active, setActive] = useState(() => {
+    const saved = localStorage.getItem('admin_active_tab');
+    return SECTIONS[saved] ? saved : 'dashboard';
+  });
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('admin_active_tab', active);
+  }, [active]);
 
   const Section = SECTIONS[active];
 
