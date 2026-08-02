@@ -27,7 +27,6 @@ function DashboardSection({ lang, api }) {
   useEffect(() => { const ac = new AbortController(); fetch(ac.signal); return () => ac.abort(); }, [fetch]);
 
   const display = data;
-  const readinessComponents = Object.entries(data?.infrastructureReadiness?.components || {});
   const sCount = data?.usersByRole?.STUDENT ?? 0;
   const iCount = data?.usersByRole?.INSTRUCTOR ?? 0;
   const userTotal = sCount + iCount;
@@ -45,7 +44,6 @@ function DashboardSection({ lang, api }) {
           { element: '[data-guide="stat-projects"]', popover: { title: lang.activeProjects, description: lang.guideDashProjects, side: 'bottom' } },
           { element: '[data-guide="stat-documents"]', popover: { title: lang.activeDocuments, description: lang.guideDashDocuments, side: 'bottom' } },
           { element: '[data-guide="dash-status"]', popover: { title: lang.status, description: lang.guideDashStatus, side: 'top' } },
-          { element: '[data-guide="dash-infra"]', popover: { title: lang.systemHealth, description: lang.guideDashInfra, side: 'top' } },
           { popover: { title: lang.done, description: lang.guideDashDone, side: 'center' } },
         ],
       }).drive();
@@ -114,41 +112,17 @@ function DashboardSection({ lang, api }) {
         </div>
       </div>
 
-      {/* Row 2: Platform Health & User Distribution */}
+      {/* Row 2: Platform Overview & User Distribution */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Platform Health */}
-        <div data-guide="dash-infra" className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between">
+        {/* Platform Overview */}
+        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-start mb-4">
               <div>
-                <h3 className="text-sm font-bold text-slate-800">Platform Health</h3>
-                <p className="text-xs text-gray-400 mt-0.5">System performance and Infrastructure status</p>
+                <h3 className="text-sm font-bold text-slate-800">Platform Overview</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Research data and collection summary</p>
               </div>
-              <button onClick={startProcessGuide} className="text-xs font-bold text-blue-600 hover:underline">Full Diagnostics</button>
-            </div>
-            
-            {/* Infrastructure readiness */}
-            <div className="space-y-2 mb-6">
-              <div className="flex justify-between text-xs font-bold">
-                <span className="text-slate-600">Infrastructure Readiness</span>
-                <span className="text-slate-500">from /api/admin/dashboard</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {readinessComponents.length === 0 ? (
-                  <div className="sm:col-span-2 text-center py-4 text-xs text-gray-400">No health data available</div>
-                ) : readinessComponents.map(([name, component]) => {
-                  const status = typeof component === 'object' && component !== null ? component.status : component;
-                  const online = status === 'UP' || status === true;
-                  return (
-                    <div key={name} className="flex items-center justify-between bg-slate-50 border border-gray-100 rounded-lg px-3 py-2">
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{name}</span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${online ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                        {online ? 'Online' : 'Offline'}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
+              <button onClick={startProcessGuide} className="text-xs font-bold text-blue-600 hover:underline">View Guide</button>
             </div>
           </div>
 

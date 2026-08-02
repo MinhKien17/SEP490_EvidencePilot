@@ -54,7 +54,6 @@ class AdminServiceTest {
     @Mock AuditLogRepository auditLogs;
     @Mock CurrentUserService currentUsers;
     @Mock PasswordResetService passwordResets;
-    @Mock HealthService health;
     @Mock AuditService audit;
     @Mock SystemNotificationService notifications;
     @Mock PasswordEncoder passwords;
@@ -204,8 +203,7 @@ class AdminServiceTest {
     }
 
     @Test
-    void dashboardIncludesEveryEnumAndDelegatesReadinessExactly() {
-        Map<String, Object> readiness = Map.of("status", "UP");
+    void dashboardIncludesEveryEnumValue() {
         when(users.count()).thenReturn(9L);
         when(users.countByRole()).thenReturn(List.<Object[]>of(new Object[]{UserRole.STUDENT, 5L}));
         when(users.countByAccountStatus()).thenReturn(List.<Object[]>of(new Object[]{AccountStatus.ACTIVE, 4L}));
@@ -215,15 +213,12 @@ class AdminServiceTest {
         when(collections.countByActiveTrue()).thenReturn(6L);
         when(documents.countByActiveTrueAndDocType(DocumentType.SOURCE)).thenReturn(11L);
         when(documents.countByActiveTrueAndDocType(DocumentType.PAPER)).thenReturn(12L);
-        when(health.checkReadiness()).thenReturn(readiness);
-
         var result = service.getDashboard();
 
         assertThat(result.usersByRole()).containsOnlyKeys(UserRole.values());
         assertThat(result.usersByStatus()).containsOnlyKeys(AccountStatus.values());
         assertThat(result.activeProjectsByStatus()).containsOnlyKeys(ProjectStatus.values());
         assertThat(result.usersByRole().get(UserRole.ADMIN)).isZero();
-        assertThat(result.infrastructureReadiness()).isSameAs(readiness);
     }
 
     @Test

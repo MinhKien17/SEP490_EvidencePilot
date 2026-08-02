@@ -61,7 +61,6 @@ public class AdminService {
     private final AuditLogRepository auditLogs;
     private final CurrentUserService currentUsers;
     private final PasswordResetService passwordResets;
-    private final HealthService health;
     private final AuditService audit;
     private final SystemNotificationService notifications;
     private final ObjectMapper objectMapper;
@@ -195,8 +194,7 @@ public class AdminService {
                 projects.countByActiveTrue(), projectsByStatus,
                 collectionCategories.countByActiveTrue(), collections.countByActiveTrue(),
                 documents.countByActiveTrueAndDocType(DocumentType.SOURCE),
-                documents.countByActiveTrueAndDocType(DocumentType.PAPER),
-                health.checkReadiness());
+                documents.countByActiveTrueAndDocType(DocumentType.PAPER));
     }
 
     @Transactional(readOnly = true)

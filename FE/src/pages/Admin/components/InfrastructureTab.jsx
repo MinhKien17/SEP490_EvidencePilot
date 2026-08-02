@@ -1,5 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { PageSkeleton } from './shared.jsx';
+
+let healthRequest = null;
+const fetchHealth = (api) => {
+  if (!healthRequest) {
+    healthRequest = api.get('/api/health', { validateStatus: () => true })
+      .finally(() => { healthRequest = null; });
+  }
+  return healthRequest;
+};
+
 function InfraSection({ lang, api }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -7,24 +17,19 @@ function InfraSection({ lang, api }) {
 
   const fetch = useCallback(async (signal) => {
     try {
-      const h = await api.get('/api/health', { signal, validateStatus: () => true });
-      let dash = null;
-      let queue = null;
-      try {
-        const d = await api.get('/api/admin/dashboard', { signal });
-        dash = d.data;
-      } catch { /* silent */ }
-      try {
-        const q = await api.get('/api/admin/documents/extraction-queue', { signal });
-        queue = q.data;
-      } catch { /* silent */ }
-      setData({ health: h.data, dashboard: dash, queue });
+      const [health, dashboard, queue] = await Promise.all([
+        fetchHealth(api),
+        api.get('/api/admin/dashboard', { signal }).catch(() => null),
+        api.get('/api/admin/documents/extraction-queue', { signal }).catch(() => null),
+      ]);
+      if (signal?.aborted) return;
+      setData({
+        health: health.data,
+        dashboard: dashboard?.data ?? null,
+        queue: queue?.data ?? null,
+      });
     } catch (e) {
-      if (signal && signal.aborted) return;
-      try {
-        const r = await api.get('/api/admin/dashboard', { signal });
-        setData({ health: r.data.infrastructureReadiness, dashboard: r.data, queue: null });
-      } catch { /* silent */ }
+      if (signal?.aborted) return;
     }
   }, [api]);
 
