@@ -2,7 +2,6 @@ package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.SparseVector;
 import com.google.common.hash.Hashing;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -15,7 +14,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-@Slf4j
 @Service
 public class SparseVectorGenerator {
 

@@ -11,11 +11,11 @@ import java.util.Map;
 @Service
 public class EvidenceScoringService {
 
-    static final String RUBRIC_VERSION = "1.0";
+    static final String RUBRIC_VERSION = "1.1";
 
     public ScoreResult computeScore(EvidenceRelation relation, DocumentChunk chunk,
                                     boolean hasLocator, boolean hasCitationMetadata,
-                                    boolean hasLink, int sourceAuthorityScore) {
+                                    boolean hasLink, int sourceMetadataScore) {
         int earned = 0;
         int applicable = 0;
         Map<String, Object> breakdown = new LinkedHashMap<>();
@@ -35,7 +35,7 @@ public class EvidenceScoringService {
             breakdown.put("evidence_anchor", Map.of("max", 20, "earned", 0));
         }
 
-        int authorityPoints = Math.max(0, Math.min(25, sourceAuthorityScore));
+        int authorityPoints = Math.max(0, Math.min(25, sourceMetadataScore));
         earned += authorityPoints;
         applicable += 25;
         breakdown.put("source_type_authority", Map.of("max", 25, "earned", authorityPoints));
@@ -62,10 +62,9 @@ public class EvidenceScoringService {
     private int scoreRelation(EvidenceRelation relation) {
         if (relation == null) return 0;
         return switch (relation) {
-            case SUPPORTS, EXTENDS, DETAILS -> 35;
+            case SUPPORTS, CONTRADICTS, EXTENDS, DETAILS -> 35;
             case GENERALIZES -> 20;
-            case NEUTRAL -> 10;
-            case CONTRADICTS -> 0;
+            case NEUTRAL -> 0;
         };
     }
 

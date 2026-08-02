@@ -63,4 +63,16 @@ class AiReviewResponseTest {
         assertThat(borderline.rubricScore()).isEqualTo(3.7);
         assertThat(borderline.passes()).isTrue();
     }
+
+    @Test
+    void insufficientReviewHasNoRubricScoreAndDoesNotPass() {
+        AiReviewResponse response = new AiReviewResponse(
+                "paper-claim-review-v4", false,
+                new AiReviewResponse.Coverage(0, 0, 0, 0, 0, 0),
+                AiReviewResponse.Direction.INSUFFICIENT_DATA,
+                "No active Section content", List.of(), List.of());
+
+        assertThat(response.rubricScore()).isNull();
+        assertThat(response.passes()).isFalse();
+    }
 }

@@ -114,7 +114,7 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
                 chunk.getChunkIndex() != null,
                 hasCitationMetadata(chunk.getDocument()),
                 hasLink(chunk.getDocument()),
-                sourceAuthorityScore(chunk.getDocument()));
+                sourceMetadataScore(chunk.getDocument()));
 
         Claim currentClaim = claimRepository.findByIdWithProject(claimId)
                 .filter(Claim::isActive)
@@ -258,8 +258,7 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
     }
 
     private boolean hasCitationMetadata(Document document) {
-        return document != null && (isNotBlank(document.getDoi())
-                || isNotBlank(document.getTitle())
+        return document != null && (isNotBlank(document.getTitle())
                 || isNotBlank(document.getAuthors())
                 || document.getPublicationYear() != null);
     }
@@ -268,10 +267,9 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
         return document != null && isNotBlank(document.getDoi());
     }
 
-    private int sourceAuthorityScore(Document document) {
+    private int sourceMetadataScore(Document document) {
         if (document == null) return 0;
-        return isNotBlank(document.getDoi())
-                || isNotBlank(document.getOpenAlexTopic())
+        return isNotBlank(document.getOpenAlexTopic())
                 || isNotBlank(document.getOpenAlexSubfield())
                 || isNotBlank(document.getOpenAlexField())
                 || isNotBlank(document.getOpenAlexDomain())

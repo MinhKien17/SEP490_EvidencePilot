@@ -18,11 +18,11 @@ const FUNCTIONAL_TYPES = [
 ];
 
 const BREAKDOWN_LABELS = [
-  ['relation', 'Relation'],
+  ['relation', 'Relation specificity'],
   ['evidence_anchor', 'Evidence anchor'],
-  ['source_type_authority', 'Source authority'],
+  ['source_type_authority', 'Source metadata signal'],
   ['citation_metadata', 'Citation metadata'],
-  ['link_availability', 'Link availability'],
+  ['link_availability', 'Persistent identifier'],
 ];
 
 function parseScoreBreakdown(s) {
@@ -63,6 +63,59 @@ function FunctionalTypeDropdown({ value, onChange, className }) {
   );
 }
 
+function EvidenceEvaluationCard({ match, status, breakdownOpenId, setBreakdownOpenId, children }) {
+  const breakdown = parseScoreBreakdown(match.scoreBreakdown);
+  const open = breakdownOpenId === match.id;
+  const statusClass = status === 'ACTIVE'
+    ? 'bg-emerald-100 text-emerald-700'
+    : status === 'REJECTED'
+      ? 'bg-rose-100 text-rose-700'
+      : status === 'INACTIVE'
+        ? 'bg-slate-100 text-slate-600'
+        : 'bg-amber-100 text-amber-700';
+  return (
+    <div className="bg-(--surface-secondary) border border-(--border) rounded p-2 text-[11px]">
+      <div className="flex justify-between items-center gap-2 mb-1">
+        <span className="truncate font-bold text-(--text-primary)">{match.sourceFilename}</span>
+        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${statusClass}`}>{status}</span>
+      </div>
+      <div className="flex gap-2 text-[9px] font-bold mb-1">
+        <span className="text-indigo-600">{match.relation || 'UNKNOWN'}</span>
+        {match.strengthScore != null && <span className="text-(--text-secondary)">Evidence Strength: {match.strengthScore}/100 · {match.strengthBand}</span>}
+      </div>
+      <p className="text-[10px] text-(--text-secondary) line-clamp-3 italic leading-relaxed">"{match.excerpt}"</p>
+      {match.explanation && <p className="text-[10px] text-indigo-600 mt-1 leading-relaxed">{match.explanation}</p>}
+      {breakdown && (
+        <div className="mt-1.5">
+          <button onClick={() => setBreakdownOpenId(open ? null : match.id)} className="text-[9px] font-bold text-(--text-secondary) hover:text-indigo-600 flex items-center gap-1">
+            <svg className={`w-2.5 h-2.5 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+            Evidence Strength breakdown
+          </button>
+          {open && (
+            <div className="mt-1.5 space-y-1">
+              {BREAKDOWN_LABELS.map(([key, label]) => {
+                const item = breakdown[key];
+                if (!item || item.max == null) return null;
+                const pct = item.max > 0 ? Math.round((item.earned / item.max) * 100) : 0;
+                return (
+                  <div key={key} className="flex items-center gap-2">
+                    <span className="w-28 text-[9px] text-(--text-secondary) shrink-0">{label}</span>
+                    <div className="flex-1 h-1 bg-(--border) rounded-full overflow-hidden">
+                      <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-[9px] font-bold text-(--text-primary) shrink-0 w-12 text-right">{item.earned}/{item.max}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
 export default function ContextPanel({
   isOpen, width, onResizeStart,
   activeTab, setActiveTab,
@@ -70,20 +123,19 @@ export default function ContextPanel({
   // Source tab
   sources, isUploading, setIsUploading, project, setViewerFile, fetchSources,
   // Claims tab
-  newClaimContent, setNewClaimContent, newClaimFunctionalType, setNewClaimFunctionalType, handleCreateClaim, handleUseSelectedText, canCreateClaim,
-  claims, selectedClaim, claimMatches, loadingMatches,
+  newClaimContent, onNewClaimContentChange, newClaimFunctionalType, setNewClaimFunctionalType,
+  claimEvaluation, evaluatingClaim, claimEvaluationError, handleEvaluateClaim, canAddEvaluatedClaim,
+  handleCreateClaim, handleUseSelectedText, canCreateClaim,
+  claims, selectedClaim, claimMatches, claimMappings, loadingMatches,
   claimCandidates, loadingCandidates, evaluatingChunkId, updatingSuggestionId,
   handleSearchClaimMatches, handleEvaluateMatch, handleSuggestionStatus, canEditClaim,
   editingClaim, setEditingClaim, editClaimContent, setEditClaimContent, editClaimFunctionalType, setEditClaimFunctionalType, handleDeleteClaim, handleUpdateClaim,
   onSelectClaim,
   // Feedback tab
   feedbacks, setShowSubmitReviewModal, userProjectRole,
-  // Graph tab
-  graphData, fetchGraphData, graphScope, onGraphScopeToggle, claimStats,
-  exports, fetchExports, api,
-  selectedPaperDetail, setSelectedPaperDetail,
-  handleExportCsv, handleExportJson,
-  renderModalPaperPdf, isLocked,
+  // Coverage tab
+  graphData, graphScope, onGraphScopeToggle, claimStats,
+  isLocked,
 }) {
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [sourceMode, setSourceMode] = useState('doi');
@@ -92,16 +144,9 @@ export default function ContextPanel({
   const [sourceBusy, setSourceBusy] = useState(false);
   const fileInputRef = useRef(null);
   const { t } = useTranslation();
-  const [graphFilter, setGraphFilter] = useState('all');
   const [breakdownOpenId, setBreakdownOpenId] = useState(null);
 
   if (!isOpen) return null;
-
-  const relationColor = (relation) => {
-    if (relation === 'CONTRADICTS') return '#fb7185';
-    if (relation === 'NEUTRAL' || relation === 'UNKNOWN') return '#fbbf24';
-    return '#34d399';
-  };
 
   const activeClass = (tab) =>
     `flex-1 py-3 text-[10px] font-bold uppercase tracking-wider flex flex-col justify-center items-center gap-1 transition-all relative ${activeTab === tab ? 'text-indigo-600' : 'text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-secondary)'}`;
@@ -133,7 +178,7 @@ export default function ContextPanel({
           </button>
           <button data-tour="context-graph-tab" onClick={() => setActiveTab('Graph')} className={activeClass('Graph')}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" /></svg>
-            {t('graph')}
+            Coverage
             {activeTab === 'Graph' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 shadow-[0_-2px_8px_rgba(79,70,229,0.5)]"></div>}
           </button>
         </div>
@@ -245,18 +290,64 @@ export default function ContextPanel({
                 <div className="bg-(--surface) border border-(--border) rounded-xl p-3.5 shadow-sm">
                   <h4 className="text-[11px] font-bold text-(--text-secondary) mb-2 uppercase tracking-wider">Add Claim</h4>
                   <div className="flex flex-col gap-2">
-                    <input value={newClaimContent} onChange={(e) => setNewClaimContent(e.target.value)} placeholder="Claim content..." className="text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 min-w-[120px] text-(--text-primary)" />
+                    <input value={newClaimContent} onChange={(e) => onNewClaimContentChange(e.target.value)} placeholder="Claim content..." className="text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 min-w-[120px] text-(--text-primary)" />
                     <div className="flex gap-2">
-                      <FunctionalTypeDropdown value={newClaimFunctionalType} onChange={setNewClaimFunctionalType} className="flex-1" />
                       <button onClick={handleUseSelectedText} className="text-xs font-semibold text-indigo-700 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition-colors">Use selection</button>
-                      <button onClick={handleCreateClaim} disabled={!newClaimContent.trim()} className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-(--border) disabled:dark:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">Add</button>
+                      <button onClick={handleEvaluateClaim} disabled={!newClaimContent.trim() || evaluatingClaim} className="flex-1 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-(--border) disabled:dark:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">
+                        {evaluatingClaim ? 'Evaluating...' : claimEvaluationError ? 'Retry AI Evaluate' : 'AI Evaluate'}
+                      </button>
                     </div>
+                    {claimEvaluationError && <p className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-[10px] font-medium text-rose-700">{claimEvaluationError}</p>}
+                    {claimEvaluation && (
+                      <div className="space-y-2 rounded-lg border border-indigo-200 bg-indigo-50/60 p-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">Claim Quality · {claimEvaluation.totalScore}/10</span>
+                          <span className={`rounded px-1.5 py-0.5 text-[9px] font-black ${claimEvaluation.decision === 'READY' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{claimEvaluation.decision}</span>
+                        </div>
+                        <div className="space-y-1">
+                          {(claimEvaluation.criteria || []).map(criterion => (
+                            <div key={criterion.code} className="rounded border border-indigo-100 bg-white/80 p-1.5">
+                              <div className="flex justify-between text-[9px] font-bold text-(--text-primary)">
+                                <span>{criterion.code.replaceAll('_', ' ')}</span>
+                                <span>{criterion.score}/2</span>
+                              </div>
+                              <p className="mt-0.5 text-[9px] leading-relaxed text-(--text-secondary)">{criterion.reason}</p>
+                            </div>
+                          ))}
+                        </div>
+                        {claimEvaluation.suggestedRevision && claimEvaluation.suggestedRevision.trim() !== newClaimContent.trim() && (
+                          <div className="rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800">
+                            <p>{claimEvaluation.suggestedRevision}</p>
+                            <button onClick={() => onNewClaimContentChange(claimEvaluation.suggestedRevision)} className="mt-1 font-bold text-amber-900 underline">Use revision and evaluate again</button>
+                          </div>
+                        )}
+                        <div>
+                          <label className="mb-1 block text-[9px] font-bold uppercase tracking-wider text-(--text-secondary)">Functional type</label>
+                          <FunctionalTypeDropdown value={newClaimFunctionalType} onChange={setNewClaimFunctionalType} className="w-full" />
+                        </div>
+                        <p className="text-[9px] text-(--text-tertiary)">AI advice only. You may add either READY or REVISE after reviewing the result.</p>
+                        <button onClick={handleCreateClaim} disabled={!canAddEvaluatedClaim} className="w-full text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">Add Claim</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
               {claims.length === 0 ? <div className="text-xs text-(--text-tertiary) italic text-center py-8">No claims yet.</div> : (
                 claims.map(claim => {
                   const isSelected = selectedClaim?.id === claim.id;
+                  const activeSuggestionIds = new Set(
+                    (isSelected ? claimMappings : [])
+                      .filter(mapping => mapping.status === 'ACTIVE')
+                      .map(mapping => String(mapping.suggestionId)),
+                  );
+                  const activeEvidence = isSelected
+                    ? claimMatches.filter(match => activeSuggestionIds.has(String(match.id)))
+                    : [];
+                  const aiSuggestions = isSelected
+                    ? claimMatches.filter(match =>
+                      !activeSuggestionIds.has(String(match.id))
+                      && (match.status === 'PENDING' || match.status === 'REJECTED'))
+                    : [];
                   return (
                     <div key={claim.id} onClick={() => { if (onSelectClaim) onSelectClaim(claim); }} className={`bg-(--surface) border rounded-xl p-3.5 shadow-sm hover:shadow-md transition-all relative overflow-hidden group cursor-pointer ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-400/20' : 'border-(--border)'}`}>
                       <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>
@@ -268,9 +359,9 @@ export default function ContextPanel({
                               {claim.contentStatus}
                             </span>
                           )}
-                          {isSelected && claimMatches.length > 0 && (
+                          {isSelected && activeEvidence.length > 0 && (
                             <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
-                              {claimMatches.length} match{claimMatches.length > 1 ? 'es' : ''}
+                              {activeEvidence.length} evidence
                             </span>
                           )}
                           {claim.aiConfidenceScore !== null ? (
@@ -327,61 +418,38 @@ export default function ContextPanel({
                           </div>
 
                           <div>
-                            <h4 className="text-[10px] font-bold text-(--text-tertiary) uppercase tracking-widest mb-2">AI evaluations</h4>
-                            {loadingMatches ? <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">Loading evaluations...</div> : claimMatches.length === 0 ? (
-                              <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">No evaluated matches yet.</div>
+                            <h4 className="text-[10px] font-bold text-(--text-tertiary) uppercase tracking-widest mb-2">Evidence</h4>
+                            {loadingMatches ? <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">Loading evidence...</div> : activeEvidence.length === 0 ? (
+                              <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">No active evidence mapping yet.</div>
                             ) : (
                               <div className="space-y-2">
-                                {claimMatches.map(match => (
-                                  <div key={match.id} className="bg-(--surface-secondary) border border-(--border) rounded p-2 text-[11px]">
-                                    <div className="flex justify-between items-center gap-2 mb-1">
-                                      <span className="truncate font-bold text-(--text-primary)">{match.sourceFilename}</span>
-                                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${match.status === 'ACCEPTED' ? 'bg-emerald-100 text-emerald-700' : match.status === 'REJECTED' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>{match.status}</span>
-                                    </div>
-                                    <div className="flex gap-2 text-[9px] font-bold mb-1">
-                                      <span className="text-indigo-600">{match.relation || 'UNKNOWN'}</span>
-                                      {match.strengthScore != null && <span className="text-(--text-secondary)">{match.strengthScore}% {match.strengthBand}</span>}
-                                    </div>
-                                    <p className="text-[10px] text-(--text-secondary) line-clamp-3 italic leading-relaxed">"{match.excerpt}"</p>
-                                    {match.explanation && <p className="text-[10px] text-indigo-600 mt-1 leading-relaxed">{match.explanation}</p>}
-                                    {(() => {
-                                      const breakdown = parseScoreBreakdown(match.scoreBreakdown);
-                                      if (!breakdown) return null;
-                                      const open = breakdownOpenId === match.id;
-                                      return (
-                                        <div className="mt-1.5">
-                                          <button onClick={() => setBreakdownOpenId(open ? null : match.id)} className="text-[9px] font-bold text-(--text-secondary) hover:text-indigo-600 flex items-center gap-1">
-                                            <svg className={`w-2.5 h-2.5 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-                                            Score breakdown
-                                          </button>
-                                          {open && (
-                                            <div className="mt-1.5 space-y-1">
-                                              {BREAKDOWN_LABELS.map(([key, label]) => {
-                                                const item = breakdown[key];
-                                                if (!item || item.max == null) return null;
-                                                const pct = item.max > 0 ? Math.round((item.earned / item.max) * 100) : 0;
-                                                return (
-                                                  <div key={key} className="flex items-center gap-2">
-                                                    <span className="w-24 text-[9px] text-(--text-secondary) shrink-0">{label}</span>
-                                                    <div className="flex-1 h-1 bg-(--border) rounded-full overflow-hidden">
-                                                      <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${pct}%` }} />
-                                                    </div>
-                                                    <span className="text-[9px] font-bold text-(--text-primary) shrink-0 w-12 text-right">{item.earned}/{item.max}</span>
-                                                  </div>
-                                                );
-                                              })}
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    })()}
+                                {activeEvidence.map(match => (
+                                  <EvidenceEvaluationCard key={match.id} match={match} status="ACTIVE" breakdownOpenId={breakdownOpenId} setBreakdownOpenId={setBreakdownOpenId} />
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <div>
+                            <h4 className="text-[10px] font-bold text-(--text-tertiary) uppercase tracking-widest mb-2">AI suggestions</h4>
+                            {!loadingMatches && aiSuggestions.length === 0 ? (
+                              <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">No pending or rejected suggestions.</div>
+                            ) : (
+                              <div className="space-y-2">
+                                {aiSuggestions.map(match => (
+                                  <EvidenceEvaluationCard
+                                    key={match.id}
+                                    match={match}
+                                    status={match.status}
+                                    breakdownOpenId={breakdownOpenId}
+                                    setBreakdownOpenId={setBreakdownOpenId}>
                                     {match.status === 'PENDING' && canEditClaim(claim) && (
                                       <div className="flex justify-end gap-2 mt-2">
                                         <button onClick={(event) => { event.stopPropagation(); handleSuggestionStatus(match.id, 'REJECTED'); }} disabled={isLocked || updatingSuggestionId === match.id} className="text-[9px] font-bold text-rose-600 hover:text-rose-700 disabled:opacity-40">Reject</button>
                                         <button onClick={(event) => { event.stopPropagation(); handleSuggestionStatus(match.id, 'ACCEPTED'); }} disabled={isLocked || updatingSuggestionId === match.id} className="text-[9px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 px-2 py-1 rounded">Accept</button>
                                       </div>
                                     )}
-                                  </div>
+                                  </EvidenceEvaluationCard>
                                 ))}
                               </div>
                             )}
@@ -476,108 +544,11 @@ export default function ContextPanel({
                   className="w-3.5 h-3.5 rounded border-(--border) text-indigo-600 focus:ring-indigo-500" />
                 <span>Show teammate claims</span>
               </label>
-              {/* ponytail: simple section-color from sectionId hash */}
-              {graphData && graphData.claims && graphData.claims.length > 0 ? (
-                <div className="space-y-4">
-                  <div className="bg-slate-900 rounded-xl p-4 border border-slate-800 text-slate-200">
-                    <div className="flex justify-between items-center mb-3">
-                      <h4 className="font-bold text-xs text-indigo-400 flex items-center gap-1">
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                        Source-claim Network
-                      </h4>
-                      <div className="flex items-center gap-1.5">
-                        <select value={graphFilter} onChange={(event) => setGraphFilter(event.target.value)} className="text-[9px] bg-slate-800 text-slate-300 rounded border border-slate-700 px-1 py-0.5">
-                          <option value="all">All relations</option>
-                          {['SUPPORTS','CONTRADICTS','NEUTRAL','EXTENDS','DETAILS','GENERALIZES'].map(relation => <option key={relation} value={relation}>{relation}</option>)}
-                        </select>
-                        <button onClick={handleExportCsv} className="text-[9px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-medium" title="Export CSV">
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                          CSV
-                        </button>
-                        <button onClick={handleExportJson} className="text-[9px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium" title="Export JSON">
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                          JSON
-                        </button>
-                      </div>
-                    </div>
-                    <svg width="100%" viewBox={`0 0 600 ${Math.max(graphData.claims.length, graphData.sources?.length || 0) * 80 + 100}`} className="overflow-visible">
-                      {graphData.claims.filter(c => graphFilter === 'all' || c.graphData?.verdict === graphFilter).map((c, ci) => (c.graphData?.matched_source_ids || []).map(sid => {
-                        const si = (graphData.sources || []).findIndex(s => s.id === sid);
-                        if (si < 0) return null;
-                        const y1 = ci * 80 + 50, y2 = si * 80 + 50;
-                        const color = relationColor(c.graphData?.verdict);
-                        return <path key={`e-${ci}-${si}`} d={`M 150 ${y1} Q 300 ${(y1 + y2) / 2}, 450 ${y2}`} stroke={color} strokeWidth="1.5" fill="none" opacity="0.5" />;
-                      }))}
-                      {graphData.claims.filter(c => graphFilter === 'all' || c.graphData?.verdict === graphFilter).map((c, ci) => {
-                        const verdict = c.graphData?.verdict;
-                        const bc = verdict ? relationColor(verdict) : '#334155';
-                        const sectionColor = ['#6366f1','#8b5cf6','#a855f7','#d946ef','#ec4899','#f43f5e','#14b8a6','#06b6d4','#3b82f6'][(c.sectionId || 0) % 9];
-                        return (
-                          <g key={`c-${ci}`} onClick={() => { if (onSelectClaim) onSelectClaim(c); }} style={{ cursor: 'pointer' }}>
-                            <title>{c.content?.slice(0,120)} — {verdict || 'Unanalyzed'}{c.graphData?.confidence != null ? ` (${c.graphData.confidence}%)` : ''}</title>
-                            <rect x="10" y={ci * 80 + 10} width="140" height="80" rx="8" fill="#1e293b" stroke={bc} strokeWidth="1.5" />
-                            <rect x="10" y={ci * 80 + 10} width="4" height="80" rx="2" fill={sectionColor} />
-                            <foreignObject x="18" y={ci * 80 + 15} width="127" height="45">
-                              <div style={{ color: '#e2e8f0', fontSize: '10px', lineHeight: '1.3', overflow: 'hidden' }}>{c.content}</div>
-                            </foreignObject>
-                            <text x="80" y={ci * 80 + 75} fill={bc} fontSize="9" textAnchor="middle" fontWeight="bold">{verdict || 'Unanalyzed'}{c.graphData?.confidence != null ? ` (${c.graphData.confidence}%)` : ''}</text>
-                          </g>
-                        );
-                      })}
-                      {(graphData.sources || []).map((s, si) => (
-                        <g key={`s-${si}`}>
-                          <title>{s.filename} — cited {s.referenceCount} times</title>
-                          <rect x="450" y={si * 80 + 10} width="140" height="80" rx="8" fill="#1e293b" stroke="#475569" />
-                          <text x="520" y={si * 80 + 35} fill="#94a3b8" fontSize="9" textAnchor="middle">{s.filename?.slice(0, 22)}</text>
-                          <text x="520" y={si * 80 + 55} fill="#64748b" fontSize="8" textAnchor="middle">Cited</text>
-                          <text x="520" y={si * 80 + 72} fill="#6366f1" fontSize="10" textAnchor="middle" fontWeight="bold">{s.referenceCount} times</text>
-                        </g>
-                      ))}
-                    </svg>
-                    <div className="flex gap-4 mt-3 pt-2 border-t border-slate-800">
-                      <div className="flex items-center gap-1.5 text-[10px]"><div className="w-3 h-0.5 rounded bg-emerald-400" /><span className="text-slate-400">SUPPORTS / EXTENDS / DETAILS / GENERALIZES</span></div>
-                      <div className="flex items-center gap-1.5 text-[10px]"><div className="w-3 h-0.5 rounded bg-amber-400" /><span className="text-slate-400">NEUTRAL</span></div>
-                      <div className="flex items-center gap-1.5 text-[10px]"><div className="w-3 h-0.5 rounded bg-rose-400" /><span className="text-slate-400">CONTRADICTS</span></div>
-                    </div>
-                  </div>
-                  <div className="bg-(--surface) border border-(--border) rounded-xl p-4 shadow-sm">
-                    <h4 className="font-bold text-xs text-(--text-primary) mb-3">Connection Details</h4>
-                    {loadingMatches ? <div className="text-xs text-(--text-tertiary) italic">Loading...</div> : claimMatches.length === 0 ? <div className="text-xs text-(--text-tertiary) italic">No connections for this claim.</div> : (
-                      <div className="space-y-2 max-h-60 overflow-y-auto">
-                        {claimMatches.map((m, i) => (
-                          <div key={i} className="flex items-start gap-2 p-2 bg-(--surface-secondary) rounded-lg text-xs">
-                            <div className="mt-1 w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: relationColor(m.relation) }} />
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-(--text-primary)">{m.sourceFilename}</div>
-                              <div className="text-(--text-secondary) text-[10px] mt-0.5 line-clamp-2">"{m.excerpt}"</div>
-                              {m.explanation && <div className="text-indigo-600 text-[10px] mt-0.5 italic">{m.explanation}</div>}
-                            </div>
-                            <span className="text-[10px] font-bold text-(--text-secondary) shrink-0">{m.relation || 'UNKNOWN'}{m.strengthScore != null ? ` · ${m.strengthScore}%` : ''}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="bg-(--surface) border border-(--border) rounded-xl p-4 shadow-sm">
-                    <h4 className="font-bold text-xs text-(--text-primary) mb-3">Source Summary</h4>
-                    <div className="space-y-2">
-                      {graphData.sources?.map((s, i) => (
-                        <div key={i} className="flex justify-between items-center text-xs p-2 bg-(--surface-secondary) border border-(--border-light) rounded-lg">
-                          <span className="truncate max-w-[200px] font-medium text-(--text-primary) flex items-center gap-1"><svg className="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>{s.filename}</span>
-                          <span className="text-[10px] text-(--text-secondary) bg-(--border)/60 px-2 py-0.5 rounded-full font-bold">{s.referenceCount} Citations</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-xs text-(--text-tertiary) text-center py-8 space-y-2">
-                  <svg className="w-8 h-8 mx-auto text-(--border)" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                  <p>No graph data yet.</p>
-                  <p className="text-[10px]">Find a source match, evaluate it, then Accept the suggestion to create the source-claim network.</p>
+              {(!graphData?.sectionSummaries || graphData.sectionSummaries.length === 0) && (
+                <div className="text-xs text-(--text-tertiary) text-center py-8">
+                  No section coverage data yet.
                 </div>
               )}
-
 
             </div>
           )}

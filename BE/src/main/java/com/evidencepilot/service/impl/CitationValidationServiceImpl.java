@@ -10,7 +10,6 @@ import com.evidencepilot.service.CitationValidationService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.PaperProcessingService;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -18,7 +17,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CitationValidationServiceImpl implements CitationValidationService {

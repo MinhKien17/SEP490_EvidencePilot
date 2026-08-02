@@ -161,6 +161,36 @@ class ClaimMatchingServiceImplTest {
         verify(aiSuggestionRepository, never()).save(any());
     }
 
+    @Test
+    void doiOnlyContributesPersistentIdentifierPoints() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        Claim claim = claim(projectId);
+        Document source = document(DocumentType.SOURCE, projectId, "source.pdf");
+        source.setDoi("10.1000/example");
+        DocumentChunk chunk = chunk(source, 2, "Exact selected chunk");
+
+        when(claimRepository.findByIdWithProject(claim.getId())).thenReturn(Optional.of(claim));
+        when(documentChunkRepository.findByIdWithDocument(chunk.getId())).thenReturn(Optional.of(chunk));
+        when(aiSuggestionRepository
+                .findFirstByClaimIdAndClaimVersionAndDocumentChunkIdOrderByCreatedAtDesc(
+                        claim.getId(), claim.getClaimVersion(), chunk.getId()))
+                .thenReturn(Optional.empty());
+        when(aiModelClient.generate(any())).thenReturn(
+                "{\"relation\":\"SUPPORTS\",\"explanation\":\"Direct support.\"}");
+        when(aiSuggestionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(claimMapper.toAiSuggestionResponse(any())).thenAnswer(invocation ->
+                response(invocation.getArgument(0)));
+
+        AiSuggestionResponse response = service()
+                .evaluateMatch(claim.getId(), projectId, chunk.getId());
+
+        assertThat(response.strengthScore()).isEqualTo(65);
+        var breakdown = new ObjectMapper().readTree(response.scoreBreakdown());
+        assertThat(breakdown.path("source_type_authority").path("earned").asInt()).isZero();
+        assertThat(breakdown.path("citation_metadata").path("earned").asInt()).isZero();
+        assertThat(breakdown.path("link_availability").path("earned").asInt()).isEqualTo(10);
+    }
+
     private ClaimMatchingServiceImpl service() {
         return new ClaimMatchingServiceImpl(
                 claimRepository,

@@ -86,14 +86,21 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const [loadingAiReview, setLoadingAiReview] = useState(false);
   const [rollingBack, setRollingBack] = useState(false);
   const [aiReviewResult, setAiReviewResult] = useState(null);
+  const [aiReviewError, setAiReviewError] = useState(null);
   const [newClaimContent, setNewClaimContent] = useState('');
   const [newClaimFunctionalType, setNewClaimFunctionalType] = useState('EMPIRICAL');
+  const [claimEvaluation, setClaimEvaluation] = useState(null);
+  const [evaluatedClaimContent, setEvaluatedClaimContent] = useState('');
+  const [evaluatedClaimSectionId, setEvaluatedClaimSectionId] = useState('');
+  const [evaluatingClaim, setEvaluatingClaim] = useState(false);
+  const [claimEvaluationError, setClaimEvaluationError] = useState('');
   const [editingClaim, setEditingClaim] = useState(null);
   const [editClaimContent, setEditClaimContent] = useState('');
   const [editClaimFunctionalType, setEditClaimFunctionalType] = useState('EMPIRICAL');
   const [claimStats, setClaimStats] = useState(null);
   const [selectedClaim, setSelectedClaim] = useState(null);
   const [claimMatches, setClaimMatches] = useState([]);
+  const [claimMappings, setClaimMappings] = useState([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [claimCandidates, setClaimCandidates] = useState([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
@@ -106,6 +113,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const stompRef = useRef(null);
   const editorRef = useRef(null);
+  const claimEvaluationRequestRef = useRef(0);
 
   const updateCode = (newVal) => {
     setCodeContent(newVal);
@@ -187,13 +195,21 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const loadProjectData = useCallback(async (projId) => {
     if (!projId) return;
     try {
+      claimEvaluationRequestRef.current += 1;
+      setEvaluatingClaim(false);
       setSections([]);
       setSelectedPaper(null);
       setSelectedClaim(null);
       setClaimMatches([]);
+      setClaimMappings([]);
       setClaimCandidates([]);
       setCitationResult(null);
       setAiReviewResult(null);
+      setAiReviewError(null);
+      setClaimEvaluation(null);
+      setEvaluatedClaimContent('');
+      setEvaluatedClaimSectionId('');
+      setClaimEvaluationError('');
       setGraphData(null);
       const projRes = await api.get(`/api/projects/${projId}`);
       setProject(projRes.data);
@@ -271,11 +287,25 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const currentSection = sections.find(section =>
     String(section.id) === String(selectedSectionId));
   const canEditCurrentSection = canEditSection(currentSection);
+  const canAddEvaluatedClaim = Boolean(
+    claimEvaluation
+    && evaluatedClaimContent === newClaimContent.trim()
+    && String(evaluatedClaimSectionId) === String(selectedSectionId)
+  );
   const requireEditableCurrentSection = () => {
     if (canEditCurrentSection) return true;
     showToast('This section is read-only.');
     return false;
   };
+
+  useEffect(() => {
+    claimEvaluationRequestRef.current += 1;
+    setEvaluatingClaim(false);
+    setClaimEvaluation(null);
+    setEvaluatedClaimContent('');
+    setEvaluatedClaimSectionId('');
+    setClaimEvaluationError('');
+  }, [selectedSectionId]);
 
   useEffect(() => {
     if (!selectedPaper) { setSections([]); return; }
@@ -446,6 +476,56 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     showToast(`Inserted ${texFilename}`);
   };
 
+  const handleNewClaimContentChange = (content) => {
+    claimEvaluationRequestRef.current += 1;
+    setNewClaimContent(content);
+    setEvaluatingClaim(false);
+    setClaimEvaluation(null);
+    setEvaluatedClaimContent('');
+    setEvaluatedClaimSectionId('');
+    setClaimEvaluationError('');
+  };
+
+  const handleEvaluateClaim = async () => {
+    if (isLocked) { showToast("Project is locked."); return; }
+    const content = newClaimContent.trim();
+    if (!content) { showToast("Enter a Claim first."); return; }
+    if (!currentSection) { showToast("Select a section first."); return; }
+    if (!canEditSection(currentSection)) {
+      showToast("You cannot edit claims in this section.");
+      return;
+    }
+    const requestId = claimEvaluationRequestRef.current + 1;
+    claimEvaluationRequestRef.current = requestId;
+    setEvaluatingClaim(true);
+    setClaimEvaluationError('');
+    try {
+      const response = await api.post('/api/claims/evaluate', {
+        sectionId: selectedSectionId,
+        content,
+      });
+      if (claimEvaluationRequestRef.current !== requestId) return;
+      setClaimEvaluation(response.data);
+      setEvaluatedClaimContent(content);
+      setEvaluatedClaimSectionId(selectedSectionId);
+      setNewClaimFunctionalType(response.data.suggestedFunctionalType || 'EMPIRICAL');
+    } catch (error) {
+      if (claimEvaluationRequestRef.current !== requestId) return;
+      const status = error.response?.status;
+      const message = status === 503
+        ? 'AI service is unavailable. Retry when it is back online.'
+        : status === 502
+          ? 'AI returned an invalid evaluation. Please retry.'
+          : 'AI Evaluate failed. Please retry.';
+      setClaimEvaluation(null);
+      setEvaluatedClaimContent('');
+      setEvaluatedClaimSectionId('');
+      setClaimEvaluationError(message);
+    } finally {
+      if (claimEvaluationRequestRef.current === requestId) setEvaluatingClaim(false);
+    }
+  };
+
   const handleCreateClaim = async () => {
     if (isLocked) { showToast("Project is locked."); return; }
     if (!newClaimContent.trim() || !project) return;
@@ -455,10 +535,14 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       showToast("You cannot edit claims in this section.");
       return;
     }
+    if (!canAddEvaluatedClaim) {
+      showToast("Run AI Evaluate for the current Claim before adding it.");
+      return;
+    }
     const sectionId = selectedSectionId;
     try {
       const rawSelection = editorRef.current?.getSelection() || '';
-      const created = await api.post('/api/claims', { sectionId, content: newClaimContent, functionalType: newClaimFunctionalType });
+      const created = await api.post('/api/claims', { sectionId, content: newClaimContent.trim(), functionalType: newClaimFunctionalType });
       let nextContent = codeContent;
       if (rawSelection.trim() && rawSelection.trim() === newClaimContent.trim()) {
         nextContent = editorRef.current?.insertAtCursor(
@@ -472,6 +556,10 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       }
       showToast("Claim added.");
       setNewClaimContent('');
+      setClaimEvaluation(null);
+      setEvaluatedClaimContent('');
+      setEvaluatedClaimSectionId('');
+      setClaimEvaluationError('');
       const [claimResponse, sectionResponse, graphResponse, statsResponse] = await Promise.all([
         api.get(`/api/projects/${project.id}/claims`),
         api.get(`/api/papers/${selectedPaper.id}/sections`),
@@ -491,7 +579,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       showToast("Select text in the editor first.");
       return;
     }
-    setNewClaimContent(selectedText);
+    handleNewClaimContentChange(selectedText);
     setActiveTab('Claims');
   };
 
@@ -505,6 +593,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         setSelectedClaim(updated.data);
         setClaimCandidates([]);
         setClaimMatches([]);
+        setClaimMappings([]);
       }
       const r = await api.get(`/api/projects/${project.id}/claims`);
       setClaims(r.data?.content || []);
@@ -529,6 +618,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       if (selectedClaim && selectedClaim.id === claimId) {
         setSelectedClaim(null);
         setClaimMatches([]);
+        setClaimMappings([]);
         setClaimCandidates([]);
       }
     } catch { showToast("Delete failed."); }
@@ -587,14 +677,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
   const [saveStatus, setSaveStatus] = useState('');
   const [lastSaved, setLastSaved] = useState(null);
-
-  const handleExportJson = () => {
-    if (!graphData) return;
-    const blob = new Blob([JSON.stringify(graphData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `graph-${project?.title || 'export'}.json`;
-    a.click(); URL.revokeObjectURL(url);
-  };
 
   const handleExportTraceabilityJson = async () => {
     if (!project) return;
@@ -676,7 +758,16 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
   const handleFetchMatches = async (claimId) => {
     setLoadingMatches(true);
-    try { const r = await api.get(`/api/claims/${claimId}/suggestions`); setClaimMatches(r.data || []); } catch { showToast("Fetch matches failed."); }
+    setClaimMatches([]);
+    setClaimMappings([]);
+    try {
+      const [suggestionResponse, mappingResponse] = await Promise.all([
+        api.get(`/api/claims/${claimId}/suggestions`),
+        api.get(`/api/claims/${claimId}/mappings`),
+      ]);
+      setClaimMatches(suggestionResponse.data || []);
+      setClaimMappings(mappingResponse.data || []);
+    } catch { showToast("Fetch matches failed."); }
     finally { setLoadingMatches(false); }
   };
 
@@ -733,23 +824,23 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const handleRunAiReview = async () => {
     if (isLocked) { showToast("Project is locked."); return; }
     if (!selectedPaper) { showToast("Select a paper first."); return; }
-    setLoadingAiReview(true); setShowAiReviewModal(true);
+    setLoadingAiReview(true);
+    setAiReviewError(null);
+    setShowAiReviewModal(true);
     try {
       const r = await api.post(`/api/papers/${selectedPaper.id}/review`);
       setAiReviewResult(r.data);
-      const graph = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
-      setGraphData(graph.data);
       showToast("AI Review complete.");
-    } catch {
-      showToast("AI Review failed.");
-      setAiReviewResult({
-        reviewVersion: 'paper-claim-review-v4',
-        complete: false,
-        direction: 'INSUFFICIENT_DATA',
-        summary: 'AI review service is unavailable.',
-        findings: [],
-        limitations: ['No review was generated. Try again later.'],
-      });
+      if (project) fetchGraphData(project.id);
+    } catch (error) {
+      const status = error.response?.status;
+      const message = status === 503
+        ? 'AI Review worker is unavailable or timed out.'
+        : status === 502
+          ? 'AI Review returned an invalid response after retrying.'
+          : 'AI Review failed. Please retry.';
+      setAiReviewError({ status, message });
+      showToast(message);
     } finally { setLoadingAiReview(false); }
   };
 
@@ -922,18 +1013,14 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
         <ContextPanel isOpen={isDrawerOpen} width={rightDrawerWidth} onResizeStart={handleRightDividerMouseDown} activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); localStorage.setItem('student_workspace_active_tab', tab); }} showToast={showToast}
           sources={sources} isUploading={isUploading} setIsUploading={setIsUploading} project={project} setViewerFile={setViewerFile} fetchSources={fetchSources} isLocked={isLocked}
-          newClaimContent={newClaimContent} setNewClaimContent={setNewClaimContent} newClaimFunctionalType={newClaimFunctionalType} setNewClaimFunctionalType={setNewClaimFunctionalType} handleCreateClaim={handleCreateClaim} handleUseSelectedText={handleUseSelectedText} canCreateClaim={canEditCurrentSection}
-          claims={claims} selectedClaim={selectedClaim} claimMatches={claimMatches} loadingMatches={loadingMatches}
+          newClaimContent={newClaimContent} onNewClaimContentChange={handleNewClaimContentChange} newClaimFunctionalType={newClaimFunctionalType} setNewClaimFunctionalType={setNewClaimFunctionalType} claimEvaluation={claimEvaluation} evaluatingClaim={evaluatingClaim} claimEvaluationError={claimEvaluationError} handleEvaluateClaim={handleEvaluateClaim} canAddEvaluatedClaim={canAddEvaluatedClaim} handleCreateClaim={handleCreateClaim} handleUseSelectedText={handleUseSelectedText} canCreateClaim={canEditCurrentSection}
+          claims={claims} selectedClaim={selectedClaim} claimMatches={claimMatches} claimMappings={claimMappings} loadingMatches={loadingMatches}
           claimCandidates={claimCandidates} loadingCandidates={loadingCandidates} evaluatingChunkId={evaluatingChunkId} updatingSuggestionId={updatingSuggestionId}
           handleSearchClaimMatches={handleSearchClaimMatches} handleEvaluateMatch={handleEvaluateMatch} handleSuggestionStatus={handleSuggestionStatus} canEditClaim={canEditClaim}
           editingClaim={editingClaim} setEditingClaim={setEditingClaim} editClaimContent={editClaimContent} setEditClaimContent={setEditClaimContent} editClaimFunctionalType={editClaimFunctionalType} setEditClaimFunctionalType={setEditClaimFunctionalType} handleDeleteClaim={handleDeleteClaim} handleUpdateClaim={handleUpdateClaim}
           onSelectClaim={handleSelectClaim}
           feedbacks={feedbacks} setShowSubmitReviewModal={setShowSubmitReviewModal} userProjectRole={project?.currentUserRole}
-          graphData={graphData} fetchGraphData={fetchGraphData} graphScope={graphScope} onGraphScopeToggle={handleGraphScopeToggle} claimStats={claimStats}
-          exports={exports} fetchExports={fetchExports} api={api} showToast={showToast}
-          selectedPaperDetail={selectedPaperDetail} setSelectedPaperDetail={setSelectedPaperDetail}
-          handleExportCsv={handleExportCsv} handleExportJson={handleExportJson}
-          renderModalPaperPdf={renderModalPaperPdf} />
+          graphData={graphData} graphScope={graphScope} onGraphScopeToggle={handleGraphScopeToggle} claimStats={claimStats} />
       </div>
 
       {/* Version History Modal */}
@@ -1146,6 +1233,18 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-6 bg-(--surface-secondary)/50 space-y-6 custom-scrollbar">
+              {aiReviewError && !loadingAiReview && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-800">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold">{aiReviewError.status ? `AI Review error ${aiReviewError.status}` : 'AI Review error'}</p>
+                      <p className="mt-1 text-[11px]">{aiReviewError.message}</p>
+                      {aiReviewResult && <p className="mt-1 text-[10px] text-rose-600">The last successful review remains below.</p>}
+                    </div>
+                    <button onClick={handleRunAiReview} className="shrink-0 rounded-lg bg-rose-700 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-rose-800">Retry</button>
+                  </div>
+                </div>
+              )}
               {loadingAiReview ? (
                 <div className="flex flex-col items-center justify-center py-16 space-y-4">
                   <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
@@ -1208,7 +1307,14 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                     </button>
                   ))}
                   {(aiReviewResult.findings || []).length === 0 && (
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-800">No specific findings were returned.</div>
+                    <div className={`rounded-xl border p-4 text-xs ${aiReviewResult.direction === 'INSUFFICIENT_DATA' ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
+                      <p>{aiReviewResult.direction === 'INSUFFICIENT_DATA'
+                        ? 'Review not evaluated because the paper does not have enough processed content.'
+                        : 'No specific findings were returned.'}</p>
+                      {aiReviewResult.direction === 'INSUFFICIENT_DATA' && (
+                        <button onClick={handleRunAiReview} className="mt-2 rounded-lg bg-slate-700 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-slate-800">Retry</button>
+                      )}
+                    </div>
                   )}
                   {(aiReviewResult.limitations || []).length > 0 && (
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
