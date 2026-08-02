@@ -51,4 +51,5 @@ public interface DocumentService {
     DocumentResponse reExtract(UUID documentId);
     void deleteDocument(UUID id);
     Document getDocumentForDownload(UUID id, String token);
+    Map<String, Object> getDiagnostics(UUID id);
 }

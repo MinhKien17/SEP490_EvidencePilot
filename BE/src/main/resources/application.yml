@@ -46,6 +46,7 @@ spring:
     virtual-host: ${RABBITMQ_VIRTUAL_HOST}
     username: ${RABBITMQ_USERNAME}
     password: ${RABBITMQ_PASSWORD}
+    management-url: ${RABBITMQ_MANAGEMENT_URL:}
     listener:
       simple:
         prefetch: ${RABBITMQ_LISTENER_PREFETCH:1}
