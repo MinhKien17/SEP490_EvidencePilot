@@ -115,7 +115,7 @@ public class CheckpointServiceImpl implements CheckpointService {
             checkpoint.setCreatedAt(LocalDateTime.now());
             checkpointRepository.save(checkpoint);
         } catch (Exception e) {
-            // ponytail: checkpoint must never break the submit/review flow
+            // checkpoint must never break the submit/review flow
             log.warn("Checkpoint capture failed for project {}: {}", projectId, e.getMessage());
         }
     }

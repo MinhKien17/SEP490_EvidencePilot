@@ -44,7 +44,7 @@ public class CheckpointController {
 
     @Operation(summary = "Get latest checkpoint section baseline",
             description = "Returns the section content as captured in the newest checkpoint created "
-                    + "at or before the optional 'before' timestamp (defaults to now). Pass the "
+                    + "strictly before the optional 'before' timestamp (defaults to the latest). Pass the "
                     + "requestedAt of the submission being reviewed so the checkpoint created by that "
                     + "submission is excluded. 404 when no matching checkpoint exists or the section "
                     + "was not captured.")

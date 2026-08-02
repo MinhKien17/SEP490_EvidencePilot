@@ -12,8 +12,8 @@ public interface CheckpointService {
     CheckpointDiffResponse getDiff(UUID projectId);
 
     /**
-     * Returns the section content as captured in the newest checkpoint created at or before
-     * {@code before} (inclusive). {@code before} is typically the requestedAt of the submission
+     * Returns the section content as captured in the newest checkpoint created strictly before
+     * {@code before}. {@code before} is typically the requestedAt of the submission
      * being reviewed, so the checkpoint created by that same submission is excluded and the
      * diff compares the submitted state against the previous locked version.
      */
