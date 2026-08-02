@@ -4361,53 +4361,6 @@ function SettingsSection({ lang, api }) {
           </div>
         </div>
 
-        {/* Card 3: Source Categories */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col justify-between h-72">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125v-3.75m0 3.75v3.75m-16.5-3.75v3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125v-3.75" />
-                </svg>
-                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Source Categories</h3>
-              </div>
-              <button 
-                onClick={() => { setSourceCatForm({ id: null, code: '', name: '', description: '' }); setShowSourceCatForm(true); }} 
-                className="px-3 py-1.5 border border-blue-200 hover:bg-blue-50 text-blue-600 rounded-xl text-[10px] font-extrabold transition cursor-pointer"
-              >
-                + Add Category
-              </button>
-            </div>
-
-            {sourceCatsLoading ? (
-              <div className="animate-pulse space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-6 bg-gray-200 rounded w-full" />)}</div>
-            ) : sourceCats.length === 0 ? (
-              <div className="flex flex-col items-center justify-center text-center py-6 px-4 border border-dashed border-gray-200 rounded-xl bg-slate-50/50">
-                <svg className="w-9 h-9 text-slate-300 mb-1.5" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12h-15A1.5 1.5 0 013 19.5V9h18v10.5a1.5 1.5 0 01-1.5 1.5z" />
-                </svg>
-                <span className="font-bold text-xs text-slate-800">No source categories found</span>
-                <p className="text-[10px] text-gray-400 font-semibold mt-0.5 leading-relaxed max-w-xs">Categorize your data extraction sources by provider or reliability level.</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-100 text-xs max-h-36 overflow-y-auto pr-1">
-                {sourceCats.map(category => (
-                  <div key={category.id} className="flex items-center justify-between py-2 hover:bg-slate-50/50 rounded px-1 transition gap-3">
-                    <div className="min-w-0 flex items-center gap-1.5">
-                      <span className="rounded bg-indigo-50 px-1.5 py-0.5 font-mono text-[9px] font-bold text-indigo-700">{category.code}</span>
-                      <span className="font-bold text-slate-800 truncate">{category.name}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button onClick={() => { setSourceCatForm({ id: category.id, code: category.code, name: category.name, description: category.description || '' }); setShowSourceCatForm(true); }} className="px-2 py-1 text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 hover:text-slate-800 transition cursor-pointer">Edit</button>
-                      <button disabled={category.code === 'OTHER'} onClick={() => doSourceCatDelete(category.id)} className="px-2 py-1 text-[10px] font-bold text-rose-500 bg-rose-50/30 border border-rose-105 rounded-lg hover:bg-rose-50 hover:text-rose-655 disabled:cursor-not-allowed disabled:opacity-40 transition cursor-pointer">Delete</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
         {/* Card 4: System Status */}
         <div className="bg-[#0c162e] text-white rounded-2xl p-6 flex flex-col justify-between h-72 shadow-md">
           <div className="space-y-4">
@@ -4571,53 +4524,6 @@ function SettingsSection({ lang, api }) {
               <div className="flex gap-2.5 justify-end pt-2">
                 <button type="button" onClick={() => setShowCatForm(false)} className="px-3.5 py-2 text-xs font-bold text-slate-605 hover:bg-slate-50 rounded-xl transition cursor-pointer">{lang.cancel}</button>
                 <button type="submit" className="px-4 py-2 bg-[#0c162e] hover:bg-[#152447] text-white rounded-xl text-xs font-bold transition shadow-md cursor-pointer">{catForm.id ? 'Save Changes' : 'Add Category'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Source Category Modal Overlay */}
-      {showSourceCatForm && (
-        <div className="fixed inset-0 z-55 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4" onClick={() => setShowSourceCatForm(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md border border-gray-150 transform scale-100 transition-all duration-300" onClick={e => e.stopPropagation()}>
-            <h3 className="font-bold text-slate-800 text-sm mb-4">{sourceCatForm.id ? 'Edit Source Category' : 'Add Source Category'}</h3>
-            <form onSubmit={doSourceCatSave} className="space-y-4">
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Category Code *</label>
-                <input 
-                  placeholder="e.g. OTHER" 
-                  value={sourceCatForm.code} 
-                  onChange={e => setSourceCatForm(p => ({ ...p, code: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') }))} 
-                  disabled={Boolean(sourceCatForm.id)} 
-                  required 
-                  className="w-full px-3 py-2 bg-slate-50 border border-gray-255 rounded-xl font-semibold font-mono text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs disabled:bg-gray-100 disabled:text-gray-400" 
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Category Name *</label>
-                <input 
-                  placeholder="e.g. Academic Repository" 
-                  value={sourceCatForm.name} 
-                  onChange={e => setSourceCatForm(p => ({ ...p, name: e.target.value }))} 
-                  required 
-                  className="w-full px-3 py-2 bg-slate-50 border border-gray-255 rounded-xl font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs" 
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Description</label>
-                <textarea 
-                  placeholder="Describe this source category..." 
-                  value={sourceCatForm.description} 
-                  onChange={e => setSourceCatForm(p => ({ ...p, description: e.target.value }))} 
-                  rows={2} 
-                  className="w-full px-3 py-2 bg-slate-50 border border-gray-255 rounded-xl font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs resize-none" 
-                />
-              </div>
-              {sourceCatErr && <div className="text-xs text-rose-600 bg-rose-50 p-2 rounded">{sourceCatErr}</div>}
-              <div className="flex gap-2.5 justify-end pt-2">
-                <button type="button" onClick={() => setShowSourceCatForm(false)} className="px-3.5 py-2 text-xs font-bold text-slate-605 hover:bg-slate-50 rounded-xl transition cursor-pointer">{lang.cancel}</button>
-                <button type="submit" className="px-4 py-2 bg-[#0c162e] hover:bg-[#152447] text-white rounded-xl text-xs font-bold transition shadow-md cursor-pointer">{sourceCatForm.id ? 'Save Changes' : 'Add Category'}</button>
               </div>
             </form>
           </div>
