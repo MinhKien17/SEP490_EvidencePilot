@@ -117,9 +117,6 @@ export default function AdminDashboard() {
   });
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [showMaintBanner, setShowMaintBanner] = useState(() => {
-    try { return !sessionStorage.getItem('admin_maint_banner_dismissed'); } catch { return true; }
-  });
 
   useEffect(() => {
     localStorage.setItem('admin_active_tab', active);
@@ -264,19 +261,6 @@ export default function AdminDashboard() {
 
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Maintenance banner (one-time per session) */}
-        {showMaintBanner && (
-          <div className="bg-amber-400 text-[#0c162e] text-xs font-bold px-6 py-2.5 flex items-center justify-between gap-4 shrink-0">
-            <span>{L.maintenanceBannerMsg}</span>
-            <button
-              onClick={() => { try { sessionStorage.setItem('admin_maint_banner_dismissed', '1'); } catch { /* noop */ } setShowMaintBanner(false); }}
-              className="shrink-0 rounded-lg px-2.5 py-1 bg-[#0c162e] text-white text-[10px] font-bold hover:bg-[#152447] transition"
-            >
-              {L.dismiss}
-            </button>
-          </div>
-        )}
-
         {/* Header */}
         <header data-tour="header" className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0 shadow-sm">
           <div className="flex items-center gap-3">

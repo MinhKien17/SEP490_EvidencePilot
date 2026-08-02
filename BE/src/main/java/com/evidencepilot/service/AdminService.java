@@ -223,11 +223,13 @@ public class AdminService {
         List<User> recipients = request.role() == null
                 ? users.findByAccountStatus(AccountStatus.ACTIVE)
                 : users.findByAccountStatusAndRole(AccountStatus.ACTIVE, request.role());
+        String actionType = request.urgent() ? "ADMIN_BROADCAST_URGENT" : "ADMIN_BROADCAST";
         for (User recipient : recipients) {
-            notifications.createNotification(recipient, actor, "ADMIN_BROADCAST", null, request.message());
+            notifications.createNotification(recipient, actor, actionType, null, request.message());
         }
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("role", request.role());
+        metadata.put("urgent", request.urgent());
         metadata.put("recipientCount", recipients.size());
         audit.record("NOTIFICATION_BROADCAST", "SYSTEM_NOTIFICATION", null, actor, null, metadata);
         return recipients.size();

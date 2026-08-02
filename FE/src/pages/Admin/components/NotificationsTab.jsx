@@ -41,11 +41,12 @@ function NotificationsSection({ lang, api }) {
     setSending(true);
     setResult(null);
     try {
-      const payload = { message: form.message };
+      const payload = { message: form.message, urgent: urgency === 'Urgent' };
       if (form.role) payload.role = form.role;
       const r = await api.post('/api/admin/notifications/broadcast', payload);
       showToast('Broadcast sent successfully!', 'success');
       setForm({ message: '', role: '' });
+      setUrgency('Standard');
       fetchHistory();
     } catch (err) {
       showToast(err.message || 'Failed to send broadcast.', 'error');

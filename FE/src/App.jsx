@@ -5,6 +5,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import ScrollToTop from './components/ScrollToTop';
+import UrgentNotificationBanner from './components/UrgentNotificationBanner';
 
 import Home from './pages/home/index.jsx';
 import Terms from './pages/Terms.jsx';
@@ -35,6 +36,7 @@ function App() {
       <AuthProvider>
         <LanguageProvider>
           <ThemeProvider>
+          <UrgentNotificationBanner />
           <Routes>
             {/* Public Entry Nodes */}
             <Route path="/" element={<Home />} />
