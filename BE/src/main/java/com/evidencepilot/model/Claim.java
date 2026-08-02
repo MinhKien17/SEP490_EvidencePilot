@@ -43,6 +43,10 @@ public class Claim {
     @Column(name = "claim_version", nullable = false)
     private Integer claimVersion;
 
+    @Version
+    @Column(name = "opt_version")
+    private Long optVersion;
+
     private boolean active = true;
 
     @ManyToOne(fetch = FetchType.LAZY)

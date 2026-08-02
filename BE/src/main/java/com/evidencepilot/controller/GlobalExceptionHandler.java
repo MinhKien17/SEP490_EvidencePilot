@@ -6,6 +6,7 @@ import com.evidencepilot.exception.AiValidationException;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -84,6 +85,15 @@ public class GlobalExceptionHandler {
             HttpServletRequest request) {
 
         return build(HttpStatus.CONFLICT, "Request conflicts with existing data.", request);
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiErrorResponse> handleOptimisticLocking(
+            ObjectOptimisticLockingFailureException exception,
+            HttpServletRequest request) {
+
+        return build(HttpStatus.CONFLICT,
+                "This item was modified by someone else. Reload and try again.", request);
     }
 
     @ExceptionHandler(MultipartException.class)

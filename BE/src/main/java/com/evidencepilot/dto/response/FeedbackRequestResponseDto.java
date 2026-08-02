@@ -9,17 +9,31 @@ public record FeedbackRequestResponseDto(
     UUID id,
     UUID projectId,
     UUID studentId,
+    String studentName,
     UUID instructorId,
+    String instructorName,
     FeedbackStatus status,
     LocalDateTime requestedAt,
     String sectionValidation
 ) {
     public static FeedbackRequestResponseDto fromEntity(FeedbackRequest request) {
+        String studentName = null;
+        if (request.getStudent() != null) {
+            studentName = (request.getStudent().getFirstName() + " "
+                    + request.getStudent().getLastName()).trim();
+        }
+        String instructorName = null;
+        if (request.getInstructor() != null) {
+            instructorName = (request.getInstructor().getFirstName() + " "
+                    + request.getInstructor().getLastName()).trim();
+        }
         return new FeedbackRequestResponseDto(
             request.getId(),
             request.getProject() != null ? request.getProject().getId() : null,
             request.getStudent() != null ? request.getStudent().getId() : null,
+            studentName,
             request.getInstructor() != null ? request.getInstructor().getId() : null,
+            instructorName,
             request.getStatus(),
             request.getRequestedAt(),
             request.getSectionValidation()

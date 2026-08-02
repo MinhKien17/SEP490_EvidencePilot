@@ -1,5 +1,6 @@
 package com.evidencepilot.controller;
 
+import com.evidencepilot.config.security.JwtSessionRegistry;
 import com.evidencepilot.config.security.JwtUtils;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectMember;
@@ -51,6 +52,9 @@ class ProjectWriteAccessIntegrationTest {
 
     @Autowired
     private JwtUtils jwtUtils;
+
+    @Autowired
+    private JwtSessionRegistry sessionRegistry;
 
     @MockBean(name = "minioClient")
     private MinioClient minioClient;
@@ -115,7 +119,7 @@ class ProjectWriteAccessIntegrationTest {
         projectId = project.getId();
 
         currentUser = createAndSaveUser(UserRole.STUDENT);
-        bearerToken = "Bearer " + jwtUtils.generateToken(currentUser);
+        bearerToken = "Bearer " + issueToken(currentUser);
 
         mockMvc.perform(put("/api/projects/{id}", projectId)
                 .header("Authorization", bearerToken)
@@ -133,7 +137,7 @@ class ProjectWriteAccessIntegrationTest {
         projectId = project.getId();
 
         currentUser = createAndSaveUser(UserRole.INSTRUCTOR);
-        bearerToken = "Bearer " + jwtUtils.generateToken(currentUser);
+        bearerToken = "Bearer " + issueToken(currentUser);
 
         mockMvc.perform(put("/api/projects/{id}", projectId)
                 .header("Authorization", bearerToken)
@@ -151,7 +155,7 @@ class ProjectWriteAccessIntegrationTest {
         projectId = project.getId();
 
         currentUser = createAndSaveUser(UserRole.ADMIN);
-        bearerToken = "Bearer " + jwtUtils.generateToken(currentUser);
+        bearerToken = "Bearer " + issueToken(currentUser);
 
         mockMvc.perform(put("/api/projects/{id}", projectId)
                 .header("Authorization", bearerToken)
@@ -170,12 +174,18 @@ class ProjectWriteAccessIntegrationTest {
 
         currentUser = createAndSaveUser(UserRole.INSTRUCTOR);
         addProjectMember(project, currentUser, ProjectRole.INSTRUCTOR);
-        bearerToken = "Bearer " + jwtUtils.generateToken(currentUser);
+        bearerToken = "Bearer " + issueToken(currentUser);
 
         mockMvc.perform(patch("/api/projects/{id}/complete", projectId)
                 .header("Authorization", bearerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value(ProjectStatus.APPROVED.name()));
+    }
+
+    private String issueToken(User user) {
+        String token = jwtUtils.generateToken(user);
+        sessionRegistry.register(jwtUtils.extractJti(token));
+        return token;
     }
 
     // -- fixture helpers --
@@ -184,7 +194,7 @@ class ProjectWriteAccessIntegrationTest {
         currentUser = createAndSaveUser(UserRole.STUDENT);
         Project project = createAndSaveProject(status, currentUser);
         projectId = project.getId();
-        bearerToken = "Bearer " + jwtUtils.generateToken(currentUser);
+        bearerToken = "Bearer " + issueToken(currentUser);
     }
 
     private User createAndSaveUser(UserRole role) {

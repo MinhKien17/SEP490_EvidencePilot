@@ -15,6 +15,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -79,6 +80,53 @@ public class FeedbackController {
             @Parameter(description = "Feedback request UUID") @PathVariable UUID id,
             @Valid @RequestBody InstructorFeedbackRequest request) {
         return feedbackService.comment(id, request);
+    }
+
+    @Operation(summary = "List feedback items for a request",
+            description = "Returns the per-section feedback items of one feedback request, "
+                    + "each with section title/order, the section version it was written against, "
+                    + "and a stale flag when the section has been edited since.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Feedback items returned"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Not the request's instructor or student"),
+            @ApiResponse(responseCode = "404", description = "Feedback request not found")
+    })
+    @GetMapping("/feedback-requests/{id}/feedback")
+    public List<InstructorFeedbackResponseDto> getFeedbackItems(
+            @Parameter(description = "Feedback request UUID") @PathVariable UUID id) {
+        return feedbackService.getFeedbackItems(id);
+    }
+
+    @Operation(summary = "Edit a feedback item",
+            description = "Author-instructor only, request must be PENDING; updates content and lineReference. "
+                    + "Answered items are immutable.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Feedback updated"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Not the author instructor"),
+            @ApiResponse(responseCode = "404", description = "Feedback item not found")
+    })
+    @PatchMapping("/instructor-feedback/{id}")
+    public InstructorFeedbackResponseDto updateFeedbackItem(
+            @Parameter(description = "Instructor feedback item UUID") @PathVariable UUID id,
+            @Valid @RequestBody InstructorFeedbackRequest request) {
+        return feedbackService.updateFeedbackItem(id, request);
+    }
+
+    @Operation(summary = "Delete a feedback item",
+            description = "Author-instructor only, request must be PENDING; answered items are immutable.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Feedback deleted"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Not the author instructor"),
+            @ApiResponse(responseCode = "404", description = "Feedback item not found")
+    })
+    @DeleteMapping("/instructor-feedback/{id}")
+    public ResponseEntity<Void> deleteFeedbackItem(
+            @Parameter(description = "Instructor feedback item UUID") @PathVariable UUID id) {
+        feedbackService.deleteFeedbackItem(id);
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "Answer a feedback item",

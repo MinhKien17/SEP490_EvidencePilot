@@ -1,22 +1,35 @@
 package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.response.DocumentResponse;
+import com.evidencepilot.model.Claim;
+import com.evidencepilot.model.Document;
+import com.evidencepilot.model.FeedbackRequest;
+import com.evidencepilot.model.FeedbackStatus;
+import com.evidencepilot.model.PaperSection;
+import com.evidencepilot.model.Project;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.DocumentRepository;
+import com.evidencepilot.repository.FeedbackRequestRepository;
+import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
-import com.evidencepilot.repository.SectionFeedbackRepository;
 import com.evidencepilot.service.CitationValidationService;
+import com.evidencepilot.service.CheckpointService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.FormatScanService;
 import com.evidencepilot.service.PaperProcessingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -34,14 +47,17 @@ class PaperControllerTest {
     private final ProjectRepository projectRepository = mock(ProjectRepository.class);
     private final DocumentRepository documentRepository = mock(DocumentRepository.class);
     private final PaperSectionRepository paperSectionRepository = mock(PaperSectionRepository.class);
-    private final SectionFeedbackRepository sectionFeedbackRepository = mock(SectionFeedbackRepository.class);
+    private final InstructorFeedbackRepository instructorFeedbackRepository = mock(InstructorFeedbackRepository.class);
+    private final FeedbackRequestRepository feedbackRequestRepository = mock(FeedbackRequestRepository.class);
+    private final ClaimRepository claimRepository = mock(ClaimRepository.class);
     private final FormatScanService formatScanService = mock(FormatScanService.class);
     private final CurrentUserService currentUserService = mock(CurrentUserService.class);
+    private final CheckpointService checkpointService = mock(CheckpointService.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = standaloneSetup(new PaperController(documentService, paperService, citationValidationService, formatScanService, projectRepository, documentRepository, paperSectionRepository, sectionFeedbackRepository, currentUserService))
+        mockMvc = standaloneSetup(new PaperController(documentService, paperService, citationValidationService, formatScanService, projectRepository, documentRepository, paperSectionRepository, instructorFeedbackRepository, feedbackRequestRepository, claimRepository, currentUserService, checkpointService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -109,6 +125,34 @@ class PaperControllerTest {
     }
 
     @Test
+    void updateSection_bindsContentFromBody() throws Exception {
+        UUID paperId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        String content = "Section body with epclaim text.";
+
+        mockMvc.perform(put("/api/papers/{paperId}/sections/{sectionId}", paperId, sectionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"" + content + "\"}"))
+                .andExpect(status().isOk());
+
+        verify(paperService).updateSection(paperId, sectionId, null, null, null, content);
+    }
+
+    @Test
+    void updateSection_acceptsLargeContentInBody() throws Exception {
+        UUID paperId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        String content = "x".repeat(100_000);
+
+        mockMvc.perform(put("/api/papers/{paperId}/sections/{sectionId}", paperId, sectionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"" + content + "\"}"))
+                .andExpect(status().isOk());
+
+        verify(paperService).updateSection(paperId, sectionId, null, null, null, content);
+    }
+
+    @Test
     void createSection_allowsMissingParentParameter() throws Exception {
         UUID paperId = UUID.randomUUID();
 
@@ -162,6 +206,7 @@ class PaperControllerTest {
     void upload_returns201WithoutDetectingSectionsSynchronously() throws Exception {
         UUID projectId = UUID.randomUUID();
         DocumentResponse response = mock(DocumentResponse.class);
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(project(projectId)));
         when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER)).thenReturn(List.of());
         when(documentService.uploadDocument(eq(projectId), any(), eq(DocumentType.PAPER))).thenReturn(response);
         MockMultipartFile file = new MockMultipartFile("file", "paper.pdf", "application/pdf", "pdf".getBytes());
@@ -170,6 +215,125 @@ class PaperControllerTest {
                 .andExpect(status().isCreated());
 
         verify(documentService).uploadDocument(eq(projectId), any(), eq(DocumentType.PAPER));
+    }
+
+    @Test
+    void upload_authorizesBeforeAnyDestructiveMutation() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(project(projectId)));
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "no access"))
+                .when(currentUserService).requireProjectWriteAccess(any(), any());
+        Document paper = paperDocument(projectId);
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER))
+                .thenReturn(List.of(paper));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paper.getId())).thenReturn(List.of());
+        MockMultipartFile file = new MockMultipartFile("file", "paper.pdf", "application/pdf", "pdf".getBytes());
+
+        mockMvc.perform(multipart("/api/papers").file(file).param("projectId", projectId.toString()))
+                .andExpect(status().isForbidden());
+
+        verify(paperSectionRepository, never()).deleteByDocumentId(any());
+        verify(documentRepository, never()).deleteById(any());
+        verify(documentService, never()).uploadDocument(any(), any(), any());
+    }
+
+    @Test
+    void upload_refusesWhenActiveClaimsExist() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(project(projectId)));
+        Document paper = paperDocument(projectId);
+        PaperSection section = sectionOf(paper);
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER))
+                .thenReturn(List.of(paper));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paper.getId()))
+                .thenReturn(List.of(section));
+        Claim claim = mock(Claim.class);
+        when(claim.isActive()).thenReturn(true);
+        when(claimRepository.findBySectionId(section.getId())).thenReturn(List.of(claim));
+        MockMultipartFile file = new MockMultipartFile("file", "paper.pdf", "application/pdf", "pdf".getBytes());
+
+        mockMvc.perform(multipart("/api/papers").file(file).param("projectId", projectId.toString()))
+                .andExpect(status().isConflict());
+
+        verify(documentService, never()).uploadDocument(any(), any(), any());
+    }
+
+    @Test
+    void upload_refusesWhenInstructorFeedbackExists() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(project(projectId)));
+        Document paper = paperDocument(projectId);
+        PaperSection section = sectionOf(paper);
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER))
+                .thenReturn(List.of(paper));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paper.getId()))
+                .thenReturn(List.of(section));
+        com.evidencepilot.model.InstructorFeedback feedback =
+                mock(com.evidencepilot.model.InstructorFeedback.class);
+        when(feedback.getSection()).thenReturn(section);
+        when(instructorFeedbackRepository.findByRequestProjectId(projectId)).thenReturn(List.of(feedback));
+        MockMultipartFile file = new MockMultipartFile("file", "paper.pdf", "application/pdf", "pdf".getBytes());
+
+        mockMvc.perform(multipart("/api/papers").file(file).param("projectId", projectId.toString()))
+                .andExpect(status().isConflict());
+
+        verify(documentService, never()).uploadDocument(any(), any(), any());
+    }
+
+    @Test
+    void upload_refusesWhenFeedbackReviewIsOpen() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(project(projectId)));
+        Document paper = paperDocument(projectId);
+        PaperSection section = sectionOf(paper);
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER))
+                .thenReturn(List.of(paper));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paper.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(projectId)).thenReturn(List.of());
+        FeedbackRequest open = new FeedbackRequest();
+        open.setStatus(FeedbackStatus.RETURNED);
+        when(feedbackRequestRepository.findByProjectIdOrderByRequestedAtDesc(projectId)).thenReturn(List.of(open));
+        MockMultipartFile file = new MockMultipartFile("file", "paper.pdf", "application/pdf", "pdf".getBytes());
+
+        mockMvc.perform(multipart("/api/papers").file(file).param("projectId", projectId.toString()))
+                .andExpect(status().isConflict());
+
+        verify(documentService, never()).uploadDocument(any(), any(), any());
+    }
+
+    @Test
+    void initPaperSections_doesNotLeakExistingPaperBeforeAuthorization() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(project(projectId)));
+        when(currentUserService.requireCurrentUser()).thenReturn(null);
+        when(currentUserService.isInstructor(any())).thenReturn(false);
+
+        mockMvc.perform(post("/api/projects/{projectId}/papers/init", projectId))
+                .andExpect(status().isForbidden());
+
+        verify(documentRepository, never()).findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER);
+    }
+
+    private static Project project(UUID id) {
+        Project p = new Project();
+        p.setId(id);
+        return p;
+    }
+
+    private static Document paperDocument(UUID projectId) {
+        Document d = new Document();
+        d.setId(UUID.randomUUID());
+        Project p = project(projectId);
+        d.setProject(p);
+        return d;
+    }
+
+    private static PaperSection sectionOf(Document paper) {
+        PaperSection s = new PaperSection();
+        s.setId(UUID.randomUUID());
+        s.setDocument(paper);
+        return s;
     }
 
     private static DocumentResponse document(DocumentType type, boolean active) {

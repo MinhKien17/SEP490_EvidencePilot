@@ -3,8 +3,10 @@ package com.evidencepilot.service;
 import com.evidencepilot.dto.request.ProjectUpdateRequest;
 import com.evidencepilot.mapper.ProjectMapper;
 import com.evidencepilot.model.Project;
+import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.PaperStandard;
+import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.ProjectMemberRepository;
@@ -17,6 +19,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -246,6 +250,58 @@ class ProjectServiceImplLifecycleTest {
         verify(projectRepository).save(project);
     }
 
+    @Test
+    void removeMemberRefusesRemovingInstructor() {
+        User user = user();
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        ProjectMember instructor = member(project, ProjectRole.INSTRUCTOR);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(projectMemberRepository.findByProjectIdAndUserId(project.getId(), instructor.getUser().getId()))
+                .thenReturn(List.of(instructor));
+
+        assertThatThrownBy(() -> service().removeMember(project.getId(), instructor.getUser().getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Cannot remove the instructor");
+        verify(projectMemberRepository, never()).deleteAll(java.util.List.of(instructor));
+    }
+
+    @Test
+    void removeMemberRefusesRemovingLastLeader() {
+        User user = user();
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        ProjectMember leader = member(project, ProjectRole.LEADER);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(projectMemberRepository.findByProjectIdAndUserId(project.getId(), leader.getUser().getId()))
+                .thenReturn(List.of(leader));
+        when(projectMemberRepository.findByProjectId(project.getId())).thenReturn(List.of(leader));
+
+        assertThatThrownBy(() -> service().removeMember(project.getId(), leader.getUser().getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Cannot remove the last leader");
+        verify(projectMemberRepository, never()).deleteAll(java.util.List.of(leader));
+    }
+
+    @Test
+    void removeMemberAllowsRemovingMemberWhenLeaderRemains() {
+        User user = user();
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        ProjectMember leader = member(project, ProjectRole.LEADER);
+        ProjectMember plainMember = member(project, ProjectRole.MEMBER);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(projectMemberRepository.findByProjectIdAndUserId(project.getId(), plainMember.getUser().getId()))
+                .thenReturn(List.of(plainMember));
+
+        service().removeMember(project.getId(), plainMember.getUser().getId());
+
+        verify(projectMemberRepository).deleteAll(List.of(plainMember));
+    }
+
     private ProjectServiceImpl service() {
         return new ProjectServiceImpl(
                 projectRepository,
@@ -267,6 +323,14 @@ class ProjectServiceImplLifecycleTest {
         User user = new User();
         user.setId(UUID.randomUUID());
         return user;
+    }
+
+    private ProjectMember member(Project project, ProjectRole role) {
+        ProjectMember member = new ProjectMember();
+        member.setProject(project);
+        member.setUser(user());
+        member.setRole(role);
+        return member;
     }
 
     private Project project(ProjectStatus status) {

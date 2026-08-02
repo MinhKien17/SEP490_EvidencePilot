@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -113,18 +114,19 @@ public class ProgressReportServiceImpl implements ProgressReportService {
         }
 
         int totalClaimCount = claims.size();
+        // Single pass over all feedback items: no per-section re-scan (sections x feedback).
+        Map<UUID, int[]> feedbackCounts = new HashMap<>();
+        for (InstructorFeedback feedback : feedbackList) {
+            if (feedback.getSection() == null) continue;
+            int[] counts = feedbackCounts.computeIfAbsent(feedback.getSection().getId(), k -> new int[2]);
+            if (feedback.isAnswered()) counts[0]++; else counts[1]++;
+        }
         for (PaperSection section : sections) {
             long claimCount = claims.stream()
                     .filter(claim -> claim.getSection() != null
                             && claim.getSection().getId().equals(section.getId()))
                     .count();
-            int answered = 0;
-            int unanswered = 0;
-            for (InstructorFeedback feedback : feedbackList) {
-                if (feedback.getSection() != null && section.getId().equals(feedback.getSection().getId())) {
-                    if (feedback.isAnswered()) answered++; else unanswered++;
-                }
-            }
+            int[] counts = feedbackCounts.getOrDefault(section.getId(), new int[2]);
             panels.add(new ProgressReportResponse.SectionPanel(
                     section.getId(),
                     section.getSectionTitle(),
@@ -134,8 +136,8 @@ public class ProgressReportServiceImpl implements ProgressReportService {
                     section.getAssignedUser() != null ? fullName(section.getAssignedUser()) : null,
                     section.getVersion() != null ? section.getVersion() : 1,
                     section.getUpdatedAt(),
-                    answered,
-                    unanswered));
+                    counts[0],
+                    counts[1]));
         }
 
         int contentCoverage = sections.isEmpty() ? 0
@@ -146,14 +148,26 @@ public class ProgressReportServiceImpl implements ProgressReportService {
                 : (int) Math.round(claimsPresent * 100.0 / totalClaimCount);
         int claimsWithEvidencePercent = totalClaimCount == 0 ? 0
                 : (int) Math.round(claimsWithEvidence * 100.0 / totalClaimCount);
-        int score = (contentCoverage + claimsPresentPercent + claimsWithEvidencePercent) / 3;
+        int score = (int) Math.round(
+                contentCoverage * 0.25 + claimsPresentPercent * 0.35 + claimsWithEvidencePercent * 0.40);
+        List<ProgressReportResponse.ReadinessMetric> metrics = List.of(
+                new ProgressReportResponse.ReadinessMetric(
+                        "content_coverage", "Content coverage", 25, contentCoverage),
+                new ProgressReportResponse.ReadinessMetric(
+                        "claims_present", "Claims present", 35, claimsPresentPercent),
+                new ProgressReportResponse.ReadinessMetric(
+                        "claims_with_evidence", "Claims with evidence", 40, claimsWithEvidencePercent));
 
         return new ProgressReportResponse(
                 projectId,
                 panels,
                 matrix,
                 new ProgressReportResponse.Readiness(
-                        score, contentCoverage, claimsPresentPercent, claimsWithEvidencePercent));
+                        score,
+                        contentCoverage,
+                        claimsPresentPercent,
+                        claimsWithEvidencePercent,
+                        metrics));
     }
 
     private static int wordCount(String contentTex) {

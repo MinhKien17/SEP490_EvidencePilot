@@ -39,11 +39,22 @@ public class InstructorFeedback {
     @Column(name = "line_reference")
     private String lineReference;
 
+    @Column(name = "section_version")
+    private Integer sectionVersion;
+
     @Column(name = "content", nullable = false, columnDefinition = "TEXT")
     private String content;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "updated_by", columnDefinition = "BINARY(16)", referencedColumnName = "id")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private User updatedBy;
 
     @Column(name = "answered")
     private boolean answered;

@@ -16,7 +16,12 @@ import org.springframework.http.HttpStatus;
 
 import java.time.LocalDateTime;
 import java.io.InputStream;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -62,6 +67,10 @@ public class MediaAssetService {
     }
 
     public List<ProjectMediaResponse> listByProject(UUID projectId) {
+        User user = currentUserService.requireCurrentUser();
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found"));
+        currentUserService.requireProjectAccess(user, project);
         return projectMediaRepository.findByProjectId(projectId).stream()
                 .map(this::toResponse)
                 .toList();
@@ -103,7 +112,32 @@ public class MediaAssetService {
 
     public String getSignedUrl(UUID id) {
         ProjectMedia media = getMedia(id);
+        User user = currentUserService.requireCurrentUser();
+        currentUserService.requireProjectAccess(user, media.getProject());
         return objectStorage.presignedGetUrl(media.getStorageKey(), 60);
+    }
+
+    /**
+     * Pre-signs download URLs for many media assets in one pass (single MinIO round-trip
+     * per storage back-end call). Access is checked once per distinct project.
+     */
+    public Map<UUID, String> getSignedUrls(Collection<UUID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Map.of();
+        }
+        User user = currentUserService.requireCurrentUser();
+        List<ProjectMedia> mediaList = projectMediaRepository.findAllById(
+                ids.stream().distinct().toList());
+        Map<UUID, String> urls = new HashMap<>(mediaList.size());
+        Set<UUID> checkedProjects = new HashSet<>();
+        for (ProjectMedia media : mediaList) {
+            UUID projectId = media.getProject().getId();
+            if (checkedProjects.add(projectId)) {
+                currentUserService.requireProjectAccess(user, media.getProject());
+            }
+            urls.put(media.getId(), objectStorage.presignedGetUrl(media.getStorageKey(), 60));
+        }
+        return urls;
     }
 
     @Transactional

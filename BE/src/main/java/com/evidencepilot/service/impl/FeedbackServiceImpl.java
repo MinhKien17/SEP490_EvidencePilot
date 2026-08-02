@@ -21,7 +21,6 @@ import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
-import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.CheckpointService;
 import com.evidencepilot.service.ClaimContentConsistencyService;
@@ -31,12 +30,15 @@ import com.evidencepilot.service.SystemNotificationService;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -49,7 +51,6 @@ public class FeedbackServiceImpl implements FeedbackService {
     private final PaperSectionRepository paperSectionRepository;
     private final DocumentRepository documentRepository;
     private final ProjectRepository projectRepository;
-    private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
     private final SystemNotificationService systemNotificationService;
     private final PaperProcessingService paperProcessingService;
@@ -61,11 +62,11 @@ public class FeedbackServiceImpl implements FeedbackService {
         User currentUser = currentUserService.requireCurrentUser();
         List<FeedbackRequest> requests;
         if (currentUserService.isAdmin(currentUser)) {
-            requests = feedbackRequestRepository.findAll();
+            requests = feedbackRequestRepository.findAll(Sort.by(Sort.Direction.DESC, "requestedAt"));
         } else if (currentUserService.isInstructor(currentUser)) {
-            requests = feedbackRequestRepository.findByInstructorId(currentUser.getId());
+            requests = feedbackRequestRepository.findByInstructorIdOrderByRequestedAtDesc(currentUser.getId());
         } else {
-            requests = feedbackRequestRepository.findByStudentId(currentUser.getId());
+            requests = feedbackRequestRepository.findByStudentIdOrderByRequestedAtDesc(currentUser.getId());
         }
         return requests.stream().map(FeedbackRequestResponseDto::fromEntity).toList();
     }
@@ -89,9 +90,12 @@ public class FeedbackServiceImpl implements FeedbackService {
         }
 
         UUID instructorId = request != null ? request.instructorId() : null;
-        User instructor = instructorId == null ? project.getInstructor() : userRepository.findById(instructorId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Instructor not found: " + instructorId));
+        User instructor = project.getInstructor();
+        if (instructorId != null
+                && (instructor == null || !instructorId.equals(instructor.getId()))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Instructor does not match the project's assigned instructor.");
+        }
         if (instructor == null || instructor.getRole() != UserRole.INSTRUCTOR) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project has no instructor.");
         }
@@ -125,7 +129,9 @@ public class FeedbackServiceImpl implements FeedbackService {
         feedbackRequest.setStudent(student);
         feedbackRequest.setInstructor(instructor);
         feedbackRequest.setStatus(FeedbackStatus.PENDING);
-        feedbackRequest.setRequestedAt(LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        feedbackRequest.setRequestedAt(now);
+        feedbackRequest.setUpdatedAt(now);
         feedbackRequest.setSectionValidation(validationJson);
 
         project.setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
@@ -163,7 +169,11 @@ public class FeedbackServiceImpl implements FeedbackService {
                 : currentUser);
         feedback.setLineReference(request.lineReference());
         feedback.setContent(request.content());
-        feedback.setCreatedAt(LocalDateTime.now());
+        feedback.setSectionVersion(section.getVersion());
+        LocalDateTime now = LocalDateTime.now();
+        feedback.setCreatedAt(now);
+        feedback.setUpdatedAt(now);
+        feedback.setUpdatedBy(currentUser);
         InstructorFeedback saved = instructorFeedbackRepository.save(feedback);
         systemNotificationService.createNotification(
                 feedbackRequest.getStudent(),
@@ -172,7 +182,73 @@ public class FeedbackServiceImpl implements FeedbackService {
                 feedbackRequest.getId(),
                 currentUser.getEmail() + " added feedback to project \""
                         + feedbackRequest.getProject().getTitle() + "\".");
-        return InstructorFeedbackResponseDto.fromEntity(saved);
+        return InstructorFeedbackResponseDto.fromEntity(saved, section, section.getVersion());
+    }
+
+    @Override
+    @Transactional
+    public List<InstructorFeedbackResponseDto> getFeedbackItems(UUID feedbackRequestId) {
+        User currentUser = currentUserService.requireCurrentUser();
+        requireFeedbackAccess(feedbackRequestId, currentUser, false);
+        List<InstructorFeedback> items = instructorFeedbackRepository.findByRequestId(feedbackRequestId);
+        List<PaperSection> sections = paperSectionRepository.findAllById(
+                items.stream().map(f -> f.getSection().getId()).distinct().toList());
+        Map<UUID, PaperSection> sectionsById = new HashMap<>();
+        sections.forEach(s -> sectionsById.put(s.getId(), s));
+        return items.stream()
+                .map(f -> {
+                    PaperSection section = sectionsById.get(f.getSection().getId());
+                    return InstructorFeedbackResponseDto.fromEntity(f, section,
+                            section != null ? section.getVersion() : null);
+                })
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public InstructorFeedbackResponseDto updateFeedbackItem(UUID feedbackItemId, InstructorFeedbackRequest request) {
+        User currentUser = currentUserService.requireCurrentUser();
+        InstructorFeedback feedback = requireOwnedFeedback(feedbackItemId, currentUser);
+        requireEditable(feedback);
+        feedback.setContent(request.content());
+        feedback.setLineReference(request.lineReference());
+        feedback.setUpdatedAt(LocalDateTime.now());
+        feedback.setUpdatedBy(currentUser);
+        InstructorFeedback saved = instructorFeedbackRepository.save(feedback);
+        return InstructorFeedbackResponseDto.fromEntity(saved, feedback.getSection(), feedback.getSection().getVersion());
+    }
+
+    @Override
+    @Transactional
+    public void deleteFeedbackItem(UUID feedbackItemId) {
+        User currentUser = currentUserService.requireCurrentUser();
+        InstructorFeedback feedback = requireOwnedFeedback(feedbackItemId, currentUser);
+        requireEditable(feedback);
+        instructorFeedbackRepository.delete(feedback);
+    }
+
+    private InstructorFeedback requireOwnedFeedback(UUID feedbackItemId, User currentUser) {
+        InstructorFeedback feedback = instructorFeedbackRepository.findById(feedbackItemId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Instructor feedback not found: " + feedbackItemId));
+        boolean isAuthor = feedback.getInstructor() != null
+                && currentUser.getId().equals(feedback.getInstructor().getId());
+        if (!isAuthor && !currentUserService.isAdmin(currentUser)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Feedback access denied.");
+        }
+        return feedback;
+    }
+
+    private void requireEditable(InstructorFeedback feedback) {
+        if (feedback.isAnswered()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Answered feedback is immutable.");
+        }
+        if (feedback.getRequest().getStatus() != FeedbackStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Feedback request closed.");
+        }
+        if (feedback.getRequest().getProject().getStatus().isReadOnly()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
+        }
     }
 
     @Override
@@ -203,13 +279,17 @@ public class FeedbackServiceImpl implements FeedbackService {
 
         feedback.setAnswered(true);
         feedback.setAnswerContent(answerContent);
-        feedback.setAnsweredAt(LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        feedback.setAnsweredAt(now);
+        feedback.setUpdatedAt(now);
+        feedback.setUpdatedBy(currentUser);
         InstructorFeedback saved = instructorFeedbackRepository.save(feedback);
 
         long unanswered = instructorFeedbackRepository.countByRequestIdAndAnsweredFalse(request.getId());
         if (unanswered == 0) {
-            request.setStatus(FeedbackStatus.REVIEWED);
-            feedbackRequestRepository.save(request);
+            // Single chokepoint: auto-REVIEWED goes through the same legal-transition
+            // + project-status sync as the explicit instructor transition.
+            applyTransition(request, FeedbackStatus.REVIEWED, ProjectStatus.APPROVED, currentUser);
         }
 
         systemNotificationService.createNotification(
@@ -220,7 +300,7 @@ public class FeedbackServiceImpl implements FeedbackService {
                 currentUser.getEmail() + " answered feedback on project \""
                         + request.getProject().getTitle() + "\".");
 
-        return InstructorFeedbackResponseDto.fromEntity(saved);
+        return InstructorFeedbackResponseDto.fromEntity(saved, feedback.getSection(), feedback.getSection().getVersion());
     }
 
     @Override
@@ -238,7 +318,10 @@ public class FeedbackServiceImpl implements FeedbackService {
         }
         ProjectStatus projectStatus = switch (newStatus) {
             case REVIEWED -> ProjectStatus.APPROVED;
-            case REJECTED -> ProjectStatus.SUBMITTED_FOR_REVIEW;
+            // Decision: REJECTED closes the review round and sends the project back to
+            // work (student fixes and submits a fresh request). It must NOT map back to
+            // SUBMITTED_FOR_REVIEW — that would contradict the rejection.
+            case REJECTED -> ProjectStatus.IN_PROGRESS;
             case RETURNED -> ProjectStatus.RETURNED;
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status: " + status);
         };
@@ -255,10 +338,29 @@ public class FeedbackServiceImpl implements FeedbackService {
 
     private FeedbackRequest transition(UUID id, FeedbackStatus status, ProjectStatus projectStatus, User currentUser) {
         FeedbackRequest feedbackRequest = requireFeedbackAccess(id, currentUser, true);
+        return applyTransition(feedbackRequest, status, projectStatus, currentUser);
+    }
+
+    private FeedbackRequest applyTransition(FeedbackRequest feedbackRequest, FeedbackStatus status,
+                                           ProjectStatus projectStatus, User currentUser) {
+        FeedbackStatus from = feedbackRequest.getStatus();
+        boolean legal = switch (from) {
+            case PENDING -> status == FeedbackStatus.RETURNED
+                    || status == FeedbackStatus.REVIEWED
+                    || status == FeedbackStatus.REJECTED;
+            case RETURNED -> status == FeedbackStatus.REVIEWED
+                    || status == FeedbackStatus.REJECTED;
+            default -> false; // REVIEWED and REJECTED are terminal
+        };
+        if (!legal) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Illegal transition from " + from + " to " + status + ".");
+        }
         if (feedbackRequest.getProject().getStatus().isReadOnly()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
         }
         feedbackRequest.setStatus(status);
+        feedbackRequest.setUpdatedAt(LocalDateTime.now());
         Project project = feedbackRequest.getProject();
         project.setStatus(projectStatus);
         project.setUpdatedAt(LocalDateTime.now());

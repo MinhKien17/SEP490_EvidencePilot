@@ -1,6 +1,7 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.response.CheckpointDiffResponse;
+import com.evidencepilot.dto.response.CheckpointSectionBaselineResponse;
 import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.ClaimEvidenceMapping;
 import com.evidencepilot.model.Document;
@@ -30,6 +31,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,13 +60,24 @@ public class CheckpointServiceImpl implements CheckpointService {
             ArrayNode claims = snapshot.putArray("claims");
             int mappingsAccepted = 0;
             int mappingsRejected = 0;
-            for (Claim claim : claimRepository.findByProjectId(projectId)) {
-                if (!claim.isActive()) continue;
+            List<Claim> activeClaims = claimRepository.findByProjectId(projectId).stream()
+                    .filter(Claim::isActive)
+                    .toList();
+            // Single batched query instead of one findByClaimId per claim.
+            Map<UUID, List<ClaimEvidenceMapping>> mappingsByClaim = new HashMap<>();
+            for (ClaimEvidenceMapping mapping : claimEvidenceMappingRepository
+                    .findByClaimIdIn(activeClaims.stream().map(Claim::getId).toList())) {
+                mappingsByClaim.computeIfAbsent(mapping.getClaim().getId(), k -> new ArrayList<>())
+                        .add(mapping);
+            }
+            for (Claim claim : activeClaims) {
                 ObjectNode claimNode = claims.addObject();
                 claimNode.put("id", claim.getId().toString());
+                UUID sectionId = claim.getSection() != null ? claim.getSection().getId() : null;
+                claimNode.put("sectionId", sectionId != null ? sectionId.toString() : (String) null);
                 claimNode.put("version", claim.getClaimVersion() != null ? claim.getClaimVersion() : 1);
                 claimNode.put("hash", contentHash(claim.getContent()));
-                for (ClaimEvidenceMapping mapping : claimEvidenceMappingRepository.findByClaimId(claim.getId())) {
+                for (ClaimEvidenceMapping mapping : mappingsByClaim.getOrDefault(claim.getId(), List.of())) {
                     if (mapping.getStatus() == MappingStatus.ACTIVE) mappingsAccepted++;
                     if (mapping.isInstructorRejected()) mappingsRejected++;
                 }
@@ -79,7 +92,10 @@ public class CheckpointServiceImpl implements CheckpointService {
                 for (PaperSection section : paperSectionRepository
                         .findByDocumentIdOrderBySectionOrderAsc(paper.getId())) {
                     if (!section.isActive()) continue;
-                    sections.put(section.getId().toString(), wordCount(section.getContentTex()));
+                    ObjectNode sectionNode = sections.putObject(section.getId().toString());
+                    String text = section.getContentTex();
+                    sectionNode.put("text", text != null ? text : "");
+                    sectionNode.put("words", wordCount(text));
                 }
             }
 
@@ -168,6 +184,29 @@ public class CheckpointServiceImpl implements CheckpointService {
                 wordDeltas);
     }
 
+    @Override
+    public CheckpointSectionBaselineResponse getLatestSectionBaseline(
+            UUID projectId, UUID sectionId, LocalDateTime before) {
+        List<ProjectCheckpoint> checkpoints = checkpointRepository
+                .findByProjectIdOrderByCreatedAtDesc(projectId);
+        ProjectCheckpoint baseline = null;
+        for (ProjectCheckpoint checkpoint : checkpoints) {
+            if (before != null && (checkpoint.getCreatedAt() == null
+                    || checkpoint.getCreatedAt().isAfter(before))) {
+                continue;
+            }
+            baseline = checkpoint;
+            break;
+        }
+        if (baseline == null) return null;
+        JsonNode snapshot = parse(baseline.getSnapshotJson());
+        JsonNode section = snapshot.path("sections").path(sectionId.toString());
+        String text = section.isObject() ? section.path("text").asText(null) : null;
+        if (text == null) return null;
+        return new CheckpointSectionBaselineResponse(
+                text, baseline.getTrigger(), baseline.getCreatedAt());
+    }
+
     private static Map<String, JsonNode> claimMap(JsonNode claims) {
         Map<String, JsonNode> map = new LinkedHashMap<>();
         for (JsonNode claim : claims) {
@@ -178,13 +217,19 @@ public class CheckpointServiceImpl implements CheckpointService {
 
     private static Map<String, Integer> wordMap(JsonNode sections) {
         Map<String, Integer> map = new LinkedHashMap<>();
-        sections.fields().forEachRemaining(entry -> map.put(entry.getKey(), entry.getValue().asInt()));
+        sections.fields().forEachRemaining(entry -> {
+            JsonNode value = entry.getValue();
+            int words = value.isObject() ? value.path("words").asInt() : value.asInt();
+            map.put(entry.getKey(), words);
+        });
         return map;
     }
 
     private static CheckpointDiffResponse.ClaimChange claimChange(JsonNode claim) {
+        String sectionId = claim.path("sectionId").asText(null);
         return new CheckpointDiffResponse.ClaimChange(
                 UUID.fromString(claim.path("id").asText()),
+                sectionId != null ? UUID.fromString(sectionId) : null,
                 claim.path("version").isMissingNode() ? null : claim.path("version").asInt(),
                 claim.path("hash").asText(null));
     }

@@ -11,6 +11,9 @@ public interface FeedbackService {
     List<FeedbackRequestResponseDto> findAllForCurrentUser();
     FeedbackRequestResponseDto submitForReview(UUID projectId, SubmitReviewRequest request);
     InstructorFeedbackResponseDto comment(UUID feedbackRequestId, InstructorFeedbackRequest request);
+    List<InstructorFeedbackResponseDto> getFeedbackItems(UUID feedbackRequestId);
+    InstructorFeedbackResponseDto updateFeedbackItem(UUID feedbackItemId, InstructorFeedbackRequest request);
+    void deleteFeedbackItem(UUID feedbackItemId);
     FeedbackRequestResponseDto updateStatus(UUID feedbackRequestId, String status);
     InstructorFeedbackResponseDto answerFeedback(UUID feedbackItemId, String answerContent);
 }

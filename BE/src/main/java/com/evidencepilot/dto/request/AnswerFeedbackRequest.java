@@ -1,4 +1,6 @@
 package com.evidencepilot.dto.request;
 
-public record AnswerFeedbackRequest(String content) {
+import jakarta.validation.constraints.NotBlank;
+
+public record AnswerFeedbackRequest(@NotBlank String content) {
 }

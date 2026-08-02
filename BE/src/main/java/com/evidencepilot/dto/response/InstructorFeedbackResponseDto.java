@@ -1,6 +1,7 @@
 package com.evidencepilot.dto.response;
 
 import com.evidencepilot.model.InstructorFeedback;
+import com.evidencepilot.model.PaperSection;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -8,26 +9,43 @@ public record InstructorFeedbackResponseDto(
     UUID id,
     UUID requestId,
     UUID sectionId,
+    String sectionTitle,
+    Integer sectionOrder,
     UUID instructorId,
     String lineReference,
     String content,
     LocalDateTime createdAt,
     boolean answered,
     String answerContent,
-    LocalDateTime answeredAt
+    LocalDateTime answeredAt,
+    Integer sectionVersion,
+    boolean stale,
+    LocalDateTime updatedAt,
+    UUID updatedBy
 ) {
-    public static InstructorFeedbackResponseDto fromEntity(InstructorFeedback feedback) {
+    public static InstructorFeedbackResponseDto fromEntity(
+            InstructorFeedback feedback, PaperSection section, Integer currentSectionVersion) {
         return new InstructorFeedbackResponseDto(
             feedback.getId(),
             feedback.getRequest() != null ? feedback.getRequest().getId() : null,
             feedback.getSection() != null ? feedback.getSection().getId() : null,
+            section != null ? section.getSectionTitle() : null,
+            section != null ? section.getSectionOrder() : null,
             feedback.getInstructor() != null ? feedback.getInstructor().getId() : null,
             feedback.getLineReference(),
             feedback.getContent(),
             feedback.getCreatedAt(),
             feedback.isAnswered(),
             feedback.getAnswerContent(),
-            feedback.getAnsweredAt()
+            feedback.getAnsweredAt(),
+            feedback.getSectionVersion(),
+            isStale(feedback.getSectionVersion(), currentSectionVersion),
+            feedback.getUpdatedAt(),
+            feedback.getUpdatedBy() != null ? feedback.getUpdatedBy().getId() : null
         );
+    }
+
+    private static boolean isStale(Integer anchorVersion, Integer currentVersion) {
+        return anchorVersion != null && currentVersion != null && anchorVersion < currentVersion;
     }
 }

@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -50,6 +51,18 @@ public class MediaController {
     @GetMapping("/{id}/url")
     public Map<String, String> getSignedUrl(@PathVariable UUID id) {
         return Map.of("url", mediaAssetService.getSignedUrl(id));
+    }
+
+    @Operation(summary = "Get pre-signed download URLs for many media assets at once")
+    @PostMapping("/urls")
+    public Map<String, String> getSignedUrls(@RequestBody MediaUrlsRequest request) {
+        return mediaAssetService.getSignedUrls(request.ids()).entrySet().stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        e -> e.getKey().toString(),
+                        Map.Entry::getValue));
+    }
+
+    public record MediaUrlsRequest(List<UUID> ids) {
     }
 
     @Operation(summary = "Delete a media asset")

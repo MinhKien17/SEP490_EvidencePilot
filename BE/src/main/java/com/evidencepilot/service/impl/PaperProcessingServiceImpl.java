@@ -26,7 +26,6 @@ import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.ReviewSnapshotRepository;
-import com.evidencepilot.repository.SectionFeedbackRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.AuditService;
@@ -91,7 +90,6 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     private final EvidenceFilterService evidenceFilterService;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
-    private final SectionFeedbackRepository sectionFeedbackRepository;
     private final DocumentRepository documentRepository;
     private final ProjectMapper projectMapper;
     private final CurrentUserService currentUserService;
@@ -1247,17 +1245,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
                     "Cannot reset standard: one or more sections have instructor feedback.");
         }
 
-        // 7. Delete SectionFeedback rows first.
-        //    FK: section_feedback.section_id is NOT NULL — must be cleared before
-        //    PaperSection rows can be deleted, or the DB throws a constraint violation.
-        List<UUID> sectionIds = existingSections.stream()
-                .map(PaperSection::getId)
-                .toList();
-        if (!sectionIds.isEmpty()) {
-            sectionFeedbackRepository.deleteAllBySectionIdIn(sectionIds);
-        }
-
-        // 8. Hard-delete all PaperSection rows for this paper.
+        // 7. Hard-delete all PaperSection rows for this paper.
         //    Soft-delete (active=false) cannot be used: createSectionsFromStandard
         //    computes startOrder from ALL rows (no active filter), so inactive rows
         //    would cause an off-by-N offset on the new sections.
@@ -1293,8 +1281,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     }
 
     private boolean hasFeedback(PaperSection section) {
-        return !sectionFeedbackRepository.findBySectionId(section.getId()).isEmpty()
-                || instructorFeedbackRepository.findByRequestProjectId(
+        return instructorFeedbackRepository.findByRequestProjectId(
                         section.getDocument().getProject().getId()).stream()
                 .anyMatch(feedback -> section.getId().equals(feedback.getSection().getId()));
     }

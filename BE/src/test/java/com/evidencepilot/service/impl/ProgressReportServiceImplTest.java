@@ -1,5 +1,6 @@
 package com.evidencepilot.service.impl;
 
+import com.evidencepilot.dto.response.ProgressReportResponse;
 import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.ClaimEvidenceMapping;
 import com.evidencepilot.model.Document;
@@ -26,11 +27,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.groups.Tuple.tuple;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -153,6 +156,101 @@ class ProgressReportServiceImplTest {
         assertThat(report.sections()).singleElement().extracting("sectionId").isEqualTo(mine.getId());
         assertThat(report.matrix()).isEmpty();
         assertThat(report.readiness().score()).isEqualTo(0);
+    }
+
+    @Test
+    void reportHandlesFiftySectionsWithTwentyFeedbackItemsEach() {
+        Document paper = new Document();
+        paper.setId(UUID.randomUUID());
+        paper.setDocType(DocumentType.PAPER);
+        List<PaperSection> sections = new ArrayList<>();
+        List<InstructorFeedback> feedbackItems = new ArrayList<>();
+        for (int i = 0; i < 50; i++) {
+            PaperSection s = section(paper, assigned, "Section " + i);
+            s.setVersion(1);
+            sections.add(s);
+            for (int j = 0; j < 20; j++) {
+                InstructorFeedback f = new InstructorFeedback();
+                f.setSection(s);
+                f.setAnswered(j % 2 == 0);
+                feedbackItems.add(f);
+            }
+        }
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.PAPER))
+                .thenReturn(List.of(paper));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paper.getId()))
+                .thenReturn(sections);
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(feedbackItems);
+
+        var report = service.getProgressReport(project.getId(), "ALL");
+
+        assertThat(report.sections()).hasSize(50);
+        assertThat(report.sections()).allSatisfy(panel -> {
+            assertThat(panel.feedbackAnswered()).isEqualTo(10);
+            assertThat(panel.feedbackUnanswered()).isEqualTo(10);
+        });
+    }
+
+    @Test
+    void readinessWeightsPillarsAtTwentyFiveThirtyFiveForty() {
+        Document paper = new Document();
+        paper.setId(UUID.randomUUID());
+        paper.setDocType(DocumentType.PAPER);
+        PaperSection written = section(paper, assigned, "Written");
+        written.setContentTex("one two three four five");
+        PaperSection empty = section(paper, assigned, "Empty");
+        List<Claim> claims = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            Claim claim = new Claim();
+            claim.setId(UUID.randomUUID());
+            claim.setProject(project);
+            claim.setSection(written);
+            claim.setContent("Claim " + i);
+            claim.setActive(true);
+            claim.setCreatedBy(user);
+            claims.add(claim);
+        }
+        claims.get(3).setSection(empty);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.PAPER))
+                .thenReturn(List.of(paper));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paper.getId()))
+                .thenReturn(List.of(written, empty));
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(claims);
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        for (int i = 0; i < 2; i++) {
+            when(evidenceFilterService.activeMappings(claims.get(i)))
+                    .thenReturn(List.of(mapping(claims.get(i), EvidenceRelation.SUPPORTS, 70)));
+            when(claimContentConsistencyService.evaluate(claims.get(i)))
+                    .thenReturn(ClaimContentStatus.PRESENT);
+        }
+        when(evidenceFilterService.activeMappings(claims.get(2))).thenReturn(List.of());
+        when(claimContentConsistencyService.evaluate(claims.get(2)))
+                .thenReturn(ClaimContentStatus.PRESENT);
+        when(evidenceFilterService.activeMappings(claims.get(3))).thenReturn(List.of());
+        when(claimContentConsistencyService.evaluate(claims.get(3)))
+                .thenReturn(ClaimContentStatus.MISSING);
+
+        var report = service.getProgressReport(project.getId(), "ALL");
+
+        assertThat(report.readiness().contentCoveragePercent()).isEqualTo(50);
+        assertThat(report.readiness().claimsPresentPercent()).isEqualTo(75);
+        assertThat(report.readiness().claimsWithEvidencePercent()).isEqualTo(50);
+        assertThat(report.readiness().score()).isEqualTo(59);
+        assertThat(report.readiness().metrics()).extracting(
+                        ProgressReportResponse.ReadinessMetric::code,
+                        ProgressReportResponse.ReadinessMetric::weightPercent,
+                        ProgressReportResponse.ReadinessMetric::valuePercent)
+                .containsExactly(
+                        tuple("content_coverage", 25, 50),
+                        tuple("claims_present", 35, 75),
+                        tuple("claims_with_evidence", 40, 50));
     }
 
     private static User user(String name) {

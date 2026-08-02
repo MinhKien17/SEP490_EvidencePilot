@@ -105,6 +105,10 @@ public class Document {
     @Column(name = "extraction_quality", columnDefinition = "JSON")
     private String extractionQuality;
 
+    @Version
+    @Column(name = "opt_version")
+    private Long version;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

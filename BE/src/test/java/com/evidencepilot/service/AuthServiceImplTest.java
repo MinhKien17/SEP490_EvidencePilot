@@ -1,5 +1,6 @@
 package com.evidencepilot.service;
 
+import com.evidencepilot.config.security.JwtSessionRegistry;
 import com.evidencepilot.config.security.JwtUtils;
 import com.evidencepilot.dto.request.LoginRequest;
 import com.evidencepilot.dto.request.RegisterRequest;
@@ -14,6 +15,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -26,11 +28,12 @@ class AuthServiceImplTest {
     private final PasswordEncoder encoder = mock(PasswordEncoder.class);
     private final JwtUtils jwtUtils = mock(JwtUtils.class);
     private final EmailVerificationService verification = mock(EmailVerificationService.class);
+    private final JwtSessionRegistry registry = new JwtSessionRegistry();
     private AuthServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new AuthServiceImpl(users, encoder, jwtUtils, verification);
+        service = new AuthServiceImpl(users, encoder, jwtUtils, verification, registry);
     }
 
     @Test
@@ -102,6 +105,44 @@ class AuthServiceImplTest {
     void verifyEmail_delegatesToken() {
         when(verification.verifyEmail("token")).thenReturn("user@test.com");
         assertThat(service.verifyEmail("token")).isEqualTo("user@test.com");
+    }
+
+    @Test
+    void refresh_revokesOldJtiAndIssuesNewToken() {
+        User user = user(true);
+        user.setId(UUID.randomUUID());
+        when(jwtUtils.validateToken("old")).thenReturn(true);
+        when(jwtUtils.extractJti("old")).thenReturn("jti-old");
+        when(jwtUtils.extractJti("new")).thenReturn("jti-new");
+        when(jwtUtils.extractUserId("old")).thenReturn(user.getId());
+        when(jwtUtils.generateToken(user)).thenReturn("new");
+        when(users.findById(user.getId())).thenReturn(Optional.of(user));
+        registry.register("jti-old");
+
+        var response = service.refresh("old");
+
+        assertThat(response.getToken()).isEqualTo("new");
+        assertThat(registry.isValid("jti-old")).isFalse();
+        assertThat(registry.isValid("jti-new")).isTrue();
+    }
+
+    @Test
+    void refresh_rejectsRevokedToken() {
+        when(jwtUtils.validateToken("old")).thenReturn(true);
+        when(jwtUtils.extractJti("old")).thenReturn("jti-old");
+
+        assertThatThrownBy(() -> service.refresh("old"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("401");
+    }
+
+    @Test
+    void refresh_rejectsInvalidToken() {
+        when(jwtUtils.validateToken("bad")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.refresh("bad"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("401");
     }
 
     private static RegisterRequest registerRequest() {

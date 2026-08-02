@@ -5,7 +5,6 @@ import com.evidencepilot.model.Document;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.service.DocumentObjectStorage;
 import com.evidencepilot.service.DocumentService;
-import com.evidencepilot.service.impl.DocumentPersistenceService;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -29,8 +28,7 @@ class DocumentDownloadControllerTest {
     void downloadSupportsAuthenticatedUsersAndWorkerTokens() throws Exception {
         DocumentService service = mock(DocumentService.class);
         DocumentObjectStorage storage = mock(DocumentObjectStorage.class);
-        DocumentPersistenceService persistence = mock(DocumentPersistenceService.class);
-        MockMvc mockMvc = standaloneSetup(new DocumentController(service, storage, persistence)).build();
+        MockMvc mockMvc = standaloneSetup(new DocumentController(service, storage)).build();
         UUID documentId = UUID.randomUUID();
         String objectKey = "sources/raw/" + documentId + ".pdf";
         byte[] pdf = {1, 2, 3, 4};

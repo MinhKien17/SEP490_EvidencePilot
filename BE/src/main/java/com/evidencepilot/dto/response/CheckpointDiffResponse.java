@@ -18,7 +18,7 @@ public record CheckpointDiffResponse(
     int feedbackAnsweredDelta,
     List<WordCountDelta> sectionWordDeltas
 ) {
-    public record ClaimChange(UUID id, Integer version, String contentHash) {}
+    public record ClaimChange(UUID id, UUID sectionId, Integer version, String contentHash) {}
 
     public record WordCountDelta(UUID sectionId, int fromWords, int toWords) {}
 }

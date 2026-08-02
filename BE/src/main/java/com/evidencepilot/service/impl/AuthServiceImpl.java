@@ -1,5 +1,6 @@
 package com.evidencepilot.service.impl;
 
+import com.evidencepilot.config.security.JwtSessionRegistry;
 import com.evidencepilot.config.security.JwtUtils;
 import com.evidencepilot.dto.request.LoginRequest;
 import com.evidencepilot.dto.request.RegisterRequest;
@@ -25,6 +26,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
     private final EmailVerificationService emailVerificationService;
+    private final JwtSessionRegistry sessionRegistry;
 
     @Override
     public AuthResponse register(RegisterRequest request) {
@@ -65,7 +67,35 @@ public class AuthServiceImpl implements AuthService {
         }
 
         String token = jwtUtils.generateToken(user);
+        sessionRegistry.register(jwtUtils.extractJti(token));
         return new AuthResponse(token, UserResponse.from(user));
+    }
+
+    @Override
+    public AuthResponse refresh(String token) {
+        if (token == null || !jwtUtils.validateToken(token)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or expired token");
+        }
+        // ponytail: whole-token lock makes concurrent refresh race-free (one wins, the other 401s)
+        synchronized (sessionRegistry) {
+            String jti = jwtUtils.extractJti(token);
+            if (!sessionRegistry.isValid(jti)) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token has been revoked");
+            }
+            User user = userRepository.findById(jwtUtils.extractUserId(token))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User no longer exists"));
+            if (Boolean.FALSE.equals(user.getEmailVerified())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Email is not verified");
+            }
+            if (user.getAccountStatus() != AccountStatus.ACTIVE) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account is not active");
+            }
+
+            sessionRegistry.revoke(jti);
+            String newToken = jwtUtils.generateToken(user);
+            sessionRegistry.register(jwtUtils.extractJti(newToken));
+            return new AuthResponse(newToken, UserResponse.from(user));
+        }
     }
 
     @Override

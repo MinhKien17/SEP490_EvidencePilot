@@ -9,6 +9,7 @@ import com.evidencepilot.dto.response.ClaimQualityEvaluationResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
 import com.evidencepilot.dto.response.ClaimSourceAuditResponse;
 import com.evidencepilot.dto.request.MappingReviewRequest;
+import com.evidencepilot.dto.response.JobSubmitResponse;
 import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.model.enums.FunctionalType;
 import java.util.List;
@@ -30,14 +31,15 @@ public interface ClaimService {
             int size,
             String sort,
             String q,
-            Boolean active);
+            Boolean active,
+            UUID sectionId);
     ClaimResponse createClaim(ClaimCreationRequest request);
-    ClaimQualityEvaluationResponse evaluateClaim(ClaimEvaluationRequest request);
+    JobSubmitResponse submitClaimEvaluation(ClaimEvaluationRequest request);
     ClaimResponse updateClaim(UUID id, String content, Float aiConfidenceScore, FunctionalType functionalType);
     void deleteClaim(UUID id);
     List<AiSuggestionResponse> getSuggestionsForClaim(UUID claimId);
     List<ClaimMatchCandidateResponse> searchMatches(UUID claimId);
-    AiSuggestionResponse evaluateMatch(UUID claimId, UUID documentChunkId);
+    JobSubmitResponse submitMatchEvaluation(UUID claimId, UUID documentChunkId);
     void acceptSuggestion(UUID suggestionId);
     void rejectSuggestion(UUID suggestionId);
     void updateSuggestionStatus(UUID suggestionId, String status);

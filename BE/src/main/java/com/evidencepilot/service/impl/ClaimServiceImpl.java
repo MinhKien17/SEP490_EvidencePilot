@@ -11,9 +11,11 @@ import com.evidencepilot.dto.response.ClaimResponse;
 import com.evidencepilot.dto.response.ClaimSourceAuditResponse;
 import com.evidencepilot.dto.response.ClaimSourceAuditResponse.ClaimAuditItem;
 import com.evidencepilot.dto.response.ClaimSourceAuditResponse.MappingAuditItem;
+import com.evidencepilot.dto.response.JobSubmitResponse;
 import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.ClaimMapper;
+import com.evidencepilot.model.AiEvaluationJob;
 import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.ClaimEvidenceMapping;
@@ -21,6 +23,7 @@ import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
+import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.FunctionalType;
 import com.evidencepilot.model.enums.MappingReviewStatus;
 import com.evidencepilot.model.enums.MappingStatus;
@@ -29,13 +32,17 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.ClaimRepository;
+import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectMemberRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.service.AiEvaluationService;
 import com.evidencepilot.service.ClaimMatchingService;
 import com.evidencepilot.service.ClaimService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.dto.request.PagingRequest;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -48,6 +55,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -63,12 +71,15 @@ public class ClaimServiceImpl implements ClaimService {
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
     private final PaperSectionRepository paperSectionRepository;
+    private final DocumentRepository documentRepository;
     private final AiSuggestionRepository aiSuggestionRepository;
     private final ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
     private final ClaimMatchingService claimMatchingService;
     private final ClaimQualityEvaluationService claimQualityEvaluationService;
     private final CurrentUserService currentUserService;
     private final ClaimMapper claimMapper;
+    private final AiEvaluationService aiEvaluationService;
+    private final ObjectMapper objectMapper;
 
     @Override
     public List<ClaimResponse> getAllClaims() {
@@ -100,7 +111,7 @@ public class ClaimServiceImpl implements ClaimService {
         var pageable = PagingRequest.pageable(
                 page, size, sort, CLAIM_SORT_FIELDS, "createdAt,desc");
         var results = claimRepository.findAll(
-                claimSpec(currentUser, null, active, q),
+                claimSpec(currentUser, null, active, q, null),
                 pageable);
         return PagedResponse.from(results.map(claimMapper::toClaimResponse));
     }
@@ -132,7 +143,8 @@ public class ClaimServiceImpl implements ClaimService {
             int size,
             String sort,
             String q,
-            Boolean active) {
+            Boolean active,
+            UUID sectionId) {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
@@ -141,7 +153,7 @@ public class ClaimServiceImpl implements ClaimService {
         var pageable = PagingRequest.pageable(
                 page, size, sort, CLAIM_SORT_FIELDS, "createdAt,desc");
         var results = claimRepository.findAll(
-                claimSpec(currentUser, projectId, active, q),
+                claimSpec(currentUser, projectId, active, q, sectionId),
                 pageable);
         return PagedResponse.from(results.map(claimMapper::toClaimResponse));
     }
@@ -156,6 +168,7 @@ public class ClaimServiceImpl implements ClaimService {
         Project project = section.getDocument().getProject();
 
         currentUserService.requireSectionContentWriteAccess(currentUser, section);
+        requireProjectHasSource(project);
 
         Claim claim = new Claim();
         claim.setProject(project);
@@ -172,16 +185,35 @@ public class ClaimServiceImpl implements ClaimService {
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public ClaimQualityEvaluationResponse evaluateClaim(ClaimEvaluationRequest request) {
+    public JobSubmitResponse submitClaimEvaluation(ClaimEvaluationRequest request) {
         User currentUser = currentUserService.requireCurrentUser();
         PaperSection section = paperSectionRepository.findById(request.sectionId())
                 .orElseThrow(() -> new ResourceNotFoundException(request.sectionId(), "PaperSection"));
         currentUserService.requireSectionContentWriteAccess(currentUser, section);
-        return claimQualityEvaluationService.evaluate(
-                section.getDocument().getProject(),
-                section,
-                request.content());
+        requireProjectHasSource(section.getDocument().getProject());
+        return aiEvaluationService.submit(
+                section.getDocument().getProject().getId(),
+                AiEvaluationJob.KIND_CLAIM_QUALITY,
+                writePayload(Map.of(
+                        "sectionId", request.sectionId().toString(),
+                        "content", request.content())));
+    }
+
+    private String writePayload(Map<String, String> values) {
+        try {
+            return objectMapper.writeValueAsString(values);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Could not serialize AI evaluation payload", e);
+        }
+    }
+
+    private void requireProjectHasSource(Project project) {
+        if (documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
+                project.getId(), DocumentType.SOURCE).isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Attach at least one source before evaluating claims");
+        }
     }
 
     @Override
@@ -244,10 +276,15 @@ public class ClaimServiceImpl implements ClaimService {
     }
 
     @Override
-    public AiSuggestionResponse evaluateMatch(UUID claimId, UUID documentChunkId) {
+    public JobSubmitResponse submitMatchEvaluation(UUID claimId, UUID documentChunkId) {
         Claim claim = requireClaimWriteAccess(claimId);
-        return claimMatchingService.evaluateMatch(
-                claimId, claim.getProject().getId(), documentChunkId);
+        return aiEvaluationService.submit(
+                claim.getProject().getId(),
+                AiEvaluationJob.KIND_MATCH_EVALUATION,
+                writePayload(Map.of(
+                        "claimId", claimId.toString(),
+                        "projectId", claim.getProject().getId().toString(),
+                        "documentChunkId", documentChunkId.toString())));
     }
 
     @Override
@@ -421,7 +458,8 @@ public class ClaimServiceImpl implements ClaimService {
             User currentUser,
             UUID projectId,
             Boolean active,
-            String q) {
+            String q,
+            UUID sectionId) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("active"), active != null ? active : true));
@@ -435,6 +473,10 @@ public class ClaimServiceImpl implements ClaimService {
                 var project = root.join("project");
                 var members = project.join("projectMembers");
                 predicates.add(cb.equal(members.get("user").get("id"), currentUser.getId()));
+            }
+
+            if (sectionId != null) {
+                predicates.add(cb.equal(root.get("section").get("id"), sectionId));
             }
 
             if (q != null && !q.isBlank()) {

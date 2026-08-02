@@ -42,6 +42,14 @@ public record ProgressReportResponse(
         int score,
         int contentCoveragePercent,
         int claimsPresentPercent,
-        int claimsWithEvidencePercent
+        int claimsWithEvidencePercent,
+        List<ReadinessMetric> metrics
+    ) {}
+
+    public record ReadinessMetric(
+        String code,
+        String label,
+        int weightPercent,
+        int valuePercent
     ) {}
 }

@@ -18,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -70,6 +71,21 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return ResponseEntity.ok(authService.login(request));
+    }
+
+    @Operation(summary = "Refresh access token",
+            description = "Exchanges a still-valid JWT for a fresh one and revokes the old session. "
+                    + "Race-free: concurrent refreshes with the same token yield one success.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Token refreshed"),
+            @ApiResponse(responseCode = "401", description = "Missing, invalid, expired, or revoked token")
+    })
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refresh(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        String token = authHeader != null && authHeader.startsWith("Bearer ")
+                ? authHeader.substring(7) : null;
+        return ResponseEntity.ok(authService.refresh(token));
     }
 
     @PostMapping("/password-reset/request")

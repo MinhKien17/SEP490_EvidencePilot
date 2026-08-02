@@ -1,5 +1,6 @@
 package com.evidencepilot.controller;
 
+import com.evidencepilot.config.security.JwtSessionRegistry;
 import com.evidencepilot.config.security.JwtUtils;
 import com.evidencepilot.dto.response.OpenAlexPreview;
 import com.evidencepilot.model.User;
@@ -43,6 +44,9 @@ class OpenAlexControllerTest {
     @Autowired
     private JwtUtils jwtUtils;
 
+    @Autowired
+    private JwtSessionRegistry sessionRegistry;
+
     @MockBean
     private OpenAlexIngestionService ingestionService;
 
@@ -62,7 +66,13 @@ class OpenAlexControllerTest {
         user.setCreatedAt(LocalDateTime.now());
         user = userRepository.saveAndFlush(user);
 
-        bearerToken = "Bearer " + jwtUtils.generateToken(user);
+        bearerToken = "Bearer " + issueToken(user);
+    }
+
+    private String issueToken(User user) {
+        String token = jwtUtils.generateToken(user);
+        sessionRegistry.register(jwtUtils.extractJti(token));
+        return token;
     }
 
     @AfterEach
