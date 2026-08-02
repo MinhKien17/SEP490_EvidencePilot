@@ -1,5 +1,6 @@
 package com.evidencepilot.exception;
 
+import com.evidencepilot.config.security.JwtSessionRegistry;
 import com.evidencepilot.config.security.JwtUtils;
 import com.evidencepilot.controller.GlobalExceptionHandler;
 import com.evidencepilot.dto.response.ApiErrorResponse;
@@ -57,6 +58,9 @@ class GlobalExceptionHandlerTest {
     @Autowired
     private JwtUtils jwtUtils;
 
+    @Autowired
+    private JwtSessionRegistry sessionRegistry;
+
     @MockBean(name = "minioClient")
     private MinioClient minioClient;
 
@@ -71,6 +75,12 @@ class GlobalExceptionHandlerTest {
 
     private String bearerToken;
 
+    private String issueToken(User user) {
+        String token = jwtUtils.generateToken(user);
+        sessionRegistry.register(jwtUtils.extractJti(token));
+        return token;
+    }
+
     @BeforeEach
     void setUp() {
         User user = new User();
@@ -82,7 +92,7 @@ class GlobalExceptionHandlerTest {
         user.setCreatedAt(LocalDateTime.now());
         user = userRepository.saveAndFlush(user);
 
-        bearerToken = "Bearer " + jwtUtils.generateToken(user);
+        bearerToken = "Bearer " + issueToken(user);
         when(aiModelClient.health()).thenReturn(Map.of("status", "ok"));
         when(healthService.checkReadiness()).thenReturn(Map.of("status", "UP"));
     }
@@ -134,7 +144,7 @@ class GlobalExceptionHandlerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email", is("exceptiontest@test.com")));
         mockMvc.perform(get("/api/users/{id}", admin.getId())
-                        .header("Authorization", "Bearer " + jwtUtils.generateToken(admin)))
+                        .header("Authorization", "Bearer " + issueToken(admin)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id", is(admin.getId().toString())));
     }

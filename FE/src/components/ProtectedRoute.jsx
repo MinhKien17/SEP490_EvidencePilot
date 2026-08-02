@@ -16,6 +16,9 @@ export default function ProtectedRoute({ children, allowedRoles }) {
   }
 
   if (!isAuthenticated) {
+    if (!window.location.pathname.startsWith('/login')) {
+      sessionStorage.setItem('login_origin', window.location.pathname + window.location.search);
+    }
     return <Navigate to="/login" replace />;
   }
 

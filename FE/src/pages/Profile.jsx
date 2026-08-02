@@ -228,13 +228,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
 export default function Profile() {
   const navigate = useNavigate();
+  const { user: authUser, verifySession } = useAuth();
 
   // --- 1. STATES MANAGEMENT ---
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   
   const [firstName, setFirstName] = useState("");
@@ -247,26 +248,15 @@ export default function Profile() {
     : pathname.includes('/instructor') ? 'INSTRUCTOR' : 'STUDENT';
   const currentRole = user?.role || fallbackRole;
 
-  // --- 2. ĐỌC DỮ LIỆU PROFILE THẬT ---
-  const fetchUserProfile = async () => {
-    setLoading(true);
-    try {
-      const { data } = await api.get('/api/users/profile');
-      setUser(data);
-      setFirstName(data.firstName || "");
-      setLastName(data.lastName || "");
-    } catch (error) {
-      console.error("Lỗi truy xuất dữ liệu profile:", error);
-      setMessage({
-        type: "error",
-        text: error.response?.data?.message || "Failed to load profile."
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Session user comes from AuthContext (single-flight profile fetch)
+  useEffect(() => {
+    if (!authUser) return;
+    setUser(authUser);
+    setFirstName(authUser.firstName || "");
+    setLastName(authUser.lastName || "");
+  }, [authUser]);
 
-  // --- 3. CẬP NHẬT PROFILE THẬT ---
+  // --- 2. CẬP NHẬT PROFILE THẬT ---
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
     if (!firstName.trim() || !lastName.trim()) {
@@ -284,6 +274,7 @@ export default function Profile() {
       });
       setUser(data);
       setMessage({ type: "success", text: "Profile updated successfully" });
+      verifySession().catch(() => {});
     } catch (error) {
       console.error("Lỗi cập nhật profile:", error);
       setMessage({
@@ -295,11 +286,7 @@ export default function Profile() {
     }
   };
 
-  useEffect(() => {
-    fetchUserProfile();
-  }, [pathname]);
-
-  if (loading) {
+  if (!user) {
     return (
       <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center font-sans">
         <div className="text-xs font-bold text-gray-400 tracking-widest animate-pulse uppercase">

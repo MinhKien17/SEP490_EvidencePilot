@@ -48,6 +48,7 @@ public interface DocumentService {
     List<DocumentChunkResponse> getDocumentChunks(UUID documentId);
     DocumentTextResponse getDocumentText(UUID documentId);
     DocumentTextResponse saveDraft(UUID documentId, String extractedText);
+    DocumentResponse reExtract(UUID documentId);
     void deleteDocument(UUID id);
     Document getDocumentForDownload(UUID id, String token);
 }

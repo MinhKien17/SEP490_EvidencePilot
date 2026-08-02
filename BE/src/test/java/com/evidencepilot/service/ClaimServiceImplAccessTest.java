@@ -3,7 +3,7 @@ package com.evidencepilot.service;
 import com.evidencepilot.dto.request.ClaimCreationRequest;
 import com.evidencepilot.dto.request.ClaimEvaluationRequest;
 import com.evidencepilot.dto.request.MappingReviewRequest;
-import com.evidencepilot.dto.response.ClaimQualityEvaluationResponse;
+import com.evidencepilot.dto.response.JobSubmitResponse;
 import com.evidencepilot.mapper.ClaimMapper;
 import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Claim;
@@ -20,12 +20,15 @@ import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.MappingReviewStatus;
 import com.evidencepilot.model.enums.FunctionalType;
 import com.evidencepilot.model.enums.MappingStatus;
+import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.ClaimRepository;
+import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectMemberRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.service.AiEvaluationService;
 import com.evidencepilot.service.impl.ClaimServiceImpl;
 import com.evidencepilot.service.impl.ClaimQualityEvaluationService;
 import org.junit.jupiter.api.Test;
@@ -45,9 +48,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -64,6 +69,9 @@ class ClaimServiceImplAccessTest {
 
     @Mock
     private PaperSectionRepository paperSectionRepository;
+
+    @Mock
+    private DocumentRepository documentRepository;
 
     @Mock
     private AiSuggestionRepository aiSuggestionRepository;
@@ -83,8 +91,40 @@ class ClaimServiceImplAccessTest {
     @Mock
     private ClaimMapper claimMapper;
 
+    @Mock
+    private AiEvaluationService aiEvaluationService;
+
     @Test
-    void evaluateClaimChecksSectionWriteAccessWithoutPersisting() {
+    void submitClaimEvaluationChecksSectionWriteAccessAndQueuesJob() {
+        User user = user();
+        Project project = new Project();
+        project.setId(UUID.randomUUID());
+        Document document = new Document();
+        document.setProject(project);
+        PaperSection section = new PaperSection();
+        section.setId(UUID.randomUUID());
+        section.setDocument(document);
+        ClaimEvaluationRequest request = new ClaimEvaluationRequest(
+                section.getId(), "A focused Claim draft");
+        UUID jobId = UUID.randomUUID();
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
+        when(aiEvaluationService.submit(
+                eq(project.getId()), eq(com.evidencepilot.model.AiEvaluationJob.KIND_CLAIM_QUALITY), any()))
+                .thenReturn(new JobSubmitResponse(jobId));
+        stubSourceDocument(project);
+
+        assertThat(service().submitClaimEvaluation(request).jobId()).isEqualTo(jobId);
+
+        verify(currentUserService).requireSectionContentWriteAccess(user, section);
+        verify(aiEvaluationService).submit(
+                eq(project.getId()), eq(com.evidencepilot.model.AiEvaluationJob.KIND_CLAIM_QUALITY), any());
+        verify(claimRepository, never()).save(any());
+    }
+
+    @Test
+    void submitClaimEvaluationRejectsProjectWithoutSources() {
         User user = user();
         Project project = new Project();
         Document document = new Document();
@@ -94,24 +134,16 @@ class ClaimServiceImplAccessTest {
         section.setDocument(document);
         ClaimEvaluationRequest request = new ClaimEvaluationRequest(
                 section.getId(), "A focused Claim draft");
-        ClaimQualityEvaluationResponse response = ClaimQualityEvaluationResponse.from(
-                List.of(
-                        criterion(ClaimQualityEvaluationResponse.CriterionCode.CLARITY, 2),
-                        criterion(ClaimQualityEvaluationResponse.CriterionCode.SPECIFICITY_SCOPE, 2),
-                        criterion(ClaimQualityEvaluationResponse.CriterionCode.SECTION_RELEVANCE, 2),
-                        criterion(ClaimQualityEvaluationResponse.CriterionCode.VERIFIABILITY_ARGUABILITY, 1),
-                        criterion(ClaimQualityEvaluationResponse.CriterionCode.ATOMICITY, 1)),
-                FunctionalType.EMPIRICAL,
-                "A focused Claim draft");
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
-        when(claimQualityEvaluationService.evaluate(project, section, request.content()))
-                .thenReturn(response);
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
+                project.getId(), DocumentType.SOURCE)).thenReturn(List.of());
 
-        assertThat(service().evaluateClaim(request)).isEqualTo(response);
+        assertThatThrownBy(() -> service().submitClaimEvaluation(request))
+                .hasMessageContaining("Attach at least one source");
 
-        verify(currentUserService).requireSectionContentWriteAccess(user, section);
+        verify(aiEvaluationService, never()).submit(any(), any(), any());
         verify(claimRepository, never()).save(any());
     }
 
@@ -274,7 +306,7 @@ class ClaimServiceImplAccessTest {
 
         assertThat(service().getClaimsByProject(project.getId())).isEmpty();
         assertThat(service().getClaimsByProject(
-                project.getId(), 0, 20, "createdAt,desc", null, true).content()).isEmpty();
+                project.getId(), 0, 20, "createdAt,desc", null, true, null).content()).isEmpty();
         verify(currentUserService, org.mockito.Mockito.times(2)).requireProjectAccess(user, project);
     }
 
@@ -290,6 +322,7 @@ class ClaimServiceImplAccessTest {
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
         when(claimRepository.save(any(Claim.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        stubSourceDocument(project);
 
         service().createClaim(new ClaimCreationRequest(section.getId(), "content", 0.5f, FunctionalType.THEORETICAL));
 
@@ -365,18 +398,23 @@ class ClaimServiceImplAccessTest {
                 projectRepository,
                 projectMemberRepository,
                 paperSectionRepository,
+                documentRepository,
                 aiSuggestionRepository,
                 claimEvidenceMappingRepository,
                 claimMatchingService,
                 claimQualityEvaluationService,
                 currentUserService,
-                claimMapper);
+                claimMapper,
+                aiEvaluationService,
+                new com.fasterxml.jackson.databind.ObjectMapper());
     }
 
-    private ClaimQualityEvaluationResponse.Criterion criterion(
-            ClaimQualityEvaluationResponse.CriterionCode code,
-            int score) {
-        return new ClaimQualityEvaluationResponse.Criterion(code, score, "Gold reason");
+    private void stubSourceDocument(Project project) {
+        Document source = new Document();
+        source.setId(UUID.randomUUID());
+        source.setDocType(DocumentType.SOURCE);
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
+                project.getId(), DocumentType.SOURCE)).thenReturn(List.of(source));
     }
 
     private User user() {

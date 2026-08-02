@@ -24,6 +24,7 @@ CREATE TABLE users (
 -- ==========================================
 CREATE TABLE projects (
     id BINARY(16) NOT NULL PRIMARY KEY,
+    opt_version BIGINT NOT NULL DEFAULT 0,
     title VARCHAR(255) NOT NULL,
     description TEXT,
     status VARCHAR(50) NOT NULL CHECK (status IN ('CREATED', 'ASSIGNED', 'IN_PROGRESS', 'SUBMITTED_FOR_REVIEW', 'RETURNED', 'APPROVED', 'ARCHIVED')),
@@ -71,6 +72,7 @@ CREATE TABLE collections (
 
 CREATE TABLE documents (
     id BINARY(16) NOT NULL PRIMARY KEY,
+    opt_version BIGINT NOT NULL DEFAULT 0,
     project_id BINARY(16),
     collection_id BINARY(16),
     uploaded_by BINARY(16) NOT NULL,
@@ -154,6 +156,7 @@ CREATE TABLE paper_sections (
     content_tex LONGTEXT NOT NULL,
     previous_content_tex LONGTEXT,
     version INT DEFAULT 1,
+    opt_version BIGINT NOT NULL DEFAULT 0,
     content_md_cache LONGTEXT,
     active BOOLEAN NOT NULL DEFAULT TRUE,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -186,6 +189,7 @@ CREATE TABLE claims (
     ai_confidence_score FLOAT,
     functional_type VARCHAR(50) CHECK (functional_type IN ('EMPIRICAL','THEORETICAL','METHODOLOGICAL','ANALYTICAL','APPLIED')),
     claim_version INT NOT NULL DEFAULT 1,
+    opt_version BIGINT NOT NULL DEFAULT 0,
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -262,18 +266,6 @@ CREATE TABLE project_documents (
 -- ==========================================
 -- 8. FEEDBACK & ASYNC STATE
 -- ==========================================
-CREATE TABLE section_feedback (
-    id BINARY(16) NOT NULL PRIMARY KEY,
-    section_id BINARY(16) NOT NULL,
-    author_id BINARY(16) NOT NULL,
-    line_reference VARCHAR(100),
-    content TEXT NOT NULL,
-    resolved BOOLEAN DEFAULT FALSE,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (section_id) REFERENCES paper_sections(id) ON DELETE CASCADE,
-    FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
 CREATE TABLE feedback_requests (
     id BINARY(16) NOT NULL PRIMARY KEY,
     project_id BINARY(16) NOT NULL,
@@ -282,6 +274,7 @@ CREATE TABLE feedback_requests (
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'RETURNED', 'REVIEWED', 'REJECTED')),
     section_validation TEXT,
     requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE CASCADE
@@ -298,9 +291,13 @@ CREATE TABLE instructor_feedbacks (
     answer_content TEXT,
     answered_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    section_version INT,
+    updated_at DATETIME,
+    updated_by BINARY(16),
     FOREIGN KEY (request_id) REFERENCES feedback_requests(id) ON DELETE CASCADE,
     FOREIGN KEY (section_id) REFERENCES paper_sections(id) ON DELETE CASCADE,
-    FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- ==========================================
@@ -381,5 +378,23 @@ CREATE TABLE review_snapshots (
     response_json LONGTEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_review_snapshot (project_id, style, input_fingerprint),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+-- ==========================================
+-- 14. AI EVALUATION JOBS (async claim-quality / match evaluation)
+-- ==========================================
+CREATE TABLE ai_evaluation_jobs (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    project_id BINARY(16) NOT NULL,
+    kind VARCHAR(50) NOT NULL,
+    payload_json LONGTEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    result_json LONGTEXT,
+    error_message TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completed_at DATETIME,
+    INDEX idx_ai_eval_project (project_id),
+    INDEX idx_ai_eval_status (status),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );

@@ -2,7 +2,6 @@ package com.evidencepilot.model;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.UUID;
 
 import org.hibernate.annotations.JdbcTypeCode;
@@ -44,6 +43,10 @@ public class PaperSection {
     @Column(name = "version")
     private Integer version = 1;
 
+    @Version
+    @Column(name = "opt_version")
+    private Long optVersion;
+
     @Column(name = "content_md_cache", columnDefinition = "LONGTEXT")
     private String contentMdCache;
 
@@ -52,9 +55,6 @@ public class PaperSection {
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-
-    @OneToMany(mappedBy = "section")
-    private List<SectionFeedback> sectionFeedback;
 
     @Override
     public boolean equals(Object o) {

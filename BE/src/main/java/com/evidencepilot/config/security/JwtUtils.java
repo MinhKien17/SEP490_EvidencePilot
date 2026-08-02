@@ -31,6 +31,7 @@ public class JwtUtils {
         Date expiry = new Date(now.getTime() + expirationMs);
 
         return Jwts.builder()
+                .id(UUID.randomUUID().toString())
                 .subject(user.getId().toString())
                 .claim("email", user.getEmail())
                 .claim("role", user.getRole().name())
@@ -39,6 +40,10 @@ public class JwtUtils {
                 .expiration(expiry)
                 .signWith(signingKey)
                 .compact();
+    }
+
+    public String extractJti(String token) {
+        return parseClaims(token).getId();
     }
 
     public UUID extractUserId(String token) {

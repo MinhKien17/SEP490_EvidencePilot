@@ -132,6 +132,23 @@ class DocumentServiceImplAccessTest {
     }
 
     @Test
+    void deleteDocumentBlocksWhenSourceHasActiveMappings() {
+        User user = user();
+        Project project = project();
+        Document source = document(project);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(claimEvidenceMappingRepository.findByDocumentChunkDocumentIdAndStatus(
+                source.getId(), com.evidencepilot.model.enums.MappingStatus.ACTIVE))
+                .thenReturn(List.of(new com.evidencepilot.model.ClaimEvidenceMapping()));
+
+        assertThatThrownBy(() -> service().deleteDocument(source.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("mapped to 1 active claim");
+        verify(documentRepository, never()).save(source);
+    }
+
+    @Test
     void uploadDocumentRequiresProjectWriteAccess() throws Exception {
         User user = user();
         Project project = project();

@@ -64,10 +64,48 @@ class FeedbackControllerTest {
     }
 
     @Test
+    void comment_rejectsOversizedLineReference() throws Exception {
+        String longRef = "L".repeat(101);
+        mockMvc.perform(post("/api/feedback-requests/{id}/feedback", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sectionId\":\"" + UUID.randomUUID()
+                                + "\",\"lineReference\":\"" + longRef + "\",\"content\":\"Revise\"}"))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void updateStatus_bindsStatus() throws Exception {
         UUID id = UUID.randomUUID();
         mockMvc.perform(patch("/api/feedback-requests/{id}/status", id).param("status", "REVIEWED"))
                 .andExpect(status().isOk());
         verify(service).updateStatus(id, "REVIEWED");
+    }
+
+    @Test
+    void getFeedbackItems_returnsItems() throws Exception {
+        UUID requestId = UUID.randomUUID();
+        mockMvc.perform(get("/api/feedback-requests/{id}/feedback", requestId))
+                .andExpect(status().isOk());
+        verify(service).getFeedbackItems(requestId);
+    }
+
+    @Test
+    void updateFeedbackItem_bindsRequest() throws Exception {
+        UUID itemId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        mockMvc.perform(patch("/api/instructor-feedback/{id}", itemId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sectionId\":\"" + sectionId + "\",\"lineReference\":\"L3\",\"content\":\"Reworded\"}"))
+                .andExpect(status().isOk());
+        verify(service).updateFeedbackItem(eq(itemId), any(InstructorFeedbackRequest.class));
+    }
+
+    @Test
+    void deleteFeedbackItem_returns204() throws Exception {
+        UUID itemId = UUID.randomUUID();
+        mockMvc.perform(delete("/api/instructor-feedback/{id}", itemId))
+                .andExpect(status().isNoContent());
+        verify(service).deleteFeedbackItem(itemId);
     }
 }

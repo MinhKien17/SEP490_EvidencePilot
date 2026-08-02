@@ -43,6 +43,10 @@ public class Project {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Version
+    @Column(name = "opt_version")
+    private Long version;
+
     @Column(nullable = false)
     private boolean active = true;
 

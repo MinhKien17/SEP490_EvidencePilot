@@ -207,7 +207,8 @@ public class ProjectController {
     }
 
     @Operation(summary = "List project claims",
-            description = "Returns paged claims in a project with optional text search and active filtering.")
+            description = "Returns paged claims in a project with optional text search, active filtering "
+                    + "and section scoping.")
     @GetMapping("/{projectId}/claims")
     public PagedResponse<ClaimResponse> getProjectClaims(
             @Parameter(description = "Project UUID") @PathVariable UUID projectId,
@@ -215,8 +216,9 @@ public class ProjectController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "createdAt,desc") String sort,
             @RequestParam(required = false) String q,
-            @RequestParam(required = false) Boolean active) {
-        return claimService.getClaimsByProject(projectId, page, size, sort, q, active);
+            @RequestParam(required = false) Boolean active,
+            @Parameter(description = "Optional section UUID to scope claims") @RequestParam(required = false) UUID sectionId) {
+        return claimService.getClaimsByProject(projectId, page, size, sort, q, active, sectionId);
     }
 
     @Operation(summary = "Preflight Claim usage before export",

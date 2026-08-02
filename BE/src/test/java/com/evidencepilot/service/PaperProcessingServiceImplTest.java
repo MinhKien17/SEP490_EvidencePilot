@@ -25,7 +25,6 @@ import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.ReviewSnapshotRepository;
-import com.evidencepilot.repository.SectionFeedbackRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.impl.PaperProcessingServiceImpl;
 import org.junit.jupiter.api.Test;
@@ -81,9 +80,6 @@ class PaperProcessingServiceImplTest {
 
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper =
             new com.fasterxml.jackson.databind.ObjectMapper();
-
-    @Mock
-    private SectionFeedbackRepository sectionFeedbackRepository;
 
     @Mock
     private DocumentRepository documentRepository;
@@ -770,7 +766,6 @@ class PaperProcessingServiceImplTest {
         when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
                 .thenReturn(List.of(section));
         when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
-        when(sectionFeedbackRepository.findBySectionId(section.getId())).thenReturn(List.of());
         when(instructorFeedbackRepository.findByRequestProjectId(document.getProject().getId()))
                 .thenReturn(List.of(feedback));
 
@@ -933,7 +928,6 @@ class PaperProcessingServiceImplTest {
                 evidenceFilterService,
                 auditService,
                 objectMapper,
-                sectionFeedbackRepository,
                 documentRepository,
                 projectMapper,
                 currentUserService,

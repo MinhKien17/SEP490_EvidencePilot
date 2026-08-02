@@ -35,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -112,7 +113,11 @@ class ClaimMatchingServiceImplTest {
                         claim.getId(), claim.getClaimVersion(), chunk.getId()))
                 .thenReturn(Optional.empty());
         when(aiModelClient.generate(any())).thenReturn(
-                "{\"relation\":\"SUPPORTS\",\"explanation\":\"The chunk directly supports the claim.\"}");
+                "{\"relation\":\"SUPPORTS\",\"explanation\":\"The chunk directly supports the claim.\","
+                        + "\"contextualSufficiency\":30,\"contextualSufficiencyReason\":\"Concrete data present.\","
+                        + "\"logicalRestraint\":15,\"logicalRestraintReason\":\"Stays within source.\"}");
+        when(aiModelClient.generateEmbedding(claim.getContent())).thenReturn(List.of(1f, 0f));
+        when(aiModelClient.generateEmbedding("Exact selected chunk")).thenReturn(List.of(1f, 0f));
         when(aiSuggestionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(claimMapper.toAiSuggestionResponse(any())).thenAnswer(invocation ->
                 response(invocation.getArgument(0)));
@@ -125,15 +130,15 @@ class ClaimMatchingServiceImplTest {
         assertThat(prompt.getValue())
                 .contains(claim.getContent(), "Exact selected chunk")
                 .doesNotContain("Draft text");
-        verify(aiModelClient, never()).generateEmbedding(any());
+        verify(aiModelClient, times(2)).generateEmbedding(any());
         verifyNoInteractions(qdrantClient);
 
         ArgumentCaptor<AiSuggestion> saved = ArgumentCaptor.forClass(AiSuggestion.class);
         verify(aiSuggestionRepository).save(saved.capture());
         assertThat(saved.getValue().getScore()).isNull();
         assertThat(saved.getValue().getRelation()).isEqualTo(EvidenceRelation.SUPPORTS);
-        assertThat(saved.getValue().getStrengthScore()).isEqualTo(55);
-        assertThat(saved.getValue().getStrengthBand()).isEqualTo(StrengthBand.MEDIUM);
+        assertThat(saved.getValue().getStrengthScore()).isEqualTo(85);
+        assertThat(saved.getValue().getStrengthBand()).isEqualTo(StrengthBand.HIGH);
         assertThat(response.status()).isEqualTo("PENDING");
         assertThat(response.documentChunkId()).isEqualTo(chunk.getId());
     }
@@ -162,12 +167,13 @@ class ClaimMatchingServiceImplTest {
     }
 
     @Test
-    void doiOnlyContributesPersistentIdentifierPoints() throws Exception {
+    void orthogonalEmbeddingYieldsZeroSemanticAlignmentPillar() throws Exception {
         UUID projectId = UUID.randomUUID();
         Claim claim = claim(projectId);
-        Document source = document(DocumentType.SOURCE, projectId, "source.pdf");
-        source.setDoi("10.1000/example");
-        DocumentChunk chunk = chunk(source, 2, "Exact selected chunk");
+        DocumentChunk chunk = chunk(
+                document(DocumentType.SOURCE, projectId, "source.pdf"),
+                2,
+                "Exact selected chunk");
 
         when(claimRepository.findByIdWithProject(claim.getId())).thenReturn(Optional.of(claim));
         when(documentChunkRepository.findByIdWithDocument(chunk.getId())).thenReturn(Optional.of(chunk));
@@ -176,7 +182,11 @@ class ClaimMatchingServiceImplTest {
                         claim.getId(), claim.getClaimVersion(), chunk.getId()))
                 .thenReturn(Optional.empty());
         when(aiModelClient.generate(any())).thenReturn(
-                "{\"relation\":\"SUPPORTS\",\"explanation\":\"Direct support.\"}");
+                "{\"relation\":\"SUPPORTS\",\"explanation\":\"Direct support.\","
+                        + "\"contextualSufficiency\":40,\"contextualSufficiencyReason\":\"Full evidence.\","
+                        + "\"logicalRestraint\":20,\"logicalRestraintReason\":\"No overreach.\"}");
+        when(aiModelClient.generateEmbedding(claim.getContent())).thenReturn(List.of(1f, 0f));
+        when(aiModelClient.generateEmbedding("Exact selected chunk")).thenReturn(List.of(0f, 1f));
         when(aiSuggestionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(claimMapper.toAiSuggestionResponse(any())).thenAnswer(invocation ->
                 response(invocation.getArgument(0)));
@@ -184,11 +194,12 @@ class ClaimMatchingServiceImplTest {
         AiSuggestionResponse response = service()
                 .evaluateMatch(claim.getId(), projectId, chunk.getId());
 
-        assertThat(response.strengthScore()).isEqualTo(65);
+        assertThat(response.strengthScore()).isEqualTo(60);
+        assertThat(response.strengthBand()).isEqualTo(StrengthBand.MEDIUM);
         var breakdown = new ObjectMapper().readTree(response.scoreBreakdown());
-        assertThat(breakdown.path("source_type_authority").path("earned").asInt()).isZero();
-        assertThat(breakdown.path("citation_metadata").path("earned").asInt()).isZero();
-        assertThat(breakdown.path("link_availability").path("earned").asInt()).isEqualTo(10);
+        assertThat(breakdown.path("semantic_alignment").path("earned").asInt()).isZero();
+        assertThat(breakdown.path("contextual_sufficiency").path("earned").asInt()).isEqualTo(40);
+        assertThat(breakdown.path("logical_restraint").path("earned").asInt()).isEqualTo(20);
     }
 
     private ClaimMatchingServiceImpl service() {

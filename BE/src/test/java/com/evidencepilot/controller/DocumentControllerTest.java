@@ -1,10 +1,18 @@
 package com.evidencepilot.controller;
 
+import com.evidencepilot.config.security.JwtSessionRegistry;
 import com.evidencepilot.config.security.JwtUtils;
 import com.evidencepilot.dto.ExtractionRequest;
+import com.evidencepilot.model.Project;
+import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.ProjectRole;
+import com.evidencepilot.model.enums.ProjectStatus;
+import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.DocumentRepository;
+import com.evidencepilot.repository.ProjectMemberRepository;
+import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
@@ -22,6 +30,8 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -47,7 +57,16 @@ class DocumentControllerTest {
     private UserRepository userRepository;
 
     @Autowired
+    private ProjectRepository projectRepository;
+
+    @Autowired
+    private ProjectMemberRepository projectMemberRepository;
+
+    @Autowired
     private JwtUtils jwtUtils;
+
+    @Autowired
+    private JwtSessionRegistry sessionRegistry;
 
     @MockBean
     private RabbitTemplate rabbitTemplate;
@@ -56,10 +75,12 @@ class DocumentControllerTest {
     private MinioClient minioClient;
 
     private String bearerToken;
+    private UUID projectId;
+    private User user;
 
     @BeforeEach
     void setUp() throws Exception {
-        User user = new User();
+        user = new User();
         user.setEmail("docuploader@test.com");
         user.setPasswordHash("encoded-placeholder");
         user.setRole(UserRole.STUDENT);
@@ -68,12 +89,36 @@ class DocumentControllerTest {
         user.setCreatedAt(LocalDateTime.now());
         user = userRepository.saveAndFlush(user);
 
-        bearerToken = "Bearer " + jwtUtils.generateToken(user);
+        Project project = new Project();
+        project.setTitle("Test Project");
+        project.setStatus(ProjectStatus.IN_PROGRESS);
+        project.setCreatedAt(LocalDateTime.now());
+        project.setActive(true);
+        project = projectRepository.saveAndFlush(project);
+        projectId = project.getId();
+
+        ProjectMember member = new ProjectMember();
+        member.setProject(project);
+        member.setUser(user);
+        member.setRole(ProjectRole.LEADER);
+        member.setJoinedAt(LocalDateTime.now());
+        projectMemberRepository.saveAndFlush(member);
+        project.setProjectMembers(new ArrayList<>(java.util.List.of(member)));
+
+        bearerToken = "Bearer " + issueToken(user);
+    }
+
+    private String issueToken(User user) {
+        String token = jwtUtils.generateToken(user);
+        sessionRegistry.register(jwtUtils.extractJti(token));
+        return token;
     }
 
     @AfterEach
     void cleanUp() {
         documentRepository.deleteAll();
+        projectMemberRepository.deleteAll();
+        projectRepository.deleteAll();
         userRepository.deleteAll();
     }
 
@@ -84,6 +129,7 @@ class DocumentControllerTest {
 
         mockMvc.perform(multipart("/api/documents")
                         .file(file)
+                        .param("projectId", projectId.toString())
                         .header("Authorization", bearerToken))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.id", matchesPattern(
@@ -99,11 +145,26 @@ class DocumentControllerTest {
         var saved = documentRepository.findAll().iterator().next();
         assertNotNull(saved.getId());
         assertEquals("test-doc.pdf", saved.getOriginalFilename());
+        assertEquals(projectId, saved.getProject().getId());
 
         var captor = ArgumentCaptor.forClass(ExtractionRequest.class);
         verify(rabbitTemplate).convertAndSend(eq("extraction.queue"), captor.capture());
         ExtractionRequest payload = captor.getValue();
         assertEquals(saved.getId(), payload.documentId());
+    }
+
+    @Test
+    void uploadDocument_withoutProjectOrCollection_shouldReturn400() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "test-doc.pdf", "application/pdf", "fake-pdf-content".getBytes());
+
+        mockMvc.perform(multipart("/api/documents")
+                        .file(file)
+                        .header("Authorization", bearerToken))
+                .andExpect(status().isBadRequest());
+
+        assertEquals(0, documentRepository.count());
+        verifyNoInteractions(rabbitTemplate);
     }
 
     @Test
@@ -123,6 +184,7 @@ class DocumentControllerTest {
 
         mockMvc.perform(multipart("/api/documents")
                         .file(emptyFile)
+                        .param("projectId", projectId.toString())
                         .header("Authorization", bearerToken))
                 .andExpect(status().isBadRequest());
 
@@ -137,6 +199,34 @@ class DocumentControllerTest {
 
         String json = mockMvc.perform(multipart("/api/documents")
                         .file(file)
+                        .param("projectId", projectId.toString())
+                        .header("Authorization", bearerToken))
+                .andExpect(status().isAccepted())
+                .andReturn().getResponse().getContentAsString();
+
+        String docId = json.replaceAll(".*\"id\":\"([^\"]+)\".*", "$1");
+
+        // Simulate a completed extraction so re-extract passes the state guard.
+        var doc = documentRepository.findById(UUID.fromString(docId)).orElseThrow();
+        doc.setProcessingStatus(ProcessingStatus.READY);
+        documentRepository.saveAndFlush(doc);
+
+        mockMvc.perform(post("/api/documents/{id}/re-extract", docId)
+                        .header("Authorization", bearerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(docId));
+
+        verify(rabbitTemplate, atLeast(2)).convertAndSend(eq("extraction.queue"), any(Object.class));
+    }
+
+    @Test
+    void reExtract_whileProcessing_shouldReturn409() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "re-extract-409.pdf", "application/pdf", "content".getBytes());
+
+        String json = mockMvc.perform(multipart("/api/documents")
+                        .file(file)
+                        .param("projectId", projectId.toString())
                         .header("Authorization", bearerToken))
                 .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString();
@@ -145,9 +235,8 @@ class DocumentControllerTest {
 
         mockMvc.perform(post("/api/documents/{id}/re-extract", docId)
                         .header("Authorization", bearerToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(docId));
+                .andExpect(status().isConflict());
 
-        verify(rabbitTemplate, atLeast(2)).convertAndSend(eq("extraction.queue"), any(Object.class));
+        verify(rabbitTemplate, times(1)).convertAndSend(eq("extraction.queue"), any(Object.class));
     }
 }

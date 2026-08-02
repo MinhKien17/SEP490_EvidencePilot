@@ -6,18 +6,25 @@ import com.evidencepilot.dto.response.FormatScanResponse;
 import com.evidencepilot.dto.response.PaperSectionResponse;
 import com.evidencepilot.dto.response.PaperValidationResponse;
 import com.evidencepilot.dto.response.AiReviewResponse;
+import com.evidencepilot.dto.request.SectionContentUpdateRequest;
 import com.evidencepilot.exception.ResourceNotFoundException;
+import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.Document;
+import com.evidencepilot.model.FeedbackStatus;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
+import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.model.enums.ProcessingStatus;
+import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.DocumentRepository;
+import com.evidencepilot.repository.FeedbackRequestRepository;
+import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
-import com.evidencepilot.repository.SectionFeedbackRepository;
 import com.evidencepilot.service.CitationValidationService;
+import com.evidencepilot.service.CheckpointService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.FormatScanService;
@@ -38,6 +45,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -61,8 +69,11 @@ public class PaperController {
     private final ProjectRepository projectRepository;
     private final DocumentRepository documentRepository;
     private final PaperSectionRepository paperSectionRepository;
-    private final SectionFeedbackRepository sectionFeedbackRepository;
+    private final InstructorFeedbackRepository instructorFeedbackRepository;
+    private final FeedbackRequestRepository feedbackRequestRepository;
+    private final ClaimRepository claimRepository;
     private final CurrentUserService currentUserService;
+    private final CheckpointService checkpointService;
 
     @Operation(summary = "List all papers",
             description = "Returns all active paper documents. "
@@ -202,10 +213,11 @@ public class PaperController {
     public PaperSectionResponse updateSection(
             @Parameter(description = "Paper document UUID") @PathVariable UUID documentId,
             @Parameter(description = "Section UUID") @PathVariable UUID sectionId,
+            @Parameter(description = "Section content (send structure changes as query params)") @RequestBody(required = false) SectionContentUpdateRequest body,
             @RequestParam(required = false) String title,
             @RequestParam(required = false) Integer order,
-            @RequestParam(required = false) UUID mergeIntoId,
-            @RequestParam(required = false) String content) {
+            @RequestParam(required = false) UUID mergeIntoId) {
+        String content = body != null ? body.content() : null;
         return paperProcessingService.updateSection(documentId, sectionId, title, order, mergeIntoId, content);
     }
 
@@ -331,13 +343,8 @@ public class PaperController {
             @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
-        if (project.getTargetStandard() == null) {
-            return ResponseEntity.badRequest().build();
-        }
-        var existing = documentRepository.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER);
-        if (!existing.isEmpty()) {
-            return ResponseEntity.ok(DocumentResponse.from(existing.getFirst()));
-        }
+        // DEBT-04: authorize before any read/return so the idempotent early-return
+        // below can never leak another project's paper metadata.
         var currentUser = currentUserService.requireCurrentUser();
         if (!currentUserService.isInstructor(currentUser)) {
             throw new ResponseStatusException(
@@ -345,6 +352,13 @@ public class PaperController {
                     "Only instructors can initialize paper templates.");
         }
         currentUserService.requireProjectWriteAccess(currentUser, project);
+        if (project.getTargetStandard() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        var existing = documentRepository.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER);
+        if (!existing.isEmpty()) {
+            return ResponseEntity.ok(DocumentResponse.from(existing.getFirst()));
+        }
         Document stub = new Document();
         stub.setProject(project);
         stub.setUploadedBy(currentUser);
@@ -359,6 +373,7 @@ public class PaperController {
         stub.setDownloadToken(UUID.randomUUID().toString());
         stub = documentRepository.save(stub);
         paperProcessingService.createSectionsFromStandard(stub.getId(), project.getTargetStandard().name());
+        checkpointService.capture(projectId, "SETUP");
         return ResponseEntity.status(HttpStatus.CREATED).body(DocumentResponse.from(stub));
     }
 
@@ -415,36 +430,66 @@ public class PaperController {
             @Parameter(description = "File to upload") @RequestParam("file") MultipartFile file,
             @Parameter(description = "Project UUID") @RequestParam("projectId") UUID projectId) {
 
+        // DEBT-04: authorize before any mutation. A failed authz must leave every row intact.
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
+        currentUserService.requireProjectWriteAccess(currentUser, project);
+
         List<Document> existing = documentRepository
                 .findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER);
         if (!existing.isEmpty()) {
             Document paper = existing.getFirst();
             List<PaperSection> sections = paperSectionRepository
                     .findByDocumentIdOrderBySectionOrderAsc(paper.getId());
-            boolean hasWork = sections.stream().anyMatch(s ->
-                    (s.getContentTex() != null && !s.getContentTex().isBlank())
-                    || s.getAssignedUser() != null);
-            if (hasWork) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Project already has a paper with student work. "
-                        + "Delete the existing paper first.");
-            }
-            List<UUID> sectionIds = sections.stream().map(PaperSection::getId).toList();
-            if (!sectionIds.isEmpty()) {
-                sectionFeedbackRepository.deleteAllBySectionIdIn(sectionIds);
-            }
+            // DEBT-01: refuse to wipe a paper whose sections carry work, claims,
+            // feedback, or an open review round — otherwise claims are orphaned
+            // (section_id SET NULL) and instructor feedback is cascade-deleted.
+            requirePaperReplaceable(projectId, sections);
             paperSectionRepository.deleteByDocumentId(paper.getId());
             documentRepository.delete(paper);
         }
 
         DocumentResponse response = documentService.uploadDocument(projectId, file, DocumentType.PAPER);
 
-        Project project = projectRepository.findById(projectId).orElse(null);
-        if (project != null) {
-            project.setTargetStandard(PaperStandard.CUSTOM);
-            projectRepository.save(project);
-        }
+        project.setTargetStandard(PaperStandard.CUSTOM);
+        projectRepository.save(project);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    private void requirePaperReplaceable(UUID projectId, List<PaperSection> sections) {
+        boolean hasWork = sections.stream().anyMatch(s ->
+                (s.getContentTex() != null && !s.getContentTex().isBlank())
+                || s.getAssignedUser() != null);
+        if (hasWork) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Project already has a paper with student work. "
+                    + "Delete the existing paper first.");
+        }
+        boolean hasActiveClaims = sections.stream()
+                .anyMatch(s -> claimRepository.findBySectionId(s.getId()).stream()
+                        .anyMatch(Claim::isActive));
+        if (hasActiveClaims) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Cannot replace paper: one or more sections have active claims.");
+        }
+        if (sections.stream().anyMatch(this::hasFeedback)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Cannot replace paper: one or more sections have instructor feedback.");
+        }
+        boolean reviewOpen = feedbackRequestRepository.findByProjectIdOrderByRequestedAtDesc(projectId).stream()
+                .anyMatch(r -> r.getStatus() == FeedbackStatus.PENDING
+                        || r.getStatus() == FeedbackStatus.RETURNED);
+        if (reviewOpen) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Cannot replace paper while a feedback review is open.");
+        }
+    }
+
+    private boolean hasFeedback(PaperSection section) {
+        return instructorFeedbackRepository
+                .findByRequestProjectId(section.getDocument().getProject().getId()).stream()
+                .anyMatch(f -> section.getId().equals(f.getSection().getId()));
     }
 }

@@ -286,6 +286,25 @@ public class ProjectServiceImpl implements ProjectService {
         currentUserService.requireProjectManageAccess(currentUser, project);
         currentUserService.requireProjectWriteAccess(currentUser, project);
         List<ProjectMember> members = projectMemberRepository.findByProjectIdAndUserId(projectId, userId);
+        if (members.isEmpty()) {
+            throw new ResourceNotFoundException("Project member not found");
+        }
+        // DEBT-06: removing the instructor or the last leader leaves the project
+        // without its management invariants — refuse before deleting anything.
+        ProjectMember target = members.get(0);
+        if (target.getRole() == ProjectRole.INSTRUCTOR) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Cannot remove the instructor from the project.");
+        }
+        if (target.getRole() == ProjectRole.LEADER) {
+            long leaderCount = projectMemberRepository.findByProjectId(projectId).stream()
+                    .filter(member -> member.getRole() == ProjectRole.LEADER)
+                    .count();
+            if (leaderCount <= 1) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Cannot remove the last leader of the project.");
+            }
+        }
         members.forEach(member -> systemNotificationService.createNotification(
                 member.getUser(),
                 currentUser,

@@ -27,7 +27,8 @@ class AuthServiceImplAccountStatusTest {
     private final PasswordEncoder passwords = mock(PasswordEncoder.class);
     private final JwtUtils jwt = mock(JwtUtils.class);
     private final EmailVerificationService verification = mock(EmailVerificationService.class);
-    private final AuthServiceImpl service = new AuthServiceImpl(users, passwords, jwt, verification);
+    private final AuthServiceImpl service = new AuthServiceImpl(
+            users, passwords, jwt, verification, new com.evidencepilot.config.security.JwtSessionRegistry());
 
     @Test
     void registrationCreatesPendingStudent() {

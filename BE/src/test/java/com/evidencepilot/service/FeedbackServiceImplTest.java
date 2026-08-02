@@ -18,7 +18,6 @@ import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
-import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.impl.FeedbackServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -56,9 +55,6 @@ class FeedbackServiceImplTest {
 
     @Mock
     private ProjectRepository projectRepository;
-
-    @Mock
-    private UserRepository userRepository;
 
     @Mock
     private CurrentUserService currentUserService;
@@ -259,11 +255,27 @@ class FeedbackServiceImplTest {
     void findAllForCurrentUserUsesRoleScopedRepository() {
         User student = user(UserRole.STUDENT);
         when(currentUserService.requireCurrentUser()).thenReturn(student);
-        when(feedbackRequestRepository.findByStudentId(student.getId())).thenReturn(List.of());
+        when(feedbackRequestRepository.findByStudentIdOrderByRequestedAtDesc(student.getId())).thenReturn(List.of());
 
         assertThat(service().findAllForCurrentUser()).isEmpty();
 
-        verify(feedbackRequestRepository).findByStudentId(student.getId());
+        verify(feedbackRequestRepository).findByStudentIdOrderByRequestedAtDesc(student.getId());
+    }
+
+    @Test
+    void submitForReviewRejectsMismatchedInstructor() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User other = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(student);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+
+        assertThatThrownBy(() -> service().submitForReview(
+                project.getId(), new com.evidencepilot.dto.request.SubmitReviewRequest(other.getId())))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Instructor does not match");
     }
 
     @Test
@@ -294,6 +306,272 @@ class FeedbackServiceImplTest {
                 .hasMessageContaining("Invalid status");
     }
 
+    @Test
+    void updateStatusReturnsProjectToWorkOnRejected() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+        request.setStatus(FeedbackStatus.PENDING);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(feedbackRequestRepository.findById(request.getId())).thenReturn(Optional.of(request));
+        when(feedbackRequestRepository.save(request)).thenReturn(request);
+
+        service().updateStatus(request.getId(), "REJECTED");
+
+        assertThat(request.getStatus()).isEqualTo(FeedbackStatus.REJECTED);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.IN_PROGRESS);
+    }
+
+    @Test
+    void updateStatusAllowsReturnedToReviewed() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+        request.setStatus(FeedbackStatus.RETURNED);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(feedbackRequestRepository.findById(request.getId())).thenReturn(Optional.of(request));
+        when(feedbackRequestRepository.save(request)).thenReturn(request);
+
+        service().updateStatus(request.getId(), "REVIEWED");
+
+        assertThat(request.getStatus()).isEqualTo(FeedbackStatus.REVIEWED);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.APPROVED);
+    }
+
+    @Test
+    void updateStatusRejectsIllegalTransitions() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        FeedbackRequest reviewed = feedbackRequest(project, instructor, student);
+        reviewed.setStatus(FeedbackStatus.REVIEWED);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(feedbackRequestRepository.findById(reviewed.getId())).thenReturn(Optional.of(reviewed));
+
+        assertThatThrownBy(() -> service().updateStatus(reviewed.getId(), "RETURNED"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Illegal transition");
+    }
+
+    @Test
+    void updateStatusRejectsReturnedToReturned() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+        request.setStatus(FeedbackStatus.RETURNED);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(feedbackRequestRepository.findById(request.getId())).thenReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> service().updateStatus(request.getId(), "RETURNED"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Illegal transition");
+    }
+
+    @Test
+    void getFeedbackItemsReturnsSectionDetailsAndStaleFlag() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+        PaperSection section = section(project, "Introduction");
+        section.setVersion(2);
+        InstructorFeedback feedback = new InstructorFeedback();
+        feedback.setId(UUID.randomUUID());
+        feedback.setRequest(request);
+        feedback.setSection(section);
+        feedback.setInstructor(instructor);
+        feedback.setLineReference("L1");
+        feedback.setContent("Tighten intro.");
+        feedback.setSectionVersion(1);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(student);
+        when(feedbackRequestRepository.findById(request.getId())).thenReturn(Optional.of(request));
+        when(instructorFeedbackRepository.findByRequestId(request.getId())).thenReturn(List.of(feedback));
+        when(paperSectionRepository.findAllById(List.of(section.getId()))).thenReturn(List.of(section));
+
+        var items = service().getFeedbackItems(request.getId());
+
+        assertThat(items).hasSize(1);
+        assertThat(items.get(0).sectionTitle()).isEqualTo("Introduction");
+        assertThat(items.get(0).sectionVersion()).isEqualTo(1);
+        assertThat(items.get(0).stale()).isTrue();
+    }
+
+    @Test
+    void getFeedbackItemsMarksFreshAnchorsNotStale() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+        PaperSection section = section(project, "Method");
+        section.setVersion(2);
+        InstructorFeedback feedback = new InstructorFeedback();
+        feedback.setId(UUID.randomUUID());
+        feedback.setRequest(request);
+        feedback.setSection(section);
+        feedback.setInstructor(instructor);
+        feedback.setContent("Clarify method.");
+        feedback.setSectionVersion(2);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(student);
+        when(feedbackRequestRepository.findById(request.getId())).thenReturn(Optional.of(request));
+        when(instructorFeedbackRepository.findByRequestId(request.getId())).thenReturn(List.of(feedback));
+        when(paperSectionRepository.findAllById(List.of(section.getId()))).thenReturn(List.of(section));
+
+        var items = service().getFeedbackItems(request.getId());
+
+        assertThat(items.get(0).stale()).isFalse();
+    }
+
+    @Test
+    void getFeedbackItemsRejectsOutsider() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        User outsider = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(outsider);
+        when(feedbackRequestRepository.findById(request.getId())).thenReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> service().getFeedbackItems(request.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Feedback access denied.");
+    }
+
+    @Test
+    void updateFeedbackItemEditsContentAndBumpsAudit() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+        request.setStatus(FeedbackStatus.PENDING);
+        PaperSection section = section(project, "Intro");
+        InstructorFeedback feedback = feedback(instructor, request, section);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(instructorFeedbackRepository.findById(feedback.getId())).thenReturn(Optional.of(feedback));
+        when(instructorFeedbackRepository.save(any(InstructorFeedback.class))).thenReturn(feedback);
+
+        var updated = service().updateFeedbackItem(
+                feedback.getId(), new InstructorFeedbackRequest(section.getId(), "L9", "Reworded."));
+
+        assertThat(updated.content()).isEqualTo("Reworded.");
+        assertThat(updated.lineReference()).isEqualTo("L9");
+        assertThat(updated.updatedBy()).isEqualTo(instructor.getId());
+        assertThat(feedback.getUpdatedBy()).isEqualTo(instructor);
+    }
+
+    @Test
+    void updateFeedbackItemRejectsAnsweredItem() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+        request.setStatus(FeedbackStatus.RETURNED);
+        PaperSection section = section(project, "Intro");
+        InstructorFeedback feedback = feedback(instructor, request, section);
+        feedback.setAnswered(true);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(instructorFeedbackRepository.findById(feedback.getId())).thenReturn(Optional.of(feedback));
+
+        assertThatThrownBy(() -> service().updateFeedbackItem(
+                feedback.getId(), new InstructorFeedbackRequest(section.getId(), null, "Nope.")))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Answered feedback is immutable.");
+    }
+
+    @Test
+    void updateFeedbackItemRejectsNonAuthor() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User other = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+        request.setStatus(FeedbackStatus.PENDING);
+        PaperSection section = section(project, "Intro");
+        InstructorFeedback feedback = feedback(instructor, request, section);
+        when(currentUserService.requireCurrentUser()).thenReturn(other);
+        when(instructorFeedbackRepository.findById(feedback.getId())).thenReturn(Optional.of(feedback));
+
+        assertThatThrownBy(() -> service().updateFeedbackItem(
+                feedback.getId(), new InstructorFeedbackRequest(section.getId(), null, "Nope.")))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Feedback access denied.");
+    }
+
+    @Test
+    void deleteFeedbackItemDeletesWhenEditable() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+        request.setStatus(FeedbackStatus.PENDING);
+        PaperSection section = section(project, "Intro");
+        InstructorFeedback feedback = feedback(instructor, request, section);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(instructorFeedbackRepository.findById(feedback.getId())).thenReturn(Optional.of(feedback));
+
+        service().deleteFeedbackItem(feedback.getId());
+
+        verify(instructorFeedbackRepository).delete(feedback);
+    }
+
+    @Test
+    void deleteFeedbackItemRejectsAnsweredItem() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+        request.setStatus(FeedbackStatus.RETURNED);
+        PaperSection section = section(project, "Intro");
+        InstructorFeedback feedback = feedback(instructor, request, section);
+        feedback.setAnswered(true);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(instructorFeedbackRepository.findById(feedback.getId())).thenReturn(Optional.of(feedback));
+
+        assertThatThrownBy(() -> service().deleteFeedbackItem(feedback.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Answered feedback is immutable.");
+    }
+
+    @Test
+    void lastAnswerAutoTransitionsRequestAndProjectToApproved() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        project.setStatus(ProjectStatus.RETURNED);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+        request.setStatus(FeedbackStatus.RETURNED);
+        PaperSection section = section(project, "Intro");
+        InstructorFeedback feedback = feedback(instructor, request, section);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(student);
+        when(instructorFeedbackRepository.findById(feedback.getId())).thenReturn(Optional.of(feedback));
+        when(instructorFeedbackRepository.save(any(InstructorFeedback.class))).thenReturn(feedback);
+        when(instructorFeedbackRepository.countByRequestIdAndAnsweredFalse(request.getId())).thenReturn(0L);
+
+        service().answerFeedback(feedback.getId(), "Fixed.");
+
+        assertThat(feedback.isAnswered()).isTrue();
+        assertThat(request.getStatus()).isEqualTo(FeedbackStatus.REVIEWED);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.APPROVED);
+        verify(checkpointService).capture(project.getId(), "REVIEW_STATUS:REVIEWED");
+    }
+
+    private InstructorFeedback feedback(User instructor, FeedbackRequest request, PaperSection section) {
+        InstructorFeedback feedback = new InstructorFeedback();
+        feedback.setId(UUID.randomUUID());
+        feedback.setRequest(request);
+        feedback.setSection(section);
+        feedback.setInstructor(instructor);
+        feedback.setContent("Original.");
+        feedback.setSectionVersion(section.getVersion());
+        return feedback;
+    }
+
     private FeedbackServiceImpl service() {
         return new FeedbackServiceImpl(
                 feedbackRequestRepository,
@@ -301,7 +579,6 @@ class FeedbackServiceImplTest {
                 paperSectionRepository,
                 documentRepository,
                 projectRepository,
-                userRepository,
                 currentUserService,
                 systemNotificationService,
                 paperProcessingService,

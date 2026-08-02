@@ -22,8 +22,14 @@ class JwtAuthenticationFilterTest {
 
     private final JwtUtils jwtUtils = mock(JwtUtils.class);
     private final UserRepository users = mock(UserRepository.class);
-    private final JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtUtils, users);
+    private final JwtSessionRegistry registry = new JwtSessionRegistry();
+    private final JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtUtils, users, registry);
     private final FilterChain chain = mock(FilterChain.class);
+
+    private void stubRegisteredJti(String token, String jti) {
+        when(jwtUtils.extractJti(token)).thenReturn(jti);
+        registry.register(jti);
+    }
 
     @AfterEach
     void cleanSecurityContext() {
@@ -57,10 +63,23 @@ class JwtAuthenticationFilterTest {
         var request = request("valid");
         when(jwtUtils.validateToken("valid")).thenReturn(true);
         when(jwtUtils.extractUserId("valid")).thenReturn(userId);
+        stubRegisteredJti("valid", "jti-valid");
 
         filter.doFilter(request, new MockHttpServletResponse(), chain);
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    void revokedJti_continuesWithoutAuthentication() throws Exception {
+        var request = request("valid");
+        when(jwtUtils.validateToken("valid")).thenReturn(true);
+        when(jwtUtils.extractJti("valid")).thenReturn("jti-never-registered");
+
+        filter.doFilter(request, new MockHttpServletResponse(), chain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        verifyNoInteractions(users);
     }
 
     @Test
@@ -77,6 +96,7 @@ class JwtAuthenticationFilterTest {
         when(jwtUtils.extractRole("valid")).thenReturn("ADMIN");
         when(jwtUtils.extractTokenVersion("valid")).thenReturn(3);
         when(users.findById(userId)).thenReturn(Optional.of(user));
+        stubRegisteredJti("valid", "jti-valid");
 
         filter.doFilter(request, new MockHttpServletResponse(), chain);
 
@@ -99,6 +119,7 @@ class JwtAuthenticationFilterTest {
         when(jwtUtils.extractUserId("valid")).thenReturn(userId);
         when(jwtUtils.extractTokenVersion("valid")).thenReturn(1);
         when(users.findById(userId)).thenReturn(Optional.of(user));
+        stubRegisteredJti("valid", "jti-valid");
 
         filter.doFilter(request, new MockHttpServletResponse(), chain);
 
@@ -119,6 +140,7 @@ class JwtAuthenticationFilterTest {
         when(jwtUtils.extractUserId("valid")).thenReturn(userId);
         when(jwtUtils.extractTokenVersion("valid")).thenReturn(3);
         when(users.findById(userId)).thenReturn(Optional.of(user));
+        stubRegisteredJti("valid", "jti-valid");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         filter.doFilter(request("valid"), response, chain);
@@ -139,6 +161,7 @@ class JwtAuthenticationFilterTest {
         when(jwtUtils.extractUserId("legacy")).thenReturn(userId);
         when(jwtUtils.extractTokenVersion("legacy")).thenReturn(null);
         when(users.findById(userId)).thenReturn(Optional.of(user));
+        stubRegisteredJti("legacy", "jti-legacy");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         filter.doFilter(request("legacy"), response, chain);
@@ -159,6 +182,7 @@ class JwtAuthenticationFilterTest {
         when(jwtUtils.extractUserId("valid")).thenReturn(userId);
         when(jwtUtils.extractTokenVersion("valid")).thenReturn(2);
         when(users.findById(userId)).thenReturn(Optional.of(user));
+        stubRegisteredJti("valid", "jti-valid");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         filter.doFilter(request("valid"), response, chain);

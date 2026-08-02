@@ -55,7 +55,7 @@ class TraceabilityExportServiceImplTest {
                 projectId, DocumentType.SOURCE)).thenReturn(List.of());
         when(claims.findByProjectId(projectId)).thenReturn(List.of());
         when(documents.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.SOURCE)).thenReturn(List.of());
-        when(feedback.findByProjectId(projectId)).thenReturn(List.of());
+        when(feedback.findByProjectIdOrderByRequestedAtDesc(projectId)).thenReturn(List.of());
 
         var response = service.exportTraceability(projectId);
 

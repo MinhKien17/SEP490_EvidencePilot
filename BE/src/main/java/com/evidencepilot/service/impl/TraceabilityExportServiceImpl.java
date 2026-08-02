@@ -100,7 +100,7 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
                 .toList();
 
         List<TraceabilityExportResponse.TraceabilityFeedback> feedback = feedbackRequestRepository
-                .findByProjectId(projectId)
+                .findByProjectIdOrderByRequestedAtDesc(projectId)
                 .stream()
                 .map(request -> new TraceabilityExportResponse.TraceabilityFeedback(
                         request.getId(),

@@ -39,7 +39,8 @@ class ProjectRouteMappingTest {
             SourceController.class,
             SystemNotificationController.class,
             TraceabilityExportController.class,
-            UserController.class
+            UserController.class,
+            JobController.class
     };
 
     @Test
@@ -52,6 +53,7 @@ class ProjectRouteMappingTest {
                 "POST /api/auth/register",
                 "GET /api/auth/verify-email",
                 "POST /api/auth/login",
+                "POST /api/auth/refresh",
                 "POST /api/auth/password-reset/request",
                 "POST /api/auth/password-reset/confirm",
                 "GET /api/users",
@@ -139,10 +141,13 @@ class ProjectRouteMappingTest {
                 "GET /api/claims/audit/{projectId}",
                 "PATCH /api/claims/mappings/{mappingId}/review",
                 "GET /api/feedback-requests",
+                "GET /api/feedback-requests/{id}/feedback",
                 "POST /api/projects/{projectId}/reviews",
                 "POST /api/feedback-requests/{id}/feedback",
                 "PATCH /api/feedback-requests/{id}/status",
                 "POST /api/instructor-feedback/{id}/answer",
+                "PATCH /api/instructor-feedback/{id}",
+                "DELETE /api/instructor-feedback/{id}",
                 "GET /api/notifications",
                 "GET /api/notifications/unread-count",
                 "PATCH /api/notifications/{id}/read",
@@ -150,6 +155,7 @@ class ProjectRouteMappingTest {
                 "GET /api/projects/{projectId}/traceability/csv",
                 "GET /api/projects/{projectId}/progress-report",
                 "GET /api/projects/{projectId}/checkpoints/diff",
+                "GET /api/projects/{projectId}/checkpoints/latest/sections/{sectionId}",
                 "GET /api/health",
                 "GET /api/health/live",
                 "GET /api/health/ready",
@@ -162,8 +168,9 @@ class ProjectRouteMappingTest {
                 "POST /api/papers/{documentId}/sections/{sectionId}/rollback",
                 "PUT /api/papers/{id}",
                 "POST /api/projects/{projectId}/papers/init",
-                "POST /api/projects/{projectId}/papers/reset-standard"));
-        assertThat(routes).hasSize(114);
+                "POST /api/projects/{projectId}/papers/reset-standard",
+                "GET /api/jobs/{jobId}"));
+        assertThat(routes).hasSize(120);
     }
 
     @Test

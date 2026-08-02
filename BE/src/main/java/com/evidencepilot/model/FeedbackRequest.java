@@ -43,6 +43,9 @@ public class FeedbackRequest {
     @Column(name = "requested_at")
     private LocalDateTime requestedAt;
 
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
     @Column(name = "section_validation", columnDefinition = "TEXT")
     private String sectionValidation;
 

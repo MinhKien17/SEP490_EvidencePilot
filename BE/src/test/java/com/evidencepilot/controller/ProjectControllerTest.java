@@ -148,7 +148,16 @@ class ProjectControllerTest {
     void getProjectClaims_bindsDefaultPaging() throws Exception {
         UUID id = UUID.randomUUID();
         mockMvc.perform(get("/api/projects/{id}/claims", id)).andExpect(status().isOk());
-        verify(claimService).getClaimsByProject(id, 0, 20, "createdAt,desc", null, null);
+        verify(claimService).getClaimsByProject(id, 0, 20, "createdAt,desc", null, null, null);
+    }
+
+    @Test
+    void getProjectClaims_bindsSectionId() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        mockMvc.perform(get("/api/projects/{id}/claims", id).param("sectionId", sectionId.toString()))
+                .andExpect(status().isOk());
+        verify(claimService).getClaimsByProject(id, 0, 20, "createdAt,desc", null, null, sectionId);
     }
 
     @Test

@@ -28,6 +28,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtils jwtUtils;
     private final UserRepository userRepository;
+    private final JwtSessionRegistry sessionRegistry;
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -53,7 +54,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         String token = authHeader.substring(7);
-        if (!jwtUtils.validateToken(token)) {
+        if (!jwtUtils.validateToken(token) || !sessionRegistry.isValid(jwtUtils.extractJti(token))) {
             filterChain.doFilter(request, response);
             return;
         }

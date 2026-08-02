@@ -3,15 +3,15 @@ package com.evidencepilot.controller;
 import com.evidencepilot.dto.request.ClaimCreationRequest;
 import com.evidencepilot.dto.request.ClaimEvaluationRequest;
 import com.evidencepilot.dto.request.ClaimMatchEvaluationRequest;
+import com.evidencepilot.dto.request.ClaimUpdateRequest;
 import com.evidencepilot.dto.request.MappingReviewRequest;
 import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.dto.response.ClaimEvidenceMappingResponse;
 import com.evidencepilot.dto.response.ClaimMatchCandidateResponse;
-import com.evidencepilot.dto.response.ClaimQualityEvaluationResponse;
 import com.evidencepilot.dto.response.ClaimResponse;
 import com.evidencepilot.dto.response.ClaimSourceAuditResponse;
+import com.evidencepilot.dto.response.JobSubmitResponse;
 import com.evidencepilot.dto.response.PagedResponse;
-import com.evidencepilot.model.enums.FunctionalType;
 import com.evidencepilot.service.ClaimService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -21,6 +21,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -34,7 +35,6 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -92,21 +92,21 @@ public class ClaimController {
         return claimService.createClaim(request);
     }
 
-    @Operation(summary = "Evaluate Claim Quality before creation",
-            description = "Scores a Claim draft against the Claim Quality rubric without persisting it.")
+    @Operation(summary = "Evaluate Claim Quality before creation (async)",
+            description = "Validates access synchronously, then queues an AI evaluation job and "
+                    + "returns 202 with a jobId. Poll GET /api/jobs/{jobId} for the result.")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Claim Quality evaluation returned"),
+            @ApiResponse(responseCode = "202", description = "Evaluation job accepted"),
             @ApiResponse(responseCode = "400", description = "Validation error"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
             @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
-            @ApiResponse(responseCode = "404", description = "Section not found"),
-            @ApiResponse(responseCode = "502", description = "AI returned an invalid evaluation"),
-            @ApiResponse(responseCode = "503", description = "AI worker unavailable")
+            @ApiResponse(responseCode = "404", description = "Section not found")
     })
     @PostMapping("/evaluate")
-    public ClaimQualityEvaluationResponse evaluateClaim(
+    public ResponseEntity<JobSubmitResponse> evaluateClaim(
             @Valid @RequestBody ClaimEvaluationRequest request) {
-        return claimService.evaluateClaim(request);
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(claimService.submitClaimEvaluation(request));
     }
 
     @Operation(summary = "Update a claim",
@@ -122,15 +122,10 @@ public class ClaimController {
     @PutMapping("/{id}")
     public ClaimResponse updateClaim(
             @Parameter(description = "Claim UUID") @PathVariable UUID id,
-            @RequestBody Map<String, Object> body) {
-        String content = (String) body.get("content");
-        Float aiConfidenceScore = body.get("aiConfidenceScore") != null
-                ? ((Number) body.get("aiConfidenceScore")).floatValue()
-                : null;
-        FunctionalType functionalType = body.get("functionalType") != null
-                ? FunctionalType.valueOf((String) body.get("functionalType"))
-                : null;
-        return claimService.updateClaim(id, content, aiConfidenceScore, functionalType);
+            @Valid @RequestBody ClaimUpdateRequest request) {
+        // DEBT-02: aiConfidenceScore is intentionally not accepted here —
+        // it is server-computed only and must never be client-supplied.
+        return claimService.updateClaim(id, request.content(), null, request.functionalType());
     }
 
     @Operation(summary = "Soft-delete a claim",
@@ -175,22 +170,22 @@ public class ClaimController {
         return claimService.searchMatches(id);
     }
 
-    @Operation(summary = "Evaluate a selected source match",
-            description = "Runs generative AI evaluation for exactly one selected SOURCE chunk "
-                    + "and creates a PENDING suggestion.")
+    @Operation(summary = "Evaluate a selected source match (async)",
+            description = "Validates access synchronously, then queues an AI evaluation job and "
+                    + "returns 202 with a jobId. Poll GET /api/jobs/{jobId} for the result.")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Evaluation returned"),
+            @ApiResponse(responseCode = "202", description = "Evaluation job accepted"),
             @ApiResponse(responseCode = "400", description = "Chunk is not an eligible project source"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
             @ApiResponse(responseCode = "404", description = "Claim or chunk not found"),
-            @ApiResponse(responseCode = "409", description = "Claim changed during evaluation"),
-            @ApiResponse(responseCode = "502", description = "AI returned an invalid evaluation")
+            @ApiResponse(responseCode = "409", description = "Claim changed during evaluation")
     })
     @PostMapping("/{id}/suggestions/evaluate")
-    public AiSuggestionResponse evaluateMatch(
+    public ResponseEntity<JobSubmitResponse> evaluateMatch(
             @Parameter(description = "Claim UUID") @PathVariable UUID id,
             @Valid @RequestBody ClaimMatchEvaluationRequest request) {
-        return claimService.evaluateMatch(id, request.documentChunkId());
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(claimService.submitMatchEvaluation(id, request.documentChunkId()));
     }
 
     @Operation(summary = "Update suggestion status",

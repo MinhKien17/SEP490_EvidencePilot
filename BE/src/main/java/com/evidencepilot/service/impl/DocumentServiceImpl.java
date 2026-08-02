@@ -14,6 +14,7 @@ import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.CollectionRepository;
@@ -61,6 +62,8 @@ public class DocumentServiceImpl implements DocumentService {
 
     private static final Set<String> DOCUMENT_SORT_FIELDS = Set.of(
             "originalFilename", "docType", "processingStatus", "createdAt", "fileSizeBytes");
+
+    private static final int MAX_EXTRACTED_TEXT_LENGTH = 5_000_000;
 
     @Value("${minio.bucket-name}")
     private String bucketName;
@@ -456,9 +459,14 @@ public class DocumentServiceImpl implements DocumentService {
     @Override
     @Transactional
     public DocumentTextResponse saveDraft(UUID documentId, String extractedText) {
+        if (extractedText != null && extractedText.length() > MAX_EXTRACTED_TEXT_LENGTH) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Text exceeds the maximum allowed length");
+        }
         var currentUser = currentUserService.requireCurrentUser();
         Document doc = findDocument(documentId);
-        requireDocumentAccess(currentUser, doc);
+        // DEBT-05: writing a document's text is a mutation — read access is not enough.
+        requireDocumentWriteAccess(currentUser, doc);
         var text = documentTextRepository.findByDocumentId(documentId);
         if (text == null) {
             text = new DocumentText();
@@ -468,6 +476,27 @@ public class DocumentServiceImpl implements DocumentService {
         text.setExtractedText(extractedText);
         documentTextRepository.save(text);
         return documentMapper.toDocumentTextResponse(text);
+    }
+
+    @Override
+    @Transactional
+    public DocumentResponse reExtract(UUID documentId) {
+        var currentUser = currentUserService.requireCurrentUser();
+        Document doc = findDocument(documentId);
+        requireDocumentWriteAccess(currentUser, doc);
+        if (doc.getFileUrl() == null || "pending".equals(doc.getFileUrl())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "No file in storage for this document");
+        }
+        ProcessingStatus status = doc.getProcessingStatus();
+        // DEBT-07: only re-process documents in a terminal state; refuse while a
+        // processing round is already in flight to avoid queue spam.
+        if (status != ProcessingStatus.READY && status != ProcessingStatus.FAILED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Document is currently " + status + " and cannot be re-extracted");
+        }
+        return DocumentResponse.from(
+                documentPersistenceService.markDocumentAsUploaded(documentId, doc.getFileUrl()));
     }
 
     @Override
@@ -519,6 +548,13 @@ public class DocumentServiceImpl implements DocumentService {
         Project project = doc.getProject();
         if (project == null && doc.getCollection() != null) {
             project = doc.getCollection().getProject();
+        }
+        long activeMappingCount = claimEvidenceMappingRepository
+                .findByDocumentChunkDocumentIdAndStatus(id, MappingStatus.ACTIVE).size();
+        if (activeMappingCount > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Source is mapped to " + activeMappingCount + " active claim evidence mapping(s). "
+                            + "Remove those mappings before deleting this source.");
         }
         doc.setActive(false);
         documentRepository.save(doc);

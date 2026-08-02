@@ -11,11 +11,11 @@ import java.util.UUID;
 @Repository
 public interface FeedbackRequestRepository extends JpaRepository<FeedbackRequest, UUID> {
 
-    List<FeedbackRequest> findByProjectId(UUID projectId);
+    List<FeedbackRequest> findByProjectIdOrderByRequestedAtDesc(UUID projectId);
 
-    List<FeedbackRequest> findByStudentId(UUID studentId);
+    List<FeedbackRequest> findByStudentIdOrderByRequestedAtDesc(UUID studentId);
 
-    List<FeedbackRequest> findByInstructorId(UUID instructorId);
+    List<FeedbackRequest> findByInstructorIdOrderByRequestedAtDesc(UUID instructorId);
 
     List<FeedbackRequest> findByStatus(FeedbackStatus status);
 

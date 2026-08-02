@@ -9,6 +9,11 @@ export default function Login() {
 
   const [form, setForm] = useState({ email: '', passwordHash: '' });
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState(() => {
+    const n = sessionStorage.getItem('auth_expired_notice');
+    if (n) sessionStorage.removeItem('auth_expired_notice');
+    return n;
+  });
   const [loading, setLoading] = useState(false);
   const [showGuideModal, setShowGuideModal] = useState(false);
 
@@ -16,6 +21,22 @@ export default function Login() {
 
   function handleChange(e) {
     setForm({ ...form, [e.target.name]: e.target.value });
+  }
+
+  function redirectAfterLogin(role) {
+    const origin = sessionStorage.getItem('login_origin');
+    if (origin) {
+      sessionStorage.removeItem('login_origin');
+      navigate(origin);
+      return;
+    }
+    if (role === 'ADMIN') {
+      navigate('/admin/dashboard');
+    } else if (role === 'INSTRUCTOR') {
+      navigate('/instructor/dashboard');
+    } else {
+      navigate('/student/projects');
+    }
   }
 
   async function handleSubmit(e) {
@@ -34,14 +55,7 @@ export default function Login() {
       if (!token) throw new Error('Token not found in response');
 
       login(token, role);
-
-      if (role === 'ADMIN') {
-        navigate('/admin/dashboard');
-      } else if (role === 'INSTRUCTOR') {
-        navigate('/instructor/dashboard');
-      } else {
-        navigate('/student/projects');
-      }
+      redirectAfterLogin(role);
     } catch (err) {
       const msg = err.response?.data?.message
         ?? err.response?.data?.error
@@ -68,13 +82,7 @@ export default function Login() {
       if (!token) throw new Error('Token not found in response');
 
       login(token, role);
-      if (role === 'ADMIN') {
-        navigate('/admin/dashboard');
-      } else if (role === 'INSTRUCTOR') {
-        navigate('/instructor/dashboard');
-      } else {
-        navigate('/student/projects');
-      }
+      redirectAfterLogin(role);
     } catch (err) {
       // Fallback: fill email and let user enter password manually
       setForm({ email, passwordHash: '' });
@@ -202,6 +210,12 @@ export default function Login() {
                 className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all shadow-sm"
               />
             </div>
+
+            {notice && !error && (
+              <div className="p-3 bg-amber-50 text-amber-700 rounded-lg text-sm border border-amber-200">
+                {notice}
+              </div>
+            )}
 
             {error && (
               <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm border border-red-100">

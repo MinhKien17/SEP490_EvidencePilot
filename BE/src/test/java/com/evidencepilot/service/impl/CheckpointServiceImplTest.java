@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -58,6 +59,54 @@ class CheckpointServiceImplTest {
                 objectMapper);
         project = new Project();
         project.setId(UUID.randomUUID());
+    }
+
+    @Test
+    void getLatestSectionBaselineReturnsTextFromNewestSnapshot() {
+        String json = "{\"sections\":{\"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\":"
+                + "{\"text\":\"hello world\",\"words\":2}}}";
+        ProjectCheckpoint checkpoint = checkpoint(json, "SUBMIT_FOR_REVIEW", 1);
+        when(checkpointRepository.findByProjectIdOrderByCreatedAtDesc(project.getId()))
+                .thenReturn(List.of(checkpoint));
+
+        var baseline = service.getLatestSectionBaseline(
+                project.getId(), UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), null);
+
+        assertThat(baseline.contentTex()).isEqualTo("hello world");
+        assertThat(baseline.trigger()).isEqualTo("SUBMIT_FOR_REVIEW");
+    }
+
+    @Test
+    void getLatestSectionBaselineSkipsCheckpointsCreatedAfterBefore() {
+        String olderJson = "{\"sections\":{\"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\":"
+                + "{\"text\":\"baseline text\",\"words\":2}}}";
+        String submitJson = "{\"sections\":{\"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\":"
+                + "{\"text\":\"submitted text\",\"words\":2}}}";
+        ProjectCheckpoint submitLock = checkpoint(submitJson, "SUBMIT_FOR_REVIEW", 0);
+        ProjectCheckpoint previousLock = checkpoint(olderJson, "REVIEW_STATUS:RETURNED", 2);
+        when(checkpointRepository.findByProjectIdOrderByCreatedAtDesc(project.getId()))
+                .thenReturn(List.of(submitLock, previousLock));
+
+        var baseline = service.getLatestSectionBaseline(
+                project.getId(), UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                previousLock.getCreatedAt().plusHours(1));
+
+        assertThat(baseline.contentTex()).isEqualTo("baseline text");
+        assertThat(baseline.trigger()).isEqualTo("REVIEW_STATUS:RETURNED");
+    }
+
+    @Test
+    void getLatestSectionBaselineReturnsNullWithoutCheckpointsOrText() {
+        when(checkpointRepository.findByProjectIdOrderByCreatedAtDesc(project.getId()))
+                .thenReturn(List.of());
+        assertThat(service.getLatestSectionBaseline(
+                project.getId(), UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), null)).isNull();
+
+        String legacyJson = "{\"sections\":{\"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\":120}}";
+        when(checkpointRepository.findByProjectIdOrderByCreatedAtDesc(project.getId()))
+                .thenReturn(List.of(checkpoint(legacyJson, "SUBMIT_FOR_REVIEW", 1)));
+        assertThat(service.getLatestSectionBaseline(
+                project.getId(), UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"), null)).isNull();
     }
 
     @Test
@@ -109,6 +158,7 @@ class CheckpointServiceImplTest {
     void capturePersistsSnapshotAndNeverThrows() {
         when(projectRepository.findById(project.getId())).thenReturn(java.util.Optional.of(project));
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(mappingRepository.findByClaimIdIn(any())).thenReturn(List.of());
         when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
                 eq(project.getId()), eq(com.evidencepilot.model.enums.DocumentType.PAPER)))
                 .thenReturn(List.of());
@@ -117,6 +167,23 @@ class CheckpointServiceImplTest {
         service.capture(project.getId(), "SUBMIT_FOR_REVIEW");
 
         verify(checkpointRepository).save(any(ProjectCheckpoint.class));
+    }
+
+    @Test
+    void captureBatchesMappingLookupsInSingleQuery() {
+        Claim claim = new Claim();
+        claim.setId(UUID.randomUUID());
+        claim.setActive(true);
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of(claim));
+        when(mappingRepository.findByClaimIdIn(List.of(claim.getId()))).thenReturn(List.of());
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
+                eq(project.getId()), eq(com.evidencepilot.model.enums.DocumentType.PAPER)))
+                .thenReturn(List.of());
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId())).thenReturn(List.of());
+
+        service.capture(project.getId(), "SUBMIT_FOR_REVIEW");
+
+        verify(mappingRepository, times(1)).findByClaimIdIn(List.of(claim.getId()));
     }
 
     @Test

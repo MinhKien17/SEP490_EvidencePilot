@@ -2,6 +2,7 @@ package com.evidencepilot.service;
 
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.Project;
+import com.evidencepilot.model.ProjectMedia;
 import com.evidencepilot.model.User;
 import com.evidencepilot.repository.ProjectMediaRepository;
 import com.evidencepilot.repository.ProjectRepository;
@@ -9,15 +10,24 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -79,6 +89,69 @@ class MediaAssetServiceTest {
 
         verify(objectStorage, never()).write(any(), any(InputStream.class), any(Long.class), any());
         verify(projectMediaRepository, never()).save(any());
+    }
+
+    @Test
+    void listByProject_requiresProjectAccess() {
+        UUID projectId = UUID.randomUUID();
+        when(projectRepository.findById(projectId))
+                .thenReturn(Optional.of(project(projectId)));
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "denied"))
+                .when(currentUserService).requireProjectAccess(any(), any());
+
+        assertThrows(ResponseStatusException.class,
+                () -> service().listByProject(projectId));
+        verify(projectMediaRepository, never()).findByProjectId(any());
+    }
+
+    @Test
+    void getSignedUrl_requiresProjectAccess() {
+        UUID mediaId = UUID.randomUUID();
+        ProjectMedia media = new ProjectMedia();
+        media.setId(mediaId);
+        media.setProject(project(UUID.randomUUID()));
+        when(projectMediaRepository.findById(mediaId)).thenReturn(Optional.of(media));
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "denied"))
+                .when(currentUserService).requireProjectAccess(any(), any());
+
+        assertThrows(ResponseStatusException.class,
+                () -> service().getSignedUrl(mediaId));
+        verify(objectStorage, never()).presignedGetUrl(any(), any(Integer.class));
+    }
+
+    @Test
+    void getSignedUrlsBatchesPresignsAndChecksAccessOncePerProject() {
+        Project project = project(UUID.randomUUID());
+        ProjectMedia first = new ProjectMedia();
+        first.setId(UUID.randomUUID());
+        first.setProject(project);
+        first.setStorageKey("media/a");
+        ProjectMedia second = new ProjectMedia();
+        second.setId(UUID.randomUUID());
+        second.setProject(project);
+        second.setStorageKey("media/b");
+        when(projectMediaRepository.findAllById(List.of(first.getId(), second.getId())))
+                .thenReturn(List.of(first, second));
+        when(objectStorage.presignedGetUrl("media/a", 60)).thenReturn("https://a");
+        when(objectStorage.presignedGetUrl("media/b", 60)).thenReturn("https://b");
+
+        Map<UUID, String> urls = service().getSignedUrls(List.of(first.getId(), second.getId()));
+
+        assertThat(urls).containsEntry(first.getId(), "https://a")
+                .containsEntry(second.getId(), "https://b");
+        verify(currentUserService, times(1)).requireProjectAccess(any(), eq(project));
+    }
+
+    @Test
+    void getSignedUrlsSkipsUnknownIdsAndHandlesEmpty() {
+        assertThat(service().getSignedUrls(null)).isEmpty();
+        assertThat(service().getSignedUrls(List.of())).isEmpty();
+    }
+
+    private static Project project(UUID id) {
+        Project p = new Project();
+        p.setId(id);
+        return p;
     }
 
     private MediaAssetService service() {

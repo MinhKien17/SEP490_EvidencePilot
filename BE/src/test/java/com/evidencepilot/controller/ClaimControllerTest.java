@@ -52,23 +52,26 @@ class ClaimControllerTest {
     }
 
     @Test
-    void evaluateClaim_returns200WithoutCreatingClaim() throws Exception {
+    void evaluateClaim_returns202WithJobIdWithoutCreatingClaim() throws Exception {
         UUID sectionId = UUID.randomUUID();
+        UUID jobId = UUID.randomUUID();
+        when(service.submitClaimEvaluation(any(ClaimEvaluationRequest.class)))
+                .thenReturn(new com.evidencepilot.dto.response.JobSubmitResponse(jobId));
         mockMvc.perform(post("/api/claims/evaluate").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"sectionId\":\"" + sectionId
                                 + "\",\"content\":\"A Claim draft\"}"))
-                .andExpect(status().isOk());
-        verify(service).evaluateClaim(any(ClaimEvaluationRequest.class));
+                .andExpect(status().isAccepted());
+        verify(service).submitClaimEvaluation(any(ClaimEvaluationRequest.class));
         verify(service, never()).createClaim(any());
     }
 
     @Test
-    void updateClaim_bindsBodyValues() throws Exception {
+    void updateClaim_ignoresClientAiScoreAndBindsContent() throws Exception {
         UUID id = UUID.randomUUID();
         mockMvc.perform(put("/api/claims/{id}", id).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"content\":\"Updated\",\"aiConfidenceScore\":0.75}"))
                 .andExpect(status().isOk());
-        verify(service).updateClaim(id, "Updated", 0.75f, null);
+        verify(service).updateClaim(id, "Updated", null, null);
     }
 
     @Test
@@ -78,6 +81,24 @@ class ClaimControllerTest {
                         .content("{\"content\":\"Updated\",\"functionalType\":\"EMPIRICAL\"}"))
                 .andExpect(status().isOk());
         verify(service).updateClaim(id, "Updated", null, FunctionalType.EMPIRICAL);
+    }
+
+    @Test
+    void updateClaim_rejectsBlankContent() throws Exception {
+        UUID id = UUID.randomUUID();
+        mockMvc.perform(put("/api/claims/{id}", id).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"\"}"))
+                .andExpect(status().isBadRequest());
+        verify(service, never()).updateClaim(any(), any(), any(), any());
+    }
+
+    @Test
+    void updateClaim_rejectsInvalidFunctionalType() throws Exception {
+        UUID id = UUID.randomUUID();
+        mockMvc.perform(put("/api/claims/{id}", id).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"Updated\",\"functionalType\":\"NOT_A_TYPE\"}"))
+                .andExpect(status().isBadRequest());
+        verify(service, never()).updateClaim(any(), any(), any(), any());
     }
 
     @Test
@@ -103,14 +124,16 @@ class ClaimControllerTest {
     }
 
     @Test
-    void evaluateMatch_bindsSelectedChunk() throws Exception {
+    void evaluateMatch_returns202AndBindsSelectedChunk() throws Exception {
         UUID claimId = UUID.randomUUID();
         UUID chunkId = UUID.randomUUID();
+        when(service.submitMatchEvaluation(claimId, chunkId))
+                .thenReturn(new com.evidencepilot.dto.response.JobSubmitResponse(UUID.randomUUID()));
         mockMvc.perform(post("/api/claims/{id}/suggestions/evaluate", claimId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"documentChunkId\":\"" + chunkId + "\"}"))
-                .andExpect(status().isOk());
-        verify(service).evaluateMatch(claimId, chunkId);
+                .andExpect(status().isAccepted());
+        verify(service).submitMatchEvaluation(claimId, chunkId);
     }
 
     @Test

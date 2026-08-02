@@ -20,7 +20,6 @@ import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.ReviewSnapshotRepository;
-import com.evidencepilot.repository.SectionFeedbackRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.AuditService;
@@ -154,7 +153,7 @@ class AiReviewEvalTest {
                 aiModelClient, sectionRepository, claimRepositoryAll,
                 mock(com.evidencepilot.repository.ClaimEvidenceMappingRepository.class),
                 feedbackRepository, consistency, evidenceFilter,
-                mock(AuditService.class), objectMapper, mock(SectionFeedbackRepository.class),
+                mock(AuditService.class), objectMapper,
                 documentRepository, mock(ProjectMapper.class), currentUserService,
                 mock(PaperStandardService.class), mock(UserRepository.class),
                 mock(ProjectRepository.class), mock(SystemNotificationService.class),

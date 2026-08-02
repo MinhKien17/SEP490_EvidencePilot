@@ -39,7 +39,6 @@ export default function WorkspaceLayout() {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showOverview, setShowOverview] = useState(false);
   const [sectionsExpanded, setSectionsExpanded] = useState(true);
-  const [assignedExpanded, setAssignedExpanded] = useState(true);
   const [showReviseModal, setShowReviseModal] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
@@ -104,19 +103,37 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [claimCandidates, setClaimCandidates] = useState([]);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [candidateError, setCandidateError] = useState('');
   const [evaluatingChunkId, setEvaluatingChunkId] = useState(null);
   const [updatingSuggestionId, setUpdatingSuggestionId] = useState(null);
   const [sections, setSections] = useState([]);
   const [selectedSectionId, setSelectedSectionId] = useState('');
+  const [loadErrors, setLoadErrors] = useState([]);
+  const [creatingClaim, setCreatingClaim] = useState(false);
+  const [submittingReview, setSubmittingReview] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const stompRef = useRef(null);
   const editorRef = useRef(null);
   const claimEvaluationRequestRef = useRef(0);
+  const matchFetchRequestRef = useRef(0);
+  const candidateSearchRequestRef = useRef(0);
+  const loadRequestRef = useRef(0);
+  const projectRef = useRef(null);
+  const selectedSectionIdRef = useRef('');
+  const codeContentRef = useRef('');
+  const graphScopeRef = useRef('all');
+  const dirtySectionsRef = useRef(new Set());
+  const saveInFlightRef = useRef(new Map());
+  const creatingClaimRef = useRef(false);
+  const submittingReviewRef = useRef(false);
+  const aiReviewAbortRef = useRef(null);
 
   const updateCode = (newVal) => {
+    codeContentRef.current = newVal;
     setCodeContent(newVal);
+    if (selectedSectionIdRef.current) dirtySectionsRef.current.add(selectedSectionIdRef.current);
     const nextHistory = codeHistory.slice(0, historyIndex + 1);
     nextHistory.push(newVal);
     setCodeHistory(nextHistory);
@@ -125,9 +142,47 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
   const loadCode = (newVal) => {
     const text = newVal || '';
+    codeContentRef.current = text;
     setCodeContent(text);
     setCodeHistory([text]);
     setHistoryIndex(0);
+  };
+
+  const selectSection = (id) => {
+    selectedSectionIdRef.current = id;
+    setSelectedSectionId(id);
+  };
+
+  const putSectionContent = useCallback((sectionId, content) => {
+    if (!selectedPaper) return Promise.reject(new Error('No paper selected'));
+    const prev = saveInFlightRef.current.get(sectionId) || Promise.resolve();
+    const next = prev.then(() =>
+      api.put(`/api/papers/${selectedPaper.id}/sections/${sectionId}`, { content }));
+    saveInFlightRef.current.set(sectionId, next.finally(() => {
+      if (saveInFlightRef.current.get(sectionId) === next) saveInFlightRef.current.delete(sectionId);
+    }));
+    return next;
+  }, [selectedPaper]);
+
+  const handleSelectSection = (sec) => {
+    const current = selectedSectionIdRef.current;
+    if (current && current !== sec.id && dirtySectionsRef.current.has(current)) {
+      if (!window.confirm('You have unsaved changes in this section. Switch anyway?')) return;
+      dirtySectionsRef.current.delete(current);
+    }
+    selectSection(sec.id);
+    loadCode(sec.contentTex || '');
+  };
+
+  const handleSelectPaper = (p) => {
+    const current = selectedSectionIdRef.current;
+    if (current && dirtySectionsRef.current.has(current)) {
+      if (!window.confirm('You have unsaved changes. Switch paper anyway?')) return;
+      dirtySectionsRef.current.delete(current);
+    }
+    setSelectedPaper(p);
+    setShowHistoryModal(false);
+    loadCode('');
   };
 
   const displayContent = selectedPaper ? codeContent : DEFAULT_SAMPLE_LATEX;
@@ -136,6 +191,30 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     setToastMessage(msg);
     setTimeout(() => setToastMessage(''), 3000);
   };
+
+  const pollAiJob = async (jobId, shouldAbort) => {
+    for (;;) {
+      if (shouldAbort?.()) return null;
+      const { data: job } = await api.get(`/api/jobs/${jobId}`);
+      if (job.status === 'SUCCESS') return job;
+      if (job.status === 'FAILED') throw new Error(job.errorMessage || 'AI evaluation failed.');
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+  };
+
+  const fetchClaims = async () => {
+    if (!project) return;
+    const r = await api.get(`/api/projects/${project.id}/claims`, {
+      params: selectedSectionIdRef.current ? { sectionId: selectedSectionIdRef.current } : {},
+    });
+    setClaims(r.data?.content || []);
+  };
+
+  useEffect(() => {
+    if (!project) return;
+    fetchClaims().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project, selectedSectionId]);
 
   // Resize handlers
   const handleMouseDown = (e) => {
@@ -194,43 +273,100 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
   const loadProjectData = useCallback(async (projId) => {
     if (!projId) return;
+    const requestId = ++loadRequestRef.current;
+    const prevProjectId = projectRef.current?.id;
+    if (prevProjectId && prevProjectId !== projId) {
+      const sid = selectedSectionIdRef.current;
+      if (sid && dirtySectionsRef.current.has(sid)) {
+        localStorage.setItem(`workspace_draft_${prevProjectId}_${sid}`, codeContentRef.current);
+      }
+    }
+    claimEvaluationRequestRef.current += 1;
+    setEvaluatingClaim(false);
+    setSections([]);
+    setSelectedPaper(null);
+    selectSection('');
+    setSelectedClaim(null);
+    setClaimMatches([]);
+    setClaimMappings([]);
+    setClaimCandidates([]);
+    setCandidateError('');
+    setCitationResult(null);
+    setAiReviewResult(null);
+    setAiReviewError(null);
+    setClaimEvaluation(null);
+    setEvaluatedClaimContent('');
+    setEvaluatedClaimSectionId('');
+    setClaimEvaluationError('');
+    setGraphData(null);
+    setLoadErrors([]);
+    const stale = () => loadRequestRef.current !== requestId;
     try {
-      claimEvaluationRequestRef.current += 1;
-      setEvaluatingClaim(false);
-      setSections([]);
-      setSelectedPaper(null);
-      setSelectedClaim(null);
-      setClaimMatches([]);
-      setClaimMappings([]);
-      setClaimCandidates([]);
-      setCitationResult(null);
-      setAiReviewResult(null);
-      setAiReviewError(null);
-      setClaimEvaluation(null);
-      setEvaluatedClaimContent('');
-      setEvaluatedClaimSectionId('');
-      setClaimEvaluationError('');
-      setGraphData(null);
       const projRes = await api.get(`/api/projects/${projId}`);
+      if (stale()) return;
       setProject(projRes.data);
-      try { setSources(await loadAllProjectSources(projId)); } catch {}
-      try { const r = await api.get(`/api/media/projects/${projId}`); setMediaAssets(r.data || []); } catch {}
+      projectRef.current = projRes.data;
+      try {
+        const srcs = await loadAllProjectSources(projId);
+        if (stale()) return;
+        setSources(srcs);
+      } catch { if (!stale()) setLoadErrors(errs => [...errs, 'sources']); }
+      try {
+        const r = await api.get(`/api/media/projects/${projId}`);
+        if (stale()) return;
+        setMediaAssets(r.data || []);
+      } catch { if (!stale()) setLoadErrors(errs => [...errs, 'media']); }
       try {
         const r = await api.get(`/api/projects/${projId}/papers`);
+        if (stale()) return;
         const list = r.data || [];
         setPapers(list);
-        if (list.length > 0) { setSelectedPaper(list[0]); loadCode(list[0].extractedText || ''); }
+        if (list.length > 0) { setSelectedPaper(list[0]); loadCode(''); }
         else { setSelectedPaper(null); loadCode(''); }
-      } catch {}
-      try { const r = await api.get(`/api/projects/${projId}/claims`); setClaims(r.data?.content || []); } catch {}
+      } catch { if (!stale()) setLoadErrors(errs => [...errs, 'paper']); }
       try {
         const r = await api.get('/api/feedback-requests');
+        if (stale()) return;
         const all = r.data || [];
-        setFeedbacks(all.filter(fb => fb.projectId === parseInt(projId)));
-      } catch {}
-      try { const r = await api.get(`/api/projects/${projId}/graph?scope=${graphScope}`); setGraphData(r.data); } catch {}
-    } catch (err) { console.error('loadProjectData error:', err); }
+        setFeedbacks(all.filter(fb => String(fb.projectId) === String(projId)));
+      } catch { if (!stale()) setLoadErrors(errs => [...errs, 'feedback']); }
+      try {
+        const r = await api.get(`/api/projects/${projId}/graph?scope=${graphScopeRef.current}`);
+        if (stale()) return;
+        setGraphData(r.data);
+      } catch { if (!stale()) setLoadErrors(errs => [...errs, 'graph']); }
+    } catch (err) { if (!stale()) console.error('loadProjectData error:', err); }
+  }, []);
+
+  useEffect(() => {
+    graphScopeRef.current = graphScope;
   }, [graphScope]);
+
+  useEffect(() => {
+    const warn = (e) => {
+      if (dirtySectionsRef.current.size === 0) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    const onHidden = () => {
+      if (dirtySectionsRef.current.size > 0) showToast('You have unsaved changes.');
+    };
+    window.addEventListener('beforeunload', warn);
+    document.addEventListener('visibilitychange', onHidden);
+    return () => {
+      window.removeEventListener('beforeunload', warn);
+      document.removeEventListener('visibilitychange', onHidden);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      const sid = selectedSectionIdRef.current;
+      if (sid && dirtySectionsRef.current.has(sid)) {
+        localStorage.setItem(`workspace_draft_${projectRef.current?.id}_${sid}`, codeContentRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -314,8 +450,20 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         const list = r.data || [];
         setSections(list);
         const mine = user ? list.filter(s => String(s.assignedUserId) === String(user.id)) : [];
-        if (mine.length > 0) { setSelectedSectionId(mine[0].id); loadCode(mine[0].contentTex || ''); }
-        else { setSelectedSectionId(''); loadCode(''); }
+        if (mine.length > 0) {
+          selectSection(mine[0].id);
+          const draftKey = `workspace_draft_${projectRef.current?.id}_${mine[0].id}`;
+          const draft = localStorage.getItem(draftKey);
+          if (draft !== null) {
+            loadCode(draft);
+            dirtySectionsRef.current.add(mine[0].id);
+          } else {
+            loadCode(mine[0].contentTex || '');
+          }
+        } else {
+          selectSection('');
+          loadCode('');
+        }
       })
       .catch(() => setSections([]));
   }, [selectedPaper, user]);
@@ -340,7 +488,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
             } else {
               showToast(n.message || 'New notification');
             }
-          } catch {}
+          } catch (e) { console.warn('Bad notification payload:', e); }
         });
       },
       reconnectDelay: 5000,
@@ -351,8 +499,8 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   }, []);
 
   useEffect(() => {
-    api.get('/api/notifications/unread-count').then(r => setUnreadCount(r.data?.count || 0)).catch(() => {});
-    api.get('/api/notifications').then(r => setNotifications(r.data || [])).catch(() => {});
+    api.get('/api/notifications/unread-count').then(r => setUnreadCount(r.data?.count || 0)).catch(() => console.warn('Failed to load unread count'));
+    api.get('/api/notifications').then(r => setNotifications(r.data || [])).catch(() => console.warn('Failed to load notifications'));
   }, [projectId]);
 
   const handleMarkNotificationRead = async (id) => {
@@ -360,7 +508,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       await api.patch(`/api/notifications/${id}/read`);
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
       setUnreadCount(c => Math.max(0, c - 1));
-    } catch {}
+    } catch { showToast('Failed to mark notification as read.'); }
   };
 
   const handleExportTexArchive = async () => {
@@ -379,12 +527,12 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
   const fetchExports = useCallback(async () => {
     if (!project) return;
-    try { const r = await api.get('/api/exports', { params: { projectId: project.id } }); setExports(r.data || []); } catch {}
+    try { const r = await api.get('/api/exports', { params: { projectId: project.id } }); setExports(r.data || []); } catch { console.warn('Failed to load exports'); }
   }, [project]);
 
   const fetchSources = useCallback(async () => {
     if (!project) return;
-    try { setSources(await loadAllProjectSources(project.id)); } catch {}
+    try { setSources(await loadAllProjectSources(project.id)); } catch { console.warn('Failed to refresh sources'); }
   }, [project]);
 
   // CRUD handlers
@@ -399,7 +547,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       const r = await api.get(`/api/projects/${project.id}/papers`);
       const list = r.data || [];
       setPapers(list);
-      if (list.length > 0) { setSelectedPaper(list[list.length - 1]); loadCode(list[list.length - 1].extractedText || ''); }
+      if (list.length > 0) { setSelectedPaper(list[list.length - 1]); loadCode(''); }
     } catch { showToast("Upload failed."); }
   };
 
@@ -412,7 +560,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       const list = r.data || [];
       setPapers(list);
       if (selectedPaper && selectedPaper.id === paperId) {
-        if (list.length > 0) { setSelectedPaper(list[0]); loadCode(list[0].extractedText || ''); }
+        if (list.length > 0) { setSelectedPaper(list[0]); loadCode(''); }
         else { setSelectedPaper(null); loadCode(''); }
       }
     } catch { showToast("Delete failed."); }
@@ -441,7 +589,9 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       setSources(await loadAllProjectSources(project.id));
       const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
       setGraphData(g.data);
-    } catch { showToast("Delete failed."); }
+    } catch (err) {
+      showToast(err?.response?.data?.message || "Delete failed.");
+    }
   };
 
   const handleUploadMedia = async (file) => {
@@ -500,23 +650,27 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     setEvaluatingClaim(true);
     setClaimEvaluationError('');
     try {
-      const response = await api.post('/api/claims/evaluate', {
+      const { data: submit } = await api.post('/api/claims/evaluate', {
         sectionId: selectedSectionId,
         content,
       });
+      const job = await pollAiJob(submit.jobId, () => claimEvaluationRequestRef.current !== requestId);
       if (claimEvaluationRequestRef.current !== requestId) return;
-      setClaimEvaluation(response.data);
+      if (!job) return;
+      setClaimEvaluation(job.result);
       setEvaluatedClaimContent(content);
       setEvaluatedClaimSectionId(selectedSectionId);
-      setNewClaimFunctionalType(response.data.suggestedFunctionalType || 'EMPIRICAL');
+      setNewClaimFunctionalType(job.result?.suggestedFunctionalType || 'EMPIRICAL');
     } catch (error) {
       if (claimEvaluationRequestRef.current !== requestId) return;
       const status = error.response?.status;
-      const message = status === 503
-        ? 'AI service is unavailable. Retry when it is back online.'
-        : status === 502
-          ? 'AI returned an invalid evaluation. Please retry.'
-          : 'AI Evaluate failed. Please retry.';
+      const message = status === 400
+        ? (error.response?.data?.message || 'Attach at least one source before evaluating claims.')
+        : status === 503
+          ? 'AI service is unavailable. Retry when it is back online.'
+          : status === 502
+            ? 'AI returned an invalid evaluation. Please retry.'
+            : (error.message || 'AI Evaluate failed. Please retry.');
       setClaimEvaluation(null);
       setEvaluatedClaimContent('');
       setEvaluatedClaimSectionId('');
@@ -528,6 +682,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
   const handleCreateClaim = async () => {
     if (isLocked) { showToast("Project is locked."); return; }
+    if (creatingClaimRef.current) return;
     if (!newClaimContent.trim() || !project) return;
     const section = currentSection;
     if (!section) { showToast("Select a section first."); return; }
@@ -535,24 +690,21 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       showToast("You cannot edit claims in this section.");
       return;
     }
-    if (!canAddEvaluatedClaim) {
-      showToast("Run AI Evaluate for the current Claim before adding it.");
-      return;
-    }
     const sectionId = selectedSectionId;
+    creatingClaimRef.current = true;
+    setCreatingClaim(true);
     try {
       const rawSelection = editorRef.current?.getSelection() || '';
       const created = await api.post('/api/claims', { sectionId, content: newClaimContent.trim(), functionalType: newClaimFunctionalType });
-      let nextContent = codeContent;
+      let nextContent = codeContentRef.current;
       if (rawSelection.trim() && rawSelection.trim() === newClaimContent.trim()) {
         nextContent = editorRef.current?.insertAtCursor(
           `\\epclaim{${created.data.id}}{${rawSelection}}`,
-        ) ?? codeContent;
+        ) ?? nextContent;
       }
       if (nextContent !== (section.contentTex || '')) {
-        await api.put(`/api/papers/${selectedPaper.id}/sections/${sectionId}`, null, {
-          params: { content: nextContent },
-        });
+        await putSectionContent(sectionId, nextContent);
+        dirtySectionsRef.current.delete(sectionId);
       }
       showToast("Claim added.");
       setNewClaimContent('');
@@ -560,27 +712,17 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       setEvaluatedClaimContent('');
       setEvaluatedClaimSectionId('');
       setClaimEvaluationError('');
-      const [claimResponse, sectionResponse, graphResponse, statsResponse] = await Promise.all([
-        api.get(`/api/projects/${project.id}/claims`),
+      const [, sectionResponse, graphResponse, statsResponse] = await Promise.all([
+        fetchClaims(),
         api.get(`/api/papers/${selectedPaper.id}/sections`),
-        api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`),
+        api.get(`/api/projects/${project.id}/graph?scope=${graphScopeRef.current}`),
         api.get(`/api/projects/${project.id}/graph/claim-stats`),
       ]);
-      setClaims(claimResponse.data?.content || []);
       setSections(sectionResponse.data || []);
       setGraphData(graphResponse.data);
       setClaimStats(statsResponse.data);
     } catch { showToast("Add claim failed."); }
-  };
-
-  const handleUseSelectedText = () => {
-    const selectedText = editorRef.current?.getSelection()?.trim();
-    if (!selectedText) {
-      showToast("Select text in the editor first.");
-      return;
-    }
-    handleNewClaimContentChange(selectedText);
-    setActiveTab('Claims');
+    finally { creatingClaimRef.current = false; setCreatingClaim(false); }
   };
 
   const handleUpdateClaim = async () => {
@@ -592,11 +734,11 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       if (selectedClaim?.id === editingClaim.id) {
         setSelectedClaim(updated.data);
         setClaimCandidates([]);
+        setCandidateError('');
         setClaimMatches([]);
         setClaimMappings([]);
       }
-      const r = await api.get(`/api/projects/${project.id}/claims`);
-      setClaims(r.data?.content || []);
+      await fetchClaims();
       const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
       setGraphData(g.data);
       const s = await api.get(`/api/projects/${project.id}/graph/claim-stats`);
@@ -609,8 +751,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     try {
       await api.delete(`/api/claims/${claimId}`);
       showToast("Claim deleted.");
-      const r = await api.get(`/api/projects/${project.id}/claims`);
-      setClaims(r.data?.content || []);
+      await fetchClaims();
       const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
       setGraphData(g.data);
       const s = await api.get(`/api/projects/${project.id}/graph/claim-stats`);
@@ -620,6 +761,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         setClaimMatches([]);
         setClaimMappings([]);
         setClaimCandidates([]);
+        setCandidateError('');
       }
     } catch { showToast("Delete failed."); }
   };
@@ -643,6 +785,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       const updated = res.data;
       setSections(prev => prev.map(s => String(s.id) === String(updated.id) ? updated : s));
       if (String(updated.id) === String(selectedSectionId)) {
+        dirtySectionsRef.current.delete(updated.id);
         loadCode(updated.contentTex || '');
       }
       showToast('Version restored.');
@@ -656,23 +799,28 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   };
 
   const handleSaveDraft = async () => {
-    if (!requireEditableCurrentSection()) return;
-    if (!selectedPaper) { showToast("No paper selected."); return; }
-    if (!selectedSectionId) { showToast("No section selected."); return; }
+    if (!requireEditableCurrentSection()) return false;
+    if (!selectedPaper) { showToast("No paper selected."); return false; }
+    if (!selectedSectionId) { showToast("No section selected."); return false; }
     setSaveStatus('saving');
+    const sectionId = selectedSectionId;
+    const content = codeContentRef.current;
     try {
-      await api.put(`/api/papers/${selectedPaper.id}/sections/${selectedSectionId}`, null, { params: { content: codeContent } });
+      await putSectionContent(sectionId, content);
       setSaveStatus('saved'); setLastSaved(new Date());
-      const [sectionResponse, claimResponse, graphResponse] = await Promise.all([
+      dirtySectionsRef.current.delete(sectionId);
+      localStorage.removeItem(`workspace_draft_${projectRef.current?.id}_${sectionId}`);
+      const [sectionResponse, graphResponse] = await Promise.all([
         api.get(`/api/papers/${selectedPaper.id}/sections`),
-        api.get(`/api/projects/${project.id}/claims`),
-        api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`),
+        api.get(`/api/projects/${project.id}/graph?scope=${graphScopeRef.current}`),
       ]);
-      setSections(sectionResponse.data || []);
-      setClaims(claimResponse.data?.content || []);
+      setSections((sectionResponse.data || []).map(s =>
+        String(s.id) === String(sectionId) ? { ...s, contentTex: content } : s));
+      await fetchClaims();
       setGraphData(graphResponse.data);
       setTimeout(() => setSaveStatus(''), 3000);
-    } catch { setSaveStatus('error'); showToast("Save failed."); }
+      return true;
+    } catch { setSaveStatus('error'); showToast("Save failed."); return false; }
   };
 
   const [saveStatus, setSaveStatus] = useState('');
@@ -719,11 +867,11 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   };
 
   const fetchGraphData = useCallback(async (projId, scope = graphScope) => {
-    try { const r = await api.get(`/api/projects/${projId}/graph?scope=${scope}`); setGraphData(r.data); } catch {}
+    try { const r = await api.get(`/api/projects/${projId}/graph?scope=${scope}`); setGraphData(r.data); } catch { console.warn('Failed to load graph'); }
   }, [graphScope]);
 
   const fetchClaimStats = useCallback(async (projId) => {
-    try { const r = await api.get(`/api/projects/${projId}/graph/claim-stats`); setClaimStats(r.data); } catch {}
+    try { const r = await api.get(`/api/projects/${projId}/graph/claim-stats`); setClaimStats(r.data); } catch { console.warn('Failed to load claim stats'); }
   }, []);
 
   const handleGraphScopeToggle = () => {
@@ -741,22 +889,32 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   }, [activeTab, project?.id, claimStats, fetchClaimStats]);
 
   const handleSearchClaimMatches = async (claim) => {
+    const requestId = ++candidateSearchRequestRef.current;
     setSelectedClaim(claim);
     setClaimCandidates([]);
+    setCandidateError('');
     setLoadingCandidates(true);
-    await handleFetchMatches(claim.id);
+    const fetchPromise = handleFetchMatches(claim.id);
     try {
       const response = await api.post(`/api/claims/${claim.id}/matches/search`);
+      if (candidateSearchRequestRef.current !== requestId) return;
       const candidates = response.data || [];
       setClaimCandidates(candidates);
       showToast(candidates.length > 0
         ? `Found ${candidates.length} source match${candidates.length > 1 ? 'es' : ''}.`
         : 'No matches found. Check that source extraction is ready.');
-    } catch { showToast("Find matches failed."); }
-    finally { setLoadingCandidates(false); }
+    } catch {
+      if (candidateSearchRequestRef.current === requestId) {
+        setCandidateError('Find matches failed. Check that source extraction is ready.');
+        showToast("Find matches failed.");
+      }
+    }
+    finally { if (candidateSearchRequestRef.current === requestId) setLoadingCandidates(false); }
+    await fetchPromise;
   };
 
   const handleFetchMatches = async (claimId) => {
+    const requestId = ++matchFetchRequestRef.current;
     setLoadingMatches(true);
     setClaimMatches([]);
     setClaimMappings([]);
@@ -765,19 +923,24 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         api.get(`/api/claims/${claimId}/suggestions`),
         api.get(`/api/claims/${claimId}/mappings`),
       ]);
+      if (matchFetchRequestRef.current !== requestId) return;
       setClaimMatches(suggestionResponse.data || []);
       setClaimMappings(mappingResponse.data || []);
-    } catch { showToast("Fetch matches failed."); }
-    finally { setLoadingMatches(false); }
+    } catch {
+      if (matchFetchRequestRef.current !== requestId) return;
+      showToast("Fetch matches failed.");
+    }
+    finally { if (matchFetchRequestRef.current === requestId) setLoadingMatches(false); }
   };
 
   const handleEvaluateMatch = async (claimId, documentChunkId) => {
     setEvaluatingChunkId(documentChunkId);
     try {
-      await api.post(`/api/claims/${claimId}/suggestions/evaluate`, { documentChunkId });
+      const { data: submit } = await api.post(`/api/claims/${claimId}/suggestions/evaluate`, { documentChunkId });
+      await pollAiJob(submit.jobId);
       showToast("AI evaluation complete. Review it before accepting.");
       await handleFetchMatches(claimId);
-    } catch { showToast("AI evaluation failed."); }
+    } catch (error) { showToast(error.message || "AI evaluation failed."); }
     finally { setEvaluatingChunkId(null); }
   };
 
@@ -789,7 +952,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       showToast(status === 'ACCEPTED' ? 'Evidence accepted.' : 'Suggestion rejected.');
       await handleFetchMatches(selectedClaim.id);
       if (status === 'ACCEPTED') {
-        const graph = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
+        const graph = await api.get(`/api/projects/${project.id}/graph?scope=${graphScopeRef.current}`);
         setGraphData(graph.data);
       }
     } catch { showToast("Update suggestion failed."); }
@@ -799,13 +962,21 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const handleSelectClaim = async (claim) => {
     if (selectedClaim?.id !== claim.id) {
       setClaimCandidates([]);
+      setCandidateError('');
     }
     setSelectedClaim(claim);
     await handleFetchMatches(claim.id);
     if (!claim.sectionId) return;
     const sec = sections.find(s => String(s.id) === String(claim.sectionId));
     if (!sec) return;
-    setSelectedSectionId(claim.sectionId);
+    const current = selectedSectionIdRef.current;
+    if (current && current !== claim.sectionId && dirtySectionsRef.current.has(current)) {
+      if (!window.confirm('You have unsaved changes in the current section. Switch anyway?')) {
+        return;
+      }
+      dirtySectionsRef.current.delete(current);
+    }
+    selectSection(claim.sectionId);
     loadCode(sec.contentTex || '');
   };
 
@@ -824,15 +995,19 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const handleRunAiReview = async () => {
     if (isLocked) { showToast("Project is locked."); return; }
     if (!selectedPaper) { showToast("Select a paper first."); return; }
+    if (aiReviewAbortRef.current) aiReviewAbortRef.current.abort();
+    const controller = new AbortController();
+    aiReviewAbortRef.current = controller;
     setLoadingAiReview(true);
     setAiReviewError(null);
     setShowAiReviewModal(true);
     try {
-      const r = await api.post(`/api/papers/${selectedPaper.id}/review`);
+      const r = await api.post(`/api/papers/${selectedPaper.id}/review`, null, { signal: controller.signal, timeout: 120000 });
       setAiReviewResult(r.data);
       showToast("AI Review complete.");
       if (project) fetchGraphData(project.id);
     } catch (error) {
+      if (error.name === 'CanceledError' || controller.signal.aborted) return;
       const status = error.response?.status;
       const message = status === 503
         ? 'AI Review worker is unavailable or timed out.'
@@ -841,20 +1016,37 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
           : 'AI Review failed. Please retry.';
       setAiReviewError({ status, message });
       showToast(message);
-    } finally { setLoadingAiReview(false); }
+    } finally { if (aiReviewAbortRef.current === controller) { aiReviewAbortRef.current = null; setLoadingAiReview(false); } }
   };
 
   const handleSubmitReview = async () => {
     if (!project) return;
+    if (submittingReviewRef.current) return;
     setShowSubmitReviewModal(false);
     if (canEditSection(sections.find(section => String(section.id) === String(selectedSectionId)))) {
-      await handleSaveDraft();
+      const saved = await handleSaveDraft();
+      if (!saved) { showToast("Save failed — submission cancelled."); return; }
     }
+    let freshClaims = claims;
+    try {
+      const claimResponse = await api.get(`/api/projects/${project.id}/claims`);
+      freshClaims = claimResponse.data?.content || [];
+      setClaims(freshClaims);
+    } catch { console.warn('Failed to refresh claims before submission'); }
+    const blocked = freshClaims.filter(claim =>
+      claim.contentStatus && claim.contentStatus !== 'PRESENT');
+    if (blocked.length > 0) {
+      showToast(`Submission blocked: ${blocked.length} claim(s) missing from the owning section.`);
+      return;
+    }
+    submittingReviewRef.current = true;
+    setSubmittingReview(true);
     try {
       await api.post(`/api/projects/${project.id}/reviews`);
       showToast("Submitted for review.");
       await loadProjectData(project.id);
     } catch { showToast("Submit failed."); }
+    finally { submittingReviewRef.current = false; setSubmittingReview(false); }
   };
 
   const handleDownloadTex = () => {
@@ -991,6 +1183,13 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         notifications={notifications} unreadCount={unreadCount} showNotifications={showNotifications} setShowNotifications={setShowNotifications} onMarkNotificationRead={handleMarkNotificationRead}
         showExportMenu={showExportMenu} setShowExportMenu={setShowExportMenu} handleExportTexArchive={handleExportTexArchive} handleExportTraceabilityJson={handleExportTraceabilityJson} handleExportTraceabilityCsv={handleExportTraceabilityCsv} handleExportGraphCsv={handleExportCsv} />
 
+      {loadErrors.length > 0 && (
+        <div className="flex items-center justify-between gap-4 px-4 py-2 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900 text-[11px] text-amber-900 dark:text-amber-200">
+          <span>Some areas failed to load: {loadErrors.join(', ')}. You can retry them from the file panel / right drawer.</span>
+          <button onClick={() => setLoadErrors([])} className="font-bold hover:underline cursor-pointer shrink-0">Dismiss</button>
+        </div>
+      )}
+
       <div id="workspace-container" className="flex-1 flex overflow-hidden">
         <div data-tour="sidebar-left" className="w-14 bg-indigo-900 dark:bg-(--accent-bar) flex flex-col items-center py-4 shrink-0 z-20 border-r border-indigo-950 dark:border-(--border) shadow-[2px_0_8px_-2px_rgba(0,0,0,0.2)]">
           <button onClick={() => setIsFileTreeOpen(!isFileTreeOpen)} className="w-full flex justify-center relative cursor-pointer mb-6 group outline-none" title="Toggle File Sidebar">
@@ -1007,13 +1206,13 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
           </div>
         </div>
 
-        <FilePanel isOpen={isFileTreeOpen} width={fileTreeWidth} onResizeStart={handleLeftDividerMouseDown} sections={sections} assignedSections={assignedSections} selectedSectionId={selectedSectionId} onSelectSection={(sec) => { setSelectedSectionId(sec.id); loadCode(sec.contentTex || ''); }} selectedPaper={selectedPaper} onSelectPaper={(p) => { setSelectedPaper(p); setShowHistoryModal(false); loadCode(p.extractedText || ''); }} papers={papers} onUploadPaper={isLocked ? undefined : handleUploadPaper} sources={sources} onUploadSource={isLocked ? undefined : handleUploadSource} onDeleteSource={handleDeleteSource} mediaAssets={mediaAssets} onUploadMedia={isLocked ? undefined : handleUploadMedia} onDeleteMedia={handleDeleteMedia} onInsertMedia={canEditCurrentSection ? handleInsertMedia : undefined} showToast={showToast} isLocked={isLocked} />
+        <FilePanel isOpen={isFileTreeOpen} width={fileTreeWidth} onResizeStart={handleLeftDividerMouseDown} sections={sections} assignedSections={assignedSections} selectedSectionId={selectedSectionId} onSelectSection={handleSelectSection} selectedPaper={selectedPaper} onSelectPaper={handleSelectPaper} papers={papers} onUploadPaper={isLocked ? undefined : handleUploadPaper} sources={sources} onUploadSource={isLocked ? undefined : handleUploadSource} onDeleteSource={handleDeleteSource} mediaAssets={mediaAssets} onUploadMedia={isLocked ? undefined : handleUploadMedia} onDeleteMedia={handleDeleteMedia} onInsertMedia={canEditCurrentSection ? handleInsertMedia : undefined} showToast={showToast} isLocked={isLocked} onSaveDraft={handleSaveDraft} saveStatus={saveStatus} />
 
         <EditorPanel editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSections={assignedSections} canEditCurrentSection={canEditCurrentSection} currentSection={currentSection} displayContent={displayContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} handleScanCitations={handleScanCitations} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} isLocked={isLocked} />
 
         <ContextPanel isOpen={isDrawerOpen} width={rightDrawerWidth} onResizeStart={handleRightDividerMouseDown} activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); localStorage.setItem('student_workspace_active_tab', tab); }} showToast={showToast}
           sources={sources} isUploading={isUploading} setIsUploading={setIsUploading} project={project} setViewerFile={setViewerFile} fetchSources={fetchSources} isLocked={isLocked}
-          newClaimContent={newClaimContent} onNewClaimContentChange={handleNewClaimContentChange} newClaimFunctionalType={newClaimFunctionalType} setNewClaimFunctionalType={setNewClaimFunctionalType} claimEvaluation={claimEvaluation} evaluatingClaim={evaluatingClaim} claimEvaluationError={claimEvaluationError} handleEvaluateClaim={handleEvaluateClaim} canAddEvaluatedClaim={canAddEvaluatedClaim} handleCreateClaim={handleCreateClaim} handleUseSelectedText={handleUseSelectedText} canCreateClaim={canEditCurrentSection}
+          newClaimContent={newClaimContent} onNewClaimContentChange={handleNewClaimContentChange} newClaimFunctionalType={newClaimFunctionalType} setNewClaimFunctionalType={setNewClaimFunctionalType} claimEvaluation={claimEvaluation} evaluatingClaim={evaluatingClaim} claimEvaluationError={claimEvaluationError} handleEvaluateClaim={handleEvaluateClaim} canAddEvaluatedClaim={canAddEvaluatedClaim} handleCreateClaim={handleCreateClaim} canCreateClaim={canEditCurrentSection} creatingClaim={creatingClaim}
           claims={claims} selectedClaim={selectedClaim} claimMatches={claimMatches} claimMappings={claimMappings} loadingMatches={loadingMatches}
           claimCandidates={claimCandidates} loadingCandidates={loadingCandidates} evaluatingChunkId={evaluatingChunkId} updatingSuggestionId={updatingSuggestionId}
           handleSearchClaimMatches={handleSearchClaimMatches} handleEvaluateMatch={handleEvaluateMatch} handleSuggestionStatus={handleSuggestionStatus} canEditClaim={canEditClaim}
@@ -1094,30 +1293,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-1">
-            {assignedSections.length > 0 && (
-              <>
-                <button onClick={() => setAssignedExpanded(!assignedExpanded)}
-                  className="w-full flex items-center justify-between px-2 py-1.5 text-[10px] font-bold text-(--text-secondary) tracking-wider uppercase cursor-pointer hover:bg-(--surface-secondary) rounded-lg">
-                  <span className="flex items-center gap-1.5">{assignedExpanded ? '▼' : '▶'} {t('assignedToYou')} ({assignedSections.length})</span>
-                </button>
-                {assignedExpanded && (
-                  <div className="space-y-1 pl-1">
-                    {assignedSections.map(sec => (
-                      <div key={sec.id}
-                        onClick={() => { setSelectedSectionId(sec.id); loadCode(sec.contentTex || ''); setShowOverview(false); }}
-                        className="flex items-center justify-between p-2.5 rounded-lg text-xs border cursor-pointer bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800">
-                        <div className="flex items-center gap-2 truncate min-w-0">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
-                          <span className="truncate font-medium text-(--text-primary)">{sec.sectionTitle || 'Untitled'}</span>
-                          <span className="text-[9px] text-(--text-tertiary) font-mono shrink-0">#{sec.sectionOrder}</span>
-                        </div>
-                        <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">v{sec.version || 1}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
             <button onClick={() => setSectionsExpanded(!sectionsExpanded)}
               className="w-full flex items-center justify-between px-2 py-1.5 text-[10px] font-bold text-(--text-secondary) tracking-wider uppercase cursor-pointer hover:bg-(--surface-secondary) rounded-lg">
               <span className="flex items-center gap-1.5">{sectionsExpanded ? '▼' : '▶'} {t('sections')} ({sections.length})</span>
@@ -1131,7 +1306,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                     const isMySection = assignedSections.some(s => String(s.id) === String(sec.id));
                     return (
                       <div key={sec.id}
-                        onClick={() => { setSelectedSectionId(sec.id); loadCode(sec.contentTex || ''); setShowOverview(false); }}
+                        onClick={() => { if (!handleSelectSection(sec)) return; setShowOverview(false); }}
                         className={`flex items-center justify-between p-2.5 rounded-lg text-xs border cursor-pointer transition-all ${isMySection ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' : 'bg-(--surface-secondary) border-(--border) hover:bg-(--surface-tertiary)'}`}>
                         <div className="flex items-center gap-2 truncate min-w-0">
                           {isMySection && <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title={t('assignedToYou')}></span>}
@@ -1228,7 +1403,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                 <svg className="w-5 h-5 text-indigo-300 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 01-2 2h0a2 2 0 01-2-2v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
                 <h2 className="text-base font-bold tracking-wide">AI Review Report</h2>
               </div>
-              <button onClick={() => setShowAiReviewModal(false)} className="text-indigo-200 hover:text-white transition-colors">
+              <button onClick={() => { if (aiReviewAbortRef.current) aiReviewAbortRef.current.abort(); setShowAiReviewModal(false); }} className="text-indigo-200 hover:text-white transition-colors">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
@@ -1286,6 +1461,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                       if (claim) {
                         handleSelectClaim(claim);
                         setActiveTab('Claims');
+                        if (aiReviewAbortRef.current) aiReviewAbortRef.current.abort();
                         setShowAiReviewModal(false);
                       }
                     }} className="w-full text-left bg-(--surface) border border-(--border) rounded-xl p-5 shadow-sm hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors">
@@ -1328,7 +1504,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
               ) : null}
             </div>
             <div className="px-6 py-4 border-t border-(--border-light) bg-(--surface-secondary)/50 flex justify-end gap-3 shrink-0">
-              <button onClick={() => setShowAiReviewModal(false)} className="px-4 py-2 text-xs font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors border border-(--border) bg-(--surface) cursor-pointer">Close</button>
+              <button onClick={() => { if (aiReviewAbortRef.current) aiReviewAbortRef.current.abort(); setShowAiReviewModal(false); }} className="px-4 py-2 text-xs font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors border border-(--border) bg-(--surface) cursor-pointer">Close</button>
             </div>
           </div>
         </div>

@@ -3,12 +3,10 @@ package com.evidencepilot.controller;
 import com.evidencepilot.dto.response.DocumentChunkResponse;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.DocumentTextResponse;
-import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.service.DocumentObjectStorage;
 import com.evidencepilot.service.DocumentService;
-import com.evidencepilot.service.impl.DocumentPersistenceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -44,7 +42,6 @@ public class DocumentController {
 
     private final DocumentService documentService;
     private final DocumentObjectStorage documentObjectStorage;
-    private final DocumentPersistenceService documentPersistenceService;
 
     @Operation(summary = "Get document by ID",
             description = "Returns metadata for a single document by UUID.")
@@ -71,8 +68,15 @@ public class DocumentController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public DocumentResponse uploadDocument(
             @Parameter(description = "File to upload") @RequestParam("file") MultipartFile file,
-            @Parameter(description = "Project UUID (optional)") @RequestParam(value = "projectId", required = false) UUID projectId) {
-        return documentService.uploadDocument(projectId, file, DocumentType.SOURCE);
+            @Parameter(description = "Project UUID") @RequestParam(value = "projectId", required = false) UUID projectId,
+            @Parameter(description = "Collection UUID") @RequestParam(value = "collectionId", required = false) UUID collectionId) {
+        // DEBT-08: a document must be attached to a project or collection —
+        // orphaned documents are unreachable and skip all project scoping.
+        if (projectId == null && collectionId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Either projectId or collectionId must be provided");
+        }
+        return documentService.uploadDocument(projectId, collectionId, file, DocumentType.SOURCE);
     }
 
     @Operation(summary = "Attach file to metadata-only document",
@@ -184,12 +188,6 @@ public class DocumentController {
     @PostMapping("/{id}/re-extract")
     public DocumentResponse reExtract(
             @Parameter(description = "Document UUID") @PathVariable UUID id) {
-        var doc = documentService.getDocumentById(id);
-        if (doc.fileUrl() == null || "pending".equals(doc.fileUrl())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "No file in storage for this document");
-        }
-        return DocumentResponse.from(
-                documentPersistenceService.markDocumentAsUploaded(id, doc.fileUrl()));
+        return documentService.reExtract(id);
     }
 }
