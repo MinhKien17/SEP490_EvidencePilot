@@ -16,6 +16,7 @@ export default function ReviewRequests() {
   const ct = commonText[language];
 
   const [requests, setRequests] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -24,7 +25,14 @@ export default function ReviewRequests() {
 
   const fetchReviewRequests = async () => {
     setLoading(true); setErrorMessage('');
-    try { const res = await api.get('/api/feedback-requests'); setRequests(res.data); }
+    try {
+      const [res, proj] = await Promise.all([
+        api.get('/api/feedback-requests'),
+        api.get('/api/projects?page=0&size=100').catch(() => null),
+      ]);
+      setRequests(res.data);
+      setProjects(proj?.data?.content || []);
+    }
     catch { setErrorMessage('Failed to load review requests.'); }
     finally { setLoading(false); }
   };
@@ -83,29 +91,29 @@ export default function ReviewRequests() {
                   <tr><td colSpan="4" className="px-6 py-8"><LoadingSkeleton count={3} height="h-8" /></td></tr>
                 ) : requests.length === 0 ? (
                   <tr><td colSpan="4" className="px-6 py-8"><EmptyState title={t.noRequests} /></td></tr>
-                ) : requests.map((req) => (
+                ) : requests.map((req) => {
+                  const projectTitle = projects.find(p => String(p.id) === String(req.projectId))?.title;
+                  return (
                   <tr key={req.id} className="hover:bg-gray-50/40 transition">
                     <td className="px-6 py-4">
-                      <span className="font-bold text-gray-900 block text-xs">{t.project} ID: {req.projectId}</span>
-                      <span className="text-[10px] text-gray-400 font-mono block mt-0.5">ID: {req.id}</span>
+                      <Link to={`/instructor/requests/${req.projectId}`}
+                        className="font-bold text-gray-900 block text-xs hover:text-[#1e3a8a] transition-colors">
+                        {projectTitle || `${t.project} #${req.projectId.slice(0, 8)}`}
+                      </Link>
+                      <span className="text-[10px] text-gray-400 font-mono block mt-0.5">Request: {req.id}</span>
                     </td>
                     <td className="px-6 py-4"><StatusBadge status={req.status} /></td>
                     <td className="px-6 py-4">
-                      <div className="flex gap-2">
-                        <button onClick={() => handleTransitionStatus(req.id, 'REVIEWED')}
-                          className="px-2 py-1 bg-emerald-600 text-white font-bold text-[10px] rounded hover:bg-emerald-700 transition">{t.approve}</button>
-                        <button onClick={() => handleTransitionStatus(req.id, 'RETURNED')}
-                          className="px-2 py-1 bg-amber-500 text-white font-bold text-[10px] rounded hover:bg-amber-600 transition">{t.returnForRevision}</button>
-                        <button onClick={() => handleTransitionStatus(req.id, 'REJECTED')}
-                          className="px-2 py-1 bg-rose-600 text-white font-bold text-[10px] rounded hover:bg-rose-700 transition">{t.reject}</button>
-                      </div>
+                      <Link to={`/instructor/requests/${req.projectId}`}
+                        className="text-xs font-black text-[#1e3a8a] hover:underline">{t.review}</Link>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button id="feedback-modal-btn" onClick={() => setSelectedRequest(req)}
                         className="text-xs font-black text-[#1e3a8a] hover:underline">{t.provideFeedback}</button>
                     </td>
                   </tr>
-                ))}
+                );
+                })}
               </tbody>
             </table>
           </div>

@@ -1,8 +1,9 @@
 import { useTranslation } from 'react-i18next';
 
-export default function FilePanel({ isOpen, width, onResizeStart, sections, assignedSections, selectedSectionId, onSelectSection, selectedPaper, onSelectPaper, papers, onUploadPaper, sources, onUploadSource, onDeleteSource, mediaAssets, onUploadMedia, onDeleteMedia, onInsertMedia, showToast, isLocked }) {
+export default function FilePanel({ isOpen, width, onResizeStart, sections, assignedSections, selectedSectionId, onSelectSection, selectedPaper, onSelectPaper, papers, onUploadPaper, sources, onUploadSource, onDeleteSource, mediaAssets, onUploadMedia, onDeleteMedia, onInsertMedia, showToast, isLocked, onSaveDraft, saveStatus }) {
   const { t } = useTranslation();
   if (!isOpen) return null;
+  const saveLabel = saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Save failed' : null;
   return (
     <>
       <aside data-tour="file-panel" style={{ width }} className="bg-(--surface-secondary) border-r border-(--border) flex flex-col shrink-0 z-10 backdrop-blur-sm relative">
@@ -11,6 +12,7 @@ export default function FilePanel({ isOpen, width, onResizeStart, sections, assi
         </div>
         <div className="px-3 py-2 border-b border-(--border) flex items-center justify-between">
           <span className="text-[10px] font-bold text-(--text-secondary) tracking-wider uppercase">{t('sections')}</span>
+          {saveLabel && <span className="text-[10px] font-bold text-indigo-600">{saveLabel}</span>}
         </div>
         <div className="p-2 flex-1 max-h-[45%] overflow-y-auto border-b border-(--border)">
           {sections.length === 0 ? (
@@ -31,6 +33,9 @@ export default function FilePanel({ isOpen, width, onResizeStart, sections, assi
                     <span className="text-[9px] text-(--text-tertiary) font-mono">#{sec.sectionOrder}</span>
                   </div>
                   <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1 py-0.5 rounded shrink-0">v{sec.version || 1}</span>
+                  {isSelected && onSaveDraft && (
+                    <button onClick={(e) => { e.stopPropagation(); onSaveDraft(); }} disabled={saveStatus === 'saving'} className="text-[9px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 px-1.5 py-0.5 rounded shrink-0 cursor-pointer" title="Save section">Save</button>
+                  )}
                 </div>
               );
             })

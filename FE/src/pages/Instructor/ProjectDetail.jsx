@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { AppHeader, LoadingSkeleton, StatusBadge, Modal, TourLauncher, EvidenceGraph, Spinner, FunctionalTypeRadar } from '../../components';
@@ -29,6 +29,9 @@ export default function ProjectDetail() {
   const [claimStats, setClaimStats] = useState(null);
   const [progressReport, setProgressReport] = useState(null);
   const [checkpointDiff, setCheckpointDiff] = useState(null);
+  const [reportSectionId, setReportSectionId] = useState(null);
+  const [reportPane, setReportPane] = useState('matrix');
+  const [reviewPane, setReviewPane] = useState('distribution');
   const [users, setUsers] = useState([]);
   const [showAddMember, setShowAddMember] = useState(false);
   const [newMemberId, setNewMemberId] = useState('');
@@ -138,6 +141,25 @@ export default function ProjectDetail() {
 
   useEffect(() => { loadProject(); }, [loadProject]);
   useEffect(() => { if (project) { loadPapers(); loadSources(); loadUsers(); } }, [project, loadPapers, loadSources, loadUsers]);
+
+  const sectionMatrix = useMemo(() => {
+    const rows = progressReport?.matrix || [];
+    return reportSectionId ? rows.filter(r => String(r.sectionId) === String(reportSectionId)) : rows;
+  }, [progressReport, reportSectionId]);
+
+  const sectionDiff = useMemo(() => {
+    if (!checkpointDiff) return null;
+    const bySection = arr => reportSectionId
+      ? arr.filter(c => String(c.sectionId) === String(reportSectionId)) : arr;
+    return {
+      ...checkpointDiff,
+      claimsAdded: bySection(checkpointDiff.claimsAdded || []),
+      claimsRemoved: bySection(checkpointDiff.claimsRemoved || []),
+      claimsChanged: bySection(checkpointDiff.claimsChanged || []),
+      sectionWordDeltas: (checkpointDiff.sectionWordDeltas || [])
+        .filter(d => !reportSectionId || String(d.sectionId) === String(reportSectionId)),
+    };
+  }, [checkpointDiff, reportSectionId]);
 
   useEffect(() => {
     if (activeTab === 'review') loadFeedbackAndTraceability();
@@ -698,11 +720,8 @@ export default function ProjectDetail() {
 
         {/* Tab: Review */}
         {activeTab === 'review' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-3">
-              <FunctionalTypeRadar stats={claimStats} />
-            </div>
-            <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
               <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Feedback Requests</h2>
               {feedbackRequests.length === 0 ? (
                 <p className="text-xs text-gray-400 italic">No review requests yet.</p>
@@ -714,15 +733,29 @@ export default function ProjectDetail() {
                         <StatusBadge status={fb.status} />
                         <span className="text-gray-400">{fb.requestedAt ? new Date(fb.requestedAt).toLocaleDateString() : ''}</span>
                       </div>
-                      <p className="text-gray-500 mt-1">Student: {fb.studentId}</p>
+                      <p className="text-gray-500 mt-1">Student: {fb.studentName || fb.studentId}</p>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-            <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-              <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Evidence Map</h2>
-              <EvidenceGraph traceabilityData={traceability} height={500} />
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-bold text-[#1e3a8a]">
+                  {reviewPane === 'distribution' ? 'Claim Type Distribution' : 'Evidence Map'}
+                </h2>
+                <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+                  {['distribution', 'map'].map(mode => (
+                    <button key={mode} onClick={() => setReviewPane(mode)}
+                      className={`px-3 py-1.5 text-[10px] font-bold transition ${reviewPane === mode ? 'bg-[#1e3a8a] text-white' : 'bg-white text-gray-500 hover:text-[#1e3a8a]'}`}>
+                      {mode === 'distribution' ? 'Distribution' : 'Evidence Map'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {reviewPane === 'distribution'
+                ? <FunctionalTypeRadar stats={claimStats} />
+                : <EvidenceGraph traceabilityData={traceability} height={500} />}
             </div>
           </div>
         )}
@@ -746,51 +779,150 @@ export default function ProjectDetail() {
                     </div>
                   ))}
                 </div>
+                {progressReport.readiness.metrics?.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    {progressReport.readiness.metrics.map(metric => (
+                      <div key={metric.code} className="flex items-center gap-3">
+                        <span className="w-40 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                          {metric.label} <span className="text-gray-400">({metric.weightPercent}%)</span>
+                        </span>
+                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${metric.valuePercent}%` }} />
+                        </div>
+                        <span className="w-10 text-right text-xs font-bold text-[#1e3a8a]">{metric.valuePercent}%</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
             <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-              <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Claim Matrix</h2>
-              {!progressReport ? <p className="text-xs text-gray-400 italic">Loading...</p> : progressReport.matrix?.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">No claims yet.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200">
-                        <th className="py-2 pr-3">Claim</th>
-                        <th className="py-2 pr-3">Section</th>
-                        <th className="py-2 pr-3">Status</th>
-                        <th className="py-2 pr-3">Evidence</th>
-                        <th className="py-2 pr-3">Strongest Match</th>
-                        <th className="py-2">Author</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(progressReport.matrix || []).map(row => (
-                        <tr key={row.claimId} className="border-b border-gray-100">
-                          <td className="py-2 pr-3 text-gray-700 max-w-[220px]"><span className="line-clamp-2">{row.content}</span></td>
-                          <td className="py-2 pr-3 text-gray-500">{row.sectionTitle}</td>
-                          <td className="py-2 pr-3"><StatusBadge status={row.contentStatus} /></td>
-                          <td className="py-2 pr-3 text-gray-700">{row.activeEvidenceCount}</td>
-                          <td className="py-2 pr-3 text-gray-700">{row.strongestRelation || '-'}{row.strongestScore != null ? ` (${row.strongestScore}%)` : ''}</td>
-                          <td className="py-2 text-gray-500">{row.createdByName || row.createdById}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-bold text-[#1e3a8a]">
+                  {reportPane === 'matrix' ? 'Claim Matrix' : 'Changes Since Last Checkpoint'}
+                  {reportSectionId && <span className="ml-2 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">filtered by section</span>}
+                </h2>
+                <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+                  {['matrix', 'diff'].map(mode => (
+                    <button key={mode} onClick={() => setReportPane(mode)}
+                      className={`px-3 py-1.5 text-[10px] font-bold transition ${reportPane === mode ? 'bg-[#1e3a8a] text-white' : 'bg-white text-gray-500 hover:text-[#1e3a8a]'}`}>
+                      {mode === 'matrix' ? 'Claim Matrix' : 'Checkpoint Diff'}
+                    </button>
+                  ))}
                 </div>
+              </div>
+              {reportPane === 'matrix' ? (
+                !progressReport ? <p className="text-xs text-gray-400 italic">Loading...</p> : sectionMatrix.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">{reportSectionId ? 'No claims in this section.' : 'No claims yet.'}</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200">
+                          <th className="py-2 pr-3">Claim</th>
+                          <th className="py-2 pr-3">Section</th>
+                          <th className="py-2 pr-3">Status</th>
+                          <th className="py-2 pr-3">Evidence</th>
+                          <th className="py-2 pr-3">Strongest Match</th>
+                          <th className="py-2">Author</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sectionMatrix.map(row => (
+                          <tr key={row.claimId} className="border-b border-gray-100">
+                            <td className="py-2 pr-3 text-gray-700 max-w-[220px]"><span className="line-clamp-2">{row.content}</span></td>
+                            <td className="py-2 pr-3 text-gray-500">{row.sectionTitle}</td>
+                            <td className="py-2 pr-3"><StatusBadge status={row.contentStatus} /></td>
+                            <td className="py-2 pr-3 text-gray-700">{row.activeEvidenceCount}</td>
+                            <td className="py-2 pr-3 text-gray-700">{row.strongestRelation || '-'}{row.strongestScore != null ? ` (${row.strongestScore}%)` : ''}</td>
+                            <td className="py-2 text-gray-500">{row.createdByName || row.createdById}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              ) : (
+                !sectionDiff ? (
+                  <p className="text-xs text-gray-400 italic">Checkpoints are captured when the project is submitted for review. Need at least two checkpoints to compare — none found yet.</p>
+                ) : (
+                  <div className="space-y-4 text-xs">
+                    <div className="flex flex-wrap gap-4 text-gray-500">
+                      <span>{sectionDiff.from ? `From: ${new Date(sectionDiff.from).toLocaleString()}` : 'From: start'} ({sectionDiff.fromTrigger || 'initial'})</span>
+                      <span>{sectionDiff.to ? `To: ${new Date(sectionDiff.to).toLocaleString()}` : 'To: now'} ({sectionDiff.toTrigger || 'latest'})</span>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {[
+                        { label: 'Claims Added', value: (sectionDiff.claimsAdded || []).length, color: 'text-emerald-600' },
+                        { label: 'Claims Removed', value: (sectionDiff.claimsRemoved || []).length, color: 'text-rose-600' },
+                        { label: 'Claims Changed', value: (sectionDiff.claimsChanged || []).length, color: 'text-amber-600' },
+                        { label: 'Word Count Δ', value: (sectionDiff.sectionWordDeltas || []).reduce((sum, d) => sum + (d.toWords - d.fromWords), 0), color: 'text-indigo-600' },
+                      ].map(stat => (
+                        <div key={stat.label} className="bg-gray-50 rounded-xl p-4 text-center">
+                          <p className={`text-2xl font-black ${stat.color}`}>{stat.value}</p>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">{stat.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {[
+                      { label: 'Mappings Accepted', value: sectionDiff.mappingsAcceptedDelta },
+                      { label: 'Mappings Rejected', value: sectionDiff.mappingsRejectedDelta },
+                      { label: 'Feedback Answered', value: sectionDiff.feedbackAnsweredDelta },
+                    ].map(item => (
+                      <div key={item.label} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2">
+                        <span className="text-gray-500">{item.label}</span>
+                        <span className={`font-black ${item.value > 0 ? 'text-emerald-600' : item.value < 0 ? 'text-rose-600' : 'text-gray-400'}`}>{item.value > 0 ? `+${item.value}` : item.value}</span>
+                      </div>
+                    ))}
+                    {(sectionDiff.sectionWordDeltas || []).filter(d => d.toWords !== d.fromWords).length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Word Count by Section</p>
+                        <div className="space-y-1">
+                          {(sectionDiff.sectionWordDeltas || []).filter(d => d.toWords !== d.fromWords).map(d => (
+                            <div key={d.sectionId} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-1.5 text-[10px]">
+                              <span className="text-gray-500">Section {String(d.sectionId).slice(0, 8)}</span>
+                              <span className="text-gray-700">{d.fromWords} → {d.toWords}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {(sectionDiff.claimsChanged || []).length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Changed Claims</p>
+                        <div className="space-y-1">
+                          {(sectionDiff.claimsChanged || []).map(claim => (
+                            <div key={claim.id} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-1.5 text-[10px]">
+                              <span className="font-mono text-gray-500">#{String(claim.id).slice(0, 8)}</span>
+                              <span className="text-gray-700">{claim.version > 1 ? `v${claim.version - 1}` : 'new'} → v{claim.version}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
               )}
             </div>
 
             <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-              <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Sections</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-bold text-[#1e3a8a]">Sections</h2>
+                {reportSectionId && (
+                  <button onClick={() => setReportSectionId(null)} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800">All sections</button>
+                )}
+              </div>
               {!progressReport ? <p className="text-xs text-gray-400 italic">Loading...</p> : progressReport.sections?.length === 0 ? (
                 <p className="text-xs text-gray-400 italic">No sections yet.</p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
                   {(progressReport.sections || []).map(section => (
-                    <div key={section.sectionId} className="bg-gray-50 rounded-xl p-3 text-xs">
+                    <button
+                      key={section.sectionId}
+                      onClick={() => setReportSectionId(String(reportSectionId) === String(section.sectionId) ? null : section.sectionId)}
+                      className={`w-full text-left bg-gray-50 rounded-xl p-3 text-xs transition ${String(reportSectionId) === String(section.sectionId) ? 'ring-2 ring-[#1e3a8a]/40 bg-indigo-50' : 'hover:bg-indigo-50/60'}`}
+                    >
                       <div className="flex justify-between items-start gap-2">
                         <span className="font-bold text-gray-700">{section.sectionTitle}</span>
                         <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">v{section.version}</span>
@@ -802,71 +934,8 @@ export default function ProjectDetail() {
                         {section.feedbackAnswered}/{section.feedbackAnswered + section.feedbackUnanswered} feedback answered
                         {section.lastUpdated ? ` &middot; ${new Date(section.lastUpdated).toLocaleDateString()}` : ''}
                       </p>
-                    </div>
+                    </button>
                   ))}
-                </div>
-              )}
-            </div>
-
-            <div className="lg:col-span-3 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-              <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Changes Since Last Checkpoint</h2>
-              {!checkpointDiff ? (
-                <p className="text-xs text-gray-400 italic">Checkpoints are captured when the project is submitted for review. Need at least two checkpoints to compare — none found yet.</p>
-              ) : (
-                <div className="space-y-4 text-xs">
-                  <div className="flex flex-wrap gap-4 text-gray-500">
-                    <span>{checkpointDiff.from ? `From: ${new Date(checkpointDiff.from).toLocaleString()}` : 'From: start'} ({checkpointDiff.fromTrigger || 'initial'})</span>
-                    <span>{checkpointDiff.to ? `To: ${new Date(checkpointDiff.to).toLocaleString()}` : 'To: now'} ({checkpointDiff.toTrigger || 'latest'})</span>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {[
-                      { label: 'Claims Added', value: (checkpointDiff.claimsAdded || []).length, color: 'text-emerald-600' },
-                      { label: 'Claims Removed', value: (checkpointDiff.claimsRemoved || []).length, color: 'text-rose-600' },
-                      { label: 'Claims Changed', value: (checkpointDiff.claimsChanged || []).length, color: 'text-amber-600' },
-                      { label: 'Word Count Δ', value: (checkpointDiff.sectionWordDeltas || []).reduce((sum, d) => sum + (d.toWords - d.fromWords), 0), color: 'text-indigo-600' },
-                    ].map(stat => (
-                      <div key={stat.label} className="bg-gray-50 rounded-xl p-4 text-center">
-                        <p className={`text-2xl font-black ${stat.color}`}>{stat.value}</p>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">{stat.label}</p>
-                      </div>
-                    ))}
-                  </div>
-                  {[
-                    { label: 'Mappings Accepted', value: checkpointDiff.mappingsAcceptedDelta },
-                    { label: 'Mappings Rejected', value: checkpointDiff.mappingsRejectedDelta },
-                    { label: 'Feedback Answered', value: checkpointDiff.feedbackAnsweredDelta },
-                  ].map(item => (
-                    <div key={item.label} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2">
-                      <span className="text-gray-500">{item.label}</span>
-                      <span className={`font-black ${item.value > 0 ? 'text-emerald-600' : item.value < 0 ? 'text-rose-600' : 'text-gray-400'}`}>{item.value > 0 ? `+${item.value}` : item.value}</span>
-                    </div>
-                  ))}
-                  {(checkpointDiff.sectionWordDeltas || []).filter(d => d.toWords !== d.fromWords).length > 0 && (
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Word Count by Section</p>
-                      <div className="space-y-1">
-                        {(checkpointDiff.sectionWordDeltas || []).filter(d => d.toWords !== d.fromWords).map(d => (
-                          <div key={d.sectionId} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-1.5 text-[10px]">
-                            <span className="text-gray-500">Section {String(d.sectionId).slice(0, 8)}</span>
-                            <span className="text-gray-700">{d.fromWords} → {d.toWords}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {(checkpointDiff.claimsChanged || []).length > 0 && (
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Changed Claims</p>
-                      <div className="space-y-1">
-                        {(checkpointDiff.claimsChanged || []).map(claim => (
-                          <div key={claim.id} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-1.5 text-[10px]">
-                            <span className="font-mono text-gray-500">#{String(claim.id).slice(0, 8)}</span>
-                            <span className="text-gray-700">{claim.version > 1 ? `v${claim.version - 1}` : 'new'} → v{claim.version}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </div>

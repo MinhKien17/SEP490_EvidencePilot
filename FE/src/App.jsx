@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { ThemeProvider } from './context/ThemeContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
 import ScrollToTop from './components/ScrollToTop';
 
 import Home from './pages/home/index.jsx';
@@ -18,6 +19,7 @@ import AdminDashboard from './pages/Admin/AdminDashboard.jsx';
 import CollectionList from './pages/Instructor/CollectionList.jsx';
 import CollectionDetail from './pages/Instructor/CollectionDetail.jsx';
 import ReviewRequests from './pages/Instructor/ReviewRequests.jsx';
+import ReviewSpace from './pages/Instructor/ReviewSpace.jsx';
 import InstructorDashboard from './pages/Instructor/Dashboard.jsx';
 import ProjectManagement from './pages/Instructor/ProjectManagement.jsx';
 import ProjectDetail from './pages/Instructor/ProjectDetail.jsx';
@@ -46,22 +48,43 @@ function App() {
             <Route path="/profile" element={<Profile />} />
 
             {/* =========================================================================
-                🔓 INSTRUCTOR & ADMIN CHẠY THẲNG (Đã gỡ ProtectedRoute)
+                🔓 INSTRUCTOR & ADMIN (role-gated)
                ========================================================================= */}
-            <Route path="/instructor/profile" element={<Profile />} />
-            <Route path="/admin/profile" element={<Profile />} />
-            <Route path="/instructor/dashboard" element={<InstructorDashboard />} />
-            <Route path="/instructor/projects" element={<ProjectManagement />} />
-            <Route path="/instructor/projects/:id" element={<ProjectDetail />} />
-            <Route path="/instructor/requests" element={<ReviewRequests />} />
-            <Route path="/instructor/collections" element={<CollectionList />} />
-            <Route path="/instructor/collections/:id" element={<CollectionDetail />} />           
-            <Route path="/admin/dashboard" element={<AdminDashboard />} />
+            <Route path="/instructor/profile" element={
+              <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}><Profile /></ProtectedRoute>
+            } />
+            <Route path="/admin/profile" element={
+              <ProtectedRoute allowedRoles={['ADMIN']}><Profile /></ProtectedRoute>
+            } />
+            <Route path="/instructor/dashboard" element={
+              <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}><InstructorDashboard /></ProtectedRoute>
+            } />
+            <Route path="/instructor/projects" element={
+              <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}><ProjectManagement /></ProtectedRoute>
+            } />
+            <Route path="/instructor/projects/:id" element={
+              <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}><ProjectDetail /></ProtectedRoute>
+            } />
+            <Route path="/instructor/requests" element={
+              <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}><ReviewRequests /></ProtectedRoute>
+            } />
+            <Route path="/instructor/requests/:projectId" element={
+              <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}><ErrorBoundary><ReviewSpace /></ErrorBoundary></ProtectedRoute>
+            } />
+            <Route path="/instructor/collections" element={
+              <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}><CollectionList /></ProtectedRoute>
+            } />
+            <Route path="/instructor/collections/:id" element={
+              <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}><CollectionDetail /></ProtectedRoute>
+            } />
+            <Route path="/admin/dashboard" element={
+              <ProtectedRoute allowedRoles={['ADMIN']}><AdminDashboard /></ProtectedRoute>
+            } />
             <Route path="/student/projects" element={
               <ProtectedRoute allowedRoles={['STUDENT']}><StudentProjects /></ProtectedRoute>
             } />
             <Route path="/student/projects/:projectId" element={
-              <ProtectedRoute allowedRoles={['STUDENT']}><WorkspaceLayout /></ProtectedRoute>
+              <ProtectedRoute allowedRoles={['STUDENT']}><ErrorBoundary><WorkspaceLayout /></ErrorBoundary></ProtectedRoute>
             } />
             
           </Routes>

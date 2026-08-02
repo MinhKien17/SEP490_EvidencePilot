@@ -18,11 +18,9 @@ const FUNCTIONAL_TYPES = [
 ];
 
 const BREAKDOWN_LABELS = [
-  ['relation', 'Relation specificity'],
-  ['evidence_anchor', 'Evidence anchor'],
-  ['source_type_authority', 'Source metadata signal'],
-  ['citation_metadata', 'Citation metadata'],
-  ['link_availability', 'Persistent identifier'],
+  ['semantic_alignment', 'Semantic alignment'],
+  ['contextual_sufficiency', 'Contextual sufficiency'],
+  ['logical_restraint', 'Logical restraint'],
 ];
 
 function parseScoreBreakdown(s) {
@@ -48,7 +46,7 @@ function FunctionalTypeDropdown({ value, onChange, className }) {
         <svg className={`w-3 h-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
       </button>
       {open && (
-        <ul className="absolute z-20 left-0 right-0 mt-1 bg-(--surface) border border-(--border) rounded-lg shadow-lg max-h-48 overflow-y-auto">
+        <ul className="absolute z-20 left-0 right-0 mt-1 bg-(--surface) border border-(--border) rounded-lg shadow-lg max-h-48 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {FUNCTIONAL_TYPES.map(t => (
             <li key={t.value}>
               <button type="button" onClick={() => { onChange(t.value); setOpen(false); }}
@@ -125,9 +123,9 @@ export default function ContextPanel({
   // Claims tab
   newClaimContent, onNewClaimContentChange, newClaimFunctionalType, setNewClaimFunctionalType,
   claimEvaluation, evaluatingClaim, claimEvaluationError, handleEvaluateClaim, canAddEvaluatedClaim,
-  handleCreateClaim, handleUseSelectedText, canCreateClaim,
+  handleCreateClaim, canCreateClaim, creatingClaim,
   claims, selectedClaim, claimMatches, claimMappings, loadingMatches,
-  claimCandidates, loadingCandidates, evaluatingChunkId, updatingSuggestionId,
+  claimCandidates, loadingCandidates, candidateError, evaluatingChunkId, updatingSuggestionId,
   handleSearchClaimMatches, handleEvaluateMatch, handleSuggestionStatus, canEditClaim,
   editingClaim, setEditingClaim, editClaimContent, setEditClaimContent, editClaimFunctionalType, setEditClaimFunctionalType, handleDeleteClaim, handleUpdateClaim,
   onSelectClaim,
@@ -145,6 +143,21 @@ export default function ContextPanel({
   const fileInputRef = useRef(null);
   const { t } = useTranslation();
   const [breakdownOpenId, setBreakdownOpenId] = useState(null);
+  const [expandedFeedbackId, setExpandedFeedbackId] = useState(null);
+  const [feedbackDetail, setFeedbackDetail] = useState({});
+
+  const toggleFeedbackDetail = async (fb) => {
+    const id = fb.id || fb.requestId;
+    if (!id) return;
+    if (expandedFeedbackId === id) { setExpandedFeedbackId(null); return; }
+    setExpandedFeedbackId(id);
+    if (!feedbackDetail[id]) {
+      try {
+        const r = await api.get(`/api/feedback-requests/${id}/feedback`);
+        setFeedbackDetail(prev => ({ ...prev, [id]: r.data || [] }));
+      } catch { setFeedbackDetail(prev => ({ ...prev, [id]: [] })); }
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -292,7 +305,9 @@ export default function ContextPanel({
                   <div className="flex flex-col gap-2">
                     <input value={newClaimContent} onChange={(e) => onNewClaimContentChange(e.target.value)} placeholder="Claim content..." className="text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 min-w-[120px] text-(--text-primary)" />
                     <div className="flex gap-2">
-                      <button onClick={handleUseSelectedText} className="text-xs font-semibold text-indigo-700 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition-colors">Use selection</button>
+                      <button onClick={handleCreateClaim} disabled={!newClaimContent.trim() || creatingClaim} className="flex-1 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-(--border) disabled:dark:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">
+                        {creatingClaim ? 'Adding...' : 'Add Claim'}
+                      </button>
                       <button onClick={handleEvaluateClaim} disabled={!newClaimContent.trim() || evaluatingClaim} className="flex-1 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-(--border) disabled:dark:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">
                         {evaluatingClaim ? 'Evaluating...' : claimEvaluationError ? 'Retry AI Evaluate' : 'AI Evaluate'}
                       </button>
@@ -326,14 +341,14 @@ export default function ContextPanel({
                           <FunctionalTypeDropdown value={newClaimFunctionalType} onChange={setNewClaimFunctionalType} className="w-full" />
                         </div>
                         <p className="text-[9px] text-(--text-tertiary)">AI advice only. You may add either READY or REVISE after reviewing the result.</p>
-                        <button onClick={handleCreateClaim} disabled={!canAddEvaluatedClaim} className="w-full text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">Add Claim</button>
+                        <button onClick={handleCreateClaim} disabled={!canAddEvaluatedClaim || creatingClaim} className="w-full text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">{creatingClaim ? 'Adding...' : 'Add Claim'}</button>
                       </div>
                     )}
                   </div>
                 </div>
               )}
               {claims.length === 0 ? <div className="text-xs text-(--text-tertiary) italic text-center py-8">No claims yet.</div> : (
-                claims.map(claim => {
+                claims.map((claim, claimIndex) => {
                   const isSelected = selectedClaim?.id === claim.id;
                   const activeSuggestionIds = new Set(
                     (isSelected ? claimMappings : [])
@@ -352,7 +367,7 @@ export default function ContextPanel({
                     <div key={claim.id} onClick={() => { if (onSelectClaim) onSelectClaim(claim); }} className={`bg-(--surface) border rounded-xl p-3.5 shadow-sm hover:shadow-md transition-all relative overflow-hidden group cursor-pointer ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-400/20' : 'border-(--border)'}`}>
                       <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>
                       <div className="flex justify-between items-center mb-1.5 pl-1">
-                        <span className="text-[9px] font-black text-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 uppercase tracking-wide">ID: {claim.id}</span>
+                        <span className="text-[9px] font-black text-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 uppercase tracking-wide">#{claimIndex + 1}{claim.claimVersion > 1 ? ` v${claim.claimVersion}` : ''}</span>
                         <div className="flex items-center gap-1.5">
                           {claim.contentStatus && (
                             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${CLAIM_STATUS_CLASSES[claim.contentStatus] || 'border-slate-200 bg-slate-50 text-slate-600'}`}>
@@ -382,14 +397,29 @@ export default function ContextPanel({
                           <button onClick={(e) => { e.stopPropagation(); handleDeleteClaim(claim.id); }} className="text-[10px] text-rose-500 hover:text-rose-700 flex items-center gap-0.5">Delete</button>
                         </>}
                       </div>
+                      {editingClaim && editingClaim.id === claim.id && (
+                        <div className="mt-3 pt-3 border-t border-dashed border-(--border)">
+                          <input value={editClaimContent} onChange={(e) => setEditClaimContent(e.target.value)} className="w-full text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 mb-2 text-(--text-primary)" />
+                          <FunctionalTypeDropdown value={editClaimFunctionalType} onChange={setEditClaimFunctionalType} className="w-full mb-2" />
+                          <div className="flex gap-2 justify-end">
+                            <button onClick={() => setEditingClaim(null)} className="text-[10px] text-(--text-secondary) hover:text-(--text-primary) font-bold">Cancel</button>
+                            <button onClick={handleUpdateClaim} className="text-[10px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-1 rounded-lg">Save</button>
+                          </div>
+                        </div>
+                      )}
                       {isSelected && (
                         <div className="mt-3 pt-3 border-t border-dashed border-(--border) animate-in fade-in slide-in-from-top-1 duration-200 space-y-4">
                           <div>
                             <h4 className="text-[10px] font-bold text-(--text-tertiary) uppercase tracking-widest mb-2">Qdrant matches</h4>
-                            {loadingCandidates ? <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">Searching sources...</div> : claimCandidates.length === 0 ? (
+                            {loadingCandidates ? <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">Searching sources...</div> : candidateError ? (
+                              <div className="text-center py-2 space-y-2">
+                                <div className="text-[10px] text-rose-500 italic">{candidateError}</div>
+                                <button onClick={(e) => { e.stopPropagation(); handleSearchClaimMatches(selectedClaim); }} className="text-[9px] font-bold text-indigo-600 hover:text-indigo-800">Retry</button>
+                              </div>
+                            ) : claimCandidates.length === 0 ? (
                               <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">Click Find matches to search active sources.</div>
                             ) : (
-                              <div className="space-y-2">
+                              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                                 {claimCandidates.map(candidate => {
                                   const evaluated = claimMatches.some(match => match.documentChunkId === candidate.documentChunkId);
                                   return (
@@ -456,16 +486,6 @@ export default function ContextPanel({
                           </div>
                         </div>
                       )}
-                      {editingClaim && editingClaim.id === claim.id && (
-                        <div className="mt-3 pt-3 border-t border-dashed border-(--border)">
-                          <input value={editClaimContent} onChange={(e) => setEditClaimContent(e.target.value)} className="w-full text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 mb-2 text-(--text-primary)" />
-                          <FunctionalTypeDropdown value={editClaimFunctionalType} onChange={setEditClaimFunctionalType} className="w-full mb-2" />
-                          <div className="flex gap-2 justify-end">
-                            <button onClick={() => setEditingClaim(null)} className="text-[10px] text-(--text-secondary) hover:text-(--text-primary) font-bold">Cancel</button>
-                            <button onClick={handleUpdateClaim} className="text-[10px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-1 rounded-lg">Save</button>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   );
                 })
@@ -487,21 +507,46 @@ export default function ContextPanel({
                 {feedbacks.length === 0 ? <div className="text-xs text-(--text-tertiary) italic text-center py-8">No reviews yet.</div> : (
                   feedbacks.map((fb, idx) => (
                     <div key={fb.id || idx} className="bg-(--surface) border border-(--border) rounded-xl shadow-sm overflow-hidden">
-                      <div className="bg-(--surface-secondary) border-b border-(--border-light) p-3 flex justify-between items-start">
+                      <div className="bg-(--surface-secondary) border-b border-(--border-light) p-3 flex justify-between items-start cursor-pointer" onClick={() => toggleFeedbackDetail(fb)}>
                         <div className="flex items-center gap-2">
                           <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 flex items-center justify-center font-bold text-xs border border-indigo-200 dark:border-indigo-800">I</div>
                           <div>
-                            <p className="text-xs font-bold text-(--text-primary)">Instructor (ID: {fb.instructorId})</p>
+                            <p className="text-xs font-bold text-(--text-primary)">Instructor{fb.instructorName ? `: ${fb.instructorName}` : ''}</p>
                             <p className="text-[9px] text-(--text-tertiary) font-medium">{fb.requestedAt ? new Date(fb.requestedAt).toLocaleString() : ''}</p>
                           </div>
                         </div>
-                        <span className={`text-[9px] px-2 py-0.5 rounded font-black border uppercase ${fb.status === 'PENDING' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 border-amber-200 dark:border-amber-800' : fb.status === 'RETURNED' ? 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 border-rose-200 dark:border-rose-800' : fb.status === 'REVIEWED' ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 border-emerald-200 dark:border-emerald-800' : 'bg-rose-50 dark:bg-rose-900/30 text-rose-700'}`}>{fb.status}</span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[9px] px-2 py-0.5 rounded font-black border uppercase ${fb.status === 'PENDING' ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 border-amber-200 dark:border-amber-800' : fb.status === 'RETURNED' ? 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 border-rose-200 dark:border-rose-800' : fb.status === 'REVIEWED' ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 border-emerald-200 dark:border-emerald-800' : 'bg-rose-50 dark:bg-rose-900/30 text-rose-700'}`}>{fb.status}</span>
+                          <svg className={`w-3 h-3 text-(--text-tertiary) transition-transform ${expandedFeedbackId === (fb.id || fb.requestId) ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                        </div>
                       </div>
                       <div className="p-3 text-xs leading-relaxed text-(--text-primary)">
                         {fb.status === 'PENDING' && <p className="text-amber-600 font-medium italic">Project submitted. Waiting for instructor review.</p>}
                         {fb.status === 'RETURNED' && <p className="text-rose-600 font-medium">Instructor returned the project. Please review and resubmit.</p>}
                         {fb.status === 'REVIEWED' && <p className="text-emerald-600 font-medium">Instructor approved the project.</p>}
                         {fb.status === 'REJECTED' && <p className="text-red-600 font-medium">Review request was rejected.</p>}
+                        {expandedFeedbackId === (fb.id || fb.requestId) && (
+                          <div className="mt-3 space-y-2">
+                            {(feedbackDetail[fb.id || fb.requestId] || []).length === 0 ? (
+                              <p className="text-[10px] text-(--text-tertiary) italic">No per-section feedback items.</p>
+                            ) : (
+                              feedbackDetail[fb.id || fb.requestId].map(item => (
+                                <div key={item.id} className="rounded-lg border border-(--border) bg-(--surface-secondary) p-2.5 space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">Section {item.sectionTitle || ''}</span>
+                                    {item.stale && <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">section changed</span>}
+                                    {item.answered && <span className="text-[9px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">answered</span>}
+                                  </div>
+                                  {item.lineReference && <p className="text-[9px] text-(--text-tertiary) font-mono">{item.lineReference}</p>}
+                                  <p className="text-[10px] text-(--text-primary) leading-relaxed">{item.content}</p>
+                                  {item.answered && item.answerContent && (
+                                    <p className="text-[9px] text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 rounded p-1.5">My answer: {item.answerContent}</p>
+                                  )}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))
@@ -516,7 +561,7 @@ export default function ContextPanel({
               {graphData && graphData.sectionSummaries && graphData.sectionSummaries.length > 0 && (
                 <div className="bg-(--surface) border border-(--border) rounded-xl p-4 shadow-sm">
                   <h4 className="font-bold text-xs text-(--text-primary) mb-3">Section Coverage</h4>
-                  <div className="space-y-2">
+                  <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
                     {graphData.sectionSummaries.map(summary => {
                       const coverage = summary.claimCount > 0 ? Math.round((summary.presentCount / summary.claimCount) * 100) : 0;
                       const status = summary.orphanedCount > 0 || summary.unsupportedCount > 0 ? 'bg-rose-50 text-rose-700 border-rose-200'
