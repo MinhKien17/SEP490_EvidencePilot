@@ -192,7 +192,7 @@ public class CheckpointServiceImpl implements CheckpointService {
         ProjectCheckpoint baseline = null;
         for (ProjectCheckpoint checkpoint : checkpoints) {
             if (before != null && (checkpoint.getCreatedAt() == null
-                    || checkpoint.getCreatedAt().isAfter(before))) {
+                    || !checkpoint.getCreatedAt().isBefore(before))) {
                 continue;
             }
             baseline = checkpoint;
