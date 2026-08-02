@@ -76,7 +76,7 @@ public class AuthServiceImpl implements AuthService {
         if (token == null || !jwtUtils.validateToken(token)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or expired token");
         }
-        // ponytail: whole-token lock makes concurrent refresh race-free (one wins, the other 401s)
+        // whole-token lock makes concurrent refresh race-free (one wins, the other 401s)
         synchronized (sessionRegistry) {
             String jti = jwtUtils.extractJti(token);
             if (!sessionRegistry.isValid(jti)) {

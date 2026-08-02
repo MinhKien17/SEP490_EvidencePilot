@@ -5,7 +5,7 @@ import org.springframework.stereotype.Component;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-// ponytail: in-memory jti allowlist — single-instance prototype. Move to Redis/DB when scaling out.
+// in-memory jti allowlist — single-instance prototype. Move to Redis/DB when scaling out.
 @Component
 public class JwtSessionRegistry {
 

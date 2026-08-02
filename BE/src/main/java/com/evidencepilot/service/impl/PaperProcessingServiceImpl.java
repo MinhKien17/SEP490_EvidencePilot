@@ -71,7 +71,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     private static final int EVIDENCE_EXCERPT_LIMIT = 1_200;
     private static final int ASSERTION_LIMIT = 50;
     private static final int ASSERTION_EXCERPT_LIMIT = 300;
-    // ponytail: 0.7 cosine threshold; tune against the eval harness once gold papers exist
+    // 0.7 cosine threshold; tune against the eval harness once gold papers exist
     private static final double ASSERTION_MATCH_THRESHOLD = 0.7;
     // backend computes these exactly; AI-emitted ones are dropped so they can never
     // duplicate or contradict the deterministic findings
@@ -133,7 +133,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     }
 
     private List<PaperSection> parseSections(String text, Document document) {
-        // ponytail: single-line heading regex — a greedy [A-Za-z\s]+ class swallowed
+        // single-line heading regex — a greedy [A-Za-z\s]+ class swallowed
         // the following paragraph into the title; space-only keeps headings one line.
         Pattern pattern = Pattern.compile("(?m)^(?:#{1,6}\\s+)?([A-Z][A-Za-z ]+)\\s*\\n");
         Matcher matcher = pattern.matcher(text);
@@ -421,7 +421,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
                 auditData);
     }
 
-    // ponytail: pass 1 = assertion extraction per chunk, pass 2 = embedding alignment
+    // pass 1 = assertion extraction per chunk, pass 2 = embedding alignment
     // against stored claims; unmatched assertions become MISSING_CLAIM findings
     private List<AiReviewResponse.Finding> alignmentFindings(
             ReviewChunk chunk, List<Claim> claims, Project project, String style) {
@@ -551,7 +551,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         return normA == 0 || normB == 0 ? 0 : dot / (Math.sqrt(normA) * Math.sqrt(normB));
     }
 
-    // ponytail: covers everything the prompts consume — sections, claims, their active
+    // covers everything the prompts consume — sections, claims, their active
     // mappings (incl. relation/strength/status), feedback, and project context
     private String fingerprint(
             String style, Project project, List<PaperSection> sections,
@@ -1004,7 +1004,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             currentUserService.requireSectionContentWriteAccess(currentUser, section);
             section.setPreviousContentTex(section.getContentTex());
             section.setContentTex(content);
-            // ponytail: cap at version 2 per requirement, no further increment
+            // cap at version 2 per requirement, no further increment
             int next = section.getVersion() != null ? section.getVersion() + 1 : 1;
             section.setVersion(Math.min(next, 2));
         }
@@ -1206,7 +1206,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         }
 
         Document paper = papers.getFirst();
-        // ponytail: update filename to reflect the new standard
+        // update filename to reflect the new standard
         paper.setOriginalFilename("_standard_" + paperStandard.name() + ".tex");
         paper = documentRepository.save(paper);
 
@@ -1219,7 +1219,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         //    must be the authoritative gate to prevent data loss from direct API calls.
         requireSectionStructureUnlocked(existingSections);
 
-        // ponytail: guard — refuse if any section contains student work content
+        // guard — refuse if any section contains student work content
         boolean hasContent = existingSections.stream()
                 .anyMatch(section -> paperStandardService.hasStudentContent(
                         section.getContentTex()));

@@ -54,7 +54,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-// ponytail: offline eval harness; gold papers live in src/test/resources/eval/gold.
+// offline eval harness; gold papers live in src/test/resources/eval/gold.
 // AI chunk review + assertion alignment are stubbed (deterministic findings only).
 // Live AI eval: follow-up once the gold set matures.
 class AiReviewEvalTest {
@@ -95,7 +95,7 @@ class AiReviewEvalTest {
         System.out.printf("eval aggregate precision=%.2f recall=%.2f (gold=%d)%n",
                 precision(totalMatched, totalActual), recall(totalMatched, totalGold), totalGold);
 
-        // ponytail: sanity floor; raise once the gold set matures and AI eval is live
+        // sanity floor; raise once the gold set matures and AI eval is live
         assertThat(precision(totalMatched, totalActual)).isGreaterThanOrEqualTo(0.5);
         assertThat(recall(totalMatched, totalGold)).isGreaterThanOrEqualTo(0.5);
     }

@@ -11,7 +11,7 @@ export function AuthProvider({ children }) {
   const verifyPromiseRef = useRef(null);
 
   const verifySession = useCallback(() => {
-    // ponytail: single-flight — mount + login share one in-flight profile fetch
+    // single-flight — mount + login share one in-flight profile fetch
     if (!verifyPromiseRef.current) {
       verifyPromiseRef.current = api.get('/api/users/profile')
         .then((res) => { setUser(res.data); return res.data; })

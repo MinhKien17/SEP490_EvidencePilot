@@ -47,7 +47,7 @@ public record AiReviewResponse(
         limitations = limitations == null ? List.of() : List.copyOf(limitations);
     }
 
-    // ponytail: global rubric 0-5, derived so it can never drift from findings; FE reads it from JSON
+    // global rubric 0-5, derived so it can never drift from findings; FE reads it from JSON
     @JsonProperty("rubricScore")
     public Double rubricScore() {
         if (!isScorable()) {
@@ -106,7 +106,7 @@ public record AiReviewResponse(
             feedbackIds = feedbackIds == null ? List.of() : List.copyOf(feedbackIds);
         }
 
-        // ponytail: rubric 0-5 per finding, deterministic from type + severity cap
+        // rubric 0-5 per finding, deterministic from type + severity cap
         @JsonProperty("score")
         public int score() {
             int severityCap = switch (severity) {

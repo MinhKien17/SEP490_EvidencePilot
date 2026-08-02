@@ -33,7 +33,7 @@ public class SourceExtractionServiceImpl implements SourceExtractionService {
         document.setProcessedAt(null);
         documentRepository.save(document);
 
-        // ponytail: direct publish may leave QUEUED after a process crash;
+        // direct publish may leave QUEUED after a process crash;
         // add an outbox only when delivery must be guaranteed.
         ExtractionRequest request = new ExtractionRequest(document.getId());
         try {

@@ -464,7 +464,7 @@ export default function CollectionDetail() {
         positioned[i].y = positioned[i].baseY + r * Math.sin(angle);
         attempts++;
       }
-      // ponytail: spiral offset up to 200 attempts per node, sufficient for < 200 nodes
+      // spiral offset up to 200 attempts per node, sufficient for < 200 nodes
     }
 
     const nodes = new DataSet(positioned.map(p => {

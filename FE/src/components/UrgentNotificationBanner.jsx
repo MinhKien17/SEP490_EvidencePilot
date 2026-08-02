@@ -24,7 +24,7 @@ export default function UrgentNotificationBanner() {
     }).catch(() => {});
 
     const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
-    // ponytail: the student workspace keeps its existing inbox socket; unify them if notification traffic grows.
+    // the student workspace keeps its existing inbox socket; unify them if notification traffic grows.
     const client = new Client({
       brokerURL: base.replace(/^http/, 'ws') + '/ws',
       connectHeaders: { Authorization: `Bearer ${token}` },
