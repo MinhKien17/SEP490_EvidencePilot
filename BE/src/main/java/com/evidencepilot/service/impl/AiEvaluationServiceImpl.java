@@ -107,7 +107,7 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
             case AiEvaluationJob.KIND_CLAIM_QUALITY -> {
                 UUID sectionId = UUID.fromString(payload.path("sectionId").asText());
                 String content = payload.path("content").asText();
-                PaperSection section = paperSectionRepository.findById(sectionId)
+                PaperSection section = paperSectionRepository.findByIdWithDocument(sectionId)
                         .orElseThrow(() -> new ResourceNotFoundException(sectionId, "PaperSection"));
                 yield objectMapper.valueToTree(claimQualityEvaluationService.evaluate(
                         section.getDocument().getProject(), section, content));
