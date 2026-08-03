@@ -114,6 +114,8 @@ class ClaimQualityEvalTest {
                     criterionMatches.merge(criterion.code(), 1, Integer::sum);
                 }
             }
+            Thread.sleep(Long.parseLong(System.getenv().getOrDefault(
+                    "CLAIM_QUALITY_EVAL_DELAY_MS", "0")));
         }
 
         System.out.printf(

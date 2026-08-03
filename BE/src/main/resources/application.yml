@@ -132,8 +132,6 @@ openalex:
 ollama:
   embedding:
     model: ${OLLAMA_EMBEDDING_MODEL:nomic-embed-text}
-  generation:
-    model: ${OLLAMA_GENERATION_MODEL:evidencopilot:latest}
 
 springdoc:
   swagger-ui:

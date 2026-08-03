@@ -1,14 +1,14 @@
 import { useTranslation } from 'react-i18next';
 
-export default function FilePanel({ isOpen, width, onResizeStart, sections, assignedSections, selectedSectionId, onSelectSection, selectedPaper, onSelectPaper, papers, onUploadPaper, sources, onUploadSource, onDeleteSource, mediaAssets, onUploadMedia, onDeleteMedia, onInsertMedia, showToast, isLocked, onSaveDraft, saveStatus }) {
+export default function FilePanel({ compact, isOpen, width, onResizeStart, sections, assignedSections, selectedSectionId, onSelectSection, selectedPaper, onSelectPaper, papers, onUploadPaper, sources, onUploadSource, onDeleteSource, mediaAssets, onUploadMedia, onDeleteMedia, onInsertMedia, showToast, isLocked, onSaveDraft, saveStatus }) {
   const { t } = useTranslation();
   if (!isOpen) return null;
-  const saveLabel = saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Save failed' : null;
+  const saveLabel = saveStatus === 'saving' ? t('saving') : saveStatus === 'saved' ? t('saved') : saveStatus === 'error' ? t('saveFailed') : null;
   return (
     <>
-      <aside data-tour="file-panel" style={{ width }} className="bg-(--surface-secondary) border-r border-(--border) flex flex-col shrink-0 z-10 backdrop-blur-sm relative">
+      <aside data-tour="file-panel" style={{ width: compact ? 'min(20rem, calc(100vw - 3.5rem))' : width }} className={`bg-(--surface-secondary) border-r border-(--border) flex flex-col shrink-0 z-30 backdrop-blur-sm ${compact ? 'absolute inset-y-0 left-14 shadow-xl' : 'relative'}`}>
         <div className="px-4 py-2.5 border-b border-(--border) bg-(--surface-tertiary)/40 flex items-center">
-          <span className="text-xs font-bold text-(--text-primary) truncate max-w-[180px]">{selectedPaper?.originalFilename || selectedPaper?.title || 'Paper'}</span>
+          <span className="text-xs font-bold text-(--text-primary) truncate max-w-[180px]">{selectedPaper?.originalFilename || selectedPaper?.title || t('paper')}</span>
         </div>
         <div className="px-3 py-2 border-b border-(--border) flex items-center justify-between">
           <span className="text-[10px] font-bold text-(--text-secondary) tracking-wider uppercase">{t('sections')}</span>
@@ -29,12 +29,12 @@ export default function FilePanel({ isOpen, width, onResizeStart, sections, assi
                     ) : (
                       <svg className="w-3.5 h-3.5 shrink-0 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                     )}
-                    <span className="truncate max-w-[120px]" title={sec.sectionTitle}>{sec.sectionTitle || 'Untitled'}</span>
+                    <span className="truncate max-w-[120px]" title={sec.sectionTitle}>{sec.sectionTitle || t('untitled')}</span>
                     <span className="text-[9px] text-(--text-tertiary) font-mono">#{sec.sectionOrder}</span>
                   </div>
                   <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1 py-0.5 rounded shrink-0">v{sec.version || 1}</span>
                   {isSelected && onSaveDraft && (
-                    <button onClick={(e) => { e.stopPropagation(); onSaveDraft(); }} disabled={saveStatus === 'saving'} className="text-[9px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 px-1.5 py-0.5 rounded shrink-0 cursor-pointer" title="Save section">Save</button>
+                    <button onClick={(e) => { e.stopPropagation(); onSaveDraft(); }} disabled={saveStatus === 'saving'} className="text-xs font-bold text-white bg-(--brand) hover:bg-(--brand-hover) disabled:opacity-50 px-2 py-1 rounded shrink-0 cursor-pointer" title={t('saveSection')}>{t('save')}</button>
                   )}
                 </div>
               );
@@ -69,7 +69,7 @@ export default function FilePanel({ isOpen, width, onResizeStart, sections, assi
           )}
         </div>
       </aside>
-      <div onMouseDown={onResizeStart} className="w-1 hover:w-1.5 bg-(--border) hover:bg-(--text-tertiary) cursor-col-resize self-stretch transition-all shrink-0 z-30 relative group flex items-center justify-center border-r border-(--border)/80" title={t('dragToResize')}>
+      <div onMouseDown={onResizeStart} className={`${compact ? 'hidden' : 'flex'} w-1 hover:w-1.5 bg-(--border) hover:bg-(--text-tertiary) cursor-col-resize self-stretch transition-all shrink-0 z-30 relative group items-center justify-center border-r border-(--border)/80`} title={t('dragToResize')}>
         <div className="h-6 w-0.5 bg-(--text-tertiary) group-hover:bg-(--text-secondary) rounded"></div>
       </div>
     </>

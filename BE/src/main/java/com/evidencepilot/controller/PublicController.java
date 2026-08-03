@@ -1,5 +1,6 @@
 package com.evidencepilot.controller;
 
+import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
@@ -26,7 +27,8 @@ public class PublicController {
         return Map.of(
                 "totalUsers", userRepository.count(),
                 "totalProjects", projectRepository.countByActiveTrue(),
-                "totalDocuments", documentRepository.count()
+                "totalDocuments", documentRepository.count(),
+                "totalSources", documentRepository.countByActiveTrueAndDocType(DocumentType.SOURCE)
         );
     }
 }

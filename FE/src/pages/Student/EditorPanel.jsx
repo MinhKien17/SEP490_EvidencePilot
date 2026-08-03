@@ -4,6 +4,7 @@ import PreviewPane from '../../components/PreviewPane';
 import { useTranslation } from 'react-i18next';
 
 export default function EditorPanel({
+  compact,
   selectedPaper, selectedSectionId, assignedSections, canEditCurrentSection, currentSection, displayContent, updateCode,
   editorWidth, onEditorResizeStart,
   saveStatus, lastSaved, handleSaveDraft, handleScanCitations,
@@ -18,7 +19,7 @@ export default function EditorPanel({
   const [previewZoom, setPreviewZoom] = useState(100);
   return (
     <div id="editor-preview-container" className="flex-1 min-w-0 flex overflow-hidden bg-(--surface-tertiary)/50 p-2 gap-2">
-      <div style={{ width: `${editorWidth}%`, flexGrow: 0, flexShrink: 0 }} className="bg-(--surface) rounded-lg shadow-sm border border-(--border) flex flex-col overflow-hidden">
+      <div style={{ width: compact ? '100%' : `${editorWidth}%`, flexGrow: 0, flexShrink: 0 }} className="bg-(--surface) rounded-lg shadow-sm border border-(--border) flex flex-col overflow-hidden min-w-0">
         <div data-tour="editor-toolbar" className="h-10 border-b border-(--border-light) flex items-center justify-between px-3 bg-(--surface) shadow-sm shrink-0 z-10">
           <div className="flex items-center gap-2 truncate">
             <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded tracking-wide font-mono">LaTeX</span>
@@ -30,7 +31,7 @@ export default function EditorPanel({
               <span className="text-[9px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded-md border border-amber-200 dark:border-amber-800">{t('readOnly')}</span>
             )}
             {selectedPaper && (
-              <button onClick={handleScanCitations} disabled={isLocked} className="border border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 disabled:opacity-40 px-2.5 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-colors" title="Scan paper format, tone, citations, and claim coverage">
+              <button onClick={handleScanCitations} disabled={isLocked} className="border border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 disabled:opacity-40 px-2.5 py-1 rounded-md text-xs font-bold flex items-center gap-1 transition-colors" title={t('scanFormatTitle')}>
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                 {t('scanFormat')}
               </button>
@@ -46,7 +47,7 @@ export default function EditorPanel({
           <div className="h-9 flex items-center justify-between px-3 border-b border-(--border-light) gap-1">
             <div className={`flex-1 flex items-center gap-1 min-w-0 pr-2 ${!isOwnSection || isLocked ? 'pointer-events-none opacity-30' : ''}`}>
               <div className="relative">
-                <button onClick={() => { if (!isOwnSection || isLocked) return; setShowTextSizeMenu(!showTextSizeMenu); setShowSymbolMenu(false); }} className={`h-7 px-1.5 flex items-center gap-1 hover:bg-(--surface-tertiary) rounded text-(--text-primary) font-extrabold text-[11px] transition-colors cursor-pointer ${!isOwnSection || isLocked ? 'opacity-30 pointer-events-none' : ''}`} title={t('headingFontSize')}>
+                <button onClick={() => { if (!isOwnSection || isLocked) return; setShowTextSizeMenu(!showTextSizeMenu); setShowSymbolMenu(false); }} className={`h-7 px-1.5 flex items-center gap-1 hover:bg-(--surface-tertiary) rounded text-(--text-primary) font-extrabold text-xs transition-colors cursor-pointer ${!isOwnSection || isLocked ? 'opacity-30 pointer-events-none' : ''}`} title={t('headingFontSize')}>
                   <span>TT</span><span className="text-[7px]">▼</span>
                 </button>
                 {showTextSizeMenu && (
@@ -56,7 +57,7 @@ export default function EditorPanel({
                     <button onClick={() => { insertLatexTag('subsubsection'); setShowTextSizeMenu(false); }} className="w-full text-left px-3 py-1.5 hover:bg-(--surface-secondary) text-xs text-(--text-primary) cursor-pointer">{t('subsubsection')}</button>
                     <hr className="border-(--border) my-1" />
                     <button onClick={() => { insertLatexTag('large'); setShowTextSizeMenu(false); }} className="w-full text-left px-3 py-1.5 hover:bg-(--surface-secondary) text-xs text-(--text-primary) cursor-pointer">{t('largeFont')}</button>
-                    <button onClick={() => { insertLatexTag('small'); setShowTextSizeMenu(false); }} className="w-full text-left px-3 py-1.5 hover:bg-(--surface-secondary) text-[10px] text-(--text-primary) cursor-pointer">{t('smallFont')}</button>
+                    <button onClick={() => { insertLatexTag('small'); setShowTextSizeMenu(false); }} className="w-full text-left px-3 py-1.5 hover:bg-(--surface-secondary) text-xs text-(--text-primary) cursor-pointer">{t('smallFont')}</button>
                   </div>
                 )}
               </div>
@@ -64,7 +65,7 @@ export default function EditorPanel({
               <button onClick={() => insertLatexTag('italic')} className="w-7 h-7 flex items-center justify-center hover:bg-(--surface-tertiary) rounded text-(--text-primary) italic font-serif cursor-pointer" title={t('italic')}>I</button>
               <button onClick={() => insertLatexTag('hl')} className="w-7 h-7 flex items-center justify-center hover:bg-(--surface-tertiary) rounded text-amber-600 font-bold cursor-pointer" title={t('highlight')}>Hl</button>
               <button onClick={() => insertLatexTag('inline-math')} className="w-7 h-7 flex items-center justify-center hover:bg-(--surface-tertiary) rounded text-(--text-primary) font-serif text-xs cursor-pointer" title={t('inlineMath')}>$</button>
-              <button onClick={() => insertLatexTag('equation')} className="w-7 h-7 flex items-center justify-center hover:bg-(--surface-tertiary) rounded text-(--text-primary) font-serif text-xs cursor-pointer" title={t('equationBlock')}>∑</button>
+              <button onClick={() => insertLatexTag('equation')} className="w-7 h-7 flex items-center justify-center hover:bg-(--surface-tertiary) rounded text-(--text-primary) font-serif text-xs cursor-pointer" title={t('equation')}>∑</button>
               <div className="relative">
                 <button onClick={() => { setShowSymbolMenu(!showSymbolMenu); setShowTextSizeMenu(false); }} className="w-7 h-7 flex items-center justify-center hover:bg-(--surface-tertiary) rounded text-(--text-primary) font-bold cursor-pointer" title={t('greekSymbols')}>Ω</button>
                 {showSymbolMenu && (
@@ -106,10 +107,10 @@ export default function EditorPanel({
           <div className="h-8 flex items-center justify-between px-3 bg-(--surface-secondary)/70 border-t border-(--border-light) gap-1">
             <div className="flex items-center gap-1.5">
               <span className="text-[9px] text-(--text-tertiary) font-extrabold tracking-wider">{t('textSize')}</span>
-              <input type="range" min="10" max="24" value={textSize} onChange={(e) => setTextSize(parseInt(e.target.value))} className="w-16 h-1 bg-(--border) rounded-lg appearance-none cursor-pointer accent-indigo-600" title="Editor font size" />
+              <input type="range" min="10" max="24" value={textSize} onChange={(e) => setTextSize(parseInt(e.target.value))} className="w-16 h-1 bg-(--border) rounded-lg appearance-none cursor-pointer accent-indigo-600" title={t('editorFontSize')} />
               <span className="text-[10px] text-(--text-secondary) font-mono font-bold">{textSize}px</span>
             </div>
-            <button onClick={handleDownloadTex} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer" title={t('downloadTexTitle')}>
+            <button onClick={handleDownloadTex} className="text-xs font-bold text-(--brand) hover:text-(--brand-hover) flex items-center gap-1 cursor-pointer" title={t('downloadTexTitle')}>
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
               {t('downloadTex')}
             </button>
@@ -121,8 +122,8 @@ export default function EditorPanel({
                 <input type="text" placeholder={t('replacePlaceholder')} value={replaceQuery} onChange={(e) => setReplaceQuery(e.target.value)} className="flex-1 bg-(--surface) border border-(--border) rounded px-2 py-1 text-xs outline-none focus:border-indigo-400 font-mono text-(--text-primary)" />
               </div>
               <div className="flex justify-end gap-2">
-                <button onClick={() => handleFindReplace(false)} disabled={!isOwnSection || isLocked} className="bg-(--surface) border border-(--border) hover:bg-(--surface-secondary) text-(--text-secondary) text-[10px] font-bold px-2 py-1 rounded cursor-pointer disabled:cursor-not-allowed disabled:opacity-40">{t('replace')}</button>
-                <button onClick={() => handleFindReplace(true)} disabled={!isOwnSection || isLocked} className="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold px-2 py-1 rounded cursor-pointer shadow-sm disabled:cursor-not-allowed disabled:opacity-40">{t('replaceAll')}</button>
+                <button onClick={() => handleFindReplace(false)} disabled={!isOwnSection || isLocked} className="bg-(--surface) border border-(--border) hover:bg-(--surface-secondary) text-(--text-secondary) text-xs font-bold px-2 py-1 rounded cursor-pointer disabled:cursor-not-allowed disabled:opacity-40">{t('replace')}</button>
+                <button onClick={() => handleFindReplace(true)} disabled={!isOwnSection || isLocked} className="bg-(--brand) hover:bg-(--brand-hover) text-(--on-brand) text-xs font-bold px-2 py-1 rounded cursor-pointer shadow-sm disabled:cursor-not-allowed disabled:opacity-40">{t('replaceAll')}</button>
               </div>
             </div>
           )}
@@ -131,10 +132,10 @@ export default function EditorPanel({
           <LatexEditor ref={editorRef} content={displayContent} onChange={isOwnSection && !isLocked ? updateCode : undefined} readOnly={!isOwnSection || isLocked} fontSize={textSize} />
         </div>
       </div>
-      <div onMouseDown={onEditorResizeStart} className="w-1.5 hover:bg-indigo-500 cursor-col-resize self-stretch transition-all shrink-0 z-10 relative group flex items-center justify-center border-l border-r border-(--border)" title={t('dragToResize')}>
+      <div onMouseDown={onEditorResizeStart} className={`${compact ? 'hidden' : 'flex'} w-1.5 hover:bg-indigo-500 cursor-col-resize self-stretch transition-all shrink-0 z-10 relative group items-center justify-center border-l border-r border-(--border)`} title={t('dragToResize')}>
         <div className="h-6 w-0.5 bg-(--border) group-hover:bg-indigo-500 rounded"></div>
       </div>
-      <div style={{ width: `${100 - editorWidth}%`, flexGrow: 0, flexShrink: 0 }} className="bg-(--surface) rounded-xl shadow-sm border border-(--border) flex flex-col overflow-hidden">
+      <div style={{ width: `${100 - editorWidth}%`, flexGrow: 0, flexShrink: 0 }} className={`${compact ? 'hidden' : 'flex'} bg-(--surface) rounded-xl shadow-sm border border-(--border) flex-col overflow-hidden`}>
         <div className="h-11 border-b border-(--border-light) flex items-center justify-between px-4 bg-(--surface)">
           <div className="flex items-center gap-2 text-sm font-bold text-(--text-primary)">
             <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
