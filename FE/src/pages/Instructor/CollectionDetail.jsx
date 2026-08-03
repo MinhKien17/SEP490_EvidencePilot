@@ -19,14 +19,10 @@ function statusColor(s) {
   return 'bg-gray-100 text-gray-500 border-gray-200';
 }
 
-function fileIcon(name) {
-  if (!name) return '📄';
-  const ext = name.split('.').pop()?.toLowerCase();
-  if (ext === 'pdf') return '📕';
-  if (['doc', 'docx'].includes(ext)) return '📘';
-  if (['md', 'markdown'].includes(ext)) return '📝';
-  if (['tex'].includes(ext)) return '📐';
-  return '📄';
+function FileIcon({ name, className = 'w-5 h-5' }) {
+  const ext = name?.split('.').pop()?.toLowerCase();
+  const color = ext === 'pdf' ? 'text-rose-500' : ['doc', 'docx'].includes(ext) ? 'text-blue-500' : ext === 'tex' ? 'text-amber-500' : 'text-(--brand)';
+  return <svg className={`${className} ${color}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 3h7l5 5v13H7a2 2 0 01-2-2V5a2 2 0 012-2zm7 0v6h6M9 13h6m-6 4h6" /></svg>;
 }
 
 export default function CollectionDetail() {
@@ -35,23 +31,15 @@ export default function CollectionDetail() {
   const t = instructorText[language];
   const ct = commonText[language];
 
-  const TOUR_STEPS = useMemo(() => language === 'vi' ? [
-    { element: '#documents-tab', popover: { title: 'Tài liệu', description: 'Quản lý tài liệu trong bộ sưu tập: tải lên, xem trước, xóa hoặc chia sẻ đến dự án.', side: 'bottom', align: 'start' } },
-    { element: '#add-doc-btn', popover: { title: 'Thêm tài liệu', description: 'Thêm tài liệu bằng DOI, tải lên tệp, hoặc kết hợp cả hai.', side: 'left', align: 'center' } },
-    { element: '#documents-tab', popover: { title: 'Danh sách tài liệu', description: 'Duyệt và chọn tài liệu từ danh sách để xem chi tiết, trạng thái xử lý và kích thước tệp.', side: 'right', align: 'start' } },
-    { element: '#share-to-project', popover: { title: 'Chia sẻ đến dự án', description: 'Chia sẻ tài liệu đã chọn đến dự án sinh viên để ánh xạ bằng chứng.', side: 'left', align: 'center' } },
-    { element: '#connected-map-tab', popover: { title: 'Bản đồ kết nối', description: 'Xem các tài liệu đã được chia sẻ đến dự án và mối quan hệ kết nối.', side: 'bottom', align: 'start' } },
-    { element: '#visualize-map-tab', popover: { title: 'Trực quan hóa', description: 'Trực quan hóa ánh xạ giữa các đoạn văn bản và tuyên bố bằng chứng.', side: 'bottom', align: 'start' } },
-    { element: '#analyze-tab', popover: { title: 'Phân tích', description: 'Thống kê tổng quan về bộ sưu tập: tổng số tài liệu, đã xử lý, đang xử lý và dung lượng.', side: 'bottom', align: 'start' } },
-  ] : [
-    { element: '#documents-tab', popover: { title: 'Documents', description: 'Manage source documents: upload, preview, delete, or share to projects.', side: 'bottom', align: 'start' } },
-    { element: '#add-doc-btn', popover: { title: 'Add Document', description: 'Add documents via DOI lookup, file upload, or both.', side: 'left', align: 'center' } },
-    { element: '#documents-tab', popover: { title: 'Document List', description: 'Browse and select documents from the list to view details, processing status, and file size.', side: 'right', align: 'start' } },
-    { element: '#share-to-project', popover: { title: 'Share to Project', description: 'Share selected documents to student projects for evidence mapping.', side: 'left', align: 'center' } },
-    { element: '#connected-map-tab', popover: { title: 'Connected Map', description: 'View documents shared to projects and their connection relationships.', side: 'bottom', align: 'start' } },
-    { element: '#visualize-map-tab', popover: { title: 'Visualize Map', description: 'Visualize the mapping between text chunks and evidence claims.', side: 'bottom', align: 'start' } },
-    { element: '#analyze-tab', popover: { title: 'Analyze Collection', description: 'Collection overview statistics: total documents, processed, in progress, and total size.', side: 'bottom', align: 'start' } },
-  ], [language]);
+  const TOUR_STEPS = useMemo(() => [
+    { element: '#documents-tab', popover: { title: t.documents, description: t.tourDocumentsDesc, side: 'bottom', align: 'start' } },
+    { element: '#add-doc-btn', popover: { title: t.addDocument, description: t.tourAddDocumentDesc, side: 'left', align: 'center' } },
+    { element: '#documents-tab', popover: { title: t.tourDocumentList, description: t.tourDocumentListDesc, side: 'right', align: 'start' } },
+    { element: '#share-to-project', popover: { title: t.shareToProject, description: t.tourShareDocumentDesc, side: 'left', align: 'center' } },
+    { element: '#connected-map-tab', popover: { title: t.connectedMap, description: t.tourConnectedDesc, side: 'bottom', align: 'start' } },
+    { element: '#visualize-map-tab', popover: { title: t.visualizeMap, description: t.tourVisualizeDesc, side: 'bottom', align: 'start' } },
+    { element: '#analyze-tab', popover: { title: t.analyzeCollection, description: t.tourAnalyzeDesc, side: 'bottom', align: 'start' } },
+  ], [t]);
 
   const [activeTab, setActiveTab] = useState(0);
   const { content: sources, loading: srcLoading, error: srcError, refetch: refetchSources } = useCollectionSources(id);
@@ -186,11 +174,11 @@ export default function CollectionDetail() {
     if (addDocOption === 'doi') {
       return (
         <form onSubmit={async (e) => { e.preventDefault(); setSubmitting(true); await handleDoiSubmit(doi); setSubmitting(false); }} className="space-y-4">
-          <p className="text-xs text-gray-500">{t.inputDoiDescription}</p>
+          <p className="text-xs text-(--text-secondary)">{t.inputDoiDescription}</p>
           <input type="text" value={doi} onChange={e => setDoi(e.target.value)} placeholder={t.doiPlaceholder} required
-            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition" />
+            className="w-full px-4 py-3 bg-(--surface-secondary) border border-(--border) rounded-xl text-(--text-primary) font-medium text-sm focus:outline-none focus:ring-2 focus:ring-(--focus) transition-colors" />
           <button type="submit" disabled={submitting || !doi.trim()}
-            className="w-full py-3 bg-[#1e3a8a] text-white font-bold text-xs rounded-xl hover:bg-blue-800 transition shadow-md disabled:opacity-50">{submitting ? ct.saving : t.submitDoi}</button>
+            className="w-full py-3 bg-(--brand) text-(--on-brand) font-bold text-xs rounded-xl hover:bg-(--brand-hover) transition-colors shadow-md disabled:opacity-50">{submitting ? ct.saving : t.submitDoi}</button>
         </form>
       );
     }
@@ -198,8 +186,8 @@ export default function CollectionDetail() {
     if (addDocOption === 'upload') {
       return (
         <div className="space-y-4">
-          <p className="text-xs text-gray-500">{t.uploadDocumentDescription}</p>
-          <UploadZone onUpload={(f) => { setFile(f); handleUpload(f); }} accept=".pdf,.docx,.md,.tex" label="Drop files here or click to upload" />
+          <p className="text-xs text-(--text-secondary)">{t.uploadDocumentDescription}</p>
+          <UploadZone onUpload={(f) => { setFile(f); handleUpload(f); }} accept=".pdf,.docx,.md,.tex" label={t.dropFiles} />
         </div>
       );
     }
@@ -207,12 +195,12 @@ export default function CollectionDetail() {
     if (addDocOption === 'doi+upload') {
       return (
         <form onSubmit={async (e) => { e.preventDefault(); setSubmitting(true); try { if (doi.trim()) await handleDoiSubmit(doi); if (file) await handleUpload(file); } finally { setSubmitting(false); setAddDocModal(false); } }} className="space-y-4">
-          <p className="text-xs text-gray-500">{t.inputDoiAndUploadDesc}</p>
+          <p className="text-xs text-(--text-secondary)">{t.inputDoiAndUploadDesc}</p>
           <input type="text" value={doi} onChange={e => setDoi(e.target.value)} placeholder={t.doiPlaceholder}
-            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition" />
-          <UploadZone onUpload={f => setFile(f)} accept=".pdf,.docx,.md,.tex" label="Drop files here or click to upload" />
+            className="w-full px-4 py-3 bg-(--surface-secondary) border border-(--border) rounded-xl text-(--text-primary) font-medium text-sm focus:outline-none focus:ring-2 focus:ring-(--focus) transition-colors" />
+          <UploadZone onUpload={f => setFile(f)} accept=".pdf,.docx,.md,.tex" label={t.dropFiles} />
           <button type="submit" disabled={submitting || (!doi.trim() && !file)}
-            className="w-full py-3 bg-[#1e3a8a] text-white font-bold text-xs rounded-xl hover:bg-blue-800 transition shadow-md disabled:opacity-50">{submitting ? ct.saving : ct.submit}</button>
+            className="w-full py-3 bg-(--brand) text-(--on-brand) font-bold text-xs rounded-xl hover:bg-(--brand-hover) transition-colors shadow-md disabled:opacity-50">{submitting ? ct.saving : ct.submit}</button>
         </form>
       );
     }
@@ -224,7 +212,7 @@ export default function CollectionDetail() {
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
       <div className="lg:col-span-2 space-y-4">
         <button id="add-doc-btn" onClick={() => setAddDocModal(true)}
-          className="w-full py-3 bg-[#1e3a8a] text-white font-black text-xs rounded-xl hover:bg-blue-800 transition shadow-sm">
+          className="w-full py-3 bg-(--brand) text-(--on-brand) font-black text-xs rounded-xl hover:bg-(--brand-hover) transition-colors shadow-sm">
           + {t.addDocument}
         </button>
         {srcLoading ? <LoadingSkeleton count={4} height="h-12" /> : srcError ? (
@@ -236,15 +224,15 @@ export default function CollectionDetail() {
             {sources.map(doc => (
               <button key={doc.id} onClick={() => setSelectedSource(doc)}
                 className={`w-full text-left p-3 rounded-xl border text-xs transition flex items-center gap-3 ${selectedSource?.id === doc.id
-                  ? 'bg-blue-50 border-blue-300 shadow-sm'
-                  : 'bg-white border-gray-200 hover:border-blue-200 hover:bg-gray-50'
+                  ? 'bg-(--brand-soft) border-indigo-300 shadow-sm'
+                  : 'bg-(--surface) border-(--border) hover:border-indigo-300 hover:bg-(--surface-secondary)'
                   }`}>
-                <span className="text-base">{fileIcon(doc.originalFilename)}</span>
+                <FileIcon name={doc.originalFilename} />
                 <div className="min-w-0 flex-1">
-                  <p className="font-bold text-gray-800 truncate">{doc.originalFilename || doc.id}</p>
+                  <p className="font-bold text-(--text-primary) truncate">{doc.originalFilename || doc.id}</p>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold ${statusColor(doc.processingStatus)}`}>{doc.processingStatus}</span>
-                    {doc.fileSizeBytes && <span className="text-[10px] text-gray-400">{(doc.fileSizeBytes / 1024).toFixed(0)} KB</span>}
+                    <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold ${statusColor(doc.processingStatus)}`}>{ct.statusLabels?.[doc.processingStatus] || doc.processingStatus}</span>
+                    {doc.fileSizeBytes && <span className="text-[10px] text-(--text-tertiary)">{(doc.fileSizeBytes / 1024).toFixed(0)} KB</span>}
                   </div>
                 </div>
               </button>
@@ -253,43 +241,43 @@ export default function CollectionDetail() {
         )}
       </div>
 
-      <div className="lg:col-span-3 bg-white rounded-2xl border border-gray-200 shadow-sm min-h-[400px]">
+      <div className="lg:col-span-3 bg-(--surface) rounded-2xl border border-(--border) shadow-sm min-h-[400px]">
         {!selectedSource ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-8 text-gray-400">
-            <span className="text-4xl block mb-3">📂</span>
+          <div className="h-full flex flex-col items-center justify-center text-center p-8 text-(--text-tertiary)">
+            <svg className="w-10 h-10 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" /></svg>
             <p className="text-xs font-semibold">{t.selectDocument}</p>
           </div>
         ) : (
           <div className="p-6 space-y-5">
-            <div className="flex items-start justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <span className="text-2xl">{fileIcon(selectedSource.originalFilename)}</span>
+                <FileIcon name={selectedSource.originalFilename} className="w-7 h-7" />
                 <div>
-                  <h3 className="text-base font-black text-gray-900">{selectedSource.originalFilename || 'Unnamed'}</h3>
-                  <p className="text-[11px] text-gray-400 font-mono">ID: {selectedSource.id}</p>
+                  <h3 className="text-base font-black text-(--text-primary)">{selectedSource.originalFilename || t.unnamed}</h3>
+                  <p className="text-[11px] text-(--text-tertiary) font-mono">ID: {selectedSource.id}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button id="share-to-project" onClick={() => openShare(selectedSource.id)}
-                  className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg font-bold hover:bg-blue-100 transition text-[10px]">{t.shareToProject}</button>
+                  className="px-3 py-1.5 bg-(--brand-soft) text-(--brand-foreground) border border-indigo-200 rounded-lg font-bold hover:border-indigo-300 transition-colors text-xs">{t.shareToProject}</button>
                 <button onClick={() => handleDeleteSource(selectedSource.id)}
-                  className="px-3 py-1.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg font-bold hover:bg-rose-100 transition text-[10px]">{ct.delete}</button>
+                  className="px-3 py-1.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg font-bold hover:bg-rose-100 transition-colors text-xs">{ct.delete}</button>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               {[
                 { label: t.sourceStatus, value: selectedSource.processingStatus, badge: statusColor(selectedSource.processingStatus) },
                 { label: t.sourceSize, value: selectedSource.fileSizeBytes ? `${(selectedSource.fileSizeBytes / 1024).toFixed(1)} KB` : '-' },
                 { label: t.sourceType, value: selectedSource.contentType || '-' },
-                { label: t.sourceCreated, value: selectedSource.createdAt ? new Date(selectedSource.createdAt).toLocaleString() : '-' },
+                { label: t.sourceCreated, value: selectedSource.createdAt ? new Date(selectedSource.createdAt).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US') : '-' },
               ].map(s => (
-                <div key={s.label} className="p-3 bg-gray-50 rounded-xl border border-gray-100">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{s.label}</p>
+                <div key={s.label} className="p-3 bg-(--surface-secondary) rounded-xl border border-(--border-light)">
+                  <p className="text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider">{s.label}</p>
                   {s.badge ? (
                     <span className={`inline-block mt-1 px-2 py-0.5 rounded border text-[10px] font-bold ${s.badge}`}>{s.value}</span>
                   ) : (
-                    <p className="mt-1 font-medium text-gray-800 break-words">{s.value}</p>
+                    <p className="mt-1 font-medium text-(--text-primary) break-words">{s.value}</p>
                   )}
                 </div>
               ))}
@@ -298,20 +286,20 @@ export default function CollectionDetail() {
             {selectedSource.openAlexTopic || selectedSource.openAlexSubfield || selectedSource.openAlexField || selectedSource.openAlexDomain ? (
               <div className="space-y-3">
                 {selectedSource.openAlexTopic ? (
-                  <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{t.openAlexTopic}</p>
-                    <p className="mt-1 font-semibold text-gray-900">{selectedSource.openAlexTopic}</p>
+                  <div className="p-3 bg-(--brand-soft) rounded-xl border border-indigo-100 dark:border-indigo-900">
+                    <p className="text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider">{t.openAlexTopic}</p>
+                    <p className="mt-1 font-semibold text-(--text-primary)">{selectedSource.openAlexTopic}</p>
                   </div>
                 ) : null}
-                <div className="grid grid-cols-3 gap-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
                   {[
                     { label: t.openAlexSubfield, value: selectedSource.openAlexSubfield },
                     { label: t.openAlexField, value: selectedSource.openAlexField },
                     { label: t.openAlexDomain, value: selectedSource.openAlexDomain },
                   ].map(s => s.value ? (
-                    <div key={s.label} className="p-3 bg-gray-50 rounded-xl border border-gray-100">
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{s.label}</p>
-                      <p className="mt-1 font-medium text-gray-800 break-words">{s.value}</p>
+                    <div key={s.label} className="p-3 bg-(--surface-secondary) rounded-xl border border-(--border-light)">
+                      <p className="text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider">{s.label}</p>
+                      <p className="mt-1 font-medium text-(--text-primary) break-words">{s.value}</p>
                     </div>
                   ) : null)}
                 </div>
@@ -319,10 +307,10 @@ export default function CollectionDetail() {
             ) : null}
 
             {selectedSource.processingStatus === 'READY' || selectedSource.processingStatus === 'COMPLETED' ? (
-              <div className="pt-2 border-t border-gray-100">
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2">{t.actions}</p>
+              <div className="pt-2 border-t border-(--border-light)">
+                <p className="text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider mb-2">{t.actions}</p>
                 <button type="button" onClick={() => handleDownloadSource(selectedSource)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#1e3a8a] text-white rounded-xl text-xs font-bold hover:bg-blue-800 transition">
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-colors">
                   {t.downloadPdf} ↗
                 </button>
               </div>
@@ -335,15 +323,15 @@ export default function CollectionDetail() {
 
   const renderConnectedMap = () => (
     <div className="space-y-3">
-      <p className="text-xs text-gray-500 font-medium">{t.sharedDocsDesc}</p>
+      <p className="text-xs text-(--text-secondary) font-medium">{t.sharedDocsDesc}</p>
       {sources.filter(s => s.projectId).length === 0 ? (
         <EmptyState title={t.noSharedDocs} description={t.shareDescription} />
       ) : (
         <div className="space-y-2">
           {sources.filter(s => s.projectId).map(doc => (
-            <div key={doc.id} className="p-3 bg-white rounded-xl border border-gray-200 text-xs flex justify-between items-center">
-              <span className="font-bold text-gray-800 truncate">{doc.originalFilename || doc.id}</span>
-              <span className="text-gray-400">→ {t.project}: {doc.projectId}</span>
+            <div key={doc.id} className="p-3 bg-(--surface) rounded-xl border border-(--border) text-xs flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
+              <span className="font-bold text-(--text-primary) truncate">{doc.originalFilename || doc.id}</span>
+              <span className="text-(--text-tertiary)">→ {t.project}: {doc.projectId}</span>
             </div>
           ))}
         </div>
@@ -373,7 +361,7 @@ export default function CollectionDetail() {
     const CANVAS_HEIGHT = 1500;
 
     function nodeLabel(n) {
-      if (!n.title && !n.doi) return '⚠';
+      if (!n.title && !n.doi) return '!';
       let authorName = null;
       if (n.authors) {
         try {
@@ -392,14 +380,14 @@ export default function CollectionDetail() {
       if (n.authors) {
         try {
           const names = JSON.parse(n.authors);
-          if (names?.length) parts.push(`by ${names.join(', ')}`);
+          if (names?.length) parts.push(t.authorsBy.replace('{{authors}}', names.join(', ')));
         } catch { }
       }
       if (n.publicationYear) parts.push(`(${n.publicationYear})`);
-      if (n.citedByCount != null) parts.push(`Cited ${n.citedByCount} times`);
+      if (n.citedByCount != null) parts.push(t.citedTimes.replace('{{count}}', n.citedByCount));
       if (n.doi) parts.push(`DOI: ${n.doi}`);
-      if (!n.title && !n.doi) parts.push('Unresolved reference');
-      else if (!n.hasDoi) parts.push('No DOI — no citation data');
+      if (!n.title && !n.doi) parts.push(t.unresolvedReference);
+      else if (!n.hasDoi) parts.push(t.noCitationData);
       return parts.join(' · ');
     }
 
@@ -517,7 +505,7 @@ export default function CollectionDetail() {
     });
 
     return () => { if (networkRef.current) networkRef.current.destroy(); };
-  }, [graphData]);
+  }, [graphData, t]);
 
   const renderVisualizeMap = () => (
     <div className="flex w-full h-[calc(100vh-3.5rem)] overflow-hidden bg-white">
@@ -526,8 +514,8 @@ export default function CollectionDetail() {
           <LoadingSkeleton count={6} height="h-12" />
         </div>
       ) : !graphData || graphData.nodes.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-gray-400">
-          <span className="text-4xl block mb-3">🔗</span>
+        <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-slate-400">
+          <svg className="w-10 h-10 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M10 13a5 5 0 007.54.54l2-2a5 5 0 00-7.07-7.07l-1.15 1.15m2.68 5.38a5 5 0 00-7.54-.54l-2 2a5 5 0 007.07 7.07l1.15-1.15" /></svg>
           <p className="text-xs font-semibold">{t.citationGraphEmpty}</p>
           <p className="text-[10px] mt-1">{t.visualizeDesc}</p>
         </div>
@@ -536,29 +524,28 @@ export default function CollectionDetail() {
           <div ref={graphRef} id="visual-map-container" className="absolute inset-0 w-full h-full z-0" />
 
           <div className="absolute inset-y-0 left-4 z-20 flex flex-col justify-start pt-4 text-sm font-bold text-gray-500 select-none pointer-events-none">
-            <span className="flex items-center gap-1">Citations <span className="text-sm font-bold text-gray-400">↑</span></span>
-            <span className="text-[10px] font-normal text-gray-400">(higher = more cited)</span>
+            <span className="flex items-center gap-1">{t.citationsAxis} <span className="text-sm font-bold text-gray-400">↑</span></span>
+            <span className="text-[10px] font-normal text-gray-400">{t.higherMoreCited}</span>
           </div>
           <div className="absolute inset-x-0 bottom-4 z-20 flex justify-start pl-4 text-sm font-bold text-gray-500 select-none pointer-events-none">
-            <span className="flex items-center gap-2">Publication Year <span className="text-sm font-bold text-gray-400">→</span></span>
+            <span className="flex items-center gap-2">{t.publicationYear} <span className="text-sm font-bold text-gray-400">→</span></span>
           </div>
           <div className="absolute bottom-4 right-4 z-10 text-[8px] text-gray-400 font-medium select-none pointer-events-none text-right leading-relaxed">
-            <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: '#eef2ff', border: '1px solid #6366f1' }} /> source</span>
+            <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: '#eef2ff', border: '1px solid #6366f1' }} /> {t.sourceLegend}</span>
             <br />
-            <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: '#f8fafc', border: '1px solid #94a3b8' }} /> external</span>
+            <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: '#f8fafc', border: '1px solid #94a3b8' }} /> {t.externalLegend}</span>
             <br />
-            <span className="inline-flex items-center gap-1"><span className="w-2 h-2" style={{ background: '#fffbeb', border: '1px solid #f59e0b', transform: 'rotate(45deg)', display: 'inline-block' }} /> unresolved</span>
+            <span className="inline-flex items-center gap-1"><span className="w-2 h-2" style={{ background: '#fffbeb', border: '1px solid #f59e0b', transform: 'rotate(45deg)', display: 'inline-block' }} /> {t.unresolvedLegend}</span>
           </div>
         </div>
       )}
       {selectedGraphNode && (
-        <div className="w-80 shrink-0 border-l border-gray-200 bg-white p-5 space-y-3 overflow-y-auto">
+        <div className="w-80 max-w-[80vw] shrink-0 border-l border-slate-200 bg-white p-5 space-y-3 overflow-y-auto">
           <div className="flex items-start justify-between">
             <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{ct.name}</span>
-            <button onClick={() => setSelectedGraphNode(null)}
-              className="text-gray-400 hover:text-gray-600 text-xs">&times;</button>
+            <button onClick={() => setSelectedGraphNode(null)} className="text-gray-400 hover:text-gray-600 p-1" aria-label={ct.close}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
           </div>
-          <p className="text-sm font-semibold text-gray-900 break-words">{selectedGraphNode.title || (selectedGraphNode.inCollection ? 'Untitled' : 'Unresolved Reference')}</p>
+          <p className="text-sm font-semibold text-gray-900 break-words">{selectedGraphNode.title || (selectedGraphNode.inCollection ? t.unnamed : t.unresolvedReference)}</p>
           {selectedGraphNode.doi && (
             <div>
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">DOI</p>
@@ -567,25 +554,25 @@ export default function CollectionDetail() {
           )}
           {selectedGraphNode.authors && (
             <div>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{t.sourceStatus}</p>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{t.authors}</p>
               <p className="text-xs text-gray-700">{selectedGraphNode.authors}</p>
             </div>
           )}
           {selectedGraphNode.publicationYear && (
             <div>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{t.sourceCreated}</p>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{t.publicationYear}</p>
               <p className="text-xs text-gray-700">{selectedGraphNode.publicationYear}</p>
             </div>
           )}
           {selectedGraphNode.hasDoi && selectedGraphNode.citedByCount != null ? (
             <div>
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{t.sourceCitations}</p>
-              <p className="text-xs text-gray-700"><span className="font-bold text-indigo-600">{selectedGraphNode.citedByCount}</span> citations</p>
+              <p className="text-xs text-gray-700">{t.citedTimes.replace('{{count}}', selectedGraphNode.citedByCount)}</p>
             </div>
           ) : !selectedGraphNode.hasDoi && (selectedGraphNode.title || !selectedGraphNode.inCollection) ? (
             <div>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Citation Data</p>
-              <p className="text-xs text-gray-400 italic">No DOI — no citation data available</p>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{t.citationData}</p>
+              <p className="text-xs text-gray-400 italic">{t.noCitationData}</p>
             </div>
           ) : null}
           <div className="pt-2 border-t border-gray-100">
@@ -594,12 +581,12 @@ export default function CollectionDetail() {
             ) : selectedGraphNode.title || selectedGraphNode.doi ? (
               <p className="text-[10px] font-semibold text-gray-400">{t.citationGraphExternal}</p>
             ) : (
-              <p className="text-[10px] font-semibold text-rose-500">Unresolved — could not fetch metadata</p>
+              <p className="text-[10px] font-semibold text-rose-500">{t.unresolvedMetadata}</p>
             )}
             {selectedGraphNode.doi && (
               <a href={`https://doi.org/${selectedGraphNode.doi}`} target="_blank" rel="noopener noreferrer"
-                className="inline-block mt-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-[10px] font-bold text-gray-600 hover:bg-gray-100 transition">
-                Open DOI ↗
+                className="inline-block mt-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-100 transition-colors">
+                {t.openDoi} ↗
               </a>
             )}
           </div>
@@ -623,9 +610,9 @@ export default function CollectionDetail() {
           { label: t.reject, value: failed, color: 'text-rose-700' },
           { label: t.collectionStats, value: totalSize > 0 ? `${(totalSize / (1024 * 1024)).toFixed(1)} MB` : '0 B' },
         ].map(stat => (
-          <div key={stat.label} className="p-4 bg-white rounded-xl border border-gray-200">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider">{stat.label}</p>
-            <p className={`text-2xl font-black mt-1 ${stat.color || 'text-gray-900'}`}>{stat.value}</p>
+          <div key={stat.label} className="p-4 bg-(--surface) rounded-xl border border-(--border)">
+            <p className="text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider">{stat.label}</p>
+            <p className={`text-2xl font-black mt-1 ${stat.color || 'text-(--text-primary)'}`}>{stat.value}</p>
           </div>
         ))}
       </div>
@@ -635,65 +622,65 @@ export default function CollectionDetail() {
   const tabContent = [renderDocuments, renderConnectedMap, renderVisualizeMap, renderAnalyze];
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-[#0f172a]">
+    <div className="min-h-screen bg-(--page-bg) text-(--text-primary)">
       <AppHeader />
-      <div className="max-w-7xl mx-auto p-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-2">
-          <Link to="/instructor/collections" className="text-xs font-bold text-gray-400 hover:text-[#1e3a8a] transition-colors">&larr; {ct.back}</Link>
+          <Link to="/instructor/collections" className="text-xs font-bold text-(--text-tertiary) hover:text-(--brand-foreground) transition-colors">&larr; {ct.back}</Link>
         </div>
 
-        <div className="flex items-center justify-between mb-6 border-b border-gray-200 pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 border-b border-(--border) pb-4">
           <div className="min-w-0">
             {collectionLoading ? (
               <div className="space-y-1">
-                <div className="h-8 w-64 bg-gray-200 rounded-lg animate-pulse" />
-                <div className="h-4 w-96 bg-gray-100 rounded animate-pulse" />
+                <div className="h-8 w-64 max-w-full bg-(--surface-tertiary) rounded-lg animate-pulse" />
+                <div className="h-4 w-96 max-w-full bg-(--surface-secondary) rounded animate-pulse" />
               </div>
             ) : collection ? (
               <>
-                <h1 className="text-3xl font-black text-[#1e3a8a] tracking-tight truncate">{collection.name}</h1>
-                {collection.description && <p className="text-sm text-gray-500 mt-1 truncate">{collection.description}</p>}
+                <h1 className="text-3xl font-black text-(--brand-foreground) tracking-tight truncate">{collection.name}</h1>
+                {collection.description && <p className="text-sm text-(--text-secondary) mt-1 truncate">{collection.description}</p>}
                 {collection.categoryName && <span className="inline-block mt-1.5 bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded border border-indigo-200 text-[10px] font-semibold">{collection.categoryName}</span>}
               </>
             ) : (
-              <h1 className="text-3xl font-black text-[#1e3a8a] tracking-tight">{t.collectionDetail}</h1>
+              <h1 className="text-3xl font-black text-(--brand-foreground) tracking-tight">{t.collectionDetail}</h1>
             )}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             {collection && (
               <>
                 <button onClick={handleEditOpen}
-                  className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-600 hover:bg-gray-50 transition">{ct.edit}</button>
+                  className="px-3 py-1.5 bg-(--surface) border border-(--border) rounded-lg text-xs font-bold text-(--text-secondary) hover:bg-(--surface-secondary) transition-colors">{ct.edit}</button>
                 <button onClick={handleDeleteCollection}
-                  className="px-3 py-1.5 bg-white border border-rose-200 rounded-lg text-xs font-bold text-rose-600 hover:bg-rose-50 transition">{ct.delete}</button>
+                  className="px-3 py-1.5 bg-(--surface) border border-rose-200 rounded-lg text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors">{ct.delete}</button>
               </>
             )}
             <TourLauncher steps={TOUR_STEPS} tourKey="instructor-collection-detail"
-              className="w-9 h-9 rounded-full bg-white border border-slate-300 shadow-sm flex items-center justify-center text-sm font-bold text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-300 transition-all" />
+              className="w-9 h-9 rounded-full bg-(--surface) border border-(--border) shadow-sm flex items-center justify-center text-sm font-bold text-(--text-secondary) hover:bg-(--brand-soft) hover:text-(--brand) transition-colors" />
           </div>
         </div>
 
-        <div className="flex gap-1 mb-6 border-b border-gray-200">
+        <div className="flex gap-1 mb-6 border-b border-(--border) overflow-x-auto">
           {TABS.map((tab, i) => (
             <button key={tab} id={TAB_IDS[i]} onClick={() => setActiveTab(i)}
-              className={`px-4 py-2 text-xs font-bold rounded-t-lg transition ${activeTab === i ? 'bg-white text-[#1e3a8a] border border-b-white border-gray-200 -mb-px' : 'text-gray-400 hover:text-gray-700'
+              className={`px-4 py-2 text-xs font-bold rounded-t-lg transition-colors whitespace-nowrap ${activeTab === i ? 'bg-(--surface) text-(--brand-foreground) border border-b-(--surface) border-(--border) -mb-px' : 'text-(--text-tertiary) hover:text-(--text-primary)'
                 }`}>{t[tab]}</button>
           ))}
         </div>
 
         {tabContent[activeTab]()}
-      </div>
+      </main>
 
-      <Modal open={shareModal.open} onClose={() => setShareModal({ open: false, sourceId: null })} title={t.shareToProject}>
+      <Modal open={shareModal.open} onClose={() => setShareModal({ open: false, sourceId: null })} title={t.shareToProject} closeLabel={ct.close}>
         <div className="space-y-3 text-xs">
           <input type="text" value={projectSearch} onChange={(e) => setProjectSearch(e.target.value)}
-            placeholder={t.searchProjects} className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]" />
+            placeholder={t.searchProjects} className="w-full px-3 py-2 bg-(--surface-secondary) border border-(--border) text-(--text-primary) rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-(--focus)" />
           <div className="max-h-60 overflow-y-auto space-y-1">
             {filteredProjects.length === 0 ? (
-              <p className="text-gray-400 text-center py-4 font-medium">{ct.noData}</p>
+              <p className="text-(--text-tertiary) text-center py-4 font-medium">{ct.noData}</p>
             ) : filteredProjects.map(p => (
               <button key={p.id} onClick={() => doShare(p.id)}
-                className="w-full text-left px-3 py-2 rounded-lg hover:bg-blue-50 transition font-medium text-gray-700">
+                className="w-full text-left px-3 py-2 rounded-lg hover:bg-(--brand-soft) transition-colors font-medium text-(--text-primary)">
                 {p.title}
               </button>
             ))}
@@ -701,23 +688,23 @@ export default function CollectionDetail() {
         </div>
       </Modal>
 
-      <Modal open={addDocModal} onClose={() => { setAddDocModal(false); setAddDocOption(null); }} title={t.addDocument}>
+      <Modal open={addDocModal} onClose={() => { setAddDocModal(false); setAddDocOption(null); }} title={t.addDocument} closeLabel={ct.close}>
         <div className="space-y-4 text-xs">
           <div className="grid grid-cols-1 gap-2">
             {[
-              { key: 'doi', label: t.inputDoi, desc: t.inputDoiDescription, icon: '🔗' },
-              { key: 'upload', label: t.uploadDocument, desc: t.uploadDocumentDescription, icon: '📤' },
-              { key: 'doi+upload', label: t.inputDoiAndUpload, desc: t.inputDoiAndUploadDesc, icon: '📎' },
+              { key: 'doi', label: t.inputDoi, desc: t.inputDoiDescription },
+              { key: 'upload', label: t.uploadDocument, desc: t.uploadDocumentDescription },
+              { key: 'doi+upload', label: t.inputDoiAndUpload, desc: t.inputDoiAndUploadDesc },
             ].map(opt => (
               <button key={opt.key} onClick={() => setAddDocOption(opt.key)}
                 className={`w-full text-left p-3 rounded-xl border transition flex items-center gap-3 ${addDocOption === opt.key
-                  ? 'bg-blue-50 border-blue-300 shadow-sm'
-                  : 'bg-white border-gray-200 hover:border-blue-200 hover:bg-gray-50'
+                  ? 'bg-(--brand-soft) border-indigo-300 shadow-sm'
+                  : 'bg-(--surface) border-(--border) hover:border-indigo-300 hover:bg-(--surface-secondary)'
                   }`}>
-                <span className="text-lg">{opt.icon}</span>
+                <svg className="w-5 h-5 text-(--brand) shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
                 <div>
-                  <p className="font-bold text-gray-800">{opt.label}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">{opt.desc}</p>
+                  <p className="font-bold text-(--text-primary)">{opt.label}</p>
+                  <p className="text-[10px] text-(--text-tertiary) mt-0.5">{opt.desc}</p>
                 </div>
               </button>
             ))}
@@ -726,31 +713,31 @@ export default function CollectionDetail() {
         </div>
       </Modal>
 
-      <Modal open={editModal.open} onClose={() => setEditModal(p => ({ ...p, open: false }))} title={t.editCollection}>
+      <Modal open={editModal.open} onClose={() => setEditModal(p => ({ ...p, open: false }))} title={t.editCollection} closeLabel={ct.close}>
         <form onSubmit={handleEditSubmit} className="space-y-4 text-xs">
           <div>
-            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">{t.collectionName}</label>
+            <label className="block text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider mb-1">{t.collectionName}</label>
             <input type="text" value={editModal.name} onChange={e => setEditModal(p => ({ ...p, name: e.target.value }))} required maxLength={255}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition" />
+              className="w-full px-4 py-3 bg-(--surface-secondary) border border-(--border) text-(--text-primary) rounded-xl font-medium text-sm focus:outline-none focus:ring-2 focus:ring-(--focus) transition-colors" />
           </div>
           <div>
-            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">{t.collectionDescription}</label>
+            <label className="block text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider mb-1">{t.collectionDescription}</label>
             <textarea value={editModal.description} onChange={e => setEditModal(p => ({ ...p, description: e.target.value }))} rows={3}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition resize-none" />
+              className="w-full px-4 py-3 bg-(--surface-secondary) border border-(--border) text-(--text-primary) rounded-xl font-medium text-sm focus:outline-none focus:ring-2 focus:ring-(--focus) transition-colors resize-none" />
           </div>
           <div>
-            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1">{t.category}</label>
+            <label className="block text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider mb-1">{t.category}</label>
             <select value={editModal.categoryId} onChange={e => setEditModal(p => ({ ...p, categoryId: e.target.value }))}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl font-medium text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a8a] focus:bg-white transition">
+              className="w-full px-4 py-3 bg-(--surface-secondary) border border-(--border) text-(--text-primary) rounded-xl font-medium text-sm focus:outline-none focus:ring-2 focus:ring-(--focus) transition-colors">
               <option value="">{t.noCategory}</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
           <div className="flex gap-2 justify-end pt-2">
             <button type="button" onClick={() => setEditModal(p => ({ ...p, open: false }))}
-              className="px-4 py-2 bg-gray-100 text-gray-600 rounded-xl font-bold text-xs hover:bg-gray-200 transition">{ct.cancel}</button>
+              className="px-4 py-2 bg-(--surface-secondary) text-(--text-secondary) rounded-xl font-bold text-xs hover:bg-(--surface-tertiary) transition-colors">{ct.cancel}</button>
             <button type="submit" disabled={editModal.submitting || !editModal.name.trim()}
-              className="px-4 py-2 bg-[#1e3a8a] text-white rounded-xl font-bold text-xs hover:bg-blue-800 transition disabled:opacity-50">{editModal.submitting ? ct.saving : ct.save}</button>
+              className="px-4 py-2 bg-(--brand) text-(--on-brand) rounded-xl font-bold text-xs hover:bg-(--brand-hover) transition-colors disabled:opacity-50">{editModal.submitting ? ct.saving : ct.save}</button>
           </div>
         </form>
       </Modal>

@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { driver } from 'driver.js';
+import { useTranslation } from 'react-i18next';
 import 'driver.js/dist/driver.css';
 
 const STORAGE_KEY = 'tour_seen';
 
 export default function TourLauncher({ steps, tourKey, autoLaunch = false, className }) {
+  const { t } = useTranslation();
   const [show, setShow] = useState(false);
 
   useEffect(() => {
@@ -31,8 +33,9 @@ export default function TourLauncher({ steps, tourKey, autoLaunch = false, class
   return (
     <button
       onClick={() => setShow(true)}
-      className={className || "fixed bottom-4 left-4 z-40 w-9 h-9 rounded-full bg-white border border-slate-300 shadow-md flex items-center justify-center text-sm font-bold text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-300 transition-all"}
-      title="Guide"
+      className={className || "fixed bottom-4 left-4 z-40 w-9 h-9 rounded-full bg-(--surface) border border-(--border) shadow-md flex items-center justify-center text-sm font-bold text-(--text-secondary) hover:bg-(--brand-soft) hover:text-(--brand) transition-colors"}
+      title={t('guide')}
+      aria-label={t('guide')}
     >
       ?
     </button>

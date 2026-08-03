@@ -182,7 +182,7 @@ export default function ProjectDetail() {
         await loadSections(canonicalPaper.id);
       }
       setShowSetUpPaper(false);
-    } catch { alert('Failed to update standard'); }
+    } catch { alert(t.updateStandardFailed); }
     finally { setSaving(false); }
   };
 
@@ -204,7 +204,7 @@ export default function ProjectDetail() {
         setPapers(papersRes.data || []);
       }
       setShowAddSource(false);
-    } catch { alert('DOI import failed.'); }
+    } catch { alert(t.doiImportFailed); }
     finally { setAddSourceLoading(false); }
   };
 
@@ -217,7 +217,7 @@ export default function ProjectDetail() {
     try {
       await api.post('/api/sources', formData);
       await loadSources();
-    } catch { alert('Upload failed.'); }
+    } catch { alert(t.uploadFailed); }
   };
 
   const handleUploadPaper = async (e) => {
@@ -235,11 +235,11 @@ export default function ProjectDetail() {
       loadProject();
       if (doc?.id) loadSections(doc.id);
     } catch (err) {
-      const msg = err?.response?.data?.message || err?.response?.data || 'Upload failed.';
+      const msg = err?.response?.data?.message || err?.response?.data || t.uploadFailed;
       if (err?.response?.status === 409) {
         alert(msg);
       } else {
-        alert('Upload failed.');
+        alert(t.uploadFailed);
       }
       setUploadState(null);
     }
@@ -268,7 +268,7 @@ export default function ProjectDetail() {
       setSelectedCollectionId('');
       setCollectionSources([]);
       setSelectedSourceIds([]);
-    } catch { alert('Operation failed. Reload and try again.'); }
+    } catch { alert(t.operationFailed); }
   };
 
   const handleStartRename = (paper) => {
@@ -284,7 +284,7 @@ export default function ProjectDetail() {
       await api.put(`/api/papers/${paperId}`, null, { params: { title: newTitle, originalFilename: newFilename } });
       setEditingPaperId(null);
       await loadPapers();
-    } catch { alert('Failed to rename'); }
+    } catch { alert(t.renameFailed); }
   };
 
   const handleDragEnd = async (result) => {
@@ -300,7 +300,7 @@ export default function ProjectDetail() {
       ));
       await loadSections(selectedPaper.id);
     } catch (err) {
-      alert(err?.response?.data?.message || 'Failed to reorder sections.');
+      alert(err?.response?.data?.message || t.reorderSectionsFailed);
       await loadSections(selectedPaper.id);
     } finally {
       setSectionStructureSaving(false);
@@ -312,11 +312,11 @@ export default function ProjectDetail() {
     setSectionStructureSaving(true);
     try {
       await api.post(`/api/papers/${selectedPaper.id}/sections/create`, null, {
-        params: { title: 'New Section' },
+        params: { title: t.newSectionTitle },
       });
       await loadSections(selectedPaper.id);
     } catch (err) {
-      alert(err?.response?.data?.message || 'Failed to add section.');
+      alert(err?.response?.data?.message || t.addSectionFailed);
     } finally {
       setSectionStructureSaving(false);
     }
@@ -337,20 +337,20 @@ export default function ProjectDetail() {
       setEditingSectionId(null);
       await loadSections(selectedPaper.id);
     } catch (err) {
-      alert(err?.response?.data?.message || 'Failed to rename section.');
+      alert(err?.response?.data?.message || t.renameSectionFailed);
     } finally {
       setSectionStructureSaving(false);
     }
   };
 
   const handleDeleteSection = async (sectionId) => {
-    if (!selectedPaper || !confirm('Delete this empty section? This action cannot be undone.')) return;
+    if (!selectedPaper || !confirm(t.deleteSectionConfirm)) return;
     setSectionStructureSaving(true);
     try {
       await api.delete(`/api/papers/${selectedPaper.id}/sections/${sectionId}`);
       await loadSections(selectedPaper.id);
     } catch (err) {
-      alert(err?.response?.data?.message || 'Failed to delete section.');
+      alert(err?.response?.data?.message || t.deleteSectionFailed);
     } finally {
       setSectionStructureSaving(false);
     }
@@ -372,7 +372,7 @@ export default function ProjectDetail() {
     try {
       await api.put(`/api/papers/${selectedPaper.id}/sections/${sectionId}/assign`, null, { params: { assignedUserId: userId || undefined } });
       await loadSections(selectedPaper.id);
-    } catch { alert('Assignment failed.'); }
+    } catch { alert(t.assignmentFailed); }
   };
 
   const handleAddMember = async () => {
@@ -383,33 +383,33 @@ export default function ProjectDetail() {
       setNewMemberId('');
       setNewMemberRole('MEMBER');
       loadProject();
-    } catch { alert('Failed to add member.'); }
+    } catch { alert(t.addMemberFailed); }
   };
 
   const handleRemoveMember = async (userId) => {
     try {
       await api.delete(`/api/projects/${id}/members/${userId}`);
       loadProject();
-    } catch { alert('Failed to remove member.'); }
+    } catch { alert(t.removeMemberFailed); }
   };
 
   const handlePatch = async (action) => {
     try {
       await api.patch(`/api/projects/${id}/${action}`);
       loadProject();
-    } catch { alert(`Failed to ${action} project.`); }
+    } catch { alert(t.projectActionFailed.replace('{{action}}', t[action] || action)); }
   };
 
   const TOUR_STEPS = [
-    { element: '#project-header', popover: { title: 'Project', description: 'This is the title description of your project', side: 'bottom', align: 'start' } },
-    { element: '#tab-setup', popover: { title: 'Setup', description: 'Import source documents, choose a paper standard (IEEE/ACM/etc), or upload a student paper.', side: 'bottom', align: 'center' } },
-    { element: '#tab-sections', popover: { title: 'Sections', description: 'Auto-generate sections from the standard chosen in Setup, detect from an uploaded paper, or assign sections to students.', side: 'bottom', align: 'center' } },
-    { element: '#tab-review', popover: { title: 'Review', description: 'Review student feedback requests and view the evidence traceability map.', side: 'bottom', align: 'center' } },
-    { element: '#tab-settings', popover: { title: 'Settings', description: 'Project status controls (complete/archive) and member management.', side: 'bottom', align: 'center' } },
-    { element: '#source-documents', popover: { title: 'Source Documents', description: 'Reference sources imported via DOI, file upload, or shared collections.', side: 'top', align: 'start' } },
-    { element: '#set-up-paper', popover: { title: 'Set up Paper', description: 'Choose a paper standard to define required sections (enables Auto-gen in Sections tab), or upload a student paper for section detection.', side: 'top', align: 'start' } },
-    { element: '#project-members', popover: { title: 'Members', description: 'Add or remove student members on this project.', side: 'top', align: 'start' } },
-    { element: '#status-controls', popover: { title: 'Status', description: 'Change project status: mark complete, archive, or unarchive.', side: 'top', align: 'start' } },
+    { element: '#project-header', popover: { title: t.tourProjectTitle, description: t.tourProjectDesc, side: 'bottom', align: 'start' } },
+    { element: '#tab-setup', popover: { title: t.projectSetup, description: t.tourSetupDesc, side: 'bottom', align: 'center' } },
+    { element: '#tab-sections', popover: { title: t.projectSections, description: t.tourSectionsDesc, side: 'bottom', align: 'center' } },
+    { element: '#tab-review', popover: { title: t.projectReview, description: t.tourProjectReviewDesc, side: 'bottom', align: 'center' } },
+    { element: '#tab-settings', popover: { title: t.projectSettings, description: t.tourProjectSettingsDesc, side: 'bottom', align: 'center' } },
+    { element: '#source-documents', popover: { title: t.sourceDocuments, description: t.tourSourceDocumentsDesc, side: 'top', align: 'start' } },
+    { element: '#set-up-paper', popover: { title: t.setUpPaper, description: t.tourSetUpPaperDesc, side: 'top', align: 'start' } },
+    { element: '#project-members', popover: { title: t.members, description: t.tourMembersDesc, side: 'top', align: 'start' } },
+    { element: '#status-controls', popover: { title: ct.status, description: t.tourStatusControlsDesc, side: 'top', align: 'start' } },
   ];
 
   useEffect(() => {
@@ -440,7 +440,7 @@ export default function ProjectDetail() {
     return () => clearInterval(interval);
   }, [selectedPaper?.id, selectedPaper?.processingStatus]);
 
-  if (loading) return <div className="min-h-screen bg-[#f8fafc]"><AppHeader /><div className="max-w-6xl mx-auto p-8"><LoadingSkeleton count={6} /></div></div>;
+  if (loading) return <div className="min-h-screen bg-[var(--page-bg)]"><AppHeader /><div className="mx-auto max-w-6xl p-4 sm:p-6 lg:p-8"><LoadingSkeleton count={6} /></div></div>;
   if (!project) return null;
 
   const projectMembers = members;
@@ -450,39 +450,39 @@ export default function ProjectDetail() {
   const sectionStructureLocked = hasAssignedSections || projectReadOnly;
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-[#0f172a] font-sans">
+    <div className="min-h-screen overflow-x-hidden bg-[var(--page-bg)] text-[var(--text-primary)] font-sans">
       <AppHeader />
-      <div className="max-w-6xl mx-auto p-8">
+      <main className="mx-auto max-w-6xl p-4 sm:p-6 lg:p-8">
         <div id="project-header" className="mb-6">
-          <Link to="/instructor/projects" className="text-xs font-bold text-gray-400 hover:text-[#1e3a8a] transition-colors">&larr; {ct.back}</Link>
-          <div className="flex items-center justify-between mt-2">
-            <div>
-              <h1 className="text-2xl font-black text-[#1e3a8a]">{project.title}</h1>
-              {project.description && <p className="text-sm text-gray-500 mt-1">{project.description}</p>}
-              <p className="text-xs text-gray-400 mt-1">ID: {project.id} &middot; <StatusBadge status={project.status} /></p>
+          <Link to="/instructor/projects" className="text-xs font-bold text-[var(--text-secondary)] transition-colors hover:text-[var(--brand-foreground)]">&larr; {ct.back}</Link>
+          <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="break-words text-2xl font-black text-[var(--brand-foreground)]">{project.title}</h1>
+              {project.description && <p className="mt-1 text-sm text-[var(--text-secondary)]">{project.description}</p>}
+              <p className="mt-1 flex flex-wrap items-center gap-1 text-xs text-[var(--text-tertiary)]">ID: {project.id} <span aria-hidden="true">&middot;</span> <StatusBadge status={project.status} /></p>
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setShowExportModal(true)} className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700">Export</button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button onClick={() => setShowExportModal(true)} className="rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white transition hover:bg-[var(--brand-hover)]">{t.export}</button>
               <TourLauncher steps={TOUR_STEPS} tourKey="instructor-project-detail"
-                className="w-8 h-8 rounded-full bg-white border border-slate-300 shadow-sm flex items-center justify-center text-sm font-bold text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-300 transition-all shrink-0" />
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-sm font-bold text-[var(--text-secondary)] shadow-sm transition-all hover:border-indigo-300 hover:bg-[var(--brand-soft)] hover:text-[var(--brand-foreground)]" />
             </div>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-gray-200 mb-6">
+        <div className="mb-6 flex max-w-full gap-1 overflow-x-auto border-b border-[var(--border)]">
           {[
-            { key: 'setup', label: 'Setup' },
-            { key: 'sections', label: 'Sections' },
-            { key: 'review', label: 'Review' },
-            { key: 'progress', label: 'Project Process Report' },
-            { key: 'settings', label: 'Settings' },
+            { key: 'setup', label: t.projectSetup },
+            { key: 'sections', label: t.projectSections },
+            { key: 'review', label: t.projectReview },
+            { key: 'progress', label: t.projectProgressReport },
+            { key: 'settings', label: t.projectSettings },
           ].map(tab => (
             <button
               key={tab.key}
               id={`tab-${tab.key}`}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-2 text-xs font-bold rounded-t-lg transition ${activeTab === tab.key ? 'bg-white text-[#1e3a8a] border border-b-white border-gray-200 -mb-px' : 'text-gray-500 hover:text-gray-700'
+              className={`-mb-px shrink-0 rounded-t-lg px-4 py-2 text-xs font-bold transition ${activeTab === tab.key ? 'border border-b-[var(--surface)] border-[var(--border)] bg-[var(--surface)] text-[var(--brand-foreground)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
             >
               {tab.label}
@@ -493,18 +493,18 @@ export default function ProjectDetail() {
         {/* Tab: Setup */}
         {activeTab === 'setup' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div id="source-documents" className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-bold text-[#1e3a8a]">Source Documents</h2>
-                <button onClick={() => setShowAddSource(true)} className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700">+ Add Source</button>
+            <div id="source-documents" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-bold text-[var(--brand-foreground)]">{t.sourceDocuments}</h2>
+                <button onClick={() => setShowAddSource(true)} className="rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)]">+ {t.addSource}</button>
               </div>
               {sources.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">No source documents yet. Click "Add Source" to import.</p>
+                <p className="text-xs italic text-[var(--text-tertiary)]">{t.noSourceDocuments}</p>
               ) : (
                 <div className="space-y-1">
                   {sources.map(s => (
-                    <button key={s.id} onClick={() => { setSourceDetail(s); setShowSourceDetail(true); }} className="w-full text-left bg-gray-50 rounded-lg px-3 py-2 text-xs hover:bg-gray-100 transition flex items-center justify-between">
-                      <span className="font-medium">{s.title || s.originalFilename || s.id}</span>
+                    <button key={s.id} onClick={() => { setSourceDetail(s); setShowSourceDetail(true); }} className="flex w-full items-center justify-between gap-2 rounded-lg bg-[var(--surface-secondary)] px-3 py-2 text-left text-xs transition hover:bg-[var(--surface-tertiary)]">
+                      <span className="min-w-0 truncate font-medium">{s.title || s.originalFilename || s.id}</span>
                       <span className="flex items-center gap-2">
                         <StatusBadge status={s.processingStatus || 'READY'} />
                       </span>
@@ -513,37 +513,36 @@ export default function ProjectDetail() {
                 </div>
               )}
             </div>
-            <div id="set-up-paper" className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-              <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Set up Paper</h2>
+            <div id="set-up-paper" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
+              <h2 className="mb-4 text-sm font-bold text-[var(--brand-foreground)]">{t.setUpPaper}</h2>
               {standard && (
-                <div className="mb-3 bg-indigo-50 rounded-lg px-3 py-2 text-xs flex items-center justify-between">
-                  <span className="font-medium text-indigo-700">Standard: {standard}</span>
-                  <button onClick={() => { setSetupMode('standard'); setShowSetUpPaper(true); }} className="text-indigo-600 hover:text-indigo-800 font-bold text-[10px]">Change</button>
+                <div className="mb-3 flex items-center justify-between gap-2 rounded-lg bg-[var(--brand-soft)] px-3 py-2 text-xs">
+                  <span className="font-medium text-[var(--brand-foreground)]">{t.standardLabel.replace('{{standard}}', standard)}</span>
+                  <button onClick={() => { setSetupMode('standard'); setShowSetUpPaper(true); }} className="text-xs font-bold text-[var(--brand-foreground)] hover:underline">{t.change}</button>
                 </div>
               )}
               {papers.length > 0 && (
                 <div className="mb-3 space-y-1">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Uploaded Papers</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">{t.uploadedPapers}</p>
                   {papers.map(p => (
-                    <div key={p.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-xs">
-                      <span className="font-medium">{p.originalFilename || p.title}</span>
+                    <div key={p.id} className="flex items-center justify-between gap-2 rounded-lg bg-[var(--surface-secondary)] px-3 py-2 text-xs">
+                      <span className="min-w-0 truncate font-medium">{p.originalFilename || p.title}</span>
                       <StatusBadge status={p.processingStatus || 'READY'} />
                     </div>
                   ))}
                 </div>
               )}
               {!standard && papers.length === 0 && (
-                <p className="text-xs text-gray-400 italic mb-3">No standard or paper configured.</p>
+                <p className="mb-3 text-xs italic text-[var(--text-tertiary)]">{t.noPaperConfigured}</p>
               )}
               {sectionStructureLocked ? (
-                <div className="w-full px-4 py-2 bg-gray-200 text-gray-500 text-xs font-bold rounded-lg text-center flex items-center justify-center gap-1">
-                  {'\u{1F512}'} {projectReadOnly
-                    ? 'Setup locked — project is read-only'
-                    : 'Setup locked — sections have been assigned'}
+                <div className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-center text-xs font-bold text-[var(--text-secondary)]">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+                  {projectReadOnly ? t.setupLockedReadOnly : t.setupLockedAssigned}
                 </div>
               ) : (
-                <button onClick={() => { setSetupMode(standard ? 'standard' : 'paper'); setShowSetUpPaper(true); }} className="w-full px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700">
-                  {standard || papers.length > 0 ? 'Update Setup' : 'Set up Paper'}
+                <button onClick={() => { setSetupMode(standard ? 'standard' : 'paper'); setShowSetUpPaper(true); }} className="w-full rounded-lg bg-[var(--brand)] px-4 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)]">
+                  {standard || papers.length > 0 ? t.updateSetup : t.setUpPaper}
                 </button>
               )}
             </div>
@@ -553,47 +552,45 @@ export default function ProjectDetail() {
         {/* Tab: Sections */}
         {activeTab === 'sections' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6 lg:col-span-1">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-sm font-bold text-[#1e3a8a]">Papers</h2>
+                <h2 className="text-sm font-bold text-[var(--brand-foreground)]">{t.papers}</h2>
               </div>
               {papers.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">Upload a paper in Setup tab first.</p>
+                <p className="text-xs italic text-[var(--text-tertiary)]">{t.uploadPaperFirst}</p>
               ) : (
                 <div className="space-y-1">
                   {papers.map(p => (
                     <div key={p.id} className="flex items-center gap-1">
                       {editingPaperId === p.id ? (
-                        <div className="flex-1 flex items-center gap-1 px-3 py-2 rounded-lg bg-indigo-50 border border-indigo-200">
-                          <input autoFocus value={editingPaperTitle} onChange={e => setEditingPaperTitle(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleSaveRename(p.id); if (e.key === 'Escape') setEditingPaperId(null); }} className="flex-1 bg-transparent outline-none text-xs border-b border-indigo-300" onClick={e => e.stopPropagation()} />
-                          <button onClick={() => handleSaveRename(p.id)} className="text-emerald-600 hover:text-emerald-800 font-bold text-xs px-1" title="Save">{'\u2713'}</button>
-                          <button onClick={() => setEditingPaperId(null)} className="text-gray-400 hover:text-gray-600 text-xs px-1" title="Cancel">{'\u2715'}</button>
+                        <div className="flex flex-1 items-center gap-1 rounded-lg border border-indigo-200 bg-[var(--brand-soft)] px-3 py-2">
+                          <input autoFocus value={editingPaperTitle} onChange={e => setEditingPaperTitle(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleSaveRename(p.id); if (e.key === 'Escape') setEditingPaperId(null); }} className="min-w-0 flex-1 border-b border-indigo-300 bg-transparent text-xs outline-none" onClick={e => e.stopPropagation()} />
+                          <button onClick={() => handleSaveRename(p.id)} className="rounded p-1 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800" title={ct.save} aria-label={ct.save}><svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2"><path d="m5 12 4 4L19 6" /></svg></button>
+                          <button onClick={() => setEditingPaperId(null)} className="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-tertiary)] hover:text-[var(--text-primary)]" title={ct.cancel} aria-label={ct.cancel}><svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
                         </div>
                       ) : (
                         <button
                           onClick={() => { setSelectedPaper(p); loadSections(p.id); }}
-                          className={`flex-1 text-left px-3 py-2 rounded-lg text-xs transition ${selectedPaper?.id === p.id ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'hover:bg-gray-50'}`}
+                          className={`min-w-0 flex-1 rounded-lg px-3 py-2 text-left text-xs transition ${selectedPaper?.id === p.id ? 'border border-indigo-200 bg-[var(--brand-soft)] text-[var(--brand-foreground)]' : 'hover:bg-[var(--surface-secondary)]'}`}
                         >
                           <span className="font-medium">{p.originalFilename || p.title}</span>
                         </button>
                       )}
                       {editingPaperId !== p.id && (
-                        <button onClick={e => { e.stopPropagation(); handleStartRename(p); }} className="p-1 text-gray-400 hover:text-indigo-600 text-xs" title="Rename">{'\u270E'}</button>
+                        <button onClick={e => { e.stopPropagation(); handleStartRename(p); }} className="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--brand-soft)] hover:text-[var(--brand-foreground)]" title={t.rename} aria-label={t.rename}><svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2"><path d="m4 16-1 5 5-1L19 9l-4-4L4 16Z" /><path d="m13 7 4 4" /></svg></button>
                       )}
                     </div>
                   ))}
                 </div>
               )}
             </div>
-            <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-              <div className="flex justify-between items-center mb-4">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6 lg:col-span-2">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-sm font-bold text-[#1e3a8a]">Sections</h2>
+                  <h2 className="text-sm font-bold text-[var(--brand-foreground)]">{t.projectSections}</h2>
                   {selectedPaper && sectionStructureLocked && (
                     <p className="text-[10px] text-amber-700 mt-1">
-                      {projectReadOnly
-                        ? 'Project is read-only.'
-                        : 'Structure is locked until every Section is unassigned.'}
+                      {projectReadOnly ? t.projectReadOnly : t.sectionStructureLocked}
                     </p>
                   )}
                 </div>
@@ -604,9 +601,9 @@ export default function ProjectDetail() {
                       disabled={sectionStructureLocked || sectionStructureSaving
                         || selectedPaper.processingStatus === 'QUEUED'
                         || selectedPaper.processingStatus === 'PROCESSING'}
-                      className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)] disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      + Section
+                      + {t.addSection}
                     </button>
                   )}
                   {selectedPaper && (
@@ -615,20 +612,20 @@ export default function ProjectDetail() {
                         const res = await api.get(`/api/papers/${selectedPaper.id}/validate`);
                         alert(JSON.stringify(res.data, null, 2));
                       } catch { }
-                    }} className="px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700">Validate</button>
+                    }} className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700">{t.validate}</button>
                   )}
                 </div>
               </div>
               {!selectedPaper ? (
-                <p className="text-xs text-gray-400 italic">Select a paper to see sections.</p>
+                <p className="text-xs italic text-[var(--text-tertiary)]">{t.selectPaperSections}</p>
               ) : selectedPaper.processingStatus === 'PROCESSING' || selectedPaper.processingStatus === 'QUEUED' ? (
-                <div className="flex items-center gap-2 text-xs text-gray-500 italic">
+                <div className="flex items-center gap-2 text-xs italic text-[var(--text-secondary)]">
                   <span className="inline-block w-2 h-2 bg-amber-400 rounded-full animate-pulse"></span>
-                  Processing sections...
+                  {t.processingSections}
                 </div>
               ) : sections.length === 0 ? (
-                <div className="text-xs text-gray-400 italic">
-                  <p>No sections yet. Sections are detected automatically from the uploaded paper after processing — or add one manually, or choose a paper standard in <strong>Setup</strong>.</p>
+                <div className="text-xs italic text-[var(--text-tertiary)]">
+                  <p>{t.noSectionsHelp}</p>
                 </div>
               ) : (
                 <DragDropContext onDragEnd={handleDragEnd}>
@@ -646,15 +643,15 @@ export default function ProjectDetail() {
                               <div
                                 ref={dragProvided.innerRef}
                                 {...dragProvided.draggableProps}
-                                className={`flex items-center justify-between rounded-lg px-4 py-3 text-xs ${
-                                  snapshot.isDragging ? 'bg-indigo-50 shadow-lg border border-indigo-200' : 'bg-gray-50'
+                                className={`flex items-center justify-between gap-3 rounded-lg px-3 py-3 text-xs sm:px-4 ${
+                                  snapshot.isDragging ? 'border border-indigo-200 bg-[var(--brand-soft)] shadow-lg' : 'bg-[var(--surface-secondary)]'
                                 }`}
                               >
                                 <div className="flex items-center gap-3 min-w-0">
                                   <span
                                     {...dragProvided.dragHandleProps}
-                                    className={`text-gray-300 ${sectionStructureLocked ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'}`}
-                                    title={sectionStructureLocked ? 'Unassign all Sections to reorder' : 'Drag to reorder'}
+                                    className={`text-[var(--text-tertiary)] ${sectionStructureLocked ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing'}`}
+                                    title={sectionStructureLocked ? t.unassignToReorder : t.dragToReorder}
                                   >
                                     {'\u283F'}
                                   </span>
@@ -670,33 +667,34 @@ export default function ProjectDetail() {
                                         }}
                                         className="bg-transparent outline-none border-b border-indigo-300 text-xs"
                                       />
-                                      <button onClick={() => handleSaveSectionRename(s.id)} disabled={sectionStructureSaving} className="text-emerald-600 hover:text-emerald-800 font-bold text-xs px-1 disabled:opacity-50" title="Save">{'\u2713'}</button>
-                                      <button onClick={() => setEditingSectionId(null)} className="text-gray-400 hover:text-gray-600 text-xs px-1" title="Cancel">{'\u2715'}</button>
+                                      <button onClick={() => handleSaveSectionRename(s.id)} disabled={sectionStructureSaving} className="rounded p-1 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800 disabled:opacity-50" title={ct.save} aria-label={ct.save}><svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2"><path d="m5 12 4 4L19 6" /></svg></button>
+                                      <button onClick={() => setEditingSectionId(null)} className="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-tertiary)] hover:text-[var(--text-primary)]" title={ct.cancel} aria-label={ct.cancel}><svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
                                     </div>
                                   ) : (
                                     <span className="font-medium truncate">{s.sectionTitle}</span>
                                   )}
                                   {s.version > 1 && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">v{s.version}</span>}
                                   {s.assignedUserId && (
-                                    <span className="flex items-center gap-1 text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-bold">
-                                      {'\u{1F512}'} {displayName(projectMembers.find(m => m.userId === s.assignedUserId))}
+                                    <span className="flex items-center gap-1 rounded bg-[var(--surface-tertiary)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--text-secondary)]">
+                                      <svg aria-hidden="true" viewBox="0 0 24 24" className="h-3 w-3 fill-none stroke-current" strokeWidth="2"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+                                      {displayName(projectMembers.find(m => m.userId === s.assignedUserId))}
                                     </span>
                                   )}
                                 </div>
                                 <div className="flex items-center gap-2">
                                   {!sectionStructureLocked && editingSectionId !== s.id && (
-                                    <button onClick={() => handleStartSectionRename(s)} disabled={sectionStructureSaving} className="text-gray-400 hover:text-indigo-600 text-xs px-1 disabled:opacity-50" title="Rename">{'\u270E'}</button>
+                                    <button onClick={() => handleStartSectionRename(s)} disabled={sectionStructureSaving} className="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--brand-soft)] hover:text-[var(--brand-foreground)] disabled:opacity-50" title={t.rename} aria-label={t.rename}><svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2"><path d="m4 16-1 5 5-1L19 9l-4-4L4 16Z" /><path d="m13 7 4 4" /></svg></button>
                                   )}
                                   {!sectionStructureLocked && (
-                                    <button onClick={() => handleDeleteSection(s.id)} disabled={sectionStructureSaving} className="text-gray-400 hover:text-rose-600 text-xs px-1 disabled:opacity-50" title="Delete">{'\u2715'}</button>
+                                    <button onClick={() => handleDeleteSection(s.id)} disabled={sectionStructureSaving} className="rounded p-1 text-[var(--text-tertiary)] hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50" title={ct.delete} aria-label={ct.delete}><svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14M10 10v6M14 10v6" /></svg></button>
                                   )}
                                   <select
                                     value={s.assignedUserId || ''}
                                     onChange={e => handleAssignSection(s.id, e.target.value)}
                                     disabled={projectReadOnly || sectionStructureSaving}
-                                    className="border border-gray-200 rounded px-2 py-1 text-[10px] outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                                    className="max-w-36 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs outline-none disabled:bg-[var(--surface-tertiary)] disabled:text-[var(--text-tertiary)] sm:max-w-none"
                                   >
-                                    <option value="">Unassigned</option>
+                                    <option value="">{t.unassigned}</option>
                                     {projectMembers
                                       .filter(member => users.some(user => String(user.id) === String(member.userId)))
                                       .map(member => (
@@ -721,34 +719,34 @@ export default function ProjectDetail() {
         {/* Tab: Review */}
         {activeTab === 'review' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-              <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Feedback Requests</h2>
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
+              <h2 className="mb-4 text-sm font-bold text-[var(--brand-foreground)]">{t.feedbackRequests}</h2>
               {feedbackRequests.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">No review requests yet.</p>
+                <p className="text-xs italic text-[var(--text-tertiary)]">{t.noReviewRequests}</p>
               ) : (
                 <div className="space-y-2">
                   {feedbackRequests.map(fb => (
-                    <div key={fb.id} className="bg-gray-50 rounded-lg px-3 py-2 text-xs">
+                    <div key={fb.id} className="rounded-lg bg-[var(--surface-secondary)] px-3 py-2 text-xs">
                       <div className="flex justify-between items-center">
                         <StatusBadge status={fb.status} />
-                        <span className="text-gray-400">{fb.requestedAt ? new Date(fb.requestedAt).toLocaleDateString() : ''}</span>
+                        <span className="text-[var(--text-tertiary)]">{fb.requestedAt ? new Date(fb.requestedAt).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US') : ''}</span>
                       </div>
-                      <p className="text-gray-500 mt-1">Student: {fb.studentName || fb.studentId}</p>
+                      <p className="mt-1 text-[var(--text-secondary)]">{t.studentLabel.replace('{{student}}', fb.studentName || fb.studentId)}</p>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-bold text-[#1e3a8a]">
-                  {reviewPane === 'distribution' ? 'Claim Type Distribution' : 'Evidence Map'}
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-bold text-[var(--brand-foreground)]">
+                  {reviewPane === 'distribution' ? t.claimTypeDistribution : t.evidenceMap}
                 </h2>
-                <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+                <div className="flex overflow-hidden rounded-lg border border-[var(--border)]">
                   {['distribution', 'map'].map(mode => (
                     <button key={mode} onClick={() => setReviewPane(mode)}
-                      className={`px-3 py-1.5 text-[10px] font-bold transition ${reviewPane === mode ? 'bg-[#1e3a8a] text-white' : 'bg-white text-gray-500 hover:text-[#1e3a8a]'}`}>
-                      {mode === 'distribution' ? 'Distribution' : 'Evidence Map'}
+                      className={`px-3 py-2 text-xs font-bold transition ${reviewPane === mode ? 'bg-[var(--brand)] text-white' : 'bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--brand-foreground)]'}`}>
+                      {mode === 'distribution' ? t.distribution : t.evidenceMap}
                     </button>
                   ))}
                 </div>
@@ -764,18 +762,18 @@ export default function ProjectDetail() {
         {activeTab === 'progress' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {progressReport?.readiness && (
-              <div className="lg:col-span-3 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-                <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Readiness</h2>
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6 lg:col-span-3">
+                <h2 className="mb-4 text-sm font-bold text-[var(--brand-foreground)]">{t.readiness}</h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {[
-                    { label: 'Overall Score', value: `${progressReport.readiness.score} / 100` },
-                    { label: 'Content Coverage', value: `${progressReport.readiness.contentCoveragePercent}%` },
-                    { label: 'Claims Present', value: `${progressReport.readiness.claimsPresentPercent}%` },
-                    { label: 'Claims With Evidence', value: `${progressReport.readiness.claimsWithEvidencePercent}%` },
+                    { label: t.overallScore, value: `${progressReport.readiness.score} / 100` },
+                    { label: t.contentCoverage, value: `${progressReport.readiness.contentCoveragePercent}%` },
+                    { label: t.claimsPresent, value: `${progressReport.readiness.claimsPresentPercent}%` },
+                    { label: t.claimsWithEvidence, value: `${progressReport.readiness.claimsWithEvidencePercent}%` },
                   ].map(stat => (
-                    <div key={stat.label} className="bg-gray-50 rounded-xl p-4 text-center">
-                      <p className="text-2xl font-black text-[#1e3a8a]">{stat.value}</p>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">{stat.label}</p>
+                    <div key={stat.label} className="rounded-xl bg-[var(--surface-secondary)] p-4 text-center">
+                      <p className="text-2xl font-black text-[var(--brand-foreground)]">{stat.value}</p>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">{stat.label}</p>
                     </div>
                   ))}
                 </div>
@@ -783,13 +781,13 @@ export default function ProjectDetail() {
                   <div className="mt-4 space-y-2">
                     {progressReport.readiness.metrics.map(metric => (
                       <div key={metric.code} className="flex items-center gap-3">
-                        <span className="w-40 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                          {metric.label} <span className="text-gray-400">({metric.weightPercent}%)</span>
+                        <span className="w-40 text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+                          {metric.label} <span className="text-[var(--text-tertiary)]">({metric.weightPercent}%)</span>
                         </span>
-                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${metric.valuePercent}%` }} />
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--surface-tertiary)]">
+                          <div className="h-full rounded-full bg-[var(--brand)]" style={{ width: `${metric.valuePercent}%` }} />
                         </div>
-                        <span className="w-10 text-right text-xs font-bold text-[#1e3a8a]">{metric.valuePercent}%</span>
+                        <span className="w-10 text-right text-xs font-bold text-[var(--brand-foreground)]">{metric.valuePercent}%</span>
                       </div>
                     ))}
                   </div>
@@ -797,46 +795,46 @@ export default function ProjectDetail() {
               </div>
             )}
 
-            <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-bold text-[#1e3a8a]">
-                  {reportPane === 'matrix' ? 'Claim Matrix' : 'Changes Since Last Checkpoint'}
-                  {reportSectionId && <span className="ml-2 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">filtered by section</span>}
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6 lg:col-span-2">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-bold text-[var(--brand-foreground)]">
+                  {reportPane === 'matrix' ? t.claimMatrix : t.changesSinceCheckpoint}
+                  {reportSectionId && <span className="ml-2 rounded bg-[var(--brand-soft)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--brand-foreground)]">{t.filteredBySection}</span>}
                 </h2>
-                <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+                <div className="flex overflow-hidden rounded-lg border border-[var(--border)]">
                   {['matrix', 'diff'].map(mode => (
                     <button key={mode} onClick={() => setReportPane(mode)}
-                      className={`px-3 py-1.5 text-[10px] font-bold transition ${reportPane === mode ? 'bg-[#1e3a8a] text-white' : 'bg-white text-gray-500 hover:text-[#1e3a8a]'}`}>
-                      {mode === 'matrix' ? 'Claim Matrix' : 'Checkpoint Diff'}
+                      className={`px-3 py-2 text-xs font-bold transition ${reportPane === mode ? 'bg-[var(--brand)] text-white' : 'bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--brand-foreground)]'}`}>
+                      {mode === 'matrix' ? t.claimMatrix : t.checkpointDiff}
                     </button>
                   ))}
                 </div>
               </div>
               {reportPane === 'matrix' ? (
-                !progressReport ? <p className="text-xs text-gray-400 italic">Loading...</p> : sectionMatrix.length === 0 ? (
-                  <p className="text-xs text-gray-400 italic">{reportSectionId ? 'No claims in this section.' : 'No claims yet.'}</p>
+                !progressReport ? <p className="text-xs italic text-[var(--text-tertiary)]">{ct.loading}</p> : sectionMatrix.length === 0 ? (
+                  <p className="text-xs italic text-[var(--text-tertiary)]">{reportSectionId ? t.noClaimsInSection : t.noClaimsYet}</p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider border-b border-gray-200">
-                          <th className="py-2 pr-3">Claim</th>
-                          <th className="py-2 pr-3">Section</th>
-                          <th className="py-2 pr-3">Status</th>
-                          <th className="py-2 pr-3">Evidence</th>
-                          <th className="py-2 pr-3">Strongest Match</th>
-                          <th className="py-2">Author</th>
+                        <tr className="border-b border-[var(--border)] text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">
+                          <th className="py-2 pr-3">{t.claim}</th>
+                          <th className="py-2 pr-3">{t.section}</th>
+                          <th className="py-2 pr-3">{ct.status}</th>
+                          <th className="py-2 pr-3">{t.evidence}</th>
+                          <th className="py-2 pr-3">{t.strongestMatch}</th>
+                          <th className="py-2">{t.author}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {sectionMatrix.map(row => (
-                          <tr key={row.claimId} className="border-b border-gray-100">
-                            <td className="py-2 pr-3 text-gray-700 max-w-[220px]"><span className="line-clamp-2">{row.content}</span></td>
-                            <td className="py-2 pr-3 text-gray-500">{row.sectionTitle}</td>
+                          <tr key={row.claimId} className="border-b border-[var(--border-light)]">
+                            <td className="max-w-[220px] py-2 pr-3 text-[var(--text-primary)]"><span className="line-clamp-2">{row.content}</span></td>
+                            <td className="py-2 pr-3 text-[var(--text-secondary)]">{row.sectionTitle}</td>
                             <td className="py-2 pr-3"><StatusBadge status={row.contentStatus} /></td>
-                            <td className="py-2 pr-3 text-gray-700">{row.activeEvidenceCount}</td>
-                            <td className="py-2 pr-3 text-gray-700">{row.strongestRelation || '-'}{row.strongestScore != null ? ` (${row.strongestScore}%)` : ''}</td>
-                            <td className="py-2 text-gray-500">{row.createdByName || row.createdById}</td>
+                            <td className="py-2 pr-3 text-[var(--text-primary)]">{row.activeEvidenceCount}</td>
+                            <td className="py-2 pr-3 text-[var(--text-primary)]">{row.strongestRelation || '-'}{row.strongestScore != null ? ` (${row.strongestScore}%)` : ''}</td>
+                            <td className="py-2 text-[var(--text-secondary)]">{row.createdByName || row.createdById}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -845,44 +843,44 @@ export default function ProjectDetail() {
                 )
               ) : (
                 !sectionDiff ? (
-                  <p className="text-xs text-gray-400 italic">Checkpoints are captured when the project is submitted for review. Need at least two checkpoints to compare — none found yet.</p>
+                  <p className="text-xs italic text-[var(--text-tertiary)]">{t.noCheckpointComparison}</p>
                 ) : (
                   <div className="space-y-4 text-xs">
-                    <div className="flex flex-wrap gap-4 text-gray-500">
-                      <span>{sectionDiff.from ? `From: ${new Date(sectionDiff.from).toLocaleString()}` : 'From: start'} ({sectionDiff.fromTrigger || 'initial'})</span>
-                      <span>{sectionDiff.to ? `To: ${new Date(sectionDiff.to).toLocaleString()}` : 'To: now'} ({sectionDiff.toTrigger || 'latest'})</span>
+                    <div className="flex flex-wrap gap-4 text-[var(--text-secondary)]">
+                      <span>{t.fromLabel}: {sectionDiff.from ? new Date(sectionDiff.from).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US') : t.startLabel} ({sectionDiff.fromTrigger || t.initialLabel})</span>
+                      <span>{t.toLabel}: {sectionDiff.to ? new Date(sectionDiff.to).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US') : t.nowLabel} ({sectionDiff.toTrigger || t.latestLabel})</span>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {[
-                        { label: 'Claims Added', value: (sectionDiff.claimsAdded || []).length, color: 'text-emerald-600' },
-                        { label: 'Claims Removed', value: (sectionDiff.claimsRemoved || []).length, color: 'text-rose-600' },
-                        { label: 'Claims Changed', value: (sectionDiff.claimsChanged || []).length, color: 'text-amber-600' },
-                        { label: 'Word Count Δ', value: (sectionDiff.sectionWordDeltas || []).reduce((sum, d) => sum + (d.toWords - d.fromWords), 0), color: 'text-indigo-600' },
+                        { label: t.claimsAdded, value: (sectionDiff.claimsAdded || []).length, color: 'text-emerald-600' },
+                        { label: t.claimsRemoved, value: (sectionDiff.claimsRemoved || []).length, color: 'text-rose-600' },
+                        { label: t.claimsChanged, value: (sectionDiff.claimsChanged || []).length, color: 'text-amber-600' },
+                        { label: t.wordCountDelta, value: (sectionDiff.sectionWordDeltas || []).reduce((sum, d) => sum + (d.toWords - d.fromWords), 0), color: 'text-[var(--brand-foreground)]' },
                       ].map(stat => (
-                        <div key={stat.label} className="bg-gray-50 rounded-xl p-4 text-center">
+                        <div key={stat.label} className="rounded-xl bg-[var(--surface-secondary)] p-4 text-center">
                           <p className={`text-2xl font-black ${stat.color}`}>{stat.value}</p>
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">{stat.label}</p>
+                          <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">{stat.label}</p>
                         </div>
                       ))}
                     </div>
                     {[
-                      { label: 'Mappings Accepted', value: sectionDiff.mappingsAcceptedDelta },
-                      { label: 'Mappings Rejected', value: sectionDiff.mappingsRejectedDelta },
-                      { label: 'Feedback Answered', value: sectionDiff.feedbackAnsweredDelta },
+                      { label: t.mappingsAccepted, value: sectionDiff.mappingsAcceptedDelta },
+                      { label: t.mappingsRejected, value: sectionDiff.mappingsRejectedDelta },
+                      { label: t.feedbackAnswered, value: sectionDiff.feedbackAnsweredDelta },
                     ].map(item => (
-                      <div key={item.label} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2">
-                        <span className="text-gray-500">{item.label}</span>
-                        <span className={`font-black ${item.value > 0 ? 'text-emerald-600' : item.value < 0 ? 'text-rose-600' : 'text-gray-400'}`}>{item.value > 0 ? `+${item.value}` : item.value}</span>
+                      <div key={item.label} className="flex items-center justify-between rounded-lg bg-[var(--surface-secondary)] px-3 py-2">
+                        <span className="text-[var(--text-secondary)]">{item.label}</span>
+                        <span className={`font-black ${item.value > 0 ? 'text-emerald-600' : item.value < 0 ? 'text-rose-600' : 'text-[var(--text-tertiary)]'}`}>{item.value > 0 ? `+${item.value}` : item.value}</span>
                       </div>
                     ))}
                     {(sectionDiff.sectionWordDeltas || []).filter(d => d.toWords !== d.fromWords).length > 0 && (
                       <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Word Count by Section</p>
+                        <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">{t.wordCountBySection}</p>
                         <div className="space-y-1">
                           {(sectionDiff.sectionWordDeltas || []).filter(d => d.toWords !== d.fromWords).map(d => (
-                            <div key={d.sectionId} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-1.5 text-[10px]">
-                              <span className="text-gray-500">Section {String(d.sectionId).slice(0, 8)}</span>
-                              <span className="text-gray-700">{d.fromWords} → {d.toWords}</span>
+                            <div key={d.sectionId} className="flex items-center justify-between rounded-lg bg-[var(--surface-secondary)] px-3 py-1.5 text-[10px]">
+                              <span className="text-[var(--text-secondary)]">{t.section} {String(d.sectionId).slice(0, 8)}</span>
+                              <span className="text-[var(--text-primary)]">{d.fromWords} → {d.toWords}</span>
                             </div>
                           ))}
                         </div>
@@ -890,12 +888,12 @@ export default function ProjectDetail() {
                     )}
                     {(sectionDiff.claimsChanged || []).length > 0 && (
                       <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Changed Claims</p>
+                        <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">{t.changedClaims}</p>
                         <div className="space-y-1">
                           {(sectionDiff.claimsChanged || []).map(claim => (
-                            <div key={claim.id} className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-1.5 text-[10px]">
-                              <span className="font-mono text-gray-500">#{String(claim.id).slice(0, 8)}</span>
-                              <span className="text-gray-700">{claim.version > 1 ? `v${claim.version - 1}` : 'new'} → v{claim.version}</span>
+                            <div key={claim.id} className="flex items-center justify-between rounded-lg bg-[var(--surface-secondary)] px-3 py-1.5 text-[10px]">
+                              <span className="font-mono text-[var(--text-secondary)]">#{String(claim.id).slice(0, 8)}</span>
+                              <span className="text-[var(--text-primary)]">{claim.version > 1 ? `v${claim.version - 1}` : t.newLabel} → v{claim.version}</span>
                             </div>
                           ))}
                         </div>
@@ -906,33 +904,33 @@ export default function ProjectDetail() {
               )}
             </div>
 
-            <div className="lg:col-span-1 bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6 lg:col-span-1">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-bold text-[#1e3a8a]">Sections</h2>
+                <h2 className="text-sm font-bold text-[var(--brand-foreground)]">{t.projectSections}</h2>
                 {reportSectionId && (
-                  <button onClick={() => setReportSectionId(null)} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800">All sections</button>
+                  <button onClick={() => setReportSectionId(null)} className="text-xs font-bold text-[var(--brand-foreground)] hover:underline">{t.allSections}</button>
                 )}
               </div>
-              {!progressReport ? <p className="text-xs text-gray-400 italic">Loading...</p> : progressReport.sections?.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">No sections yet.</p>
+              {!progressReport ? <p className="text-xs italic text-[var(--text-tertiary)]">{ct.loading}</p> : progressReport.sections?.length === 0 ? (
+                <p className="text-xs italic text-[var(--text-tertiary)]">{t.noSectionsYet}</p>
               ) : (
                 <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
                   {(progressReport.sections || []).map(section => (
                     <button
                       key={section.sectionId}
                       onClick={() => setReportSectionId(String(reportSectionId) === String(section.sectionId) ? null : section.sectionId)}
-                      className={`w-full text-left bg-gray-50 rounded-xl p-3 text-xs transition ${String(reportSectionId) === String(section.sectionId) ? 'ring-2 ring-[#1e3a8a]/40 bg-indigo-50' : 'hover:bg-indigo-50/60'}`}
+                      className={`w-full rounded-xl bg-[var(--surface-secondary)] p-3 text-left text-xs transition ${String(reportSectionId) === String(section.sectionId) ? 'bg-[var(--brand-soft)] ring-2 ring-indigo-500/40' : 'hover:bg-[var(--brand-soft)]'}`}
                     >
                       <div className="flex justify-between items-start gap-2">
-                        <span className="font-bold text-gray-700">{section.sectionTitle}</span>
-                        <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">v{section.version}</span>
+                        <span className="font-bold text-[var(--text-primary)]">{section.sectionTitle}</span>
+                        <span className="rounded bg-[var(--brand-soft)] px-1.5 py-0.5 text-[9px] font-black text-[var(--brand-foreground)]">v{section.version}</span>
                       </div>
-                      <p className="text-gray-400 mt-1 text-[10px]">
-                        {section.wordCount} words &middot; {section.claimCount} claims{section.assignedUserName ? ` &middot; ${section.assignedUserName}` : ''}
+                      <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">
+                        {t.sectionSummary.replace('{{words}}', section.wordCount).replace('{{claims}}', section.claimCount)}{section.assignedUserName ? ` · ${section.assignedUserName}` : ''}
                       </p>
-                      <p className="text-gray-400 text-[10px] mt-0.5">
-                        {section.feedbackAnswered}/{section.feedbackAnswered + section.feedbackUnanswered} feedback answered
-                        {section.lastUpdated ? ` &middot; ${new Date(section.lastUpdated).toLocaleDateString()}` : ''}
+                      <p className="mt-0.5 text-[10px] text-[var(--text-tertiary)]">
+                        {t.feedbackSummary.replace('{{answered}}', section.feedbackAnswered).replace('{{total}}', section.feedbackAnswered + section.feedbackUnanswered)}
+                        {section.lastUpdated ? ` · ${new Date(section.lastUpdated).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US')}` : ''}
                       </p>
                     </button>
                   ))}
@@ -945,40 +943,40 @@ export default function ProjectDetail() {
         {/* Tab: Settings */}
         {activeTab === 'settings' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div id="status-controls" className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-              <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Status Controls</h2>
+            <div id="status-controls" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
+              <h2 className="mb-4 text-sm font-bold text-[var(--brand-foreground)]">{t.statusControls}</h2>
               <div className="space-y-3">
                 {project.status === 'IN_PROGRESS' && (
-                  <button onClick={() => handlePatch('complete')} className="w-full px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700">Mark Complete → APPROVED</button>
+                  <button onClick={() => handlePatch('complete')} className="w-full rounded-lg bg-[var(--brand)] px-4 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)]">{t.markComplete}</button>
                 )}
                 {project.status !== 'ARCHIVED' && (
-                  <button onClick={() => handlePatch('archive')} className="w-full px-4 py-2 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700">Archive</button>
+                  <button onClick={() => handlePatch('archive')} className="w-full rounded-lg bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700">{t.archive}</button>
                 )}
                 {project.status === 'ARCHIVED' && (
-                  <button onClick={() => handlePatch('unarchive')} className="w-full px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700">Unarchive</button>
+                  <button onClick={() => handlePatch('unarchive')} className="w-full rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700">{t.unarchive}</button>
                 )}
-                <p className="text-[10px] text-gray-400">Current status: <StatusBadge status={project.status} /></p>
+                <p className="text-[10px] text-[var(--text-tertiary)]">{t.currentStatus} <StatusBadge status={project.status} /></p>
               </div>
             </div>
-            <div id="project-members" className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-sm font-bold text-[#1e3a8a]">Members</h2>
-                <button onClick={() => { setShowAddMember(true); loadUsers(); }} className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700">+ Add</button>
+            <div id="project-members" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <h2 className="text-sm font-bold text-[var(--brand-foreground)]">{t.members}</h2>
+                <button onClick={() => { setShowAddMember(true); loadUsers(); }} className="rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)]">+ {t.add}</button>
               </div>
               {projectMembers.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">No members.</p>
+                <p className="text-xs italic text-[var(--text-tertiary)]">{t.noMembers}</p>
               ) : (
                 <div className="space-y-2">
                   {projectMembers.map(m => (
-                    <div key={m.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-xs">
-                      <div className="flex flex-col">
+                    <div key={m.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[var(--surface-secondary)] px-3 py-2 text-xs">
+                      <div className="min-w-0 flex-1">
                         <span className="font-medium">{displayName(m)}</span>
-                        <span className="text-gray-400">{m.email}</span>
+                        <span className="block truncate text-[var(--text-tertiary)]">{m.email}</span>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">{m.userRole}</span>
-                        <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{m.role}</span>
-                        <button onClick={() => handleRemoveMember(m.userId)} className="text-rose-600 hover:text-rose-800 font-bold">Remove</button>
+                        <span className="rounded bg-[var(--surface-tertiary)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)]">{m.role}</span>
+                        <button onClick={() => handleRemoveMember(m.userId)} className="font-bold text-rose-600 hover:text-rose-800">{t.remove}</button>
                       </div>
                     </div>
                   ))}
@@ -987,159 +985,157 @@ export default function ProjectDetail() {
             </div>
           </div>
         )}
-      </div>
+      </main>
 
-      <Modal open={showAddMember} onClose={() => setShowAddMember(false)} title="Add Member">
+      <Modal open={showAddMember} onClose={() => setShowAddMember(false)} title={t.addMember}>
         <div className="space-y-4">
-           <select value={newMemberId} onChange={e => setNewMemberId(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none">
-            <option value="">Select student...</option>
+           <select value={newMemberId} onChange={e => setNewMemberId(e.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs outline-none">
+            <option value="">{t.selectStudent}</option>
             {users.filter(u => u.role === 'STUDENT' && !projectMembers.find(m => m.userId === u.id)).map(u => (
               <option key={u.id} value={u.id}>{u.firstName || u.lastName ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : u.email}</option>
             ))}
           </select>
-          <select value={newMemberRole} onChange={e => setNewMemberRole(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none">
-            <option value="MEMBER">Member</option>
-            <option value="LEADER">Leader</option>
+          <select value={newMemberRole} onChange={e => setNewMemberRole(e.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs outline-none">
+            <option value="MEMBER">{t.memberRole}</option>
+            <option value="LEADER">{t.leaderRole}</option>
           </select>
           <div className="flex justify-end gap-2">
-            <button onClick={() => setShowAddMember(false)} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">{ct.cancel}</button>
-            <button onClick={handleAddMember} disabled={!newMemberId} className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50">{ct.save}</button>
+            <button onClick={() => setShowAddMember(false)} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.cancel}</button>
+            <button onClick={handleAddMember} disabled={!newMemberId} className="rounded-lg bg-[var(--brand)] px-4 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)] disabled:opacity-50">{ct.save}</button>
           </div>
         </div>
       </Modal>
 
-      <Modal open={!!pendingAssign} onClose={() => setPendingAssign(null)} title="Assign Section">
+      <Modal open={!!pendingAssign} onClose={() => setPendingAssign(null)} title={t.assignSection}>
         <div className="space-y-4 text-xs">
-          <p className="text-gray-600">
-            Assign section to <strong>{pendingAssign?.userName}</strong>?
-          </p>
+          <p className="text-[var(--text-secondary)]">{t.assignSectionQuestion.replace('{{student}}', pendingAssign?.userName || '')}</p>
           <p className="text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            Once assigned, only that student can edit its content and Claims. Section structure stays locked until every Section is unassigned.
+            {t.assignSectionWarning}
           </p>
           <div className="flex justify-end gap-2">
-            <button onClick={() => setPendingAssign(null)} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">{ct.cancel}</button>
-            <button onClick={() => handleConfirmAssign(pendingAssign?.userId, pendingAssign?.sectionId)} className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700">Confirm</button>
+            <button onClick={() => setPendingAssign(null)} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.cancel}</button>
+            <button onClick={() => handleConfirmAssign(pendingAssign?.userId, pendingAssign?.sectionId)} className="rounded-lg bg-[var(--brand)] px-4 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)]">{ct.confirm}</button>
           </div>
         </div>
       </Modal>
 
-      <Modal open={showSourceDetail} onClose={() => setShowSourceDetail(false)} title="Source Detail">
+      <Modal open={showSourceDetail} onClose={() => setShowSourceDetail(false)} title={t.sourceDetail}>
         {sourceDetail && (
           <div className="space-y-3 text-xs">
-            <div><span className="font-bold text-gray-500">Title:</span> <span className="text-gray-800">{sourceDetail.title || '-'}</span></div>
-            <div><span className="font-bold text-gray-500">Filename:</span> <span className="text-gray-800">{sourceDetail.originalFilename || '-'}</span></div>
-            <div><span className="font-bold text-gray-500">DOI:</span> <span className="text-gray-800 font-mono">{sourceDetail.doi || '-'}</span></div>
-            <div><span className="font-bold text-gray-500">Status:</span> <StatusBadge status={sourceDetail.processingStatus || 'READY'} /></div>
-            <div><span className="font-bold text-gray-500">Type:</span> <span className="text-gray-800">{sourceDetail.docType || 'SOURCE'}</span></div>
-            <div><span className="font-bold text-gray-500">ID:</span> <span className="text-gray-800 font-mono text-[9px]">{sourceDetail.id}</span></div>
+            <div><span className="font-bold text-[var(--text-secondary)]">{t.titleLabel}</span> <span>{sourceDetail.title || '-'}</span></div>
+            <div><span className="font-bold text-[var(--text-secondary)]">{t.filenameLabel}</span> <span>{sourceDetail.originalFilename || '-'}</span></div>
+            <div><span className="font-bold text-[var(--text-secondary)]">DOI:</span> <span className="font-mono">{sourceDetail.doi || '-'}</span></div>
+            <div><span className="font-bold text-[var(--text-secondary)]">{ct.status}:</span> <StatusBadge status={sourceDetail.processingStatus || 'READY'} /></div>
+            <div><span className="font-bold text-[var(--text-secondary)]">{t.typeLabel}</span> <span>{sourceDetail.docType || 'SOURCE'}</span></div>
+            <div><span className="font-bold text-[var(--text-secondary)]">ID:</span> <span className="font-mono text-[9px]">{sourceDetail.id}</span></div>
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowSourceDetail(false)} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">Close</button>
+              <button onClick={() => setShowSourceDetail(false)} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.close}</button>
             </div>
           </div>
         )}
       </Modal>
 
-      <Modal open={showAddSource} onClose={() => { setShowAddSource(false); setDoiInput(''); }} title="Add Source">
+      <Modal open={showAddSource} onClose={() => { setShowAddSource(false); setDoiInput(''); }} title={t.addSource}>
         <div className="space-y-5 text-xs">
-          <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-            <h3 className="font-bold text-indigo-700">① Import by DOI</h3>
+          <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
+            <h3 className="font-bold text-[var(--brand-foreground)]">{t.importByDoi}</h3>
             <div className="flex gap-2 mb-2">
               <button
                 onClick={() => setAddSourceDocType('SOURCE')}
-                className={`flex-1 px-3 py-1.5 text-xs font-bold rounded-lg border transition ${addSourceDocType === 'SOURCE' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}
+                className={`flex-1 rounded-lg border px-3 py-2 text-xs font-bold transition ${addSourceDocType === 'SOURCE' ? 'border-[var(--brand)] bg-[var(--brand)] text-white' : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:border-indigo-300'}`}
               >
-                As Source (reference)
+                {t.asSource}
               </button>
               <button
                 onClick={() => setAddSourceDocType('PAPER')}
-                className={`flex-1 px-3 py-1.5 text-xs font-bold rounded-lg border transition ${addSourceDocType === 'PAPER' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-600 border-gray-200 hover:border-amber-300'}`}
+                className={`flex-1 rounded-lg border px-3 py-2 text-xs font-bold transition ${addSourceDocType === 'PAPER' ? 'border-[var(--brand)] bg-[var(--brand)] text-white' : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:border-indigo-300'}`}
               >
-                As Paper (student work)
+                {t.asPaper}
               </button>
             </div>
             <div className="flex gap-2">
-              <input value={doiInput} onChange={e => setDoiInput(e.target.value)} placeholder="10.1000/xyz123" className="flex-1 border border-gray-200 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-indigo-500 text-xs" />
-              <button onClick={() => handleImportDoiUnified(addSourceDocType === 'SOURCE')} disabled={addSourceLoading || !doiInput.trim()} className="px-3 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50 text-xs">
-                {addSourceLoading ? '...' : 'Import'}
+              <input value={doiInput} onChange={e => setDoiInput(e.target.value)} placeholder="10.1000/xyz123" className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs outline-none" />
+              <button onClick={() => handleImportDoiUnified(addSourceDocType === 'SOURCE')} disabled={addSourceLoading || !doiInput.trim()} className="rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)] disabled:opacity-50">
+                {addSourceLoading ? '...' : t.import}
               </button>
             </div>
             {addSourceDocType === 'SOURCE' && (
-              <p className="text-[10px] text-gray-400 italic">Sources are auto-classified by the system.</p>
+              <p className="text-[10px] italic text-[var(--text-tertiary)]">{t.sourcesAutoClassified}</p>
             )}
           </div>
-          <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-            <h3 className="font-bold text-amber-700">② Upload Source (PDF/DOCX)</h3>
+          <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
+            <h3 className="font-bold text-[var(--text-primary)]">{t.uploadSourceFile}</h3>
             <input type="file" accept=".pdf,.docx" onChange={async (e) => { await handleUploadSource(e); setShowAddSource(false); }} className="text-xs" />
           </div>
-          <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-            <h3 className="font-bold text-rose-700">③ Share from Collection</h3>
-            <button onClick={() => { setShowShareCollection(true); loadCollections(); setShowAddSource(false); }} className="px-3 py-2 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700">Browse Collections</button>
+          <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
+            <h3 className="font-bold text-[var(--text-primary)]">{t.shareFromCollection}</h3>
+            <button onClick={() => { setShowShareCollection(true); loadCollections(); setShowAddSource(false); }} className="rounded-lg bg-[var(--brand)] px-3 py-2 font-bold text-white hover:bg-[var(--brand-hover)]">{t.browseCollections}</button>
           </div>
           <div className="flex justify-end gap-2">
-            <button onClick={() => setShowAddSource(false)} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">{ct.cancel}</button>
+            <button onClick={() => setShowAddSource(false)} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.cancel}</button>
           </div>
         </div>
       </Modal>
 
-      <Modal open={showSetUpPaper} onClose={() => setShowSetUpPaper(false)} title="Set up Paper">
+      <Modal open={showSetUpPaper} onClose={() => setShowSetUpPaper(false)} title={t.setUpPaper}>
         {sectionStructureLocked ? (
           <div className="space-y-4 text-xs">
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center gap-2">
-              <span>{'\u{1F512}'}</span>
+            <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+              <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-none stroke-amber-800" strokeWidth="2"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
               <span className="text-amber-800">
-                {projectReadOnly
-                  ? 'Setup is locked because the project is read-only.'
-                  : 'Setup is locked because sections have been assigned to students. Unassign all sections to make changes.'}
+                {projectReadOnly ? t.setupLockedReadOnly : t.setupLockedAssigned}
               </span>
             </div>
             <div className="flex justify-end">
-              <button onClick={() => setShowSetUpPaper(false)} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">{ct.close || 'Close'}</button>
+              <button onClick={() => setShowSetUpPaper(false)} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.close}</button>
             </div>
           </div>
         ) : (
           <div className="space-y-5 text-xs">
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            <div className="flex gap-1 rounded-lg bg-[var(--surface-tertiary)] p-1">
               <button onClick={() => setSetupMode('standard')}
-                className={`flex-1 px-3 py-2 rounded-md text-xs font-bold transition ${setupMode === 'standard' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                📋 Choose Standard
+                className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-bold transition ${setupMode === 'standard' ? 'bg-[var(--surface)] text-[var(--brand-foreground)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}>
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2"><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 2h6v4H9zM8 10h8M8 14h8M8 18h5" /></svg>
+                {t.chooseStandard}
               </button>
               <button onClick={() => setSetupMode('paper')}
-                className={`flex-1 px-3 py-2 rounded-md text-xs font-bold transition ${setupMode === 'paper' ? 'bg-white text-amber-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                📄 Upload Paper
+                className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-bold transition ${setupMode === 'paper' ? 'bg-[var(--surface)] text-[var(--brand-foreground)] shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}>
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2"><path d="M6 2h8l4 4v16H6zM14 2v5h5M9 13h6M12 10v6" /></svg>
+                {t.uploadPaper}
               </button>
             </div>
 
             {setupMode === 'standard' && (
-              <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-                <h3 className="font-bold text-indigo-700">Choose Standard</h3>
-                <p className="text-gray-400">Select a paper format standard. This creates empty section templates.</p>
-                <select value={standard} onChange={e => setStandard(e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-indigo-500">
-                  <option value="">No standard</option>
+              <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
+                <h3 className="font-bold text-[var(--brand-foreground)]">{t.chooseStandard}</h3>
+                <p className="text-[var(--text-tertiary)]">{t.chooseStandardDesc}</p>
+                <select value={standard} onChange={e => setStandard(e.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 outline-none">
+                  <option value="">{t.noStandard}</option>
                   {STANDARDS.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
-                <button onClick={handleUpdateStandard} disabled={saving} className="px-4 py-2 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 disabled:opacity-50">{saving ? ct.saving : 'Save Standard'}</button>
+                <button onClick={handleUpdateStandard} disabled={saving} className="rounded-lg bg-[var(--brand)] px-4 py-2 font-bold text-white hover:bg-[var(--brand-hover)] disabled:opacity-50">{saving ? ct.saving : t.saveStandard}</button>
               </div>
             )}
 
             {setupMode === 'paper' && (
-              <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-                <h3 className="font-bold text-amber-700">Upload Paper</h3>
-                <p className="text-gray-400">Upload a student paper. System will detect sections from content.</p>
+              <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
+                <h3 className="font-bold text-[var(--brand-foreground)]">{t.uploadPaper}</h3>
+                <p className="text-[var(--text-tertiary)]">{t.uploadPaperDesc}</p>
                 <input type="file" accept=".pdf,.docx" onChange={(e) => { handleUploadPaper(e); setShowSetUpPaper(false); }} className="text-xs" />
               </div>
             )}
 
             <div className="flex justify-end gap-2">
-              <button onClick={() => setShowSetUpPaper(false)} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">{ct.cancel}</button>
+              <button onClick={() => setShowSetUpPaper(false)} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.cancel}</button>
             </div>
           </div>
         )}
       </Modal>
 
-      <Modal open={showShareCollection} onClose={() => { setShowShareCollection(false); setSelectedCollectionId(''); setCollectionSources([]); }} title="Share from Collection">
+      <Modal open={showShareCollection} onClose={() => { setShowShareCollection(false); setSelectedCollectionId(''); setCollectionSources([]); }} title={t.shareFromCollection}>
         <div className="space-y-4 text-xs">
           {collections.length === 0 ? (
-            <p className="text-gray-400 italic">No collections found.</p>
+            <p className="italic text-[var(--text-tertiary)]">{t.noCollectionsFound}</p>
           ) : (
             <select value={selectedCollectionId} onChange={async (e) => {
               setSelectedCollectionId(e.target.value);
@@ -1152,18 +1148,18 @@ export default function ProjectDetail() {
                   setSelectedSourceIds(loaded.filter(ls => projectSourceIds.has(ls.id)).map(s => s.id));
                 } catch { setCollectionSources([]); }
               } else { setCollectionSources([]); }
-            }} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs outline-none">
-              <option value="">Select collection...</option>
+            }} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs outline-none">
+              <option value="">{t.selectCollection}</option>
               {collections.map(c => <option key={c.id} value={c.id}>{c.name || c.title || c.id}</option>)}
             </select>
           )}
           {selectedCollectionId && collectionSources.length === 0 && (
-            <p className="text-gray-400 italic">No sources in this collection.</p>
+            <p className="italic text-[var(--text-tertiary)]">{t.noCollectionSources}</p>
           )}
           {collectionSources.length > 0 && (
-            <div className="max-h-48 overflow-y-auto space-y-1 border border-gray-100 rounded-lg p-1">
+            <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-[var(--border-light)] p-1">
               {collectionSources.map(s => (
-                <label key={s.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100">
+                <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--surface-secondary)] px-3 py-2 hover:bg-[var(--surface-tertiary)]">
                   <input type="checkbox" checked={selectedSourceIds.includes(s.id)} onChange={() => toggleSourceSelection(s.id)} className="accent-indigo-600" />
                   <span className="font-medium flex-1 text-xs">{s.title || s.originalFilename || s.id}</span>
                 </label>
@@ -1171,17 +1167,17 @@ export default function ProjectDetail() {
             </div>
           )}
           {collectionSources.length > 0 && (
-            <button onClick={() => handleShareSources(selectedSourceIds)} className="w-full px-3 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700">
-              Apply Changes
+            <button onClick={() => handleShareSources(selectedSourceIds)} className="w-full rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)]">
+              {t.applyChanges}
             </button>
           )}
           <div className="flex justify-end gap-2">
-            <button onClick={() => { setShowShareCollection(false); setSelectedCollectionId(''); setCollectionSources([]); }} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">Close</button>
+            <button onClick={() => { setShowShareCollection(false); setSelectedCollectionId(''); setCollectionSources([]); }} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.close}</button>
           </div>
         </div>
       </Modal>
 
-      <Modal open={showExportModal} onClose={() => setShowExportModal(false)} title="Export">
+      <Modal open={showExportModal} onClose={() => setShowExportModal(false)} title={t.export}>
         <div className="space-y-3 text-xs">
           <button onClick={async () => {
             try {
@@ -1190,12 +1186,12 @@ export default function ProjectDetail() {
               const a = document.createElement('a'); a.href = url; a.download = `papers-${project?.title || 'export'}.zip`;
               a.click(); URL.revokeObjectURL(url);
               const warningCount = Number(r.headers?.['x-claim-warning-count'] || 0);
-              if (warningCount > 0) alert(`Exported with ${warningCount} Claim usage warning(s). See CLAIM_WARNINGS.md in the ZIP.`);
+              if (warningCount > 0) alert(t.exportWarning.replace('{{count}}', warningCount));
               setShowExportModal(false);
-            } catch { alert('Export failed.'); }
-          }} className="w-full text-left px-4 py-3 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition font-medium text-indigo-700">
-            Paper (.tex archive)
-            <span className="block text-[10px] text-gray-500 font-normal">Download paper with sections and images as a ZIP archive</span>
+            } catch { alert(t.exportFailed); }
+          }} className="w-full rounded-lg bg-emerald-50 px-4 py-3 text-left font-medium text-emerald-800 transition hover:bg-emerald-100">
+            {t.paperArchive}
+            <span className="block text-[10px] font-normal text-emerald-900/70">{t.paperArchiveDesc}</span>
           </button>
           <button onClick={async () => {
             try {
@@ -1205,10 +1201,10 @@ export default function ProjectDetail() {
               const a = document.createElement('a'); a.href = url; a.download = `traceability-${project?.title || 'export'}.json`;
               a.click(); URL.revokeObjectURL(url);
               setShowExportModal(false);
-            } catch { alert('Export failed.'); }
-          }} className="w-full text-left px-4 py-3 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition font-medium text-emerald-700">
-            Traceability Report (JSON)
-            <span className="block text-[10px] text-gray-500 font-normal">Export full traceability matrix with claims, sources, and evidence</span>
+            } catch { alert(t.exportFailed); }
+          }} className="w-full rounded-lg bg-emerald-50 px-4 py-3 text-left font-medium text-emerald-800 transition hover:bg-emerald-100">
+            {t.traceabilityJson}
+            <span className="block text-[10px] font-normal text-emerald-900/70">{t.traceabilityJsonDesc}</span>
           </button>
           <button onClick={async () => {
             try {
@@ -1217,13 +1213,13 @@ export default function ProjectDetail() {
               const a = document.createElement('a'); a.href = url; a.download = `traceability-${project?.title || 'export'}.csv`;
               a.click(); URL.revokeObjectURL(url);
               setShowExportModal(false);
-            } catch { alert('Export failed.'); }
-          }} className="w-full text-left px-4 py-3 bg-amber-50 rounded-lg hover:bg-amber-100 transition font-medium text-amber-700">
-            Traceability Report (CSV)
-            <span className="block text-[10px] text-gray-500 font-normal">Export traceability as a CSV file for spreadsheet analysis</span>
+            } catch { alert(t.exportFailed); }
+          }} className="w-full rounded-lg bg-emerald-50 px-4 py-3 text-left font-medium text-emerald-800 transition hover:bg-emerald-100">
+            {t.traceabilityCsv}
+            <span className="block text-[10px] font-normal text-emerald-900/70">{t.traceabilityCsvDesc}</span>
           </button>
           <div className="flex justify-end">
-            <button onClick={() => setShowExportModal(false)} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">Cancel</button>
+            <button onClick={() => setShowExportModal(false)} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.cancel}</button>
           </div>
         </div>
       </Modal>
@@ -1235,7 +1231,7 @@ export default function ProjectDetail() {
               <Spinner className="animate-spin h-8 w-8 text-indigo-600" />
             </MarkerIcon>
             <MarkerContent className="shimmer-text">
-              {uploadState === 'uploading' ? 'Uploading paper...' : 'Processing sections...'}
+              {uploadState === 'uploading' ? t.uploadingPaper : t.processingSections}
             </MarkerContent>
           </Marker>
         </Modal>

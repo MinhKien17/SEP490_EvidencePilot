@@ -120,6 +120,7 @@
   "exportTex": "Export as TEX (.zip)",
   "exportTraceability": "Traceability Report (JSON)",
   "exportGraphCsv": "Export as CSV",
+  "exportFailed": "Export failed.",
 
   "tour": {
     "projectName": "Project Name",
@@ -156,5 +157,205 @@
   "leaderRole": "Leader",
   "memberRole": "Member",
   "requestFeedback": "Request Feedback",
-  "assignedToYou": "Assigned to you"
+  "assignedToYou": "Assigned to you",
+  "project": "Project",
+  "paper": "Paper",
+  "claim": "Claim",
+  "profile": "Profile",
+  "moreActions": "More actions",
+  "openMenu": "Open menu",
+  "closeMenu": "Close menu",
+  "toggleFilePanel": "Toggle file panel",
+  "toggleContextPanel": "Toggle context panel",
+  "overview": "Overview",
+  "dismiss": "Dismiss",
+  "untitled": "Untitled",
+  "saveSection": "Save section",
+  "editorFontSize": "Editor font size",
+  "guide": "Guide",
+  "fileViewer": "File viewer",
+  "download": "Download",
+  "downloadFile": "Download file",
+  "filePreview": "File preview",
+  "previewNotAvailable": "Preview not available",
+  "previewUnsupported": "Your browser may not support inline preview for this file type.",
+  "addSource": "Add source",
+  "sourceFile": "File (PDF/DOCX)",
+  "noUploadedSources": "No uploaded sources yet.",
+  "uploadedSourceDescription": "Source file uploaded to this project.",
+  "addClaim": "Add claim",
+  "useRevision": "Use revision and evaluate again",
+  "functionalType": "Functional type",
+  "aiAdvice": "AI advice only. Review the result before adding the claim.",
+  "noClaims": "No claims yet.",
+  "qdrantMatches": "Source matches",
+  "searchingSources": "Searching sources...",
+  "retry": "Retry",
+  "findMatchesHint": "Select Find matches to search active sources.",
+  "evidence": "Evidence",
+  "loadingEvidence": "Loading evidence...",
+  "noEvidence": "No active evidence mapping yet.",
+  "aiSuggestions": "AI suggestions",
+  "noSuggestions": "No pending or rejected suggestions.",
+  "reject": "Reject",
+  "accept": "Accept",
+  "projectStatus": "Project status",
+  "reviewHistory": "Review history",
+  "noReviews": "No reviews yet.",
+  "reviewPending": "Project submitted. Waiting for instructor review.",
+  "reviewReturned": "Instructor returned the project. Please review and resubmit.",
+  "reviewApproved": "Instructor approved the project.",
+  "reviewRejected": "Review request was rejected.",
+  "noSectionFeedback": "No per-section feedback items.",
+  "sectionChanged": "section changed",
+  "answered": "answered",
+  "sectionCoverage": "Section coverage",
+  "showTeammateClaims": "Show teammate claims",
+  "someAreasFailed": "Some areas failed to load: {{areas}}. Retry them from the file or context panel.",
+  "restoreVersion": "Restore this version",
+  "restoring": "Restoring...",
+  "currentEditedVersion": "This is the current version being edited.",
+  "selectSectionHistory": "Select a section to see version history.",
+  "autoRevise": "Auto revise",
+  "autoReviseDescription": "Select sections for AI revision based on instructor feedback.",
+  "noSectionsAvailable": "No sections available.",
+  "startRevision": "Start revision",
+  "submissionBlocked": "Submission blocked: {{count}} claim(s) are missing from their owning section.",
+  "aiReviewReport": "AI review report",
+  "aiReviewError": "AI review error",
+  "lastReviewAvailable": "The last successful review remains below.",
+  "aiAnalyzing": "AI is analyzing...",
+  "aiAnalyzingDescription": "Scanning sections, claims, active source mappings, and instructor feedback...",
+  "projectAssessment": "Project assessment",
+  "rubricScore": "Rubric score",
+  "pass": "Pass",
+  "sectionsScanned": "Sections",
+  "chunksScanned": "Chunks",
+  "claimsChecked": "Claims",
+  "nextAction": "Next: {{action}}",
+  "sourceCount": "{{count}} source(s)",
+  "feedbackCount": "{{count}} feedback item(s)",
+  "insufficientReview": "Review not evaluated because the paper does not have enough processed content.",
+  "noReviewFindings": "No specific findings were returned.",
+  "limitations": "Limitations",
+  "formatScan": "Format scan",
+  "allGood": "All good",
+  "issueCount": "{{count}} issue(s)",
+  "noIssues": "No issues found — the paper looks good.",
+  "errorLabel": "Error",
+  "warningLabel": "Warning",
+  "infoLabel": "Info",
+  "tip": "Tip: {{suggestion}}",
+  "created": "Created",
+  "category": "Category",
+  "summary": "Summary",
+  "pdfPreview": "PDF preview"
+  ,"coverage": "Coverage"
+  ,"insertSource": "Insert source"
+  ,"working": "Working..."
+  ,"fileUrlUnavailable": "File URL is not available."
+  ,"claimContentPlaceholder": "Claim content..."
+  ,"functionalTypeEmpirical": "EMPIRICAL — Data, experiments, results"
+  ,"functionalTypeTheoretical": "THEORETICAL — Literature, background, concepts"
+  ,"functionalTypeMethodological": "METHODOLOGICAL — Tools, frameworks, implementation"
+  ,"functionalTypeAnalytical": "ANALYTICAL — Evaluations, comparisons, interpretations"
+  ,"functionalTypeApplied": "APPLIED — Real-world applications, user feedback, impact"
+  ,"semanticAlignment": "Semantic alignment"
+  ,"contextualSufficiency": "Contextual sufficiency"
+  ,"logicalRestraint": "Logical restraint"
+  ,"evidenceStrength": "Evidence strength"
+  ,"evidenceStrengthBreakdown": "Evidence strength breakdown"
+  ,"findMatches": "Find matches"
+  ,"matchPercent": "{{percent}}% match"
+  ,"chunk": "Chunk {{index}}"
+  ,"evaluated": "Evaluated"
+  ,"evaluating": "Evaluating..."
+  ,"selectEvaluate": "Select and evaluate"
+  ,"unknown": "Unknown"
+  ,"instructor": "Instructor"
+  ,"sectionLabel": "Section {{name}}"
+  ,"myAnswer": "My answer: {{answer}}"
+  ,"supportedCount": "{{supported}} supported · {{missing}} missing · {{orphaned}} orphaned · {{unsupported}} unsupported"
+  ,"noCoverageData": "No section coverage data yet."
+  ,"adding": "Adding..."
+  ,"aiEvaluate": "AI evaluate"
+  ,"retryAiEvaluate": "Retry AI evaluation"
+  ,"claimQuality": "Claim quality · {{score}}/10"
+  ,"ready": "Ready"
+  ,"evidenceCount": "{{count}} evidence"
+  ,"claimPresent": "Present"
+  ,"claimMissing": "Missing"
+  ,"claimOrphaned": "Orphaned"
+  ,"status": {
+    "DRAFT": "Draft",
+    "ASSIGNED": "Assigned",
+    "IN_PROGRESS": "In progress",
+    "SUBMITTED": "Submitted",
+    "UNDER_REVIEW": "Under review",
+    "RETURNED": "Returned",
+    "REVIEWED": "Reviewed",
+    "REJECTED": "Rejected",
+    "COMPLETED": "Completed",
+    "ARCHIVED": "Archived",
+    "PENDING": "Pending"
+  }
+  ,"unsavedSectionSwitch": "You have unsaved changes in this section. Switch anyway?"
+  ,"unsavedPaperSwitch": "You have unsaved changes. Switch paper anyway?"
+  ,"unsavedChanges": "You have unsaved changes."
+  ,"aiEvaluationFailed": "AI evaluation failed."
+  ,"readOnlySection": "This section is read-only."
+  ,"exportReady": "Export is ready for download."
+  ,"newNotification": "New notification"
+  ,"markNotificationFailed": "Failed to mark notification as read."
+  ,"downloadWithWarnings": "Downloaded with {{count}} claim usage warning(s); see CLAIM_WARNINGS.md."
+  ,"paperArchiveDownloaded": "Downloaded paper archive."
+  ,"uploadingFile": "Uploading {{name}}..."
+  ,"paperUploaded": "Paper uploaded."
+  ,"deletePaperConfirm": "Delete this draft?"
+  ,"paperDeleted": "Paper deleted."
+  ,"projectLocked": "Project is locked."
+  ,"sourceDeleted": "Source deleted."
+  ,"enterClaimFirst": "Enter a claim first."
+  ,"selectSectionFirst": "Select a section first."
+  ,"cannotEditClaims": "You cannot edit claims in this section."
+  ,"claimAdded": "Claim added."
+  ,"addClaimFailed": "Failed to add claim."
+  ,"claimUpdated": "Claim updated."
+  ,"updateFailed": "Update failed."
+  ,"deleteClaimConfirm": "Delete this claim?"
+  ,"claimDeleted": "Claim deleted."
+  ,"restoreConfirm": "Restore this previous version?"
+  ,"versionRestored": "Version restored."
+  ,"restoreFailed": "Restore failed."
+  ,"noSectionSelected": "No section selected."
+  ,"traceabilityDownloaded": "Downloaded traceability report."
+  ,"traceabilityCsvDownloaded": "Downloaded traceability CSV."
+  ,"foundMatches": "Found {{count}} source match(es)."
+  ,"noMatches": "No matches found. Check that source extraction is ready."
+  ,"findMatchesFailedDetail": "Finding matches failed. Check that source extraction is ready."
+  ,"findMatchesFailed": "Finding matches failed."
+  ,"fetchMatchesFailed": "Failed to fetch matches."
+  ,"aiEvaluationComplete": "AI evaluation is complete. Review it before accepting."
+  ,"evidenceAccepted": "Evidence accepted."
+  ,"suggestionRejected": "Suggestion rejected."
+  ,"updateSuggestionFailed": "Failed to update suggestion."
+  ,"selectPaperFirst": "Select a paper first."
+  ,"formatScanFailed": "Format scan failed."
+  ,"aiReviewComplete": "AI review complete."
+  ,"aiWorkerUnavailable": "The AI review worker is unavailable or timed out."
+  ,"aiInvalidResponse": "AI review returned an invalid response after retrying."
+  ,"aiReviewFailed": "AI review failed. Please retry."
+  ,"saveSubmissionCancelled": "Save failed — submission cancelled."
+  ,"submittedForReview": "Submitted for review."
+  ,"submitFailed": "Submission failed."
+  ,"replacedAll": "Replaced all."
+  ,"notFound": "Not found."
+  ,"submitReviewDescription": "This will lock your paper while the instructor reviews it. You can edit again if the instructor returns it. Continue?"
+  ,"sectionAssigned": "Section assigned."
+  ,"sectionUnassigned": "Section unassigned."
+  ,"assignFailed": "Assignment failed."
+  ,"versionLabel": "Version {{version}}"
+  ,"currentVersionLabel": "Version {{version}} (current)"
+  ,"updatedAtLabel": "Updated at: {{date}}"
+  ,"unknown": "Unknown"
 }

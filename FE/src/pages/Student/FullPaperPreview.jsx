@@ -10,7 +10,7 @@ export default function FullPaperPreview({ sections, paperTitle, mediaAssets, on
     <div className="fixed inset-0 z-50 flex bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="flex w-full h-full max-w-[90vw] max-h-[90vh] m-auto bg-(--surface) rounded-2xl shadow-2xl border border-(--border) overflow-hidden">
         {/* Left: Pages */}
-        <div className="w-56 bg-(--surface-secondary) border-r border-(--border) flex flex-col shrink-0">
+        <div className="hidden md:flex w-56 bg-(--surface-secondary) border-r border-(--border) flex-col shrink-0">
           <div className="px-4 py-3 border-b border-(--border) flex items-center justify-between shrink-0">
             <h3 className="text-xs font-bold text-(--text-primary) uppercase tracking-wider">{t('pages')} ({sections.length})</h3>
             <span className="text-[9px] text-(--text-tertiary) font-mono">{paperTitle}</span>
@@ -21,7 +21,7 @@ export default function FullPaperPreview({ sections, paperTitle, mediaAssets, on
                 onClick={() => sectionRefs.current[sec.id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 className="w-full text-left text-xs p-2 rounded-lg hover:bg-(--surface-tertiary) flex items-center gap-2 transition-colors border border-transparent hover:border-(--border) text-(--text-primary)">
                 <span className="w-5 h-5 rounded bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 flex items-center justify-center text-[9px] font-bold shrink-0">{i + 1}</span>
-                <span className="truncate">{sec.sectionTitle || 'Untitled'}</span>
+                <span className="truncate">{sec.sectionTitle || t('untitled')}</span>
                 <span className="text-[9px] text-(--text-tertiary) font-mono ml-auto shrink-0">v{sec.version || 1}</span>
               </button>
             ))}
@@ -34,7 +34,10 @@ export default function FullPaperPreview({ sections, paperTitle, mediaAssets, on
         </div>
 
         {/* Right: Full compiled preview */}
-        <div className="flex-1 bg-white overflow-y-auto p-8">
+        <div className="flex-1 bg-white overflow-y-auto p-4 sm:p-8 relative">
+          <button onClick={onClose} className="md:hidden sticky top-0 ml-auto mb-2 p-2 rounded-lg bg-white border border-slate-200 text-slate-600 shadow-sm" aria-label={t('close')}>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
           {sections.length === 0 ? (
             <p className="text-sm text-slate-400 italic text-center py-16">{t('noSections')}</p>
           ) : (

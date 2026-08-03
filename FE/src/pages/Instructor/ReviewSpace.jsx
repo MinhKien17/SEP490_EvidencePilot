@@ -4,6 +4,8 @@ import { StatusBadge, LoadingSkeleton, AppHeader } from '../../components';
 import DiffMatchPatch from 'diff-match-patch';
 import api from '../../api.js';
 import { renderLatexToHtml } from '../../components/latexHtml.js';
+import { commonText, instructorText } from '../../locales';
+import { useLanguage } from '../../context/LanguageContext';
 
 async function loadAllProjectSources(projectId) {
   const sources = [];
@@ -31,13 +33,16 @@ function DiffView({ ops }) {
 }
 
 const ACTION_LABELS = {
-  REVIEWED: { label: 'Approve', cls: 'bg-emerald-600 hover:bg-emerald-700' },
-  RETURNED: { label: 'Return for revision', cls: 'bg-amber-500 hover:bg-amber-600' },
+  REVIEWED: { key: 'approve', cls: 'bg-emerald-600 hover:bg-emerald-700' },
+  RETURNED: { key: 'returnForRevision', cls: 'bg-amber-500 hover:bg-amber-600' },
 };
 
 export default function ReviewSpace() {
   const { projectId } = useParams();
   const navigate = useNavigate();
+  const { language } = useLanguage();
+  const t = instructorText[language];
+  const ct = commonText[language];
   const [project, setProject] = useState(null);
   const [papers, setPapers] = useState([]);
   const [sections, setSections] = useState([]);
@@ -78,7 +83,7 @@ export default function ReviewSpace() {
         setSources(srcs);
         if ((papersRes.data || []).length > 0) setSelectedPaperId(papersRes.data[0].id);
       } catch {
-        if (!cancelled) setErrorMessage('Failed to load the review space.');
+        if (!cancelled) setErrorMessage(t.loadReviewSpaceFailed);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -161,8 +166,8 @@ export default function ReviewSpace() {
     if (!activeRequestId) return;
     api.get(`/api/feedback-requests/${activeRequestId}/feedback`)
       .then(r => setFeedbackItems(r.data || []))
-      .catch(() => setErrorMessage('Failed to load feedback items.'));
-  }, [activeRequestId]);
+      .catch(() => setErrorMessage(t.loadFeedbackFailed));
+  }, [activeRequestId, t.loadFeedbackFailed]);
 
   const handleSubmitFeedback = async (e) => {
     e.preventDefault();
@@ -182,7 +187,7 @@ export default function ReviewSpace() {
       setFeedbackDraft(''); setFeedbackLineRef(''); setEditingFeedbackId(null);
       loadFeedback();
     } catch (err) {
-      setErrorMessage(err?.response?.data?.message || 'Failed to save feedback.');
+      setErrorMessage(err?.response?.data?.message || t.saveFeedbackFailed);
     } finally { setSavingFeedback(false); }
   };
 
@@ -199,13 +204,13 @@ export default function ReviewSpace() {
   };
 
   const handleDeleteFeedback = async (itemId) => {
-    if (!window.confirm('Delete this feedback item?')) return;
+    if (!window.confirm(t.deleteFeedbackConfirm)) return;
     setErrorMessage('');
     try {
       await api.delete(`/api/instructor-feedback/${itemId}`);
       loadFeedback();
     } catch (err) {
-      setErrorMessage(err?.response?.data?.message || 'Failed to delete feedback.');
+      setErrorMessage(err?.response?.data?.message || t.deleteFeedbackFailed);
     }
   };
 
@@ -215,20 +220,20 @@ export default function ReviewSpace() {
     try {
       const res = await api.patch(`/api/feedback-requests/${requestId}/status?status=${targetStatus}`);
       setRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: res.data.status } : r));
-      setSuccessMessage(`Review ${targetStatus === 'REVIEWED' ? 'approved' : 'returned for revision'}.`);
+      setSuccessMessage(targetStatus === 'REVIEWED' ? t.reviewApproved : t.reviewReturned);
       if (targetStatus === 'REVIEWED') {
         setTimeout(() => navigate('/instructor/requests'), 1000);
       }
     } catch (err) {
-      setErrorMessage(err?.response?.data?.message || 'Failed to update status.');
+      setErrorMessage(err?.response?.data?.message || t.updateStatusFailed);
     } finally { setTransitioningRequestId(null); }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f8fafc]">
+      <div className="min-h-screen bg-(--page-bg)">
         <AppHeader />
-        <div className="max-w-7xl mx-auto p-8"><LoadingSkeleton count={4} height="h-24" /></div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"><LoadingSkeleton count={4} height="h-24" /></div>
       </div>
     );
   }
@@ -236,33 +241,33 @@ export default function ReviewSpace() {
   const sectionFeedback = feedbackItems.filter(fb => !selectedSectionId || String(fb.sectionId) === String(selectedSectionId));
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-[#0f172a]">
+    <div className="min-h-screen bg-(--page-bg) text-(--text-primary)">
       <AppHeader />
-      <div className="max-w-7xl mx-auto p-8 space-y-6">
-        <div className="flex items-start justify-between border-b border-gray-200 pb-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 border-b border-(--border) pb-6">
           <div>
-            <Link to="/instructor/requests" className="text-xs font-bold text-gray-400 hover:text-[#1e3a8a] transition-colors">&larr; Back to requests</Link>
-            <h1 className="text-3xl font-black text-[#1e3a8a] tracking-tight mt-2">{project?.title || 'Project'}</h1>
+            <Link to="/instructor/requests" className="text-xs font-bold text-(--text-tertiary) hover:text-(--brand-foreground) transition-colors">&larr; {t.backToRequests}</Link>
+            <h1 className="text-3xl font-black text-(--brand-foreground) tracking-tight mt-2">{project?.title || t.project}</h1>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <StatusBadge status={project?.status} />
               {requests.map(req => (
                 <button key={req.id} onClick={() => setActiveRequestId(req.id)}
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition ${req.id === activeRequest?.id ? 'bg-[#1e3a8a] text-white border-[#1e3a8a]' : 'bg-white text-gray-500 border-gray-200 hover:border-[#1e3a8a]'}`}>
-                  {req.requestedAt ? new Date(req.requestedAt).toLocaleString() : String(req.id).slice(0, 8)} · <StatusBadge status={req.status} />
+                  className={`text-xs font-bold px-2 py-1 rounded-full border transition-colors ${req.id === activeRequest?.id ? 'bg-(--brand) text-(--on-brand) border-(--brand)' : 'bg-(--surface) text-(--text-secondary) border-(--border) hover:border-(--brand)'}`}>
+                  {req.requestedAt ? new Date(req.requestedAt).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US') : String(req.id).slice(0, 8)} · <StatusBadge status={req.status} />
                 </button>
               ))}
             </div>
           </div>
-          <div className="flex gap-2 shrink-0">
+          <div className="flex flex-wrap gap-2 shrink-0">
             {activeRequest && (activeRequest.status === 'PENDING' || activeRequest.status === 'RETURNED') && (
               <>
                 <button onClick={() => handleTransitionStatus(activeRequest.id, 'RETURNED')} disabled={transitioningRequestId === activeRequest.id}
                   className={`px-3 py-2 text-xs font-bold text-white rounded-xl transition ${ACTION_LABELS.RETURNED.cls} disabled:opacity-50`}>
-                  {ACTION_LABELS.RETURNED.label}
+                  {t[ACTION_LABELS.RETURNED.key]}
                 </button>
-                <button onClick={() => { if (window.confirm('Finalize review and save all feedback?')) handleTransitionStatus(activeRequest.id, 'REVIEWED'); }} disabled={transitioningRequestId === activeRequest.id}
+                <button onClick={() => { if (window.confirm(t.finalizeReviewConfirm)) handleTransitionStatus(activeRequest.id, 'REVIEWED'); }} disabled={transitioningRequestId === activeRequest.id}
                   className={`px-3 py-2 text-xs font-bold text-white rounded-xl transition ${ACTION_LABELS.REVIEWED.cls} disabled:opacity-50`}>
-                  {ACTION_LABELS.REVIEWED.label}
+                  {t[ACTION_LABELS.REVIEWED.key]}
                 </button>
               </>
             )}
@@ -278,51 +283,51 @@ export default function ReviewSpace() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Paper (read-only) + diff */}
-          <div className="lg:col-span-2 bg-white rounded-3xl border border-gray-200 shadow-sm p-6">
+          <div className="lg:col-span-2 bg-(--surface) rounded-2xl border border-(--border) shadow-sm p-4 sm:p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-bold text-[#1e3a8a]">Paper — read only</h2>
-              <label className="flex items-center gap-2 text-[11px] font-bold text-gray-500 cursor-pointer select-none">
+              <h2 className="text-sm font-bold text-(--brand-foreground)">{t.paperReadOnly}</h2>
+              <label className="flex items-center gap-2 text-xs font-bold text-(--text-secondary) cursor-pointer select-none">
                 <input type="checkbox" checked={diffEnabled} onChange={e => setDiffEnabled(e.target.checked)}
                   className="w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a8a] focus:ring-[#1e3a8a]" />
-                Show changes since last checkpoint
+                {t.showChanges}
               </label>
             </div>
 
             {papers.length === 0 ? (
-              <p className="text-xs text-gray-400 italic">No papers uploaded yet.</p>
+              <p className="text-xs text-(--text-tertiary) italic">{t.noPapers}</p>
             ) : (
               <>
                 <div className="flex gap-1 flex-wrap mb-3">
                   {papers.map(p => (
                     <button key={p.id} onClick={() => { setSelectedPaperId(p.id); setSelectedSectionId(null); }}
-                      className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition ${String(p.id) === String(selectedPaperId) ? 'bg-[#1e3a8a] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors ${String(p.id) === String(selectedPaperId) ? 'bg-(--brand) text-(--on-brand)' : 'bg-(--surface-secondary) text-(--text-secondary) hover:bg-(--surface-tertiary)'}`}>
                       {p.originalFilename || p.title}
                     </button>
                   ))}
                 </div>
                 {sections.length === 0 ? (
-                  <p className="text-xs text-gray-400 italic">No sections in this paper.</p>
+                  <p className="text-xs text-(--text-tertiary) italic">{t.noPaperSections}</p>
                 ) : (
                   <>
                     <div className="flex gap-1 flex-wrap mb-4">
                       {sections.map(s => (
                         <button key={s.id} onClick={() => setSelectedSectionId(s.id)}
-                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${String(s.id) === String(selectedSectionId) ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors ${String(s.id) === String(selectedSectionId) ? 'bg-(--brand) text-(--on-brand)' : 'bg-(--surface-secondary) text-(--text-secondary) hover:bg-(--surface-tertiary)'}`}>
                           {s.sectionTitle}
                           {s.version > 1 && <span className="ml-1 text-[9px]">v{s.version}</span>}
                         </button>
                       ))}
                     </div>
                     {!selectedSection ? (
-                      <p className="text-xs text-gray-400 italic">Select a section to view its content.</p>
+                      <p className="text-xs text-(--text-tertiary) italic">{t.selectSectionContent}</p>
                     ) : diffEnabled ? (
                       diffOps === null ? (
-                        <p className="text-xs text-gray-400 italic">No prior checkpoint baseline for this section — capture one by submitting for review.</p>
+                        <p className="text-xs text-(--text-tertiary) italic">{t.noCheckpointBaseline}</p>
                       ) : (
                         <div>
                           {baseline && (
-                            <p className="text-[10px] text-gray-400 mb-2">
-                              Baseline: {baseline.trigger || 'checkpoint'} · {baseline.createdAt ? new Date(baseline.createdAt).toLocaleString() : ''}
+                            <p className="text-[10px] text-(--text-tertiary) mb-2">
+                              {t.baseline}: {baseline.trigger || t.checkpoint} · {baseline.createdAt ? new Date(baseline.createdAt).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US') : ''}
                             </p>
                           )}
                           <DiffView ops={diffOps} />
@@ -342,56 +347,56 @@ export default function ReviewSpace() {
 
           {/* Right column: feedback + sources */}
           <div className="space-y-6">
-            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6">
-              <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Section Feedback</h2>
+            <div className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm p-4 sm:p-6">
+              <h2 className="text-sm font-bold text-(--brand-foreground) mb-4">{t.sectionFeedback}</h2>
               {!selectedSectionId ? (
-                <p className="text-xs text-gray-400 italic">Select a paper section to add or review feedback.</p>
+                <p className="text-xs text-(--text-tertiary) italic">{t.selectSectionFeedback}</p>
               ) : (
                 <>
                   <div className="space-y-3 mb-4">
                     {sectionFeedback.length === 0 ? (
-                      <p className="text-xs text-gray-400 italic">No feedback for this section yet.</p>
+                      <p className="text-xs text-(--text-tertiary) italic">{t.noSectionFeedback}</p>
                     ) : sectionFeedback.map(fb => (
-                      <div key={fb.id} className="bg-gray-50 rounded-xl p-3 text-xs space-y-1">
+                      <div key={fb.id} className="bg-(--surface-secondary) border border-(--border-light) rounded-xl p-3 text-xs space-y-1">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">Section {fb.sectionTitle || ''}</span>
+                          <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">{t.section} {fb.sectionTitle || ''}</span>
                           <div className="flex items-center gap-1.5">
-                            {fb.stale && <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">section changed</span>}
-                            {fb.answered && <span className="text-[9px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">answered</span>}
+                            {fb.stale && <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">{t.sectionChanged}</span>}
+                            {fb.answered && <span className="text-[9px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">{t.answered}</span>}
                             {!fb.answered && !requestLocked && (
                               <>
-                                <button onClick={() => handleEditFeedback(fb)} className="text-gray-400 hover:text-indigo-600 text-xs" title="Edit">&#9998;</button>
-                                <button onClick={() => handleDeleteFeedback(fb.id)} className="text-gray-400 hover:text-rose-600 text-xs" title="Delete">&#10005;</button>
+                                <button onClick={() => handleEditFeedback(fb)} className="text-(--text-tertiary) hover:text-(--brand) p-1" title={ct.edit} aria-label={ct.edit}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 13H9v-2.828l6.586-6.586z" /></svg></button>
+                                <button onClick={() => handleDeleteFeedback(fb.id)} className="text-(--text-tertiary) hover:text-rose-600 p-1" title={ct.delete} aria-label={ct.delete}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M4 7h16" /></svg></button>
                               </>
                             )}
                           </div>
                         </div>
                         {fb.lineReference && <p className="text-[10px] text-gray-400 font-mono">{fb.lineReference}</p>}
-                        <p className="text-gray-700 leading-relaxed">{fb.content}</p>
+                        <p className="text-(--text-primary) leading-relaxed">{fb.content}</p>
                         {fb.answered && fb.answerContent && (
-                          <p className="text-[10px] text-emerald-700 bg-emerald-50 rounded-lg p-2">Student: {fb.answerContent}</p>
+                          <p className="text-[10px] text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg p-2">{t.studentAnswer.replace('{{answer}}', fb.answerContent)}</p>
                         )}
                       </div>
                     ))}
                   </div>
                   {requestLocked ? (
-                    <p className="text-xs text-gray-400 italic">This review is closed — feedback is read-only.</p>
+                    <p className="text-xs text-(--text-tertiary) italic">{t.reviewClosed}</p>
                   ) : (
-                    <form onSubmit={handleSubmitFeedback} className="space-y-2 border-t border-gray-100 pt-3">
+                    <form onSubmit={handleSubmitFeedback} className="space-y-2 border-t border-(--border-light) pt-3">
                       <input value={feedbackLineRef} onChange={e => setFeedbackLineRef(e.target.value)}
-                        placeholder="Line reference (optional, max 100 chars)" maxLength={100}
-                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]" />
+                        placeholder={t.lineReferencePlaceholder} maxLength={100}
+                        className="w-full px-3 py-2 bg-(--surface-secondary) border border-(--border) rounded-xl text-xs text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--focus)" />
                       <textarea rows="3" value={feedbackDraft} onChange={e => setFeedbackDraft(e.target.value)}
-                        placeholder="Feedback for this section..."
-                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]" />
+                        placeholder={t.sectionFeedbackPlaceholder}
+                        className="w-full px-3 py-2 bg-(--surface-secondary) border border-(--border) rounded-xl text-xs text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--focus)" />
                       <div className="flex gap-2">
                         {editingFeedbackId && (
                           <button type="button" onClick={handleCancelEdit}
-                            className="flex-1 py-2 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition text-xs font-bold">Cancel</button>
+                            className="flex-1 py-2 bg-(--surface-secondary) text-(--text-secondary) rounded-xl hover:bg-(--surface-tertiary) transition-colors text-xs font-bold">{ct.cancel}</button>
                         )}
                         <button type="submit" disabled={savingFeedback || !feedbackDraft.trim()}
-                          className="flex-1 py-2 bg-[#1e3a8a] text-white rounded-xl hover:bg-blue-800 transition shadow-sm disabled:opacity-50 text-xs font-bold">
-                          {savingFeedback ? 'Saving...' : editingFeedbackId ? 'Update feedback' : 'Add feedback'}
+                          className="flex-1 py-2 bg-(--brand) text-(--on-brand) rounded-xl hover:bg-(--brand-hover) transition-colors shadow-sm disabled:opacity-50 text-xs font-bold">
+                          {savingFeedback ? ct.saving : editingFeedbackId ? t.updateFeedback : t.addFeedback}
                         </button>
                       </div>
                     </form>
@@ -400,14 +405,14 @@ export default function ReviewSpace() {
               )}
             </div>
 
-            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6">
-              <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Sources</h2>
+            <div className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm p-4 sm:p-6">
+              <h2 className="text-sm font-bold text-(--brand-foreground) mb-4">{t.sources}</h2>
               {sources.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">No sources in this project.</p>
+                <p className="text-xs text-(--text-tertiary) italic">{t.noProjectSources}</p>
               ) : (
                 <div className="space-y-2">
                   {sources.map(src => (
-                    <div key={src.id} className="flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-3 py-2 text-xs">
+                    <div key={src.id} className="flex items-center justify-between gap-2 bg-(--surface-secondary) border border-(--border-light) rounded-lg px-3 py-2 text-xs">
                       <div className="min-w-0">
                         <p className="font-medium truncate">{src.title || src.originalFilename || src.id}</p>
                         <StatusBadge status={src.processingStatus || 'READY'} />
@@ -419,7 +424,7 @@ export default function ReviewSpace() {
             </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
