@@ -40,20 +40,28 @@ class AiModelClientTest {
     }
 
     @Test
-    void generateReturnsResponseFieldFromGenerateEndpoint() {
+    void generateSendsSystemAndReturnsProviderMetadata() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(requestTo("http://ai.test/ai/generate"))
                 .andExpect(method(HttpMethod.POST))
+                .andExpect(content().json("""
+                        {"system":"Judge claim quality","prompt":"Review this"}
+                        """, true))
                 .andRespond(withSuccess(
                         """
-                        {"model":"evidencopilot:latest","response":"Review text","done":true}
+                        {"provider":"gemini","model":"gemini-3.6-flash","response":"Review text","done":true}
                         """,
                         MediaType.APPLICATION_JSON));
 
         AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test");
 
-        assertThat(client.generate("Review this")).isEqualTo("Review text");
+        AiModelClient.GenerationResult result = client.generate(
+                "Judge claim quality", "Review this");
+
+        assertThat(result.provider()).isEqualTo("gemini");
+        assertThat(result.model()).isEqualTo("gemini-3.6-flash");
+        assertThat(result.response()).isEqualTo("Review text");
         server.verify();
     }
 
@@ -147,7 +155,8 @@ class AiModelClientTest {
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(requestTo("http://ai.test/ai/generate"))
                 .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
-        assertThatThrownBy(() -> new AiModelClientImpl(builder.build(), "http://ai.test").generate("prompt"))
+        assertThatThrownBy(() -> new AiModelClientImpl(builder.build(), "http://ai.test")
+                .generate("system", "prompt"))
                 .isInstanceOf(AiModelClient.AiApiException.class)
                 .hasMessageContaining("empty response");
     }

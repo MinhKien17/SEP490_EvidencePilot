@@ -39,8 +39,6 @@ ai:
 ollama:
   embedding:
     model: test-embedding-model
-  generation:
-    model: test-generation-model
 
 qdrant:
   url: http://localhost:6333

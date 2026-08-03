@@ -7,13 +7,16 @@ public interface AiModelClient {
 
     Map<String, Object> health();
 
-    String generate(String prompt);
+    GenerationResult generate(String system, String prompt);
 
     ExtractionBundle extractDocument(String filename, String downloadUrl);
 
     List<Float> generateEmbedding(String text);
 
     List<List<Float>> generateEmbeddings(List<String> texts);
+
+    record GenerationResult(String provider, String model, String response) {
+    }
 
     record ExtractionBlock(String type, String text, Integer level, String caption) {
         public boolean valid() {
