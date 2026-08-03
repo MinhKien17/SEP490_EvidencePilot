@@ -4,6 +4,7 @@ import { homeText } from '../../locales/home';
 import LoadingScreen from '../../components/LoadingScreen';
 import Navbar from './Navbar';
 import HeroSection from './HeroSection';
+import StatsSection from './StatsSection';
 import RolesSection from './RolesSection';
 import WorkflowSection from './WorkflowSection';
 import FeaturesSection from './FeaturesSection';
@@ -29,6 +30,7 @@ export default function Home() {
     <div className="min-h-screen bg-(--page-bg) text-(--text-primary) font-sans">
       <Navbar t={t} />
       <HeroSection t={t} />
+      <StatsSection t={t} />
       <RolesSection t={t} />
       <WorkflowSection t={t} />
       <FeaturesSection t={t} />

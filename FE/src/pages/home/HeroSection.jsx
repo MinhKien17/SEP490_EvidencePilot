@@ -13,7 +13,7 @@ export default function HeroSection({ t }) {
         : '/student/projects';
 
   return (
-    <section className="relative pt-32 pb-24 md:pt-40 md:pb-32 overflow-hidden">
+    <section className="relative pt-28 pb-12 md:pt-36 md:pb-16 overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950" />
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-gradient-to-br from-indigo-200/20 to-blue-200/10 dark:from-indigo-500/10 dark:to-blue-500/5 rounded-full blur-3xl" />
       <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">

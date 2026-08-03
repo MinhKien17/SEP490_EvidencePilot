@@ -10,6 +10,12 @@ export const homeText = {
       ctaSub: '',
       stats: 'Structured Research Workspace',
     },
+    stats: {
+      heading: 'Platform Activity',
+      usersLabel: 'Users',
+      projectsLabel: 'Active Projects',
+      sourcesLabel: 'Active Sources',
+    },
     roles: {
       heading: 'Designed for Supervised Research Teams',
       student: { title: 'For Students', desc: 'Work inside assigned projects with papers, claims, evidence mappings, AI suggestions, and structured instructor feedback.' },
@@ -133,6 +139,12 @@ export const homeText = {
       cta: 'Tạo tài khoản',
       ctaSub: '',
       stats: 'Không gian nghiên cứu có cấu trúc',
+    },
+    stats: {
+      heading: 'Hoạt động trên nền tảng',
+      usersLabel: 'Người dùng',
+      projectsLabel: 'Dự án đang hoạt động',
+      sourcesLabel: 'Nguồn đang hoạt động',
     },
     roles: {
       heading: 'Dành cho nhóm nghiên cứu có giám sát',
