@@ -10,6 +10,8 @@ import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.AiSuggestion;
+import com.evidencepilot.model.Document;
+import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.ClaimRepository;
@@ -17,6 +19,7 @@ import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentReferenceRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
+import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.ClaimContentConsistencyService;
@@ -30,6 +33,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +51,7 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
     private final DocumentRepository documentRepository;
     private final DocumentReferenceRepository documentReferenceRepository;
     private final FeedbackRequestRepository feedbackRequestRepository;
+    private final ProjectDocumentRepository projectDocumentRepository;
     private final DocumentChunkRepository documentChunkRepository;
     private final AiSuggestionRepository aiSuggestionRepository;
     private final ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
@@ -87,9 +92,16 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
                 .map(claim -> claimExport(claim, projectId, firstReferenceBySource))
                 .toList();
 
-        List<TraceabilityExportResponse.TraceabilitySource> sources = documentRepository
-                .findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.SOURCE)
-                .stream()
+        List<Document> activeSources = new ArrayList<>();
+        documentRepository.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.SOURCE)
+                .forEach(doc -> activeSources.add(doc));
+        projectDocumentRepository.findByProjectId(projectId).stream()
+                .map(ProjectDocument::getDocument)
+                .filter(doc -> doc.isActive() && doc.getDocType() == DocumentType.SOURCE)
+                .filter(doc -> activeSources.stream().noneMatch(d -> d.getId().equals(doc.getId())))
+                .forEach(activeSources::add);
+
+        List<TraceabilityExportResponse.TraceabilitySource> sources = activeSources.stream()
                 .map(source -> new TraceabilityExportResponse.TraceabilitySource(
                         source.getId(),
                         missingIfBlank(source.getOriginalFilename()),

@@ -177,7 +177,15 @@ public class DocumentServiceImpl implements DocumentService {
                 page, size, sort, DOCUMENT_SORT_FIELDS, "createdAt,desc");
         var results = documentRepository.findAll(
                 collectionSourceSpec(collectionId, q), pageable);
-        return PagedResponse.from(results.map(DocumentResponse::from));
+        // ponytail: per-doc query for shared project links — fine at collection scale,
+        // batch via findByDocumentIdIn if collections ever grow large
+        var pageContent = results.map(doc -> DocumentResponse.from(
+                doc,
+                projectDocumentRepository.findByDocumentId(doc.getId()).stream()
+                        .map(ProjectDocument::getProject)
+                        .map(Project::getId)
+                        .toList()));
+        return PagedResponse.from(pageContent);
     }
 
     @Override
@@ -354,6 +362,8 @@ public class DocumentServiceImpl implements DocumentService {
         pd.setSharedBy(currentUser);
         pd.setSharedAt(LocalDateTime.now());
         projectDocumentRepository.save(pd);
+
+        refreshProjectStatus(project);
 
         String score = "MEDIUM";
         String explanation = "Document shared to project \"" + project.getTitle() + "\"";
@@ -636,7 +646,10 @@ public class DocumentServiceImpl implements DocumentService {
                 .isEmpty();
         boolean hasSource = !documentRepository
                 .findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.SOURCE)
-                .isEmpty();
+                .isEmpty()
+                || projectDocumentRepository
+                        .existsByProjectIdAndDocument_DocTypeAndDocument_ActiveTrue(
+                                project.getId(), DocumentType.SOURCE);
         ProjectStatus status;
         if (hasPaper && hasSource) {
             status = ProjectStatus.IN_PROGRESS;

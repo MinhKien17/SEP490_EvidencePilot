@@ -226,6 +226,7 @@ public class AdminService {
             notifications.createNotification(recipient, actor, actionType, null, request.message());
         }
         Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("message", request.message());
         metadata.put("role", request.role());
         metadata.put("urgent", request.urgent());
         metadata.put("recipientCount", recipients.size());

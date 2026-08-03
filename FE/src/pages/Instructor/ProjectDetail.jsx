@@ -55,6 +55,7 @@ export default function ProjectDetail() {
   const [editingSectionId, setEditingSectionId] = useState(null);
   const [editingSectionTitle, setEditingSectionTitle] = useState('');
   const [sectionStructureSaving, setSectionStructureSaving] = useState(false);
+  const [orderDirty, setOrderDirty] = useState(false);
   const [uploadState, setUploadState] = useState(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [addSourceDocType, setAddSourceDocType] = useState('SOURCE');
@@ -88,7 +89,8 @@ export default function ProjectDetail() {
     try {
       const res = await api.get(`/api/papers/${paperId}/sections`);
       setSections(res.data || []);
-    } catch { setSections([]); }
+      setOrderDirty(false);
+    } catch { setSections([]); setOrderDirty(false); }
   }, []);
 
   const loadFeedbackAndTraceability = useCallback(async () => {
@@ -287,15 +289,20 @@ export default function ProjectDetail() {
     } catch { alert('Failed to rename'); }
   };
 
-  const handleDragEnd = async (result) => {
+  const handleDragEnd = (result) => {
     if (!result.destination || result.destination.index === result.source.index || !selectedPaper) return;
     const reordered = Array.from(sections);
     const [moved] = reordered.splice(result.source.index, 1);
     reordered.splice(result.destination.index, 0, moved);
     setSections(reordered);
+    setOrderDirty(true);
+  };
+
+  const handleSaveSectionOrder = async () => {
+    if (!selectedPaper || !orderDirty) return;
     setSectionStructureSaving(true);
     try {
-      await Promise.all(reordered.map((section, index) =>
+      await Promise.all(sections.map((section, index) =>
         api.put(`/api/papers/${selectedPaper.id}/sections/${section.id}`, null, { params: { order: index } })
       ));
       await loadSections(selectedPaper.id);
@@ -607,6 +614,15 @@ export default function ProjectDetail() {
                       className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       + Section
+                    </button>
+                  )}
+                  {selectedPaper && orderDirty && (
+                    <button
+                      onClick={handleSaveSectionOrder}
+                      disabled={sectionStructureLocked || sectionStructureSaving}
+                      className="px-3 py-1.5 bg-amber-500 text-white text-xs font-bold rounded-lg hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Save Change
                     </button>
                   )}
                   {selectedPaper && (

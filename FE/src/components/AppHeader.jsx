@@ -30,8 +30,9 @@ export default function AppHeader() {
         <span className="font-bold text-sm tracking-wider truncate">Evidence Pilot</span>
         <nav className="hidden md:flex items-center gap-1 ml-4">
           {roleLinks.map(link => {
-            const active = link.path === '/instructor/collections'
-              ? location.pathname.startsWith('/instructor/collections')
+            const active = link.path === '/instructor/requests'
+              || link.path === '/instructor/collections'
+              ? location.pathname.startsWith(link.path)
               : location.pathname === link.path;
             return (
               <button key={link.path} onClick={() => navigate(link.path)}

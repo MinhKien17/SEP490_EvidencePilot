@@ -36,6 +36,9 @@ public class Claim {
     @Column(name = "ai_confidence_score")
     private Float aiConfidenceScore;
 
+    @Column(name = "claim_quality_score")
+    private Float claimQualityScore;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "functional_type")
     private FunctionalType functionalType;

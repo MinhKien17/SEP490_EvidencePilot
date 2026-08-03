@@ -1,9 +1,66 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { StatusBadge, LoadingSkeleton, AppHeader } from '../../components';
+import { StatusBadge, LoadingSkeleton, AppHeader, Modal, FunctionalTypeRadar } from '../../components';
 import DiffMatchPatch from 'diff-match-patch';
 import api from '../../api.js';
 import { renderLatexToHtml } from '../../components/latexHtml.js';
+
+function wrapLatexLines(latex) {
+  if (!latex) return '';
+  const lines = latex.split(/\r?\n/);
+  let inBlock = false;
+  
+  const mathTableEnvs = ['equation', 'equation*', 'align', 'align*', 'aligned', 'aligned*', 'tabular', 'table', 'matrix', 'pmatrix', 'bmatrix', 'array'];
+
+  const wrappedLines = lines.map((line, idx) => {
+    const lineNum = idx + 1;
+    const trimmed = line.trim();
+    if (!trimmed) return line;
+    
+    // Check for math/table block starts/ends
+    const beginMatch = trimmed.match(/\\begin\{([^}]+)\}/);
+    const endMatch = trimmed.match(/\\end\{([^}]+)\}/);
+    
+    const isBlockStart = (beginMatch && mathTableEnvs.includes(beginMatch[1])) || trimmed.includes('\\[') || trimmed.includes('$$');
+    const isBlockEnd = (endMatch && mathTableEnvs.includes(endMatch[1])) || trimmed.includes('\\]') || trimmed.includes('$$');
+    
+    if (isBlockStart) {
+      inBlock = true;
+    }
+    
+    let result = line;
+    
+    if (!inBlock) {
+      const isStructureCommand = trimmed.startsWith('\\section') || 
+                                 trimmed.startsWith('\\subsection') || 
+                                 trimmed.startsWith('\\title') || 
+                                 trimmed.startsWith('\\author') || 
+                                 trimmed.startsWith('\\documentclass') || 
+                                 trimmed.startsWith('\\usepackage') || 
+                                 trimmed.startsWith('\\maketitle');
+      
+      if (!isStructureCommand) {
+        if (trimmed.startsWith('\\item')) {
+          const itemIdx = line.indexOf('\\item');
+          const pre = line.substring(0, itemIdx + 5);
+          const post = line.substring(itemIdx + 5);
+          result = `${pre}<span data-line="${lineNum}" class="hover:bg-indigo-50/50 transition-colors">${post}</span>`;
+        } else {
+          result = `<span data-line="${lineNum}" class="hover:bg-indigo-50/50 transition-colors">${line}</span>`;
+        }
+      }
+    }
+    
+    if (isBlockEnd) {
+      inBlock = false;
+    }
+    
+    return result;
+  });
+  
+  return wrappedLines.join('\n');
+}
+
 
 async function loadAllProjectSources(projectId) {
   const sources = [];
@@ -22,7 +79,7 @@ async function loadAllProjectSources(projectId) {
 
 function DiffView({ ops }) {
   return (
-    <div className="font-mono text-xs whitespace-pre-wrap leading-relaxed max-h-[55vh] overflow-y-auto pr-1">
+    <div className="font-mono text-xs whitespace-pre-wrap leading-relaxed max-h-[55vh] overflow-y-auto pr-1 hide-scrollbar">
       {ops.map((op, i) => op[0] === 0 ? <span key={i}>{op[1]}</span>
         : op[0] === 1 ? <span key={i} className="bg-emerald-100 text-emerald-800 rounded px-0.5">{op[1]}</span>
           : <span key={i} className="bg-rose-100 text-rose-700 line-through rounded px-0.5">{op[1]}</span>)}
@@ -33,6 +90,74 @@ function DiffView({ ops }) {
 const ACTION_LABELS = {
   REVIEWED: { label: 'Approve', cls: 'bg-emerald-600 hover:bg-emerald-700' },
   RETURNED: { label: 'Return for revision', cls: 'bg-amber-500 hover:bg-amber-600' },
+};
+
+const BREAKDOWN_LABELS = [
+  ['semantic_alignment', 'Semantic alignment'],
+  ['contextual_sufficiency', 'Contextual sufficiency'],
+  ['logical_restraint', 'Logical restraint'],
+];
+
+function parseBreakdown(s) {
+  if (!s) return null;
+  try { return JSON.parse(s); } catch { return null; }
+}
+
+function EvidenceItem({ item }) {
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const breakdown = parseBreakdown(item.scoreBreakdown);
+  const statusClass = item.status === 'ACCEPTED'
+    ? 'bg-emerald-100 text-emerald-700'
+    : item.status === 'REJECTED'
+      ? 'bg-rose-100 text-rose-700'
+      : 'bg-amber-100 text-amber-700';
+  return (
+    <div className="bg-slate-50 border border-gray-100 rounded-lg p-2 text-[10px] space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate font-bold text-gray-800">{item.sourceFilename}</span>
+        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${statusClass}`}>{item.status}</span>
+      </div>
+      <div className="flex gap-2 text-[9px] font-bold">
+        <span className="text-indigo-600">{item.relation || 'UNKNOWN'}</span>
+        {item.strengthScore != null && (
+          <span className="text-gray-500">Strength: {item.strengthScore}/100 · {item.strengthBand}</span>
+        )}
+      </div>
+      {item.excerpt && <p className="text-gray-500 italic line-clamp-3 leading-relaxed">"{item.excerpt}"</p>}
+      {breakdown && (
+        <>
+          <button onClick={() => setBreakdownOpen(o => !o)} className="text-[9px] font-bold text-gray-400 hover:text-indigo-600 flex items-center gap-1">
+            <svg className={`w-2.5 h-2.5 transition-transform ${breakdownOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+            Evidence Strength breakdown
+          </button>
+          {breakdownOpen && (
+            <div className="space-y-1">
+              {BREAKDOWN_LABELS.map(([key, label]) => {
+                const item_ = breakdown[key];
+                if (!item_ || item_.max == null) return null;
+                const pct = item_.max > 0 ? Math.round((item_.earned / item_.max) * 100) : 0;
+                return (
+                  <div key={key} className="flex items-center gap-2">
+                    <span className="w-28 text-[9px] text-gray-500 shrink-0">{label}</span>
+                    <div className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-[9px] font-bold text-gray-700 shrink-0 w-12 text-right">{item_.earned}/{item_.max}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+const CLAIM_STATUS_CLASS = {
+  PRESENT: 'bg-emerald-100 text-emerald-700',
+  MISSING: 'bg-amber-100 text-amber-700',
+  ORPHANED: 'bg-rose-100 text-rose-700',
 };
 
 export default function ReviewSpace() {
@@ -58,6 +183,14 @@ export default function ReviewSpace() {
   const [savingFeedback, setSavingFeedback] = useState(false);
   const [mediaUrlMap, setMediaUrlMap] = useState({});
   const [transitioningRequestId, setTransitioningRequestId] = useState(null);
+  const [graphData, setGraphData] = useState(null);
+  const [expandedClaimId, setExpandedClaimId] = useState(null);
+  const [claimEvidence, setClaimEvidence] = useState({});
+  const [loadingEvidenceClaimId, setLoadingEvidenceClaimId] = useState(null);
+  const [coverageOpen, setCoverageOpen] = useState(false);
+  const [claimStats, setClaimStats] = useState(null);
+  const [hoveredLine, setHoveredLine] = useState(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     let cancelled = false;
@@ -65,17 +198,19 @@ export default function ReviewSpace() {
       setLoading(true);
       setErrorMessage('');
       try {
-        const [proj, papersRes, reqs, srcs] = await Promise.all([
+        const [proj, papersRes, reqs, srcs, graphRes] = await Promise.all([
           api.get(`/api/projects/${projectId}`),
           api.get(`/api/projects/${projectId}/papers`),
           api.get('/api/feedback-requests'),
           loadAllProjectSources(projectId).catch(() => []),
+          api.get(`/api/projects/${projectId}/graph`).catch(() => null),
         ]);
         if (cancelled) return;
         setProject(proj.data);
         setPapers(papersRes.data || []);
         setRequests((reqs.data || []).filter(r => String(r.projectId) === String(projectId)));
         setSources(srcs);
+        setGraphData(graphRes?.data || null);
         if ((papersRes.data || []).length > 0) setSelectedPaperId(papersRes.data[0].id);
       } catch {
         if (!cancelled) setErrorMessage('Failed to load the review space.');
@@ -149,6 +284,61 @@ export default function ReviewSpace() {
 
   const selectedSection = sections.find(s => String(s.id) === String(selectedSectionId)) || null;
 
+  const claimsBySection = useMemo(() => {
+    const map = new Map();
+    for (const claim of (graphData?.claims || [])) {
+      const key = String(claim.sectionId || '');
+      if (!key) continue;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(claim);
+    }
+    return map;
+  }, [graphData]);
+
+  const sourcesById = useMemo(() => new Map(
+    (graphData?.sources || []).map(source => [String(source.id), source])), [graphData]);
+
+  const sectionClaims = claimsBySection.get(String(selectedSectionId || '')) || [];
+
+  const lineRefContent = useMemo(() => {
+    const map = new Map();
+    for (const fb of feedbackItems) {
+      if (String(fb.sectionId) !== String(selectedSectionId || '')) continue;
+      if (fb.lineReference) map.set(fb.lineReference, fb.content);
+    }
+    return map;
+  }, [feedbackItems, selectedSectionId]);
+
+  const sectionLineRefs = Array.from(lineRefContent.keys());
+
+  const evidenceFor = (claim) => (claim.graphData?.matched_source_ids || [])
+    .map(id => sourcesById.get(String(id)))
+    .filter(Boolean)
+    .map(source => source.filename || source.topic || source.id);
+
+  const handleToggleEvidence = async (claimId) => {
+    if (expandedClaimId === claimId) { setExpandedClaimId(null); return; }
+    setExpandedClaimId(claimId);
+    if (claimEvidence[claimId]) return;
+    setLoadingEvidenceClaimId(claimId);
+    try {
+      const r = await api.get(`/api/claims/${claimId}/suggestions`);
+      setClaimEvidence(prev => ({ ...prev, [claimId]: r.data || [] }));
+    } catch {
+      setClaimEvidence(prev => ({ ...prev, [claimId]: [] }));
+    } finally { setLoadingEvidenceClaimId(null); }
+  };
+
+  const handleOpenCoverage = async () => {
+    setCoverageOpen(true);
+    if (!claimStats) {
+      try {
+        const r = await api.get(`/api/projects/${projectId}/graph/claim-stats`);
+        setClaimStats(r.data);
+      } catch { setClaimStats(null); }
+    }
+  };
+
   const diffOps = useMemo(() => {
     if (!diffEnabled || !baseline || !selectedSection) return null;
     const dmp = new DiffMatchPatch();
@@ -216,12 +406,26 @@ export default function ReviewSpace() {
       const res = await api.patch(`/api/feedback-requests/${requestId}/status?status=${targetStatus}`);
       setRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: res.data.status } : r));
       setSuccessMessage(`Review ${targetStatus === 'REVIEWED' ? 'approved' : 'returned for revision'}.`);
-      if (targetStatus === 'REVIEWED') {
+        if (targetStatus === 'REVIEWED') {
         setTimeout(() => navigate('/instructor/requests'), 1000);
       }
     } catch (err) {
       setErrorMessage(err?.response?.data?.message || 'Failed to update status.');
     } finally { setTransitioningRequestId(null); }
+  };
+
+  const handleMouseMove = (e) => {
+    const target = e.target.closest('[data-line]');
+    if (target) {
+      setHoveredLine(target.getAttribute('data-line'));
+      setTooltipPos({ x: e.clientX, y: e.clientY });
+    } else {
+      setHoveredLine(null);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setHoveredLine(null);
   };
 
   if (loading) {
@@ -329,10 +533,20 @@ export default function ReviewSpace() {
                         </div>
                       )
                     ) : (
-                      <div
-                        className="max-h-[55vh] overflow-y-auto pr-1 whitespace-pre-wrap break-words preview-content"
-                        dangerouslySetInnerHTML={{ __html: renderLatexToHtml(selectedSection.contentTex, mediaUrlMap) }}
-                      />
+                      <div className="max-h-[55vh] overflow-y-auto pr-1 whitespace-pre-wrap break-words preview-content hide-scrollbar"
+                        onMouseMove={handleMouseMove}
+                        onMouseLeave={handleMouseLeave}>
+                        {sectionLineRefs.length > 0 && (
+                          <div className="mb-2 flex flex-wrap gap-1">
+                            {sectionLineRefs.map(reference => (
+                              <span key={reference} className="bg-indigo-50 text-indigo-600 font-mono text-[10px] font-bold px-1.5 py-0.5 rounded">
+                                {reference}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div dangerouslySetInnerHTML={{ __html: renderLatexToHtml(wrapLatexLines(selectedSection.contentTex), mediaUrlMap) }} />
+                      </div>
                     )}
                   </>
                 )}
@@ -340,10 +554,67 @@ export default function ReviewSpace() {
             )}
           </div>
 
-          {/* Right column: feedback + sources */}
+          {/* Right column: claims + feedback + sources */}
           <div className="space-y-6">
             <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6">
-              <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Section Feedback</h2>
+              <h2 className="text-sm font-bold text-[#1e3a8a] mb-4">Claims in section</h2>
+              {!selectedSectionId ? (
+                <p className="text-xs text-gray-400 italic">Select a paper section to see its claims and evidence.</p>
+              ) : sectionClaims.length === 0 ? (
+                <p className="text-xs text-gray-400 italic">No claims mapped to this section.</p>
+              ) : (
+                <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1 hide-scrollbar">
+                  {sectionClaims.map(claim => {
+                    const statusClass = CLAIM_STATUS_CLASS[claim.contentStatus] || 'bg-slate-100 text-slate-600';
+                    const expanded = expandedClaimId === claim.id;
+                    const evidence = claimEvidence[claim.id];
+                    const evidenceNames = evidenceFor(claim);
+                    return (
+                      <div key={claim.id} className="bg-gray-50 rounded-xl p-3 text-xs space-y-1.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-gray-800 leading-relaxed">{claim.content}</p>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${statusClass}`}>
+                            {claim.contentStatus || 'UNKNOWN'}
+                          </span>
+                        </div>
+                        {evidenceNames.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {evidenceNames.map((filename, i) => (
+                              <span key={i} className="bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded text-[9px] font-bold max-w-full truncate" title={filename}>
+                                {filename}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <button onClick={() => handleToggleEvidence(claim.id)}
+                          className="text-[9px] font-bold text-gray-400 hover:text-indigo-600 flex items-center gap-1">
+                          <svg className={`w-2.5 h-2.5 transition-transform ${expanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                          {loadingEvidenceClaimId === claim.id ? 'Loading evidence...' : `${expanded ? 'Hide' : 'Show'} evidence breakdown`}
+                        </button>
+                        {expanded && (
+                          <div className="space-y-2">
+                            {evidence === undefined ? (
+                              <p className="text-[10px] italic text-gray-400">Loading…</p>
+                            ) : evidence.length === 0 ? (
+                              <p className="text-[10px] italic text-gray-400">No evidence suggestions for this claim.</p>
+                            ) : evidence.map(item => <EvidenceItem key={item.id} item={item} />)}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white rounded-3xl border border-gray-200 shadow-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-bold text-[#1e3a8a]">Section Feedback</h2>
+                <button onClick={handleOpenCoverage}
+                  className="text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg px-2 py-1 transition">
+                  Coverage Graph
+                </button>
+              </div>
               {!selectedSectionId ? (
                 <p className="text-xs text-gray-400 italic">Select a paper section to add or review feedback.</p>
               ) : (
@@ -420,6 +691,38 @@ export default function ReviewSpace() {
           </div>
         </div>
       </div>
+
+      <Modal open={coverageOpen} onClose={() => setCoverageOpen(false)} title="Coverage Graph" wide
+        className="hide-scrollbar">
+        {claimStats ? (
+          <FunctionalTypeRadar stats={claimStats} />
+        ) : (
+          <p className="text-xs text-gray-400 italic">Coverage data unavailable.</p>
+        )}
+        <h3 className="text-xs font-bold text-[#1e3a8a] mt-5 mb-2">Section coverage</h3>
+        <div className="space-y-2 max-h-64 overflow-y-auto hide-scrollbar">
+          {(graphData?.sectionSummaries || []).length === 0 ? (
+            <p className="text-xs text-gray-400 italic">No section summaries available.</p>
+          ) : (graphData?.sectionSummaries || []).map(s => (
+            <div key={s.sectionId} className="flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-3 py-2 text-xs">
+              <span className="font-bold text-gray-700 truncate">{s.sectionTitle}</span>
+              <div className="flex gap-1.5 shrink-0">
+                <span className="text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded text-[9px] font-bold">{s.presentCount} present</span>
+                <span className="text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded text-[9px] font-bold">{s.missingCount} missing</span>
+                <span className="text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded text-[9px] font-bold">{s.orphanedCount} orphaned</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Modal>
+      {hoveredLine && (
+        <div 
+          className="fixed z-50 bg-[#1e3a8a] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md pointer-events-none transition-all duration-75"
+          style={{ left: tooltipPos.x + 15, top: tooltipPos.y - 10 }}
+        >
+          Line {hoveredLine}
+        </div>
+      )}
     </div>
   );
 }

@@ -82,6 +82,10 @@ export default function CollectionDetail() {
     api.get(`/api/collections/${id}`).then(r => setCollection(r.data)).catch(() => { }).finally(() => setCollectionLoading(false));
   }, [id]);
 
+  useEffect(() => {
+    api.get('/api/projects?size=100').then(r => setProjects(r.data?.content || [])).catch(() => { });
+  }, []);
+
   const openShare = async (sourceId) => {
     setShareModal({ open: true, sourceId });
     try {
@@ -133,7 +137,7 @@ export default function CollectionDetail() {
   };
 
   const handleDeleteCollection = () => {
-    const shared = sources.filter(s => s.projectId);
+    const shared = sources.filter(s => (s.projectIds || []).length > 0);
     if (shared.length > 0 && !window.confirm(t.sharedDocsWarning)) return;
     if (!window.confirm(t.deleteConfirm)) return;
     api.delete(`/api/collections/${id}`).then(() => { window.location.href = '/instructor/collections'; }).catch(() => alert(t.deleteFailed));
@@ -333,23 +337,30 @@ export default function CollectionDetail() {
     </div>
   );
 
-  const renderConnectedMap = () => (
-    <div className="space-y-3">
-      <p className="text-xs text-gray-500 font-medium">{t.sharedDocsDesc}</p>
-      {sources.filter(s => s.projectId).length === 0 ? (
-        <EmptyState title={t.noSharedDocs} description={t.shareDescription} />
-      ) : (
-        <div className="space-y-2">
-          {sources.filter(s => s.projectId).map(doc => (
-            <div key={doc.id} className="p-3 bg-white rounded-xl border border-gray-200 text-xs flex justify-between items-center">
-              <span className="font-bold text-gray-800 truncate">{doc.originalFilename || doc.id}</span>
-              <span className="text-gray-400">→ {t.project}: {doc.projectId}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  const renderConnectedMap = () => {
+    const shared = sources.filter(s => (s.projectIds || []).length > 0);
+    return (
+      <div className="space-y-3">
+        <p className="text-xs text-gray-500 font-medium">{t.sharedDocsDesc}</p>
+        {shared.length === 0 ? (
+          <EmptyState title={t.noSharedDocs} description={t.shareDescription} />
+        ) : (
+          <div className="space-y-2">
+            {shared.map(doc => (
+              <div key={doc.id} className="p-3 bg-white rounded-xl border border-gray-200 text-xs flex justify-between items-center gap-3">
+                <span className="font-bold text-gray-800 truncate">{doc.originalFilename || doc.id}</span>
+                <span className="text-gray-400 text-right shrink-0">
+                  {t.project}: {doc.projectIds
+                    .map(pid => projects.find(p => String(p.id) === String(pid))?.title || pid)
+                    .join(', ')}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const fetchGraph = useCallback(async () => {
     setGraphLoading(true);

@@ -441,6 +441,35 @@ class DocumentServiceImplAccessTest {
     }
 
     @Test
+    void getSourcesByCollectionEnrichesSharedProjectIds() {
+        User user = user();
+        com.evidencepilot.model.Collection collection = collection();
+        Document source = document(null);
+        source.setDocType(DocumentType.SOURCE);
+        source.setOriginalFilename("evidence.pdf");
+        Project targetProject = project();
+        targetProject.setTitle("Capstone A");
+        ProjectDocument projectDocument = new ProjectDocument();
+        projectDocument.setProject(targetProject);
+        projectDocument.setDocument(source);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
+        when(documentRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(source)));
+        when(projectDocumentRepository.findByDocumentId(source.getId()))
+                .thenReturn(List.of(projectDocument));
+
+        var page = service().getSourcesByCollection(
+                collection.getId(), 0, 10, "createdAt,desc", null);
+
+        assertThat(page.content()).singleElement()
+                .extracting(response -> response.projectIds())
+                .isEqualTo(List.of(targetProject.getId()));
+        verify(currentUserService).requireCollectionAccess(user, collection);
+    }
+
+    @Test
     void getDocumentTextMapsExistingTextAndRejectsMissingText() {
         User user = user();
         Project project = project();

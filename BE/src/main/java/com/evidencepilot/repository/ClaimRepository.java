@@ -19,13 +19,12 @@ public interface ClaimRepository extends JpaRepository<Claim, UUID>, JpaSpecific
     @Query("select c from Claim c join fetch c.project where c.id = :id")
     Optional<Claim> findByIdWithProject(UUID id);
 
-    @Query("select c.functionalType as functionalType, count(c) as claimCount " +
-           "from Claim c where c.project.id = :projectId and c.active = true " +
-           "group by c.functionalType")
-    List<FunctionalTypeCount> countByFunctionalType(@Param("projectId") UUID projectId);
+    @Query("select c.functionalType as functionalType, c.claimQualityScore as claimQualityScore " +
+           "from Claim c where c.project.id = :projectId and c.active = true")
+    List<FunctionalTypeScore> findFunctionalTypeScores(@Param("projectId") UUID projectId);
 
-    interface FunctionalTypeCount {
+    interface FunctionalTypeScore {
         FunctionalType getFunctionalType();
-        long getClaimCount();
+        Float getClaimQualityScore();
     }
 }

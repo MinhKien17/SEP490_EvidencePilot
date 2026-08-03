@@ -4,6 +4,7 @@ import com.evidencepilot.model.Document;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public record DocumentResponse(
@@ -23,9 +24,14 @@ public record DocumentResponse(
     String openAlexTopic,
     String openAlexSubfield,
     String openAlexField,
-    String openAlexDomain
+    String openAlexDomain,
+    List<UUID> projectIds
 ) {
     public static DocumentResponse from(Document doc) {
+        return from(doc, List.of());
+    }
+
+    public static DocumentResponse from(Document doc, List<UUID> projectIds) {
         return new DocumentResponse(
             doc.getId(),
             doc.getProject() != null ? doc.getProject().getId() : null,
@@ -43,7 +49,8 @@ public record DocumentResponse(
             doc.getOpenAlexTopic(),
             doc.getOpenAlexSubfield(),
             doc.getOpenAlexField(),
-            doc.getOpenAlexDomain()
+            doc.getOpenAlexDomain(),
+            projectIds
         );
     }
 }

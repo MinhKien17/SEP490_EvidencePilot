@@ -1,6 +1,7 @@
 package com.evidencepilot.repository;
 
 import com.evidencepilot.model.ProjectDocument;
+import com.evidencepilot.model.enums.DocumentType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 import java.util.Optional;
@@ -12,4 +13,5 @@ public interface ProjectDocumentRepository extends JpaRepository<ProjectDocument
     boolean existsByProjectIdAndDocumentId(UUID projectId, UUID documentId);
     boolean existsByDocumentId(UUID documentId);
     List<ProjectDocument> findByDocumentId(UUID documentId);
+    boolean existsByProjectIdAndDocument_DocTypeAndDocument_ActiveTrue(UUID projectId, DocumentType docType);
 }

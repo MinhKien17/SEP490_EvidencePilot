@@ -5,6 +5,7 @@ import com.evidencepilot.dto.request.ClaimEvaluationRequest;
 import com.evidencepilot.dto.request.MappingReviewRequest;
 import com.evidencepilot.dto.response.JobSubmitResponse;
 import com.evidencepilot.mapper.ClaimMapper;
+import com.evidencepilot.model.AiEvaluationJob;
 import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.ClaimEvidenceMapping;
@@ -21,11 +22,13 @@ import com.evidencepilot.model.enums.MappingReviewStatus;
 import com.evidencepilot.model.enums.FunctionalType;
 import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.repository.AiEvaluationJobRepository;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
+import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.repository.ProjectMemberRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.AiEvaluationService;
@@ -68,6 +71,9 @@ class ClaimServiceImplAccessTest {
     private ProjectMemberRepository projectMemberRepository;
 
     @Mock
+    private ProjectDocumentRepository projectDocumentRepository;
+
+    @Mock
     private PaperSectionRepository paperSectionRepository;
 
     @Mock
@@ -93,6 +99,9 @@ class ClaimServiceImplAccessTest {
 
     @Mock
     private AiEvaluationService aiEvaluationService;
+
+    @Mock
+    private AiEvaluationJobRepository aiEvaluationJobRepository;
 
     @Test
     void submitClaimEvaluationChecksSectionWriteAccessAndQueuesJob() {
@@ -144,6 +153,37 @@ class ClaimServiceImplAccessTest {
                 .hasMessageContaining("Attach at least one source");
 
         verify(aiEvaluationService, never()).submit(any(), any(), any());
+        verify(claimRepository, never()).save(any());
+    }
+
+    @Test
+    void submitClaimEvaluationAllowsSharedCollectionSource() {
+        User user = user();
+        Project project = new Project();
+        project.setId(UUID.randomUUID());
+        Document document = new Document();
+        document.setProject(project);
+        PaperSection section = new PaperSection();
+        section.setId(UUID.randomUUID());
+        section.setDocument(document);
+        ClaimEvaluationRequest request = new ClaimEvaluationRequest(
+                section.getId(), "A focused Claim draft");
+        UUID jobId = UUID.randomUUID();
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
+        when(aiEvaluationService.submit(
+                eq(project.getId()), eq(com.evidencepilot.model.AiEvaluationJob.KIND_CLAIM_QUALITY), any()))
+                .thenReturn(new JobSubmitResponse(jobId));
+        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
+                project.getId(), DocumentType.SOURCE)).thenReturn(List.of());
+        when(projectDocumentRepository.existsByProjectIdAndDocument_DocTypeAndDocument_ActiveTrue(
+                project.getId(), DocumentType.SOURCE)).thenReturn(true);
+
+        assertThat(service().submitClaimEvaluation(request).jobId()).isEqualTo(jobId);
+
+        verify(aiEvaluationService).submit(
+                eq(project.getId()), eq(com.evidencepilot.model.AiEvaluationJob.KIND_CLAIM_QUALITY), any());
         verify(claimRepository, never()).save(any());
     }
 
@@ -322,6 +362,8 @@ class ClaimServiceImplAccessTest {
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
         when(claimRepository.save(any(Claim.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(aiEvaluationJobRepository.findTop10ByProjectIdAndKindAndStatusOrderByCompletedAtDesc(
+                any(), any(), any())).thenReturn(List.of());
         stubSourceDocument(project);
 
         service().createClaim(new ClaimCreationRequest(section.getId(), "content", 0.5f, FunctionalType.THEORETICAL));
@@ -333,10 +375,42 @@ class ClaimServiceImplAccessTest {
     }
 
     @Test
+    void createClaimAppliesQualityScoreFromMatchingEvaluationJob() {
+        User user = user();
+        Project project = claim().getProject();
+        Document document = new Document();
+        document.setProject(project);
+        PaperSection section = new PaperSection();
+        section.setId(UUID.randomUUID());
+        section.setDocument(document);
+        AiEvaluationJob job = new AiEvaluationJob();
+        job.setId(UUID.randomUUID());
+        job.setKind(AiEvaluationJob.KIND_CLAIM_QUALITY);
+        job.setStatus(AiEvaluationJob.STATUS_SUCCESS);
+        job.setPayloadJson("{\"sectionId\":\"" + section.getId()
+                + "\",\"content\":\"A weighted claim\"}");
+        job.setResultJson("{\"totalScore\":7}");
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
+        when(claimRepository.save(any(Claim.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(aiEvaluationJobRepository.findTop10ByProjectIdAndKindAndStatusOrderByCompletedAtDesc(
+                any(), any(), any())).thenReturn(List.of(job));
+        stubSourceDocument(project);
+
+        service().createClaim(new ClaimCreationRequest(
+                section.getId(), "A weighted claim", null, FunctionalType.EMPIRICAL));
+
+        ArgumentCaptor<Claim> savedCaptor = ArgumentCaptor.forClass(Claim.class);
+        verify(claimRepository).save(savedCaptor.capture());
+        assertThat(savedCaptor.getValue().getClaimQualityScore()).isEqualTo(0.7f);
+    }
+
+    @Test
     void updateAndDeleteClaimMutateActiveClaim() {
         User user = user();
         Claim claim = claim();
         claim.setClaimVersion(1);
+        claim.setClaimQualityScore(0.7f);
         AiSuggestion pendingSuggestion = suggestion(claim);
         ClaimEvidenceMapping activeMapping = new ClaimEvidenceMapping();
         activeMapping.setStatus(MappingStatus.ACTIVE);
@@ -349,6 +423,7 @@ class ClaimServiceImplAccessTest {
 
         service().updateClaim(claim.getId(), "updated", 0.9f, FunctionalType.APPLIED);
         assertThat(claim.getContent()).isEqualTo("updated");
+        assertThat(claim.getClaimQualityScore()).isNull();
         assertThat(claim.getFunctionalType()).isEqualTo(FunctionalType.APPLIED);
         assertThat(claim.getClaimVersion()).isEqualTo(2);
         assertThat(pendingSuggestion.getStatus()).isEqualTo(SuggestionStatus.INVALIDATED);
@@ -397,6 +472,7 @@ class ClaimServiceImplAccessTest {
                 claimRepository,
                 projectRepository,
                 projectMemberRepository,
+                projectDocumentRepository,
                 paperSectionRepository,
                 documentRepository,
                 aiSuggestionRepository,
@@ -406,7 +482,8 @@ class ClaimServiceImplAccessTest {
                 currentUserService,
                 claimMapper,
                 aiEvaluationService,
-                new com.fasterxml.jackson.databind.ObjectMapper());
+                new com.fasterxml.jackson.databind.ObjectMapper(),
+                aiEvaluationJobRepository);
     }
 
     private void stubSourceDocument(Project project) {

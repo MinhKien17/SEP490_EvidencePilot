@@ -26,6 +26,7 @@ class TraceabilityExportServiceImplTest {
     private final DocumentRepository documents = mock(DocumentRepository.class);
     private final DocumentReferenceRepository references = mock(DocumentReferenceRepository.class);
     private final FeedbackRequestRepository feedback = mock(FeedbackRequestRepository.class);
+    private final ProjectDocumentRepository projectDocuments = mock(ProjectDocumentRepository.class);
     private final DocumentChunkRepository chunks = mock(DocumentChunkRepository.class);
     private final AiSuggestionRepository aiSuggestions = mock(AiSuggestionRepository.class);
     private final ClaimEvidenceMappingRepository claimEvMappings = mock(ClaimEvidenceMappingRepository.class);
@@ -38,7 +39,7 @@ class TraceabilityExportServiceImplTest {
     @BeforeEach
     void setUp() {
         service = new TraceabilityExportServiceImpl(
-                projects, claims, documents, references, feedback, chunks,
+                projects, claims, documents, references, feedback, projectDocuments, chunks,
                 aiSuggestions, claimEvMappings, currentUsers, gapDetection,
                 claimContentConsistency, new ObjectMapper());
     }

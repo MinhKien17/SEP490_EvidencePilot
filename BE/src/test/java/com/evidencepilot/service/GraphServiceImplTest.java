@@ -30,6 +30,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -151,31 +152,32 @@ class GraphServiceImplTest {
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(projectRepository.findById(projectId)).thenReturn(Optional.of(project));
-        when(claimRepository.countByFunctionalType(projectId)).thenReturn(List.of(
-                count(FunctionalType.EMPIRICAL, 2),
-                count(FunctionalType.THEORETICAL, 1)));
+        when(claimRepository.findFunctionalTypeScores(projectId)).thenReturn(List.of(
+                score(FunctionalType.EMPIRICAL, 0.8f),
+                score(FunctionalType.EMPIRICAL, null),
+                score(FunctionalType.THEORETICAL, 0.4f)));
 
         GraphResponse.ClaimStatsResponse stats = service.getClaimStats(projectId);
 
         assertThat(stats.totalClaims()).isEqualTo(3);
+        assertThat(stats.byFunctionalType().get("EMPIRICAL")).isCloseTo(0.8, within(0.0001));
+        assertThat(stats.byFunctionalType().get("THEORETICAL")).isCloseTo(0.4, within(0.0001));
         assertThat(stats.byFunctionalType())
-                .containsEntry("EMPIRICAL", 2L)
-                .containsEntry("THEORETICAL", 1L)
-                .containsEntry("METHODOLOGICAL", 0L)
-                .containsEntry("ANALYTICAL", 0L)
-                .containsEntry("APPLIED", 0L);
+                .containsEntry("METHODOLOGICAL", 0.0)
+                .containsEntry("ANALYTICAL", 0.0)
+                .containsEntry("APPLIED", 0.0);
     }
 
-    private static ClaimRepository.FunctionalTypeCount count(FunctionalType type, long count) {
-        return new ClaimRepository.FunctionalTypeCount() {
+    private static ClaimRepository.FunctionalTypeScore score(FunctionalType type, Float qualityScore) {
+        return new ClaimRepository.FunctionalTypeScore() {
             @Override
             public FunctionalType getFunctionalType() {
                 return type;
             }
 
             @Override
-            public long getClaimCount() {
-                return count;
+            public Float getClaimQualityScore() {
+                return qualityScore;
             }
         };
     }

@@ -19,6 +19,7 @@ public interface DocumentMapper {
     @Mapping(target = "openAlexSubfield", source = "openAlexSubfield")
     @Mapping(target = "openAlexField", source = "openAlexField")
     @Mapping(target = "openAlexDomain", source = "openAlexDomain")
+    @Mapping(target = "projectIds", ignore = true)
     DocumentResponse toDocumentResponse(Document entity);
 
     @Mapping(target = "documentId", source = "document.id")
