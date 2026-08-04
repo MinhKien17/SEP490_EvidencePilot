@@ -60,6 +60,8 @@ export const studentText = {
     targetStandardLabel: 'Standard',
     roleLabel: 'Role',
     lastUpdated: 'Updated {{date}}',
+    noMatchingProjects: 'No matching projects found',
+    noMatchingProjectsDesc: 'No projects match your current filter or search criteria.',
   },
   vi: {
     projects: 'Dự án',
@@ -122,5 +124,7 @@ export const studentText = {
     targetStandardLabel: 'Chuẩn',
     roleLabel: 'Vai trò',
     lastUpdated: 'Cập nhật {{date}}',
+    noMatchingProjects: 'Không tìm thấy dự án phù hợp',
+    noMatchingProjectsDesc: 'Không có dự án nào thuộc trạng thái hoặc từ khóa tìm kiếm này.',
   },
 };
