@@ -4,6 +4,7 @@ import com.evidencepilot.client.openalex.OpenAlexClient;
 import com.evidencepilot.dto.openalex.OpenAlexWorkResponse;
 import com.evidencepilot.dto.response.OpenAlexPreview;
 import com.evidencepilot.exception.ResourceNotFoundException;
+import com.evidencepilot.model.Collection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.ProcessingStatus;
@@ -59,6 +60,8 @@ class OpenAlexIngestionServiceImplTest {
     private DocumentPersistenceService documentPersistenceService;
     @Mock
     private DocumentReferenceRepository documentReferenceRepository;
+    @Mock
+    private ProjectCollectionService projectCollectionService;
 
     private OpenAlexIngestionServiceImpl service;
     private OpenAlexIngestionServiceImpl serviceSpy;
@@ -71,7 +74,8 @@ class OpenAlexIngestionServiceImplTest {
         service = new OpenAlexIngestionServiceImpl(
                 openAlexClient, documentRepository, projectRepository,
                 collectionRepository, currentUserService, documentObjectStorage,
-                documentPersistenceService, documentReferenceRepository, new ObjectMapper());
+                documentPersistenceService, documentReferenceRepository, new ObjectMapper(),
+                projectCollectionService);
         serviceSpy = spy(service);
 
         currentUser = new User();
@@ -182,6 +186,29 @@ class OpenAlexIngestionServiceImplTest {
 
         assertThat(result.processingStatus()).isEqualTo(ProcessingStatus.METADATA_FETCHED);
         assertThat(result.originalFilename()).contains("No PDF");
+    }
+
+    @Test
+    void ingestByDoiIntoCollectionTriggersFutureSourceSync() {
+        Collection collection = new Collection();
+        collection.setId(UUID.randomUUID());
+        collection.setActive(true);
+        var workNoPdf = new OpenAlexWorkResponse(
+                "https://openalex.org/W789", "https://doi.org/10.1000/collection",
+                "Collection Source", List.of(), null, null, null, null, 2025, null, List.of(), null);
+        when(currentUserService.requireCurrentUser()).thenReturn(currentUser);
+        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
+        when(openAlexClient.fetchWork("10.1000/collection")).thenReturn(workNoPdf);
+        when(documentRepository.save(any())).thenAnswer(invocation -> {
+            var document = (com.evidencepilot.model.Document) invocation.getArgument(0);
+            if (document.getId() == null) document.setId(UUID.randomUUID());
+            return document;
+        });
+
+        service.ingestByDoi(null, collection.getId(), "10.1000/collection");
+
+        verify(projectCollectionService).syncSource(
+                org.mockito.ArgumentMatchers.argThat(document -> document.getCollection() == collection));
     }
 
     @Test

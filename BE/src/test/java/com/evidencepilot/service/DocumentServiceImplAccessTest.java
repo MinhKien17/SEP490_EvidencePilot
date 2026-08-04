@@ -9,7 +9,6 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.ProcessingStatus;
-import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
@@ -19,6 +18,7 @@ import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.impl.DocumentPersistenceService;
 import com.evidencepilot.service.impl.DocumentServiceImpl;
+import com.evidencepilot.service.impl.ProjectCollectionService;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import org.junit.jupiter.api.Test;
@@ -73,10 +73,10 @@ class DocumentServiceImplAccessTest {
     private PaperSectionRepository paperSectionRepository;
 
     @Mock
-    private ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
+    private CurrentUserService currentUserService;
 
     @Mock
-    private CurrentUserService currentUserService;
+    private ProjectCollectionService projectCollectionService;
 
     @Mock
     private DocumentPersistenceService documentPersistenceService;
@@ -145,9 +145,10 @@ class DocumentServiceImplAccessTest {
         Document source = document(project);
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
-        when(claimEvidenceMappingRepository.findByDocumentChunkDocumentIdAndStatus(
-                source.getId(), com.evidencepilot.model.enums.MappingStatus.ACTIVE))
-                .thenReturn(List.of(new com.evidencepilot.model.ClaimEvidenceMapping()));
+        doThrow(new ResponseStatusException(
+                org.springframework.http.HttpStatus.CONFLICT,
+                "Source is mapped to 1 active claim evidence mapping(s)."))
+                .when(projectCollectionService).removeSource(source);
 
         assertThatThrownBy(() -> service().deleteDocument(source.getId()))
                 .isInstanceOf(ResponseStatusException.class)
@@ -181,15 +182,54 @@ class DocumentServiceImplAccessTest {
     }
 
     @Test
+    void uploadDocumentToCollectionTriggersFutureSourceSync() throws Exception {
+        User user = user();
+        com.evidencepilot.model.Collection collection = collection();
+        Document persisted = document(null);
+        persisted.setCollection(collection);
+        persisted.setDocType(DocumentType.SOURCE);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "source.pdf", "application/pdf", "content".getBytes());
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
+        when(documentPersistenceService.savePendingDocument(
+                any(), eq(collection), eq(user), eq(DocumentType.SOURCE),
+                eq("source.pdf"), eq("application/pdf"), eq(7L)))
+                .thenReturn(persisted);
+        when(documentPersistenceService.markDocumentAsUploaded(eq(persisted.getId()), anyString()))
+                .thenReturn(persisted);
+        when(minioClient.putObject(any(PutObjectArgs.class))).thenReturn(null);
+
+        service().uploadDocument(null, collection.getId(), file, DocumentType.SOURCE);
+
+        verify(projectCollectionService).syncSource(persisted);
+    }
+
+    @Test
+    void addSourceToCollectionDelegatesMoveAfterWriteAccessCheck() {
+        User user = user();
+        com.evidencepilot.model.Collection collection = collection();
+        Document source = document(null);
+        source.setDocType(DocumentType.SOURCE);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(projectCollectionService.moveSource(source, collection)).thenReturn(source);
+
+        service().addSourceToCollection(collection.getId(), source.getId());
+
+        verify(currentUserService).requireUserIdOrAdmin(user, source.getUploadedBy().getId());
+        verify(projectCollectionService).moveSource(source, collection);
+    }
+
+    @Test
     void uploadDocumentActivatesDraftProjectWhenPaperAndSourcePresent() throws Exception {
         User user = user();
         Project project = project();
         project.setStatus(ProjectStatus.ASSIGNED);
         Document persisted = document(project);
         persisted.setId(UUID.randomUUID());
-        Document sourceDoc = document(project);
-        sourceDoc.setDocType(DocumentType.SOURCE);
-        sourceDoc.setId(UUID.randomUUID());
         MockMultipartFile file = new MockMultipartFile(
                 "file", "paper.pdf", "application/pdf", "content".getBytes());
 
@@ -203,17 +243,9 @@ class DocumentServiceImplAccessTest {
                 eq(persisted.getId()), anyString()))
                 .thenReturn(persisted);
         when(minioClient.putObject(any(PutObjectArgs.class))).thenReturn(null);
-        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
-                eq(project.getId()), eq(DocumentType.PAPER)))
-                .thenReturn(List.of(persisted));
-        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
-                eq(project.getId()), eq(DocumentType.SOURCE)))
-                .thenReturn(List.of(sourceDoc));
-
         service().uploadDocument(project.getId(), file, DocumentType.PAPER);
 
-        assertThat(project.getStatus()).isEqualTo(ProjectStatus.IN_PROGRESS);
-        verify(projectRepository).save(project);
+        verify(projectCollectionService).refreshProjectStatus(project);
     }
 
     @Test
@@ -223,19 +255,12 @@ class DocumentServiceImplAccessTest {
         project.setStatus(ProjectStatus.IN_PROGRESS);
         Document source = document(project);
         source.setDocType(DocumentType.SOURCE);
-        Document paper = document(project);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
-        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.PAPER))
-                .thenReturn(List.of(paper));
-        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.SOURCE))
-                .thenReturn(List.of());
-
         service().deleteDocument(source.getId());
 
-        assertThat(project.getStatus()).isEqualTo(ProjectStatus.ASSIGNED);
-        verify(projectRepository).save(project);
+        verify(projectCollectionService).refreshProjectStatus(project);
     }
 
     @Test
@@ -297,6 +322,26 @@ class DocumentServiceImplAccessTest {
     }
 
     @Test
+    void shareToProjectRejectsSourceFromAnotherCollection() {
+        User user = user();
+        com.evidencepilot.model.Collection requestedCollection = collection();
+        com.evidencepilot.model.Collection actualCollection = collection();
+        Document source = document(null);
+        source.setDocType(DocumentType.SOURCE);
+        source.setCollection(actualCollection);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(collectionRepository.findById(requestedCollection.getId()))
+                .thenReturn(Optional.of(requestedCollection));
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+
+        assertThatThrownBy(() -> service().shareToProject(
+                requestedCollection.getId(), source.getId(), UUID.randomUUID()))
+                .isInstanceOf(com.evidencepilot.exception.ResourceNotFoundException.class)
+                .hasMessageContaining("Source in collection");
+        verify(projectCollectionService, never()).pinSource(any(), any(), any());
+    }
+
+    @Test
     void archivedProjectRejectsExtractionAffectingFileAttachment() {
         User user = user();
         Project project = project();
@@ -337,7 +382,7 @@ class DocumentServiceImplAccessTest {
     }
 
     @Test
-    void submittedProjectAllowsLinkedDocumentMutationForAdmin() {
+    void submittedProjectLocksLinkedDocumentMutationForAdmin() {
         User admin = user();
         Project project = project();
         project.setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
@@ -347,13 +392,13 @@ class DocumentServiceImplAccessTest {
         link.setDocument(source);
 
         when(currentUserService.requireCurrentUser()).thenReturn(admin);
-        when(currentUserService.isAdmin(admin)).thenReturn(true);
         when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
         when(projectDocumentRepository.findByDocumentId(source.getId())).thenReturn(List.of(link));
 
-        service().deleteDocument(source.getId());
+        assertThatThrownBy(() -> service().deleteDocument(source.getId()))
+                .hasMessageContaining("Project is locked and cannot be modified.");
 
-        verify(documentRepository).save(source);
+        verify(documentRepository, never()).save(source);
     }
 
     @Test
@@ -527,14 +572,14 @@ class DocumentServiceImplAccessTest {
                 collectionRepository,
                 projectDocumentRepository,
                 paperSectionRepository,
-                claimEvidenceMappingRepository,
                 currentUserService,
                 documentPersistenceService,
                 documentMapper,
                 minioClient,
                 documentObjectStorage,
                 openAlexClient,
-                new com.fasterxml.jackson.databind.ObjectMapper());
+                new com.fasterxml.jackson.databind.ObjectMapper(),
+                projectCollectionService);
         ReflectionTestUtils.setField(service, "bucketName", "test-bucket");
         return service;
     }

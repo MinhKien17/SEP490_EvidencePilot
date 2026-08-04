@@ -71,6 +71,9 @@ class ProjectRouteMappingTest {
                 "GET /api/projects/{id}/members",
                 "GET /api/projects/{projectId}/documents",
                 "GET /api/projects/{projectId}/sources",
+                "GET /api/projects/{projectId}/collections",
+                "PUT /api/projects/{projectId}/collections/{collectionId}",
+                "DELETE /api/projects/{projectId}/collections/{collectionId}",
                 "GET /api/projects/{projectId}/claims",
                 "POST /api/projects/{id}/members",
                 "GET /api/projects/{projectId}/export",
@@ -173,7 +176,7 @@ class ProjectRouteMappingTest {
                 "POST /api/projects/{projectId}/papers/init",
                 "POST /api/projects/{projectId}/papers/reset-standard",
                 "GET /api/jobs/{jobId}"));
-        assertThat(routes).hasSize(123);
+        assertThat(routes).hasSize(126);
     }
 
     @Test

@@ -7,10 +7,10 @@ import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.service.ClaimService;
 import com.evidencepilot.service.ClaimContentConsistencyService;
-import com.evidencepilot.service.CollectionService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.ProjectService;
+import com.evidencepilot.service.impl.ProjectCollectionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -42,7 +42,7 @@ class ProjectControllerTest {
     private final ProjectService projectService = mock(ProjectService.class);
     private final DocumentService documentService = mock(DocumentService.class);
     private final ClaimService claimService = mock(ClaimService.class);
-    private final CollectionService collectionService = mock(CollectionService.class);
+    private final ProjectCollectionService projectCollectionService = mock(ProjectCollectionService.class);
     private final PaperProcessingService paperProcessingService = mock(PaperProcessingService.class);
     private final ClaimContentConsistencyService claimContentConsistencyService =
             mock(ClaimContentConsistencyService.class);
@@ -52,7 +52,7 @@ class ProjectControllerTest {
     @BeforeEach
     void setUp() {
         controller = new ProjectController(
-                projectService, documentService, claimService, collectionService,
+                projectService, documentService, claimService, projectCollectionService,
                 paperProcessingService, claimContentConsistencyService);
         when(claimContentConsistencyService.preflight(any()))
                 .thenReturn(new ClaimConsistencyResponse(0, List.of()));
@@ -142,6 +142,23 @@ class ProjectControllerTest {
         UUID id = UUID.randomUUID();
         mockMvc.perform(get("/api/projects/{id}/sources", id)).andExpect(status().isOk());
         verify(documentService).getSourcesByProject(id, 0, 20, "createdAt,desc", null, null, null);
+    }
+
+    @Test
+    void collectionLinkRoutesBindProjectAndCollectionIds() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        UUID collectionId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/projects/{projectId}/collections", projectId))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/projects/{projectId}/collections/{collectionId}", projectId, collectionId))
+                .andExpect(status().isOk());
+        mockMvc.perform(delete("/api/projects/{projectId}/collections/{collectionId}", projectId, collectionId))
+                .andExpect(status().isNoContent());
+
+        verify(projectCollectionService).getLinkedCollections(projectId);
+        verify(projectCollectionService).link(projectId, collectionId);
+        verify(projectCollectionService).unlink(projectId, collectionId);
     }
 
     @Test

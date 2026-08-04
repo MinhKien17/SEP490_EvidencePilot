@@ -19,6 +19,7 @@ import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.impl.FeedbackServiceImpl;
+import com.evidencepilot.service.impl.ProjectCollectionService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -70,6 +71,9 @@ class FeedbackServiceImplTest {
 
     @Mock
     private CheckpointService checkpointService;
+
+    @Mock
+    private ProjectCollectionService projectCollectionService;
 
     @Test
     void submitForReviewUsesProjectInstructorAndStudent() {
@@ -327,6 +331,7 @@ class FeedbackServiceImplTest {
 
         assertThat(request.getStatus()).isEqualTo(FeedbackStatus.REJECTED);
         assertThat(project.getStatus()).isEqualTo(ProjectStatus.IN_PROGRESS);
+        verify(projectCollectionService).syncProject(project);
     }
 
     @Test
@@ -589,7 +594,8 @@ class FeedbackServiceImplTest {
                 systemNotificationService,
                 paperProcessingService,
                 claimContentConsistencyService,
-                checkpointService);
+                checkpointService,
+                projectCollectionService);
     }
 
     private User user(UserRole role) {

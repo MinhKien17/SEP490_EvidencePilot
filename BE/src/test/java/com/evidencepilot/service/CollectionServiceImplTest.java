@@ -7,6 +7,7 @@ import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.CollectionCategoryRepository;
 import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.service.impl.CollectionServiceImpl;
+import com.evidencepilot.service.impl.ProjectCollectionService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -31,6 +32,9 @@ class CollectionServiceImplTest {
 
     @Mock
     private CurrentUserService currentUserService;
+
+    @Mock
+    private ProjectCollectionService projectCollectionService;
 
     @Test
     void createCollectionRequiresInstructorRole() {
@@ -74,10 +78,12 @@ class CollectionServiceImplTest {
         service().deleteCollection(collection.getId());
 
         verify(currentUserService).requireCollectionAccess(instructor, collection);
+        verify(projectCollectionService).prepareCollectionDeletion(collection);
     }
 
     private CollectionServiceImpl service() {
-        return new CollectionServiceImpl(collectionRepository, collectionCategoryRepository, currentUserService);
+        return new CollectionServiceImpl(
+                collectionRepository, collectionCategoryRepository, currentUserService, projectCollectionService);
     }
 
     private User user(UserRole role) {
