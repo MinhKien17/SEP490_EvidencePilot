@@ -99,6 +99,10 @@ app:
   instructor:
     email: ${INSTRUCTOR_EMAIL:}
     password: ${INSTRUCTOR_PASSWORD:}
+  seed:
+    demo:
+      enabled: ${DEMO_SEED_ENABLED:false}
+      data-dir: ${DEMO_SEED_DATA_DIR:}
   email-verification:
     url: ${EMAIL_VERIFICATION_URL:}
     token-ttl-hours: ${EMAIL_VERIFICATION_TOKEN_TTL_HOURS:24}

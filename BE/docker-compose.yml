@@ -132,6 +132,8 @@ services:
         condition: service_started
       minio:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
     environment:
@@ -173,6 +175,8 @@ services:
       STUDENT_PASSWORD: ${STUDENT_PASSWORD}
       INSTRUCTOR_EMAIL: ${INSTRUCTOR_EMAIL}
       INSTRUCTOR_PASSWORD: ${INSTRUCTOR_PASSWORD}
+      DEMO_SEED_ENABLED: ${DEMO_SEED_ENABLED:-false}
+      DEMO_SEED_DATA_DIR: /app/demo-seed-data
 
       EMAIL_VERIFICATION_URL: ${EMAIL_VERIFICATION_URL:-}
       EMAIL_VERIFICATION_TOKEN_TTL_HOURS: ${EMAIL_VERIFICATION_TOKEN_TTL_HOURS:-24}
@@ -193,6 +197,8 @@ services:
       APP_BASE_URL: ${APP_BASE_URL}
 
       SERVER_PORT: 8080
+    volumes:
+      - ../../docs/test-evidence/test-data:/app/demo-seed-data:ro
     networks:
       - evidence-network
 

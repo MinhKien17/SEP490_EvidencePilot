@@ -7,6 +7,7 @@ import com.evidencepilot.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
@@ -15,6 +16,7 @@ import java.util.Locale;
 
 @Slf4j
 @Component
+@Order(1)
 public class DatabaseSeeder implements CommandLineRunner {
 
     private final UserRepository userRepository;
@@ -60,7 +62,7 @@ public class DatabaseSeeder implements CommandLineRunner {
         ensureUser(email.trim().toLowerCase(Locale.ROOT), password, firstName, lastName, role);
     }
 
-    private void ensureUser(String email, String rawPassword, String firstName, String lastName, UserRole role) {
+    User ensureUser(String email, String rawPassword, String firstName, String lastName, UserRole role) {
         User user = userRepository.findByEmail(email).orElseGet(User::new);
         user.setEmail(email);
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
@@ -77,5 +79,6 @@ public class DatabaseSeeder implements CommandLineRunner {
         userRepository.save(user);
 
         log.info("Ensured {} user: {}", role, email);
+        return user;
     }
 }
