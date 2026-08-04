@@ -64,10 +64,10 @@ function ProjectsSection({ lang, api }) {
   const doUnarchive = async (p) => {
     try {
       await api.patch(`/api/projects/${p.id}/unarchive`);
-      showToast("Project workspace unarchived and restored to active state!", "success");
+      showToast(lang.unarchiveSuccess, "success");
       fetch(page);
     } catch (e) {
-      showToast(e.response?.data?.message || "Failed to unarchive project.", "error");
+      showToast(e.response?.data?.message || lang.unarchiveFailed, "error");
     }
   };
 
@@ -75,7 +75,7 @@ function ProjectsSection({ lang, api }) {
     if (!confirm(lang.confirmDelete)) return;
     try {
       await api.delete(`/api/projects/${id}`);
-      showToast("Project deleted successfully!", "success");
+      showToast(lang.projectDeletedSuccess, "success");
       fetch(page);
     }
     catch (e) { setError(e.message); }
@@ -116,7 +116,7 @@ function ProjectsSection({ lang, api }) {
       const resUsers = await api.get('/api/admin/users?size=100');
       setAllUsers(resUsers.data?.content || []);
     } catch (err) {
-      setMemberErr("Failed to load members or users list.");
+      setMemberErr(lang.memberLoadFailed);
     } finally {
       setMembersLoading(false);
     }
@@ -125,35 +125,35 @@ function ProjectsSection({ lang, api }) {
   const doAddMember = async (e) => {
     e.preventDefault();
     if (!selectedUser) {
-      setMemberErr("Please select a user to add.");
+      setMemberErr(lang.selectUserFirst);
       return;
     }
     setMemberErr('');
     try {
       await api.post(`/api/projects/${activeProject.id}/members?userId=${selectedUser}&role=${selectedRole}`);
-      showToast("Member added successfully!", "success");
+      showToast(lang.memberAdded, "success");
       setSelectedUser('');
       
       // Refresh member list
       const resMembers = await api.get(`/api/projects/${activeProject.id}/members`);
       setMembers(resMembers.data || []);
     } catch (err) {
-      setMemberErr(err.response?.data?.message || "Failed to add member. Double check if they are already in the project.");
+      setMemberErr(err.response?.data?.message || lang.memberAddFailed);
     }
   };
 
   const doRemoveMember = async (userId) => {
-    if (!confirm("Are you sure you want to remove this member?")) return;
+    if (!confirm(lang.confirmRemoveMember)) return;
     setMemberErr('');
     try {
       await api.delete(`/api/projects/${activeProject.id}/members/${userId}`);
-      showToast("Member removed successfully!", "success");
+      showToast(lang.memberRemoved, "success");
       
       // Refresh member list
       const resMembers = await api.get(`/api/projects/${activeProject.id}/members`);
       setMembers(resMembers.data || []);
     } catch (err) {
-      setMemberErr(err.response?.data?.message || "Failed to remove member.");
+      setMemberErr(err.response?.data?.message || lang.memberRemoveFailed);
     }
   };
 

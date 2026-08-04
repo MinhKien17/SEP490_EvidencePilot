@@ -51,10 +51,10 @@ function QueueSection({ lang, api }) {
     setRetryingId(id);
     try {
       await api.post(`/api/documents/${id}/re-extract`);
-      showToast('Document extraction job re-queued successfully!', 'success');
+      showToast(lang.reQueueSuccess, 'success');
       await fetch();
     } catch (e) {
-      showToast(e.response?.data?.message || e.message || 'Failed to re-queue document.', 'error');
+      showToast(e.response?.data?.message || e.message || lang.reQueueFailed, 'error');
     } finally {
       setRetryingId(null);
     }
@@ -290,7 +290,7 @@ function QueueSection({ lang, api }) {
                         </svg>
                       </button>
                       <button
-                        onClick={() => alert(`Error details: ${d.errorType}`)}
+                        onClick={() => showToast(`${lang.errorDetails}: ${d.errorType}`, 'error')}
                         title="View Error Details"
                         className="w-8 h-8 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800 hover:border-slate-350 flex items-center justify-center transition shadow-sm cursor-pointer"
                       >
@@ -308,7 +308,7 @@ function QueueSection({ lang, api }) {
 
         {/* Footer / Pagination */}
         <div className="flex items-center justify-between px-6 py-3.5 border-t border-gray-100 bg-gray-50/50 text-xs font-semibold text-gray-500">
-          <span>Showing {filteredDocs.length} of {combinedList.length} documents</span>
+          <span>{lang.showingDocs.replace('{shown}', filteredDocs.length).replace('{total}', combinedList.length)}</span>
         </div>
       </div>
     </div>

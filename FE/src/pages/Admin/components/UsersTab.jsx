@@ -152,7 +152,7 @@ function UsersSection({ lang, api }) {
           </svg>
           <input 
             type="text" 
-            placeholder="Search by email or name..." 
+            placeholder={lang.searchUsers} 
             value={q}
             onChange={(e) => { setQ(e.target.value); setPage(0); }}
             className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold" 
@@ -165,10 +165,10 @@ function UsersSection({ lang, api }) {
           onChange={(e) => { setRoleFilter(e.target.value); setPage(0); }}
           className="w-full sm:w-36 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
         >
-          <option value="">All Roles</option>
-          <option value="STUDENT">Student</option>
-          <option value="INSTRUCTOR">Instructor</option>
-          <option value="ADMIN">Admin</option>
+          <option value="">{lang.allRoles}</option>
+          <option value="STUDENT">{lang.students}</option>
+          <option value="INSTRUCTOR">{lang.instructors}</option>
+          <option value="ADMIN">{lang.admin}</option>
         </select>
 
         {/* Dropdown 2: Status */}
@@ -177,9 +177,9 @@ function UsersSection({ lang, api }) {
           onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
           className="w-full sm:w-36 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
         >
-          <option value="">All Statuses</option>
-          <option value="ACTIVE">Active</option>
-          <option value="BANNED">Banned</option>
+          <option value="">{lang.allStatuses}</option>
+          <option value="ACTIVE">{lang.active}</option>
+          <option value="BANNED">{lang.banned}</option>
         </select>
 
         {/* Adjustments Filter Button */}
@@ -204,33 +204,33 @@ function UsersSection({ lang, api }) {
             </div>
             <form onSubmit={doCreate} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Email Address</label>
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{lang.emailAddress}</label>
                 <input name="email" placeholder="email@example.com" value={createForm.email} onChange={e => setCreateForm(p => ({ ...p, email: e.target.value }))} required className="w-full border border-gray-300 rounded-xl px-3.5 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
               </div>
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">First Name</label>
-                  <input name="firstName" placeholder="First Name" value={createForm.firstName} onChange={e => setCreateForm(p => ({ ...p, firstName: e.target.value }))} required className="w-full border border-gray-300 rounded-xl px-3.5 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{lang.firstName}</label>
+                  <input name="firstName" placeholder={lang.firstName} value={createForm.firstName} onChange={e => setCreateForm(p => ({ ...p, firstName: e.target.value }))} required className="w-full border border-gray-300 rounded-xl px-3.5 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                 </div>
                 <div className="flex-1">
-                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Last Name</label>
-                  <input name="lastName" placeholder="Last Name" value={createForm.lastName} onChange={e => setCreateForm(p => ({ ...p, lastName: e.target.value }))} required className="w-full border border-gray-300 rounded-xl px-3.5 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{lang.lastName}</label>
+                  <input name="lastName" placeholder={lang.lastName} value={createForm.lastName} onChange={e => setCreateForm(p => ({ ...p, lastName: e.target.value }))} required className="w-full border border-gray-300 rounded-xl px-3.5 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Password</label>
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{lang.password}</label>
                 <input name="password" type="password" placeholder="••••••••" value={createForm.password} onChange={e => setCreateForm(p => ({ ...p, password: e.target.value }))} required className="w-full border border-gray-300 rounded-xl px-3.5 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">User Role</label>
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{lang.userRole}</label>
                 <select value={createForm.role} onChange={e => setCreateForm(p => ({ ...p, role: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3.5 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer">
-                  <option value="STUDENT">Student</option>
-                  <option value="INSTRUCTOR">Instructor</option>
+                  <option value="STUDENT">{lang.students}</option>
+                  <option value="INSTRUCTOR">{lang.instructors}</option>
                 </select>
               </div>
               {createErr && <div className="text-xs text-rose-600 bg-rose-50 p-2.5 rounded-lg border border-rose-100 font-semibold">{createErr}</div>}
               <div className="flex gap-2.5 justify-end pt-2">
-                <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 text-xs font-bold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition">Cancel</button>
+                <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 text-xs font-bold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition">{lang.cancel}</button>
                 <button type="submit" className="px-4 py-2 text-xs font-bold bg-[#0c162e] text-white rounded-xl hover:bg-[#152447] transition">{lang.createUser}</button>
               </div>
             </form>
@@ -246,11 +246,11 @@ function UsersSection({ lang, api }) {
           <table data-guide="table" className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-gray-100">
-                <th className="px-6 py-3.5 font-bold tracking-wider">Email</th>
-                <th className="px-6 py-3.5 font-bold tracking-wider">Full Name</th>
-                <th className="px-6 py-3.5 font-bold tracking-wider">Role</th>
-                <th className="px-6 py-3.5 font-bold tracking-wider">Status</th>
-                <th className="px-6 py-3.5 font-bold tracking-wider text-right">Actions</th>
+                <th className="px-6 py-3.5 font-bold tracking-wider">{lang.email}</th>
+                <th className="px-6 py-3.5 font-bold tracking-wider">{lang.fullName}</th>
+                <th className="px-6 py-3.5 font-bold tracking-wider">{lang.role}</th>
+                <th className="px-6 py-3.5 font-bold tracking-wider">{lang.status}</th>
+                <th className="px-6 py-3.5 font-bold tracking-wider text-right">{lang.actions}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-slate-700 font-semibold">
@@ -259,7 +259,7 @@ function UsersSection({ lang, api }) {
                   <td key={j} className="px-6 py-5"><div className="h-4 bg-gray-200 rounded w-full" /></td>
                 ))}</tr>
               )) : users.content.length === 0 ? (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 font-medium">No users found</td></tr>
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 font-medium">{lang.noUsers}</td></tr>
               ) : users.content.map(u => (
                 <tr key={u.id} className="hover:bg-slate-50/50 transition">
                   <td className="px-6 py-4 font-mono text-gray-600 font-medium">{u.email}</td>
@@ -268,7 +268,7 @@ function UsersSection({ lang, api }) {
                     <button
                       onClick={() => doToggleRole(u)}
                       disabled={u.role === 'ADMIN' || loadingAction['role_' + u.id]}
-                      title={u.role === 'ADMIN' ? 'Admin role cannot be changed' : `Click to change role to ${u.role === 'STUDENT' ? 'INSTRUCTOR' : 'STUDENT'}`}
+                      title={u.role === 'ADMIN' ? lang.adminRoleFixed : `${lang.changeRoleTo} ${u.role === 'STUDENT' ? 'INSTRUCTOR' : 'STUDENT'}`}
                       className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 transition ${
                         u.role === 'ADMIN' ? 'bg-rose-100 text-rose-700 cursor-not-allowed' :
                         u.role === 'INSTRUCTOR' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer' :
@@ -284,7 +284,7 @@ function UsersSection({ lang, api }) {
                     </button>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${u.accountStatus === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{u.accountStatus}</span>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${u.accountStatus === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{u.accountStatus === 'ACTIVE' ? lang.active : lang.banned}</span>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-end gap-4">
@@ -292,7 +292,7 @@ function UsersSection({ lang, api }) {
                       {pwMsg[u.id] ? (
                         <span className={`inline-block px-2 py-1 text-[10px] font-bold rounded ${pwMsg[u.id].ok ? 'text-emerald-700 bg-emerald-50' : 'text-rose-700 bg-rose-50'}`}>{pwMsg[u.id].msg}</span>
                       ) : (
-                        <button onClick={() => doResetPw(u)} disabled={loadingAction['pw_' + u.id]} title="Reset Password"
+                        <button onClick={() => doResetPw(u)} disabled={loadingAction['pw_' + u.id]} title={lang.resetPassword}
                           className="p-1.5 rounded-lg hover:bg-slate-100 transition disabled:opacity-50 text-[#1e3a8a] shrink-0">
                           {loadingAction['pw_' + u.id] ? (
                             <span className="text-[10px]">...</span>
@@ -308,7 +308,7 @@ function UsersSection({ lang, api }) {
                       )}
 
                       {/* Ban / Activate Icon */}
-                      <button onClick={() => toggleStatus(u)} disabled={loadingAction[u.id]} title={u.accountStatus === 'ACTIVE' ? 'Ban User' : 'Activate User'}
+                      <button onClick={() => toggleStatus(u)} disabled={loadingAction[u.id]} title={u.accountStatus === 'ACTIVE' ? lang.banUser : lang.activateUser}
                         className={`p-1.5 rounded-lg hover:bg-slate-100 transition disabled:opacity-50 shrink-0 ${u.accountStatus === 'ACTIVE' ? 'text-amber-600' : 'text-emerald-600'}`}>
                         {loadingAction[u.id] ? (
                           <span className="text-[10px]">...</span>
@@ -326,7 +326,7 @@ function UsersSection({ lang, api }) {
                       </button>
 
                       {/* Delete Icon */}
-                      <button onClick={() => doDelete(u.id)} disabled={loadingAction['del_' + u.id]} title="Delete User"
+                      <button onClick={() => doDelete(u.id)} disabled={loadingAction['del_' + u.id]} title={lang.deleteUser}
                         className="p-1.5 rounded-lg hover:bg-slate-100 transition disabled:opacity-50 text-rose-600 shrink-0">
                         {loadingAction['del_' + u.id] ? (
                           <span className="text-[10px]">...</span>
@@ -350,7 +350,7 @@ function UsersSection({ lang, api }) {
         
         {/* Footer / Pagination */}
         <div className="flex items-center justify-between px-6 py-3.5 border-t border-gray-100 bg-gray-50/50 text-xs font-semibold text-gray-500">
-          <span>Showing {users.content.length} of {users.totalElements || users.content.length} users</span>
+          <span>{lang.showingUsers.replace('{shown}', users.content.length).replace('{total}', users.totalElements || users.content.length)}</span>
           {users.totalPages > 1 && (
             <div className="flex items-center gap-1.5">
               <button onClick={() => setPage(page - 1)} disabled={page === 0}

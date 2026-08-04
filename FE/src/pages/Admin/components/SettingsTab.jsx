@@ -48,7 +48,7 @@ function SettingsSection({ lang, api }) {
   const doSave = (e) => {
     e.preventDefault();
     setSaved(true);
-    showToast('System settings saved successfully!', 'success');
+    showToast(lang.settingsSaved, 'success');
     setTimeout(() => setSaved(false), 2000);
   };
 
@@ -58,28 +58,28 @@ function SettingsSection({ lang, api }) {
     try {
       if (catForm.id) {
         await api.put(`/api/admin/collection-categories/${catForm.id}`, { name: catForm.name, description: catForm.description });
-        showToast('Category updated successfully!', 'success');
+        showToast(lang.categoryUpdated, 'success');
       } else {
         await api.post('/api/admin/collection-categories', { name: catForm.name, description: catForm.description });
-        showToast('Category created successfully!', 'success');
+        showToast(lang.categoryCreated, 'success');
       }
       setShowCatForm(false);
       setCatForm({ id: null, name: '', description: '' });
       fetchCats(new AbortController().signal);
     } catch (err) {
       setCatErr(err.response?.data?.message || err.message);
-      showToast('Failed to save category.', 'error');
+      showToast(lang.categorySaveFailed, 'error');
     }
   };
 
   const doCatDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this category?')) return;
+    if (!window.confirm(lang.confirmDeleteCategory)) return;
     try {
       await api.delete(`/api/admin/collection-categories/${id}`);
-      showToast('Category deleted successfully!', 'success');
+      showToast(lang.categoryDeletedOk, 'success');
       fetchCats(new AbortController().signal);
     } catch (e) {
-      showToast('Failed to delete category.', 'error');
+      showToast(lang.categoryDeleteFailed, 'error');
     }
   };
 
@@ -95,14 +95,14 @@ function SettingsSection({ lang, api }) {
     link.download = 'evidencepilot_system.env';
     link.click();
     URL.revokeObjectURL(url);
-    showToast('Environment file exported successfully!', 'success');
+    showToast(lang.envExported, 'success');
   };
 
   const getConfigSecurity = (key) => {
     const k = key.toLowerCase();
-    if (k.includes('jwt') || k.includes('secret') || k.includes('password')) return 'SECRET';
-    if (k.includes('url') || k.includes('port')) return 'INTERNAL';
-    return 'PUBLIC';
+    if (k.includes('jwt') || k.includes('secret') || k.includes('password')) return lang.secretLabel;
+    if (k.includes('url') || k.includes('port')) return lang.internalLabel;
+    return lang.publicLabel;
   };
 
   return (

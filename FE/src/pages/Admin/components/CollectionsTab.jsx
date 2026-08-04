@@ -30,13 +30,13 @@ function CollectionsSection({ lang, api }) {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this collection?')) return;
+    if (!window.confirm(lang.confirmDeleteCollection)) return;
     try {
       await api.delete(`/api/collections/${id}`);
-      showToast('Collection deleted successfully!', 'success');
+      showToast(lang.collectionDeleted, 'success');
       fetch(new AbortController().signal);
     } catch (e) {
-      showToast(e.response?.data?.message || 'Failed to delete collection.', 'error');
+      showToast(e.response?.data?.message || lang.collectionDeleteFailed, 'error');
     }
   };
 
@@ -44,7 +44,7 @@ function CollectionsSection({ lang, api }) {
 
   const displayCollections = data.map(c => ({
     id: c.id,
-    name: c.name || 'Unnamed Collection',
+    name: c.name || lang.unnamedCollection,
     description: c.description || '',
     instructorEmail: c.instructorEmail || '—',
     createdAt: c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—',
