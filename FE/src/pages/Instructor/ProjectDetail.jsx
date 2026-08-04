@@ -46,8 +46,8 @@ export default function ProjectDetail() {
   const [showAddSource, setShowAddSource] = useState(false);
   const [showShareCollection, setShowShareCollection] = useState(false);
   const [collections, setCollections] = useState([]);
+  const [linkedCollections, setLinkedCollections] = useState([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState('');
-  const [collectionSources, setCollectionSources] = useState([]);
   const [showSetUpPaper, setShowSetUpPaper] = useState(false);
   const [setupMode, setSetupMode] = useState('standard');
   const [editingPaperId, setEditingPaperId] = useState(null);
@@ -61,7 +61,6 @@ export default function ProjectDetail() {
   const [addSourceDocType, setAddSourceDocType] = useState('SOURCE');
   const [addSourceLoading, setAddSourceLoading] = useState(false);
   const [shareLoadingId, setShareLoadingId] = useState(null);
-  const [selectedSourceIds, setSelectedSourceIds] = useState([]);
   const [pendingAssign, setPendingAssign] = useState(null); // { sectionId, userId, userName }
 
   const loadProject = useCallback(async () => {
@@ -136,10 +135,15 @@ export default function ProjectDetail() {
 
   const loadCollections = useCallback(async () => {
     try {
-      const res = await api.get('/api/collections');
-      setCollections(res.data?.content || res.data || []);
+      // ponytail: backend caps collection pages at 100; add modal pagination when an instructor exceeds that.
+      const [collectionRes, linkedRes] = await Promise.all([
+        api.get('/api/collections', { params: { size: 100 } }),
+        api.get(`/api/projects/${id}/collections`),
+      ]);
+      setCollections(collectionRes.data?.content || collectionRes.data || []);
+      setLinkedCollections(linkedRes.data || []);
     } catch { }
-  }, []);
+  }, [id]);
 
   useEffect(() => { loadProject(); }, [loadProject]);
   useEffect(() => { if (project) { loadPapers(); loadSources(); loadUsers(); } }, [project, loadPapers, loadSources, loadUsers]);
@@ -247,30 +251,19 @@ export default function ProjectDetail() {
     }
   };
 
-  const toggleSourceSelection = (sourceId) => {
-    setSelectedSourceIds(prev =>
-      prev.includes(sourceId) ? prev.filter(id => id !== sourceId) : [...prev, sourceId]
-    );
-  };
-
-  const handleShareSources = async (checkedIds) => {
+  const handleToggleCollection = async () => {
     if (!selectedCollectionId) return;
+    const linked = linkedCollections.some(c => String(c.id) === String(selectedCollectionId));
+    setShareLoadingId(selectedCollectionId);
     try {
-      const projectSourceIds = new Set(sources.map(s => s.id));
-      const toShare = checkedIds.filter(id => !projectSourceIds.has(id));
-      const toUnshare = sources.filter(s => !checkedIds.includes(s.id)).map(s => s.id);
-      await Promise.all(toShare.map(sourceId =>
-        api.post(`/api/collections/${selectedCollectionId}/sources/${sourceId}/share-to-project/${id}`)
-      ));
-      await Promise.all(toUnshare.map(sourceId =>
-        api.delete(`/api/sources/projects/${id}/sources/${sourceId}`)
-      ));
-      await loadSources();
-      setShowShareCollection(false);
-      setSelectedCollectionId('');
-      setCollectionSources([]);
-      setSelectedSourceIds([]);
+      if (linked) {
+        await api.delete(`/api/projects/${id}/collections/${selectedCollectionId}`);
+      } else {
+        await api.put(`/api/projects/${id}/collections/${selectedCollectionId}`);
+      }
+      await Promise.all([loadCollections(), loadSources()]);
     } catch { alert(t.operationFailed); }
+    finally { setShareLoadingId(null); }
   };
 
   const handleStartRename = (paper) => {
@@ -1148,47 +1141,38 @@ export default function ProjectDetail() {
         )}
       </Modal>
 
-      <Modal open={showShareCollection} onClose={() => { setShowShareCollection(false); setSelectedCollectionId(''); setCollectionSources([]); }} title={t.shareFromCollection}>
+      <Modal open={showShareCollection} onClose={() => { setShowShareCollection(false); setSelectedCollectionId(''); }} title={t.shareFromCollection}>
         <div className="space-y-4 text-xs">
           {collections.length === 0 ? (
             <p className="italic text-[var(--text-tertiary)]">{t.noCollectionsFound}</p>
           ) : (
-            <select value={selectedCollectionId} onChange={async (e) => {
-              setSelectedCollectionId(e.target.value);
-              if (e.target.value) {
-                try {
-                  const res = await api.get(`/api/collections/${e.target.value}/sources`);
-                  const loaded = res.data?.content || res.data || [];
-                  setCollectionSources(loaded);
-                  const projectSourceIds = new Set(sources.map(s => s.id));
-                  setSelectedSourceIds(loaded.filter(ls => projectSourceIds.has(ls.id)).map(s => s.id));
-                } catch { setCollectionSources([]); }
-              } else { setCollectionSources([]); }
-            }} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs outline-none">
+            <select value={selectedCollectionId} onChange={e => setSelectedCollectionId(e.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs outline-none">
               <option value="">{t.selectCollection}</option>
-              {collections.map(c => <option key={c.id} value={c.id}>{c.name || c.title || c.id}</option>)}
+              {collections.map(c => {
+                const linked = linkedCollections.some(item => String(item.id) === String(c.id));
+                return <option key={c.id} value={c.id}>{c.name || c.title || c.id}{linked ? ` — ${t.collectionLinked}` : ''}</option>;
+              })}
             </select>
           )}
-          {selectedCollectionId && collectionSources.length === 0 && (
-            <p className="italic text-[var(--text-tertiary)]">{t.noCollectionSources}</p>
+          {selectedCollectionId && (
+            <p className="rounded-lg bg-[var(--surface-secondary)] px-3 py-2 text-[var(--text-secondary)]">
+              {linkedCollections.some(c => String(c.id) === String(selectedCollectionId))
+                ? t.collectionLinked : t.collectionNotLinked}
+            </p>
           )}
-          {collectionSources.length > 0 && (
-            <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-[var(--border-light)] p-1">
-              {collectionSources.map(s => (
-                <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--surface-secondary)] px-3 py-2 hover:bg-[var(--surface-tertiary)]">
-                  <input type="checkbox" checked={selectedSourceIds.includes(s.id)} onChange={() => toggleSourceSelection(s.id)} className="accent-indigo-600" />
-                  <span className="font-medium flex-1 text-xs">{s.title || s.originalFilename || s.id}</span>
-                </label>
-              ))}
-            </div>
+          {projectReadOnly && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">{t.collectionSyncPaused}</p>
           )}
-          {collectionSources.length > 0 && (
-            <button onClick={() => handleShareSources(selectedSourceIds)} className="w-full rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)]">
-              {t.applyChanges}
+          {selectedCollectionId && (
+            <button onClick={handleToggleCollection} disabled={projectReadOnly || shareLoadingId !== null} className="w-full rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)] disabled:cursor-not-allowed disabled:opacity-50">
+              {shareLoadingId === selectedCollectionId
+                ? ct.saving
+                : linkedCollections.some(c => String(c.id) === String(selectedCollectionId))
+                  ? t.stopCollectionSync : t.shareEntireCollection}
             </button>
           )}
           <div className="flex justify-end gap-2">
-            <button onClick={() => { setShowShareCollection(false); setSelectedCollectionId(''); setCollectionSources([]); }} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.close}</button>
+            <button onClick={() => { setShowShareCollection(false); setSelectedCollectionId(''); }} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.close}</button>
           </div>
         </div>
       </Modal>
