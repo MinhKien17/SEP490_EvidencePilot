@@ -358,61 +358,59 @@ export default function Projects() {
                     .replace('{{start}}', page * pageSize + 1)
                     .replace('{{end}}', Math.min((page + 1) * pageSize, projectsData.totalElements))
                     .replace('{{total}}', projectsData.totalElements)
-                : `Showing ${page * pageSize + 1}-${Math.min((page + 1) * pageSize, projectsData.totalElements)} of ${projectsData.totalElements} projects`}
+                : `Hiển thị ${page * pageSize + 1}-${Math.min((page + 1) * pageSize, projectsData.totalElements)} trong tổng số ${projectsData.totalElements} dự án`}
             </span>
 
-            {projectsData.totalPages > 1 && (
-              <div className="flex items-center gap-1.5">
-                {/* Prev Button */}
-                <button
-                  onClick={() => setPage(p => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-800 text-gray-500 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition shadow-xs cursor-pointer"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
+            <div className="flex items-center gap-1.5">
+              {/* Prev Button */}
+              <button
+                onClick={() => setPage(p => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-800 text-gray-500 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition shadow-xs cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
 
-                {/* Page Number Buttons */}
-                {Array.from({ length: projectsData.totalPages }).map((_, i) => {
-                  if (i === 0 || i === projectsData.totalPages - 1 || (i >= page - 1 && i <= page + 1)) {
-                    const isActive = page === i;
-                    return (
-                      <button
-                        key={i}
-                        onClick={() => setPage(i)}
-                        className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold transition cursor-pointer ${
-                          isActive
-                            ? 'bg-[#0c162e] text-white shadow-xs'
-                            : 'border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        {i + 1}
-                      </button>
-                    );
-                  } else if (i === 1 || i === projectsData.totalPages - 2) {
-                    return (
-                      <span key={i} className="text-gray-400 text-xs px-1">
-                        ...
-                      </span>
-                    );
-                  }
-                  return null;
-                })}
+              {/* Page Number Buttons */}
+              {Array.from({ length: Math.max(1, projectsData.totalPages) }).map((_, i) => {
+                if (i === 0 || i === projectsData.totalPages - 1 || (i >= page - 1 && i <= page + 1)) {
+                  const isActive = page === i;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => setPage(i)}
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold transition cursor-pointer ${
+                        isActive
+                          ? 'bg-[#0c162e] text-white shadow-xs'
+                          : 'border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {i + 1}
+                    </button>
+                  );
+                } else if (i === 1 || i === projectsData.totalPages - 2) {
+                  return (
+                    <span key={i} className="text-gray-400 text-xs px-1">
+                      ...
+                    </span>
+                  );
+                }
+                return null;
+              })}
 
-                {/* Next Button */}
-                <button
-                  onClick={() => setPage(p => Math.min(projectsData.totalPages - 1, p + 1))}
-                  disabled={page >= projectsData.totalPages - 1}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-800 text-gray-500 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition shadow-xs cursor-pointer"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
-            )}
+              {/* Next Button */}
+              <button
+                onClick={() => setPage(p => Math.min(projectsData.totalPages - 1, p + 1))}
+                disabled={page >= Math.max(0, projectsData.totalPages - 1)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-800 text-gray-500 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition shadow-xs cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
           </div>
         )}
       </main>
