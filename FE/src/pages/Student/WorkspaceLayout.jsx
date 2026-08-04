@@ -128,7 +128,8 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const saveInFlightRef = useRef(new Map());
   const creatingClaimRef = useRef(false);
   const submittingReviewRef = useRef(false);
-  const aiReviewAbortRef = useRef(null);
+  const aiReviewJobRef = useRef(null);
+  const aiReviewRequestRef = useRef(0);
 
   const updateCode = (newVal) => {
     codeContentRef.current = newVal;
@@ -197,10 +198,20 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       if (shouldAbort?.()) return null;
       const { data: job } = await api.get(`/api/jobs/${jobId}`);
       if (job.status === 'SUCCESS') return job;
-      if (job.status === 'FAILED') throw new Error(job.errorMessage || t('aiEvaluationFailed'));
+      if (job.status === 'FAILED') {
+        const error = new Error(job.errorMessage || t('aiEvaluationFailed'));
+        error.status = Number(job.errorMessage?.match(/^(\d{3})/)?.[1]) || undefined;
+        throw error;
+      }
       await new Promise((resolve) => setTimeout(resolve, 1500));
     }
   };
+
+  useEffect(() => {
+    aiReviewRequestRef.current += 1;
+    aiReviewJobRef.current = null;
+    setLoadingAiReview(false);
+  }, [selectedPaper?.id]);
 
   const fetchClaims = async () => {
     if (!project) return;
@@ -989,28 +1000,39 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const handleRunAiReview = async () => {
     if (isLocked) { showToast(t('projectLocked')); return; }
     if (!selectedPaper) { showToast(t('selectPaperFirst')); return; }
-    if (aiReviewAbortRef.current) aiReviewAbortRef.current.abort();
-    const controller = new AbortController();
-    aiReviewAbortRef.current = controller;
+    if (aiReviewJobRef.current) { setShowAiReviewModal(true); return; }
+    const requestId = ++aiReviewRequestRef.current;
+    aiReviewJobRef.current = 'submitting';
     setLoadingAiReview(true);
     setAiReviewError(null);
     setShowAiReviewModal(true);
     try {
-      const r = await api.post(`/api/papers/${selectedPaper.id}/review`, null, { signal: controller.signal, timeout: 120000 });
-      setAiReviewResult(r.data);
+      const { data: submit } = await api.post(`/api/papers/${selectedPaper.id}/review`);
+      if (aiReviewRequestRef.current !== requestId) return;
+      aiReviewJobRef.current = submit.jobId;
+      const job = await pollAiJob(submit.jobId, () => aiReviewRequestRef.current !== requestId);
+      if (!job) return;
+      setAiReviewResult(job.result);
       showToast(t('aiReviewComplete'));
       if (project) fetchGraphData(project.id);
     } catch (error) {
-      if (error.name === 'CanceledError' || controller.signal.aborted) return;
-      const status = error.response?.status;
-      const message = status === 503
-        ? t('aiWorkerUnavailable')
-        : status === 502
-          ? t('aiInvalidResponse')
-          : t('aiReviewFailed');
+      if (aiReviewRequestRef.current !== requestId) return;
+      const status = error.response?.status || error.status;
+      const message = status === 429
+        ? t('aiProviderRateLimited')
+        : status === 503
+          ? t('aiWorkerUnavailable')
+          : status === 502
+            ? t('aiInvalidResponse')
+            : t('aiReviewFailed');
       setAiReviewError({ status, message });
       showToast(message);
-    } finally { if (aiReviewAbortRef.current === controller) { aiReviewAbortRef.current = null; setLoadingAiReview(false); } }
+    } finally {
+      if (aiReviewRequestRef.current === requestId) {
+        aiReviewJobRef.current = null;
+        setLoadingAiReview(false);
+      }
+    }
   };
 
   const handleSubmitReview = async () => {
@@ -1411,7 +1433,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                 <svg className="w-5 h-5 text-indigo-300 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 01-2 2h0a2 2 0 01-2-2v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
                 <h2 className="text-base font-bold tracking-wide">{t('aiReviewReport')}</h2>
               </div>
-              <button onClick={() => { if (aiReviewAbortRef.current) aiReviewAbortRef.current.abort(); setShowAiReviewModal(false); }} className="text-indigo-200 hover:text-white transition-colors">
+              <button onClick={() => setShowAiReviewModal(false)} className="text-indigo-200 hover:text-white transition-colors">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
@@ -1469,7 +1491,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                       if (claim) {
                         handleSelectClaim(claim);
                         setActiveTab('Claims');
-                        if (aiReviewAbortRef.current) aiReviewAbortRef.current.abort();
                         setShowAiReviewModal(false);
                       }
                     }} className="w-full text-left bg-(--surface) border border-(--border) rounded-xl p-5 shadow-sm hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors">
@@ -1512,7 +1533,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
               ) : null}
             </div>
             <div className="px-6 py-4 border-t border-(--border-light) bg-(--surface-secondary)/50 flex justify-end gap-3 shrink-0">
-              <button onClick={() => { if (aiReviewAbortRef.current) aiReviewAbortRef.current.abort(); setShowAiReviewModal(false); }} className="px-4 py-2 text-xs font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors border border-(--border) bg-(--surface) cursor-pointer">{t('close')}</button>
+              <button onClick={() => setShowAiReviewModal(false)} className="px-4 py-2 text-xs font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors border border-(--border) bg-(--surface) cursor-pointer">{t('close')}</button>
             </div>
           </div>
         </div>

@@ -13,6 +13,7 @@ public class RabbitMQConfig {
     public static final String EXTRACTION_QUEUE = "extraction.queue";
     public static final String EXPORT_QUEUE = "export.queue";
     public static final String AI_EVALUATION_QUEUE = "ai.evaluation.queue";
+    public static final String PAPER_REVIEW_QUEUE = "paper.review.queue";
 
     @Bean
     public Queue extractionQueue() {
@@ -27,6 +28,11 @@ public class RabbitMQConfig {
     @Bean
     public Queue aiEvaluationQueue() {
         return QueueBuilder.durable(AI_EVALUATION_QUEUE).build();
+    }
+
+    @Bean
+    public Queue paperReviewQueue() {
+        return QueueBuilder.durable(PAPER_REVIEW_QUEUE).build();
     }
 
     @Bean

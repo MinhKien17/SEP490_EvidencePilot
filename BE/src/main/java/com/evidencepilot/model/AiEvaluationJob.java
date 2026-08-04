@@ -26,6 +26,7 @@ public class AiEvaluationJob {
 
     public static final String KIND_CLAIM_QUALITY = "CLAIM_QUALITY";
     public static final String KIND_MATCH_EVALUATION = "MATCH_EVALUATION";
+    public static final String KIND_PAPER_REVIEW = "PAPER_REVIEW";
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

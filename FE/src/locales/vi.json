@@ -343,6 +343,7 @@
   ,"selectPaperFirst": "Hãy chọn một bài viết trước."
   ,"formatScanFailed": "Quét định dạng thất bại."
   ,"aiReviewComplete": "Đánh giá AI hoàn tất."
+  ,"aiProviderRateLimited": "Nhà cung cấp AI đang giới hạn lượt gọi. Vui lòng thử lại sau."
   ,"aiWorkerUnavailable": "Dịch vụ đánh giá AI không sẵn sàng hoặc đã hết thời gian chờ."
   ,"aiInvalidResponse": "Đánh giá AI trả về phản hồi không hợp lệ sau khi thử lại."
   ,"aiReviewFailed": "Đánh giá AI thất bại. Vui lòng thử lại."

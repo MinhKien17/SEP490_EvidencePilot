@@ -5,7 +5,7 @@ import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.FormatScanResponse;
 import com.evidencepilot.dto.response.PaperSectionResponse;
 import com.evidencepilot.dto.response.PaperValidationResponse;
-import com.evidencepilot.dto.response.AiReviewResponse;
+import com.evidencepilot.dto.response.JobSubmitResponse;
 import com.evidencepilot.dto.request.SectionContentUpdateRequest;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Claim;
@@ -28,6 +28,7 @@ import com.evidencepilot.service.CheckpointService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.FormatScanService;
+import com.evidencepilot.service.AiEvaluationService;
 import com.evidencepilot.service.PaperProcessingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -74,6 +75,7 @@ public class PaperController {
     private final ClaimRepository claimRepository;
     private final CurrentUserService currentUserService;
     private final CheckpointService checkpointService;
+    private final AiEvaluationService aiEvaluationService;
 
     @Operation(summary = "List all papers",
             description = "Returns all active paper documents. "
@@ -296,21 +298,29 @@ public class PaperController {
     }
 
     @Operation(summary = "Generate AI paper review",
-            description = "Runs AI review against the paper and returns suggestions. "
-                    + "Optional targetStyle parameter controls the output format style.")
+            description = "Queues AI review for the paper and returns a jobId. "
+                    + "Poll GET /api/jobs/{jobId} for the result.")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Review generated"),
+            @ApiResponse(responseCode = "202", description = "Review queued"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
             @ApiResponse(responseCode = "403", description = "Access denied"),
-            @ApiResponse(responseCode = "404", description = "Paper not found"),
-            @ApiResponse(responseCode = "502", description = "AI returned an invalid review"),
-            @ApiResponse(responseCode = "503", description = "AI worker unavailable")
+            @ApiResponse(responseCode = "404", description = "Paper not found")
     })
     @PostMapping("/papers/{id}/review")
-    public AiReviewResponse review(
+    public ResponseEntity<JobSubmitResponse> review(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id,
             @Parameter(description = "Target output style (optional)") @RequestParam(required = false) String targetStyle) {
-        return paperProcessingService.review(id, targetStyle);
+        User currentUser = currentUserService.requireCurrentUser();
+        Document document = documentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException(id, "Document"));
+        Project project = document.getProject();
+        if (project == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "AI paper review requires a Project paper.");
+        }
+        currentUserService.requireProjectAccess(currentUser, project);
+        return ResponseEntity.accepted().body(aiEvaluationService.submitPaperReview(
+                project.getId(), id, targetStyle, currentUser.getId()));
     }
 
     @Operation(summary = "Soft-delete a paper",

@@ -3,6 +3,7 @@ package com.evidencepilot.service;
 import com.evidencepilot.service.impl.AiModelClientImpl;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
@@ -18,11 +19,13 @@ import java.util.zip.ZipOutputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 
 class AiModelClientTest {
 
@@ -62,6 +65,22 @@ class AiModelClientTest {
         assertThat(result.provider()).isEqualTo("gemini");
         assertThat(result.model()).isEqualTo("gemini-3.6-flash");
         assertThat(result.response()).isEqualTo("Review text");
+        server.verify();
+    }
+
+    @Test
+    void generatePreservesUpstreamHttpStatus() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("http://ai.test/ai/generate"))
+                .andRespond(withStatus(HttpStatus.UNPROCESSABLE_ENTITY));
+
+        AiModelClient.AiApiException error = assertThrows(
+                AiModelClient.AiApiException.class,
+                () -> new AiModelClientImpl(builder.build(), "http://ai.test")
+                        .generate("system", "prompt"));
+
+        assertThat(error.getStatusCode()).isEqualTo(422);
         server.verify();
     }
 

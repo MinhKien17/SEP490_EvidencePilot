@@ -1,13 +1,14 @@
 package com.evidencepilot.service.impl;
 
+import com.evidencepilot.dto.response.AiReviewResponse;
 import com.evidencepilot.model.AiEvaluationJob;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.repository.AiEvaluationJobRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
-import com.evidencepilot.service.AiEvaluationService;
 import com.evidencepilot.service.ClaimMatchingService;
+import com.evidencepilot.service.PaperProcessingService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -30,13 +31,14 @@ class AiEvaluationServiceImplTest {
     private final PaperSectionRepository paperSectionRepository = mock(PaperSectionRepository.class);
     private final ClaimQualityEvaluationService qualityService = mock(ClaimQualityEvaluationService.class);
     private final ClaimMatchingService matchingService = mock(ClaimMatchingService.class);
+    private final PaperProcessingService paperProcessingService = mock(PaperProcessingService.class);
     private final RabbitTemplate rabbitTemplate = mock(RabbitTemplate.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private AiEvaluationService service() {
+    private AiEvaluationServiceImpl service() {
         return new AiEvaluationServiceImpl(
                 jobRepository, paperSectionRepository, qualityService, matchingService,
-                rabbitTemplate, objectMapper);
+                paperProcessingService, rabbitTemplate, objectMapper);
     }
 
     @Test
@@ -121,6 +123,91 @@ class AiEvaluationServiceImplTest {
     }
 
     @Test
+    void submitPaperReview_reusesMatchingActiveJob() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        UUID requesterId = UUID.randomUUID();
+        AiEvaluationJob existing = job(
+                UUID.randomUUID(),
+                projectId,
+                objectMapper.writeValueAsString(Map.of(
+                        "documentId", documentId,
+                        "projectId", projectId,
+                        "targetStyle", "APA",
+                        "requestedByUserId", requesterId)));
+        existing.setKind(AiEvaluationJob.KIND_PAPER_REVIEW);
+        when(jobRepository.findByProjectIdAndKindAndStatusInOrderByCreatedAtDesc(
+                eq(projectId),
+                eq(AiEvaluationJob.KIND_PAPER_REVIEW),
+                any())).thenReturn(List.of(existing));
+
+        var response = service().submitPaperReview(
+                projectId, documentId, " APA ", requesterId);
+
+        assertThat(response.jobId()).isEqualTo(existing.getId());
+        verify(jobRepository, org.mockito.Mockito.never()).save(any());
+        verify(rabbitTemplate, org.mockito.Mockito.never())
+                .convertAndSend(any(String.class), any(Map.class));
+    }
+
+    @Test
+    void submitPaperReview_publishesToDedicatedQueue() {
+        UUID projectId = UUID.randomUUID();
+        when(jobRepository.findByProjectIdAndKindAndStatusInOrderByCreatedAtDesc(
+                eq(projectId),
+                eq(AiEvaluationJob.KIND_PAPER_REVIEW),
+                any())).thenReturn(List.of());
+        when(jobRepository.save(any(AiEvaluationJob.class))).thenAnswer(invocation -> {
+            AiEvaluationJob job = invocation.getArgument(0);
+            job.setId(UUID.randomUUID());
+            return job;
+        });
+
+        var response = service().submitPaperReview(
+                projectId, UUID.randomUUID(), null, UUID.randomUUID());
+
+        assertThat(response.jobId()).isNotNull();
+        verify(rabbitTemplate).convertAndSend(
+                eq(com.evidencepilot.config.infrastructure.RabbitMQConfig.PAPER_REVIEW_QUEUE),
+                any(Map.class));
+    }
+
+    @Test
+    void process_paperReview_runsBackgroundSafeReview() throws Exception {
+        UUID jobId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        UUID requesterId = UUID.randomUUID();
+        AiEvaluationJob job = job(
+                UUID.randomUUID(),
+                projectId,
+                objectMapper.writeValueAsString(Map.of(
+                        "documentId", documentId,
+                        "projectId", projectId,
+                        "targetStyle", "default",
+                        "requestedByUserId", requesterId)));
+        job.setKind(AiEvaluationJob.KIND_PAPER_REVIEW);
+        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
+        when(paperProcessingService.runReview(
+                documentId, projectId, "default", requesterId)).thenReturn(
+                        new AiReviewResponse(
+                                "paper-claim-review-v7",
+                                true,
+                                new AiReviewResponse.Coverage(1, 1, 1, 1, 0, 0),
+                                AiReviewResponse.Direction.ON_TRACK,
+                                "Done",
+                                List.of(),
+                                List.of()));
+
+        service().process(jobId);
+
+        assertThat(job.getStatus()).isEqualTo(AiEvaluationJob.STATUS_SUCCESS);
+        assertThat(job.getResultJson()).contains("paper-claim-review-v7");
+        verify(paperProcessingService).runReview(
+                documentId, projectId, "default", requesterId);
+    }
+
+    @Test
     void reenqueuePendingJobs_publishesEachPendingJob() {
         UUID jobId = UUID.randomUUID();
         AiEvaluationJob pending = job(UUID.randomUUID(), UUID.randomUUID(), "{\"x\":1}");
@@ -129,10 +216,26 @@ class AiEvaluationServiceImplTest {
 
         new AiEvaluationServiceImpl(
                 jobRepository, paperSectionRepository, qualityService, matchingService,
-                rabbitTemplate, objectMapper).reenqueuePendingJobs();
+                paperProcessingService, rabbitTemplate, objectMapper).reenqueuePendingJobs();
 
         verify(rabbitTemplate).convertAndSend(
                 com.evidencepilot.config.infrastructure.RabbitMQConfig.AI_EVALUATION_QUEUE,
+                Map.of("jobId", jobId.toString()));
+    }
+
+    @Test
+    void reenqueuePendingPaperReview_usesDedicatedQueue() {
+        UUID jobId = UUID.randomUUID();
+        AiEvaluationJob pending = job(UUID.randomUUID(), UUID.randomUUID(), "{\"x\":1}");
+        pending.setId(jobId);
+        pending.setKind(AiEvaluationJob.KIND_PAPER_REVIEW);
+        when(jobRepository.findByStatus(AiEvaluationJob.STATUS_PENDING))
+                .thenReturn(List.of(pending));
+
+        service().reenqueuePendingJobs();
+
+        verify(rabbitTemplate).convertAndSend(
+                com.evidencepilot.config.infrastructure.RabbitMQConfig.PAPER_REVIEW_QUEUE,
                 Map.of("jobId", jobId.toString()));
     }
 

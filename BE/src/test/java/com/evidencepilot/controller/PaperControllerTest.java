@@ -1,12 +1,14 @@
 package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.response.DocumentResponse;
+import com.evidencepilot.dto.response.JobSubmitResponse;
 import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.FeedbackRequest;
 import com.evidencepilot.model.FeedbackStatus;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
+import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.DocumentRepository;
@@ -15,6 +17,7 @@ import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.CitationValidationService;
+import com.evidencepilot.service.AiEvaluationService;
 import com.evidencepilot.service.CheckpointService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
@@ -53,11 +56,12 @@ class PaperControllerTest {
     private final FormatScanService formatScanService = mock(FormatScanService.class);
     private final CurrentUserService currentUserService = mock(CurrentUserService.class);
     private final CheckpointService checkpointService = mock(CheckpointService.class);
+    private final AiEvaluationService aiEvaluationService = mock(AiEvaluationService.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = standaloneSetup(new PaperController(documentService, paperService, citationValidationService, formatScanService, projectRepository, documentRepository, paperSectionRepository, instructorFeedbackRepository, feedbackRequestRepository, claimRepository, currentUserService, checkpointService))
+        mockMvc = standaloneSetup(new PaperController(documentService, paperService, citationValidationService, formatScanService, projectRepository, documentRepository, paperSectionRepository, instructorFeedbackRepository, feedbackRequestRepository, claimRepository, currentUserService, checkpointService, aiEvaluationService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -190,9 +194,42 @@ class PaperControllerTest {
     @Test
     void review_bindsTargetStyle() throws Exception {
         UUID id = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID jobId = UUID.randomUUID();
+        Document document = paperDocument(projectId);
+        document.setId(id);
+        User user = new User();
+        user.setId(userId);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(id)).thenReturn(Optional.of(document));
+        when(aiEvaluationService.submitPaperReview(projectId, id, "APA", userId))
+                .thenReturn(new JobSubmitResponse(jobId));
+
         mockMvc.perform(post("/api/papers/{id}/review", id).param("targetStyle", "APA"))
-                .andExpect(status().isOk());
-        verify(paperService).review(id, "APA");
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value(jobId.toString()));
+        verify(currentUserService).requireProjectAccess(user, document.getProject());
+        verify(aiEvaluationService).submitPaperReview(projectId, id, "APA", userId);
+    }
+
+    @Test
+    void review_authorizesBeforeSubmittingJob() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        Document document = paperDocument(projectId);
+        document.setId(id);
+        User user = new User();
+        user.setId(UUID.randomUUID());
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(id)).thenReturn(Optional.of(document));
+        doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "no access"))
+                .when(currentUserService).requireProjectAccess(user, document.getProject());
+
+        mockMvc.perform(post("/api/papers/{id}/review", id))
+                .andExpect(status().isForbidden());
+
+        verify(aiEvaluationService, never()).submitPaperReview(any(), any(), any(), any());
     }
 
     @Test

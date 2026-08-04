@@ -37,6 +37,8 @@ class AiReviewResponseTest {
                 AiReviewResponse.Severity.INFO).score()).isEqualTo(4);
         assertThat(finding(AiReviewResponse.FindingType.MISSING_CLAIM,
                 AiReviewResponse.Severity.CRITICAL).score()).isEqualTo(1);
+        assertThat(finding(AiReviewResponse.FindingType.STRUCTURE_GAP,
+                AiReviewResponse.Severity.INFO).score()).isEqualTo(2);
     }
 
     @Test

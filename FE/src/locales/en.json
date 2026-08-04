@@ -343,6 +343,7 @@
   ,"selectPaperFirst": "Select a paper first."
   ,"formatScanFailed": "Format scan failed."
   ,"aiReviewComplete": "AI review complete."
+  ,"aiProviderRateLimited": "The AI provider is rate limiting requests. Please retry later."
   ,"aiWorkerUnavailable": "The AI review worker is unavailable or timed out."
   ,"aiInvalidResponse": "AI review returned an invalid response after retrying."
   ,"aiReviewFailed": "AI review failed. Please retry."

@@ -39,6 +39,7 @@ public record AiReviewResponse(
         EXCESSIVE_CLAIMS,
         CLAIM_GAP,
         UNRESOLVED_FEEDBACK,
+        STRUCTURE_GAP,
         OTHER
     }
 
@@ -116,7 +117,8 @@ public record AiReviewResponse(
             };
             int base = switch (type) {
                 case ORPHANED_CLAIM -> 1;
-                case UNUSED_CLAIM, UNSUPPORTED_CLAIM, MISSING_CLAIM, CLAIM_GAP, EXCESSIVE_CLAIMS -> 2;
+                case UNUSED_CLAIM, UNSUPPORTED_CLAIM, MISSING_CLAIM, CLAIM_GAP,
+                        EXCESSIVE_CLAIMS, STRUCTURE_GAP -> 2;
                 case REDUNDANT_CLAIM, UNNECESSARY_CLAIM, UNRESOLVED_FEEDBACK -> 3;
                 case OTHER -> 4;
             };

@@ -5,6 +5,7 @@ import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,6 +14,10 @@ import java.util.UUID;
 import java.util.Optional;
 
 public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSpecificationExecutor<Document> {
+    @Override
+    @EntityGraph(attributePaths = "project")
+    Optional<Document> findById(UUID id);
+
     long countByActiveTrueAndDocType(DocumentType docType);
     long countByProcessingStatus(ProcessingStatus processingStatus);
     long countByCollectionId(UUID collectionId);

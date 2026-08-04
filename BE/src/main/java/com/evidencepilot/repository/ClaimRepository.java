@@ -4,6 +4,7 @@ import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.enums.FunctionalType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface ClaimRepository extends JpaRepository<Claim, UUID>, JpaSpecificationExecutor<Claim> {
+    @EntityGraph(attributePaths = {"project", "section", "section.document", "section.document.project"})
     List<Claim> findByProjectId(UUID projectId);
     List<Claim> findBySectionId(UUID sectionId);
     List<Claim> findByProjectIdAndSectionId(UUID projectId, UUID sectionId);

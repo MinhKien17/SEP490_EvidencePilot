@@ -2,6 +2,7 @@ package com.evidencepilot.repository;
 
 import com.evidencepilot.model.InstructorFeedback;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -16,5 +17,6 @@ public interface InstructorFeedbackRepository extends JpaRepository<InstructorFe
 
     long countByRequestIdAndAnsweredFalse(UUID requestId);
 
+    @EntityGraph(attributePaths = "section")
     List<InstructorFeedback> findByRequestProjectId(UUID projectId);
 }

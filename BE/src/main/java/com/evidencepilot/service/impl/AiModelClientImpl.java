@@ -8,6 +8,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -163,6 +164,11 @@ public class AiModelClientImpl implements AiModelClient {
             return call.execute();
         } catch (AiApiException e) {
             throw e;
+        } catch (RestClientResponseException e) {
+            int status = e.getStatusCode().value();
+            log.warn("AI endpoint {} returned HTTP {} at configured base URL {}.",
+                    endpoint, status, baseUrl);
+            throw new AiApiException(endpoint, status);
         } catch (RestClientException e) {
             log.warn("AI endpoint {} failed at configured base URL {}.", endpoint, baseUrl, e);
             throw new AiApiException(endpoint, 503, "AI model offline at " + baseUrl, e);

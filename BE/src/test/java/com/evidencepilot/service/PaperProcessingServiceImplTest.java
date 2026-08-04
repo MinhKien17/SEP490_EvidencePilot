@@ -32,9 +32,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -183,20 +187,57 @@ class PaperProcessingServiceImplTest {
         verify(currentUserService).requireProjectAccess(user, project);
         ArgumentCaptor<String> system = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
-        verify(aiModelClient, times(2)).generate(system.capture(), prompt.capture());
-        assertThat(system.getAllValues())
-                .anyMatch(value -> value.contains("List the ASSERTIONS"))
-                .anyMatch(value -> value.contains("Review this paper chunk"))
-                .allMatch(value -> !value.contains("Latest saved section content"));
-        assertThat(prompt.getAllValues())
-                .anyMatch(value -> value.contains("Latest saved section content")
-                        && value.contains("Verified source snippet")
-                        && value.contains("Clarify this claim.")
-                        && !value.contains("Stale extracted text")
-                        && !value.contains("Rejected source snippet"));
+        verify(aiModelClient).generate(system.capture(), prompt.capture());
+        assertThat(system.getValue())
+                .contains("Review the supplied paper data")
+                .doesNotContain("Latest saved section content");
+        assertThat(prompt.getValue())
+                .contains("Latest saved section content")
+                .contains(eligible.getDocumentChunk().getDocument().getId().toString())
+                .contains("Clarify this claim.")
+                .doesNotContain("Stale extracted text")
+                .doesNotContain("Verified source snippet")
+                .doesNotContain("Rejected source snippet");
         assertThat(response.complete()).isTrue();
         assertThat(response.coverage().sectionsScanned()).isEqualTo(1);
         assertThat(response.summary()).contains("checked 1/1 active Claims");
+    }
+
+    @Test
+    void backgroundReviewRejectsDocumentFromAnotherProject() {
+        Project project = project();
+        Document document = document(project);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+
+        assertThatThrownBy(() -> service().runReview(
+                document.getId(), UUID.randomUUID(), null, UUID.randomUUID()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("does not belong");
+
+        verify(userRepository, never()).findById(any());
+    }
+
+    @Test
+    void backgroundReviewDoesNotRequireSecurityContext() {
+        User requester = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(userRepository.findById(requester.getId())).thenReturn(Optional.of(requester));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenReturn(generated(validReviewJson()));
+
+        AiReviewResponse response = service().runReview(
+                document.getId(), project.getId(), null, requester.getId());
+
+        assertThat(response.complete()).isTrue();
+        org.mockito.Mockito.verifyNoInteractions(currentUserService);
     }
 
     @Test
@@ -217,13 +258,37 @@ class PaperProcessingServiceImplTest {
 
         assertThatThrownBy(() -> service().review(document.getId(), null))
                 .isInstanceOf(com.evidencepilot.exception.AiValidationException.class)
-                .hasMessageContaining("invalid assertions JSON");
+                .hasMessageContaining("invalid findings JSON");
         ArgumentCaptor<String> systems = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> prompts = ArgumentCaptor.forClass(String.class);
         verify(aiModelClient, times(2)).generate(systems.capture(), prompts.capture());
         assertThat(systems.getAllValues().get(0)).doesNotContain("previous response was invalid");
         assertThat(systems.getAllValues().get(1)).contains("previous response was invalid");
         assertThat(prompts.getAllValues()).containsOnly(prompts.getAllValues().get(0));
+    }
+
+    @Test
+    void reviewSurfacesProviderRateLimitWithoutRetry() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenThrow(new AiModelClient.AiApiException("/ai/generate", 429));
+
+        assertThatThrownBy(() -> service().review(document.getId(), null))
+                .isInstanceOfSatisfying(ResponseStatusException.class, error -> {
+                    assertThat(error.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+                    assertThat(error.getReason()).contains("rate limit");
+                });
+        verify(aiModelClient).generate(anyString(), anyString());
     }
 
     @Test
@@ -244,7 +309,7 @@ class PaperProcessingServiceImplTest {
 
         assertThatThrownBy(() -> service().review(document.getId(), null))
                 .isInstanceOf(com.evidencepilot.exception.AiValidationException.class)
-                .hasMessageContaining("invalid assertions JSON");
+                .hasMessageContaining("invalid findings JSON");
         verify(aiModelClient, times(2)).generate(anyString(), anyString());
     }
 
@@ -262,15 +327,12 @@ class PaperProcessingServiceImplTest {
                 .thenReturn(List.of());
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
         when(aiModelClient.generate(anyString(), anyString()))
-                .thenReturn(
-                        generated("{\"assertions\":[]}"),
-                        generated("null"),
-                        generated("null"));
+                .thenReturn(generated("null"));
 
         assertThatThrownBy(() -> service().review(document.getId(), null))
                 .isInstanceOf(com.evidencepilot.exception.AiValidationException.class)
                 .hasMessageContaining("invalid findings JSON");
-        verify(aiModelClient, times(3)).generate(anyString(), anyString());
+        verify(aiModelClient, times(2)).generate(anyString(), anyString());
     }
 
     @Test
@@ -287,15 +349,12 @@ class PaperProcessingServiceImplTest {
                 .thenReturn(List.of());
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
         when(aiModelClient.generate(anyString(), anyString()))
-                .thenReturn(
-                        generated("{\"assertions\":[]}"),
-                        generated("{}"),
-                        generated("{}"));
+                .thenReturn(generated("{}"));
 
         assertThatThrownBy(() -> service().review(document.getId(), null))
                 .isInstanceOf(com.evidencepilot.exception.AiValidationException.class)
                 .hasMessageContaining("invalid findings JSON");
-        verify(aiModelClient, times(3)).generate(anyString(), anyString());
+        verify(aiModelClient, times(2)).generate(anyString(), anyString());
     }
 
     @Test
@@ -346,7 +405,7 @@ class PaperProcessingServiceImplTest {
         assertThat(response.direction()).isEqualTo(AiReviewResponse.Direction.INSUFFICIENT_DATA);
         assertThat(response.coverage().totalSections()).isEqualTo(2);
         assertThat(response.coverage().sectionsScanned()).isEqualTo(1);
-        assertThat(response.reviewVersion()).isEqualTo("paper-claim-review-v6");
+        assertThat(response.reviewVersion()).isEqualTo("paper-claim-review-v8");
         assertThat(response.summary()).contains("Scanned 1/2 Sections");
         assertThat(response.rubricScore()).isNull();
         assertThat(response.passes()).isFalse();
@@ -372,8 +431,8 @@ class PaperProcessingServiceImplTest {
         var response = service().review(document.getId(), "IEEE");
 
         ArgumentCaptor<String> prompts = ArgumentCaptor.forClass(String.class);
-        verify(aiModelClient, times(4)).generate(anyString(), prompts.capture());
-        assertThat(prompts.getAllValues()).anyMatch(prompt -> prompt.contains("TAIL_MARKER"));
+        verify(aiModelClient).generate(anyString(), prompts.capture());
+        assertThat(prompts.getValue()).contains("TAIL_MARKER");
         assertThat(response.coverage().totalChunks()).isEqualTo(2);
         assertThat(response.coverage().chunksScanned()).isEqualTo(2);
     }
@@ -401,17 +460,15 @@ class PaperProcessingServiceImplTest {
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of(claim));
         when(evidenceFilterService.activeMappings(claim)).thenReturn(List.of());
         when(claimContentConsistencyService.evaluate(claim)).thenReturn(ClaimContentStatus.PRESENT);
-        when(aiModelClient.generate(anyString(), anyString())).thenAnswer(invocation -> {
-            String system = invocation.getArgument(0);
-            return generated(system.contains("List the ASSERTIONS")
-                    ? "{\"assertions\":[\"The system processes documents asynchronously.\"]}"
-                    : validReviewJson());
-        });
-        when(aiModelClient.generateEmbeddings(any())).thenAnswer(invocation -> {
-            List<String> texts = invocation.getArgument(0);
-            return texts.stream().map(text -> text.contains("object storage")
-                    ? List.of(1f, 0f) : List.of(0f, 1f)).toList();
-        });
+        when(aiModelClient.generate(anyString(), anyString())).thenReturn(generated("""
+                {"summary":"A Claim is missing.","findings":[{
+                  "type":"MISSING_CLAIM","severity":"WARNING","claimId":null,
+                  "sectionId":"%s","sourceIds":[],"feedbackIds":[],
+                  "excerpt":"The system processes documents asynchronously.",
+                  "message":"Assertion has no corresponding Claim.",
+                  "recommendedAction":"Create a Claim and attach evidence."
+                }]}
+                """.formatted(section.getId())));
 
         var response = service().review(document.getId(), null);
 
@@ -420,6 +477,36 @@ class PaperProcessingServiceImplTest {
                         == com.evidencepilot.dto.response.AiReviewResponse.FindingType.MISSING_CLAIM
                         && section.getId().equals(finding.sectionId())
                         && finding.excerpt().contains("asynchronously"));
+        verify(aiModelClient, never()).generateEmbeddings(any());
+    }
+
+    @Test
+    void reviewDropsHallucinatedReferencesWithoutRetryingValidFindings() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(aiModelClient.generate(anyString(), anyString())).thenReturn(generated("""
+                {"summary":"Review complete.","findings":[{
+                  "type":"MISSING_CLAIM","severity":"WARNING","claimId":null,
+                  "sectionId":"%s","sourceIds":["%s"],"feedbackIds":[],
+                  "excerpt":"A result.","message":"The result has no Claim.",
+                  "recommendedAction":"Create a Claim."
+                }]}
+                """.formatted(section.getId(), section.getId())));
+
+        AiReviewResponse response = service().review(document.getId(), null);
+
+        assertThat(response.findings()).singleElement()
+                .satisfies(finding -> assertThat(finding.sourceIds()).isEmpty());
+        verify(aiModelClient).generate(anyString(), anyString());
     }
 
     @Test
@@ -444,22 +531,15 @@ class PaperProcessingServiceImplTest {
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of(claim));
         when(evidenceFilterService.activeMappings(claim)).thenReturn(List.of());
         when(claimContentConsistencyService.evaluate(claim)).thenReturn(ClaimContentStatus.PRESENT);
-        when(aiModelClient.generate(anyString(), anyString())).thenAnswer(invocation -> {
-            String system = invocation.getArgument(0);
-            return generated(system.contains("List the ASSERTIONS")
-                    ? "{\"assertions\":[\"The system processes documents asynchronously.\"]}"
-                    : validReviewJson());
-        });
-        when(aiModelClient.generateEmbeddings(any())).thenAnswer(invocation -> {
-            List<String> texts = invocation.getArgument(0);
-            return texts.stream().map(text -> List.of(1f, 1f)).toList();
-        });
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenReturn(generated(validReviewJson()));
 
         var response = service().review(document.getId(), null);
 
         assertThat(response.findings())
                 .noneMatch(finding -> finding.type()
                         == com.evidencepilot.dto.response.AiReviewResponse.FindingType.MISSING_CLAIM);
+        verify(aiModelClient, never()).generateEmbeddings(any());
     }
 
     @Test
@@ -515,11 +595,11 @@ class PaperProcessingServiceImplTest {
         var response = service().review(document.getId(), null);
 
         assertThat(response.complete()).isTrue();
-        verify(aiModelClient, times(2)).generate(anyString(), anyString());
+        verify(aiModelClient).generate(anyString(), anyString());
     }
 
     @Test
-    void reviewDropsAiEmittedDeterministicFindings() {
+    void reviewDropsAiEmittedDeterministicAndUngroundedOtherFindings() {
         User user = user();
         Project project = project();
         Document document = document(project);
@@ -539,33 +619,224 @@ class PaperProcessingServiceImplTest {
         when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of(claim));
         when(evidenceFilterService.activeMappings(claim)).thenReturn(List.of());
         when(claimContentConsistencyService.evaluate(claim)).thenReturn(ClaimContentStatus.PRESENT);
-        when(aiModelClient.generate(anyString(), anyString())).thenAnswer(invocation -> {
-            String system = invocation.getArgument(0);
-            if (system.contains("List the ASSERTIONS")) {
-                return generated("{\"assertions\":[]}");
-            }
-            return generated("""
+        when(aiModelClient.generate(anyString(), anyString())).thenReturn(generated("""
                     {
+                      "summary":"Claim review",
                       "findings":[
                         {"type":"UNUSED_CLAIM","severity":"WARNING","claimId":"%s",
                          "sectionId":"%s","sourceIds":[],"feedbackIds":[],"excerpt":"",
                          "message":"AI duplicate","recommendedAction":"ignore"},
                         {"type":"REDUNDANT_CLAIM","severity":"WARNING","claimId":"%s",
                          "sectionId":"%s","sourceIds":[],"feedbackIds":[],"excerpt":"",
-                         "message":"Duplicate claim","recommendedAction":"keep one"}
+                         "message":"Duplicate claim","recommendedAction":"keep one"},
+                        {"type":"OTHER","severity":"WARNING","claimId":null,
+                         "sectionId":"%s","sourceIds":[],"feedbackIds":[],"excerpt":"typo",
+                         "message":"General writing issue","recommendedAction":"rewrite"}
                       ]
                     }
                     """.formatted(
-                            claim.getId(), section.getId(), claim.getId(), section.getId()));
-        });
+                            claim.getId(), section.getId(), claim.getId(), section.getId(),
+                            section.getId())));
 
         var response = service().review(document.getId(), null);
 
         assertThat(response.findings())
                 .noneMatch(finding -> finding.type()
                         == com.evidencepilot.dto.response.AiReviewResponse.FindingType.UNUSED_CLAIM)
+                .noneMatch(finding -> finding.type()
+                        == com.evidencepilot.dto.response.AiReviewResponse.FindingType.OTHER)
                 .anyMatch(finding -> finding.type()
                         == com.evidencepilot.dto.response.AiReviewResponse.FindingType.REDUNDANT_CLAIM);
+    }
+
+    @Test
+    void reviewKeepsSemanticDuplicateButDropsAiCopyOfExactDuplicate() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        Claim first = claim(project, section, "The model improves retrieval accuracy.");
+        Claim exact = claim(project, section, "  the model improves retrieval accuracy.  ");
+        Claim semantic = claim(project, section, "Retrieval results become more accurate.");
+        ClaimEvidenceMapping activeMapping = mapping("not sent to review", MappingStatus.ACTIVE);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId()))
+                .thenReturn(List.of(first, exact, semantic));
+        when(evidenceFilterService.activeMappings(any(Claim.class)))
+                .thenReturn(List.of(activeMapping));
+        when(claimContentConsistencyService.evaluate(any(Claim.class)))
+                .thenReturn(ClaimContentStatus.PRESENT);
+        when(aiModelClient.generate(anyString(), anyString())).thenReturn(generated("""
+                {"summary":"Duplicate review","findings":[
+                  {"type":"REDUNDANT_CLAIM","severity":"WARNING","claimId":"%s",
+                   "sectionId":"%s","sourceIds":[],"feedbackIds":[],"excerpt":"",
+                   "message":"AI repeats the exact duplicate.","recommendedAction":"Keep one."},
+                  {"type":"REDUNDANT_CLAIM","severity":"WARNING","claimId":"%s",
+                   "sectionId":"%s","sourceIds":[],"feedbackIds":[],"excerpt":"",
+                   "message":"This Claim has the same meaning.","recommendedAction":"Merge them."}
+                ]}
+                """.formatted(
+                        exact.getId(), section.getId(), semantic.getId(), section.getId())));
+
+        AiReviewResponse response = service().review(document.getId(), null);
+
+        assertThat(response.findings().stream()
+                .filter(finding -> finding.type() == AiReviewResponse.FindingType.REDUNDANT_CLAIM)
+                .toList())
+                .hasSize(2)
+                .anyMatch(finding -> exact.getId().equals(finding.claimId())
+                        && finding.message().contains("duplicates stored Claim"))
+                .anyMatch(finding -> semantic.getId().equals(finding.claimId())
+                        && finding.message().contains("same meaning"));
+    }
+
+    @Test
+    void reviewCapsPrioritizedAiFindingsButKeepsDeterministicFindings() throws Exception {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        List<PaperSection> sections = new ArrayList<>();
+        List<AiReviewResponse.Finding> generatedFindings = new ArrayList<>();
+        for (int index = 0; index < 17; index++) {
+            PaperSection section = section(document);
+            section.setSectionOrder(index);
+            section.setSectionTitle("Section " + index);
+            sections.add(section);
+            generatedFindings.add(finding(
+                    AiReviewResponse.FindingType.CLAIM_GAP,
+                    AiReviewResponse.Severity.INFO,
+                    section,
+                    "Info " + index));
+            generatedFindings.add(finding(
+                    AiReviewResponse.FindingType.UNNECESSARY_CLAIM,
+                    AiReviewResponse.Severity.WARNING,
+                    section,
+                    "Unnecessary " + index));
+            generatedFindings.add(finding(
+                    AiReviewResponse.FindingType.CLAIM_GAP,
+                    AiReviewResponse.Severity.CRITICAL,
+                    section,
+                    "Critical " + index));
+            generatedFindings.add(finding(
+                    AiReviewResponse.FindingType.MISSING_CLAIM,
+                    AiReviewResponse.Severity.WARNING,
+                    section,
+                    "Missing " + index));
+        }
+        Claim unsupported = claim(project, sections.get(0), "Stored Claim");
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(sections);
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of(unsupported));
+        when(evidenceFilterService.activeMappings(unsupported)).thenReturn(List.of());
+        when(claimContentConsistencyService.evaluate(unsupported))
+                .thenReturn(ClaimContentStatus.PRESENT);
+        when(aiModelClient.generate(anyString(), anyString())).thenReturn(generated(
+                objectMapper.writeValueAsString(Map.of(
+                        "summary", "Prioritized findings",
+                        "findings", generatedFindings))));
+
+        AiReviewResponse response = service().review(document.getId(), null);
+
+        List<AiReviewResponse.Finding> aiFindings = response.findings().stream()
+                .filter(finding -> finding.type() != AiReviewResponse.FindingType.UNSUPPORTED_CLAIM)
+                .toList();
+        assertThat(aiFindings).hasSize(50);
+        assertThat(aiFindings.stream().collect(java.util.stream.Collectors.groupingBy(
+                AiReviewResponse.Finding::sectionId,
+                java.util.stream.Collectors.counting())).values())
+                .allMatch(count -> count <= 3);
+        assertThat(aiFindings.stream()
+                .filter(finding -> sections.get(0).getId().equals(finding.sectionId()))
+                .map(AiReviewResponse.Finding::type))
+                .containsExactlyInAnyOrder(
+                        AiReviewResponse.FindingType.CLAIM_GAP,
+                        AiReviewResponse.FindingType.MISSING_CLAIM,
+                        AiReviewResponse.FindingType.UNNECESSARY_CLAIM);
+        assertThat(response.findings())
+                .hasSize(51)
+                .anyMatch(finding -> finding.type()
+                        == AiReviewResponse.FindingType.UNSUPPORTED_CLAIM);
+    }
+
+    @Test
+    void oversizedPaperReviewsSectionsSequentiallyThenSynthesizes() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection first = section(document);
+        first.setSectionTitle("First");
+        first.setContentTex("a".repeat(30_000));
+        PaperSection second = section(document);
+        second.setSectionOrder(1);
+        second.setSectionTitle("Second");
+        second.setContentTex("b".repeat(30_000));
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(first, second));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenAnswer(generationAnswers());
+
+        AiReviewResponse response = service().review(document.getId(), null);
+
+        ArgumentCaptor<String> systems = ArgumentCaptor.forClass(String.class);
+        verify(aiModelClient, times(3)).generate(systems.capture(), anyString());
+        assertThat(systems.getAllValues())
+                .filteredOn(system -> system.contains("Review the supplied Section"))
+                .hasSize(2);
+        assertThat(systems.getAllValues())
+                .anyMatch(system -> system.contains("Synthesize the ordered Section"));
+        assertThat(response.complete()).isTrue();
+        assertThat(response.coverage().sectionsScanned()).isEqualTo(2);
+        assertThat(response.coverage().chunksScanned())
+                .isEqualTo(response.coverage().totalChunks());
+    }
+
+    @Test
+    void failedSectionDoesNotStopLaterSectionsAndPartialReviewIsNotCached() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection first = section(document);
+        first.setSectionTitle("First");
+        first.setContentTex("a".repeat(30_000));
+        PaperSection second = section(document);
+        second.setSectionOrder(1);
+        second.setSectionTitle("Second");
+        second.setContentTex("b".repeat(30_000));
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(first, second));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+                generated("not-json"),
+                generated("still-not-json"),
+                generated(validReviewJson()),
+                generated(validReviewJson()));
+
+        AiReviewResponse response = service().review(document.getId(), null);
+
+        assertThat(response.complete()).isFalse();
+        assertThat(response.direction()).isEqualTo(AiReviewResponse.Direction.INSUFFICIENT_DATA);
+        assertThat(response.coverage().sectionsScanned()).isEqualTo(1);
+        assertThat(response.limitations()).anyMatch(value -> value.contains("First"));
+        verify(aiModelClient, times(4)).generate(anyString(), anyString());
+        verify(reviewSnapshotRepository, never()).save(any());
     }
 
     @Test
@@ -1001,6 +1272,34 @@ class PaperProcessingServiceImplTest {
         return section;
     }
 
+    private Claim claim(Project project, PaperSection section, String content) {
+        Claim claim = new Claim();
+        claim.setId(UUID.randomUUID());
+        claim.setProject(project);
+        claim.setSection(section);
+        claim.setContent(content);
+        claim.setClaimVersion(1);
+        claim.setActive(true);
+        return claim;
+    }
+
+    private AiReviewResponse.Finding finding(
+            AiReviewResponse.FindingType type,
+            AiReviewResponse.Severity severity,
+            PaperSection section,
+            String message) {
+        return new AiReviewResponse.Finding(
+                type,
+                severity,
+                null,
+                section.getId(),
+                List.of(),
+                List.of(),
+                "",
+                message,
+                "Fix this issue.");
+    }
+
     private ClaimEvidenceMapping mapping(String snippet, MappingStatus status) {
         Document source = new Document();
         source.setId(UUID.randomUUID());
@@ -1022,19 +1321,15 @@ class PaperProcessingServiceImplTest {
     private String validReviewJson() {
         return """
                 {
+                  "summary":"No priority Claim issues found.",
                   "findings":[]
                 }
                 """;
     }
 
     private org.mockito.stubbing.Answer<AiModelClient.GenerationResult> generationAnswers() {
-        return invocation -> {
-            String system = invocation.getArgument(0);
-            String response = system.contains("List the ASSERTIONS")
-                    ? "{\"assertions\":[]}"
-                    : validReviewJson();
-            return new AiModelClient.GenerationResult("ollama", "qwen3.5:9b", response);
-        };
+        return invocation -> new AiModelClient.GenerationResult(
+                "ollama", "qwen3.5:9b", validReviewJson());
     }
 
     private AiModelClient.GenerationResult generated(String response) {

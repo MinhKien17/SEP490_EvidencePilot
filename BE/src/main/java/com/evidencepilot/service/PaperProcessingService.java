@@ -24,6 +24,9 @@ public interface PaperProcessingService {
 
     AiReviewResponse review(UUID documentId, String targetStyle);
 
+    AiReviewResponse runReview(
+            UUID documentId, UUID projectId, String targetStyle, UUID requestedByUserId);
+
     PaperValidationResponse validateSections(UUID documentId);
 
     PaperSectionResponse updateSection(UUID documentId, UUID sectionId, String title, Integer order, UUID mergeIntoId, String content);
