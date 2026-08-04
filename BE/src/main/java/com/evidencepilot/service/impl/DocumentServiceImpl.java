@@ -26,9 +26,13 @@ import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
 
+import com.evidencepilot.client.openalex.OpenAlexClient;
+import com.evidencepilot.dto.openalex.OpenAlexWorkResponse;
 import com.evidencepilot.service.CurrentUserService;
+import com.evidencepilot.service.DocumentObjectStorage;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.dto.request.PagingRequest;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
@@ -80,6 +84,9 @@ public class DocumentServiceImpl implements DocumentService {
     private final DocumentPersistenceService documentPersistenceService;
     private final DocumentMapper documentMapper;
     private final MinioClient minioClient;
+    private final DocumentObjectStorage documentObjectStorage;
+    private final OpenAlexClient openAlexClient;
+    private final ObjectMapper objectMapper;
 
     @PostConstruct
     void ensureBucketExists() {
@@ -170,7 +177,15 @@ public class DocumentServiceImpl implements DocumentService {
                 page, size, sort, DOCUMENT_SORT_FIELDS, "createdAt,desc");
         var results = documentRepository.findAll(
                 collectionSourceSpec(collectionId, q), pageable);
-        return PagedResponse.from(results.map(DocumentResponse::from));
+        // ponytail: per-doc query for shared project links — fine at collection scale,
+        // batch via findByDocumentIdIn if collections ever grow large
+        var pageContent = results.map(doc -> DocumentResponse.from(
+                doc,
+                projectDocumentRepository.findByDocumentId(doc.getId()).stream()
+                        .map(ProjectDocument::getProject)
+                        .map(Project::getId)
+                        .toList()));
+        return PagedResponse.from(pageContent);
     }
 
     @Override
@@ -347,6 +362,8 @@ public class DocumentServiceImpl implements DocumentService {
         pd.setSharedBy(currentUser);
         pd.setSharedAt(LocalDateTime.now());
         projectDocumentRepository.save(pd);
+
+        refreshProjectStatus(project);
 
         String score = "MEDIUM";
         String explanation = "Document shared to project \"" + project.getTitle() + "\"";
@@ -629,7 +646,10 @@ public class DocumentServiceImpl implements DocumentService {
                 .isEmpty();
         boolean hasSource = !documentRepository
                 .findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.SOURCE)
-                .isEmpty();
+                .isEmpty()
+                || projectDocumentRepository
+                        .existsByProjectIdAndDocument_DocTypeAndDocument_ActiveTrue(
+                                project.getId(), DocumentType.SOURCE);
         ProjectStatus status;
         if (hasPaper && hasSource) {
             status = ProjectStatus.IN_PROGRESS;
@@ -763,5 +783,49 @@ public class DocumentServiceImpl implements DocumentService {
                     HttpStatus.UNSUPPORTED_MEDIA_TYPE,
                     "Only PDF, DOCX, and Markdown files are supported");
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> getDiagnostics(UUID id) {
+        Document doc = documentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException(id, "Document"));
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", doc.getId());
+        result.put("originalFilename", doc.getOriginalFilename());
+        result.put("title", doc.getTitle());
+        result.put("doi", doc.getDoi());
+        result.put("docType", doc.getDocType() != null ? doc.getDocType().name() : null);
+        result.put("processingStatus", doc.getProcessingStatus() != null ? doc.getProcessingStatus().name() : null);
+        result.put("chunkCount", doc.getChunkCount());
+        result.put("createdAt", doc.getCreatedAt() != null ? doc.getCreatedAt().toString() : null);
+        result.put("processedAt", doc.getProcessedAt() != null ? doc.getProcessedAt().toString() : null);
+        result.put("projectName", doc.getProject() != null ? doc.getProject().getTitle() : null);
+        result.put("processingError", doc.getProcessingError());
+
+        if (doc.getDoi() != null && !doc.getDoi().isBlank()) {
+            try {
+                OpenAlexWorkResponse work = openAlexClient.fetchWork(doc.getDoi());
+                result.put("openAlexRaw", objectMapper.convertValue(work, Map.class));
+            } catch (Exception e) {
+                result.put("openAlexError", e.getMessage());
+            }
+        }
+
+        String checkpointKey = "documents/processed/" + doc.getId() + "/extraction.json";
+        if (documentObjectStorage.exists(checkpointKey)) {
+            try {
+                result.put("extractionAvailable", true);
+                result.put("extractionJson", objectMapper.readValue(
+                        documentObjectStorage.readText(checkpointKey), Map.class));
+            } catch (Exception e) {
+                result.put("extractionAvailable", false);
+                result.put("extractionError", e.getMessage());
+            }
+        } else {
+            result.put("extractionAvailable", false);
+        }
+        return result;
     }
 }

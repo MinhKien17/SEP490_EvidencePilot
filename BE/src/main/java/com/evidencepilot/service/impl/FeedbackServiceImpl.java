@@ -109,7 +109,11 @@ public class FeedbackServiceImpl implements FeedbackService {
         if (student == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project has no student.");
         }
-        claimContentConsistencyService.requireAllPresent(projectId);
+        try {
+            claimContentConsistencyService.requireAllPresent(projectId);
+        } catch (ResponseStatusException e) {
+            log.warn("Claims missing from sections for project {}: {}", projectId, e.getReason());
+        }
 
         List<Document> papers = documentRepository
                 .findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.PAPER);

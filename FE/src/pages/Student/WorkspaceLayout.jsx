@@ -13,8 +13,6 @@ import ContextPanel from './ContextPanel.jsx';
 import FullPaperPreview from './FullPaperPreview.jsx';
 import { hasActiveExtraction } from './extractionPolling.js';
 
-const DEFAULT_SAMPLE_LATEX = `% Select a paper from the file panel to start editing.`;
-
 async function loadAllProjectSources(projectId) {
   const sources = [];
   let page = 0;
@@ -31,6 +29,7 @@ async function loadAllProjectSources(projectId) {
 }
 
 export default function WorkspaceLayout() {
+  const compactAtLoad = typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches;
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { logout, user, role } = useAuth();
@@ -68,8 +67,9 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const [editorWidth, setEditorWidth] = useState(50);
   const [fileTreeWidth, setFileTreeWidth] = useState(256);
   const [rightDrawerWidth, setRightDrawerWidth] = useState(380);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(true);
-  const [isFileTreeOpen, setIsFileTreeOpen] = useState(true);
+  const [isCompactWorkspace, setIsCompactWorkspace] = useState(compactAtLoad);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(!compactAtLoad);
+  const [isFileTreeOpen, setIsFileTreeOpen] = useState(!compactAtLoad);
   const [textSize, setTextSize] = useState(14);
   const [codeHistory, setCodeHistory] = useState(['']);
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -167,7 +167,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const handleSelectSection = (sec) => {
     const current = selectedSectionIdRef.current;
     if (current && current !== sec.id && dirtySectionsRef.current.has(current)) {
-      if (!window.confirm('You have unsaved changes in this section. Switch anyway?')) return;
+      if (!window.confirm(t('unsavedSectionSwitch'))) return;
       dirtySectionsRef.current.delete(current);
     }
     selectSection(sec.id);
@@ -177,7 +177,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const handleSelectPaper = (p) => {
     const current = selectedSectionIdRef.current;
     if (current && dirtySectionsRef.current.has(current)) {
-      if (!window.confirm('You have unsaved changes. Switch paper anyway?')) return;
+      if (!window.confirm(t('unsavedPaperSwitch'))) return;
       dirtySectionsRef.current.delete(current);
     }
     setSelectedPaper(p);
@@ -185,7 +185,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     loadCode('');
   };
 
-  const displayContent = selectedPaper ? codeContent : DEFAULT_SAMPLE_LATEX;
+  const displayContent = selectedPaper ? codeContent : `% ${t('noPaper')}`;
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -197,7 +197,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       if (shouldAbort?.()) return null;
       const { data: job } = await api.get(`/api/jobs/${jobId}`);
       if (job.status === 'SUCCESS') return job;
-      if (job.status === 'FAILED') throw new Error(job.errorMessage || 'AI evaluation failed.');
+      if (job.status === 'FAILED') throw new Error(job.errorMessage || t('aiEvaluationFailed'));
       await new Promise((resolve) => setTimeout(resolve, 1500));
     }
   };
@@ -349,7 +349,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       e.returnValue = '';
     };
     const onHidden = () => {
-      if (dirtySectionsRef.current.size > 0) showToast('You have unsaved changes.');
+      if (dirtySectionsRef.current.size > 0) showToast(t('unsavedChanges'));
     };
     window.addEventListener('beforeunload', warn);
     document.addEventListener('visibilitychange', onHidden);
@@ -430,7 +430,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   );
   const requireEditableCurrentSection = () => {
     if (canEditCurrentSection) return true;
-    showToast('This section is read-only.');
+    showToast(t('readOnlySection'));
     return false;
   };
 
@@ -483,10 +483,10 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
             setNotifications(prev => [n, ...prev]);
             setUnreadCount(c => c + 1);
             if (n.actionType === 'EXPORT_READY') {
-              showToast('Export is ready for download!');
+              showToast(t('exportReady'));
               if (project) fetchExports();
             } else {
-              showToast(n.message || 'New notification');
+              showToast(n.message || t('newNotification'));
             }
           } catch (e) { console.warn('Bad notification payload:', e); }
         });
@@ -508,7 +508,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       await api.patch(`/api/notifications/${id}/read`);
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
       setUnreadCount(c => Math.max(0, c - 1));
-    } catch { showToast('Failed to mark notification as read.'); }
+    } catch { showToast(t('markNotificationFailed')); }
   };
 
   const handleExportTexArchive = async () => {
@@ -519,10 +519,8 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       const a = document.createElement('a'); a.href = url; a.download = `papers-${project?.title || 'export'}.zip`;
       a.click(); URL.revokeObjectURL(url);
       const warningCount = Number(r.headers?.['x-claim-warning-count'] || 0);
-      showToast(warningCount > 0
-        ? `Downloaded with ${warningCount} Claim usage warning${warningCount > 1 ? 's' : ''}; see CLAIM_WARNINGS.md.`
-        : 'Downloaded paper archive.');
-    } catch { showToast('Export failed.'); }
+      showToast(warningCount > 0 ? t('downloadWithWarnings', { count: warningCount }) : t('paperArchiveDownloaded'));
+    } catch { showToast(t('exportFailed')); }
   };
 
   const fetchExports = useCallback(async () => {
@@ -538,24 +536,24 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   // CRUD handlers
   const handleUploadPaper = async (file) => {
     if (!file || !project) return;
-    showToast(`Uploading ${file.name}...`);
+    showToast(t('uploadingFile', { name: file.name }));
     const fd = new FormData();
     fd.append('file', file); fd.append('projectId', project.id);
     try {
       await api.post('/api/papers', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      showToast("Paper uploaded.");
+      showToast(t('paperUploaded'));
       const r = await api.get(`/api/projects/${project.id}/papers`);
       const list = r.data || [];
       setPapers(list);
       if (list.length > 0) { setSelectedPaper(list[list.length - 1]); loadCode(''); }
-    } catch { showToast("Upload failed."); }
+    } catch { showToast(t('uploadFailed')); }
   };
 
   const handleDeletePaper = async (paperId) => {
-    if (!window.confirm("Delete this draft?")) return;
+    if (!window.confirm(t('deletePaperConfirm'))) return;
     try {
       await api.delete(`/api/papers/${paperId}`);
-      showToast("Paper deleted.");
+      showToast(t('paperDeleted'));
       const r = await api.get(`/api/projects/${project.id}/papers`);
       const list = r.data || [];
       setPapers(list);
@@ -563,59 +561,59 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         if (list.length > 0) { setSelectedPaper(list[0]); loadCode(''); }
         else { setSelectedPaper(null); loadCode(''); }
       }
-    } catch { showToast("Delete failed."); }
+    } catch { showToast(t('deleteFailed')); }
   };
 
   const handleUploadSource = async (file) => {
-    if (isLocked) { showToast("Project is locked."); return; }
+    if (isLocked) { showToast(t('projectLocked')); return; }
     if (!file || !project || !user) return;
-    showToast(`Uploading ${file.name}...`);
+    showToast(t('uploadingFile', { name: file.name }));
     const fd = new FormData();
     fd.append('file', file); fd.append('projectId', project.id);
     try {
       await api.post('/api/sources', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      showToast("Source uploaded.");
+      showToast(t('sourceUploaded'));
       setSources(await loadAllProjectSources(project.id));
       const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
       setGraphData(g.data);
-    } catch { showToast("Upload failed."); }
+    } catch { showToast(t('uploadFailed')); }
   };
 
   const handleDeleteSource = async (sourceId) => {
-    if (!window.confirm("Delete this source?")) return;
+    if (!window.confirm(t('deleteConfirm'))) return;
     try {
       await api.delete(`/api/documents/${sourceId}`);
-      showToast("Source deleted.");
+      showToast(t('sourceDeleted'));
       setSources(await loadAllProjectSources(project.id));
       const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
       setGraphData(g.data);
     } catch (err) {
-      showToast(err?.response?.data?.message || "Delete failed.");
+      showToast(err?.response?.data?.message || t('deleteFailed'));
     }
   };
 
   const handleUploadMedia = async (file) => {
-    if (isLocked) { showToast("Project is locked."); return; }
+    if (isLocked) { showToast(t('projectLocked')); return; }
     if (!file || !project) return;
-    showToast(`Uploading ${file.name}...`);
+    showToast(t('uploadingFile', { name: file.name }));
     const fd = new FormData();
     fd.append('file', file); fd.append('projectId', project.id);
     try {
       await api.post('/api/media', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      showToast("Media uploaded.");
+      showToast(t('mediaUploaded'));
       const r = await api.get(`/api/media/projects/${project.id}`);
       setMediaAssets(r.data || []);
-    } catch { showToast("Upload failed."); }
+    } catch { showToast(t('uploadFailed')); }
   };
 
   const handleDeleteMedia = async (mediaId) => {
-    if (!window.confirm("Delete this media?")) return;
+    if (!window.confirm(t('deleteMediaConfirm'))) return;
     try {
       await api.delete(`/api/media/${mediaId}`);
-      showToast("Media deleted.");
+      showToast(t('mediaDeleted'));
       const r = await api.get(`/api/media/projects/${project.id}`);
       setMediaAssets(r.data || []);
-    } catch { showToast("Delete failed."); }
+    } catch { showToast(t('deleteFailed')); }
   };
 
   const handleInsertMedia = (texFilename) => {
@@ -623,7 +621,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     const ed = editorRef.current;
     if (!ed) return;
     ed.insertAtCursor(`\\includegraphics{${texFilename}}`, 0);
-    showToast(`Inserted ${texFilename}`);
+    showToast(`${t('mediaInserted')} ${texFilename}`);
   };
 
   const handleNewClaimContentChange = (content) => {
@@ -637,12 +635,12 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   };
 
   const handleEvaluateClaim = async () => {
-    if (isLocked) { showToast("Project is locked."); return; }
+    if (isLocked) { showToast(t('projectLocked')); return; }
     const content = newClaimContent.trim();
-    if (!content) { showToast("Enter a Claim first."); return; }
-    if (!currentSection) { showToast("Select a section first."); return; }
+    if (!content) { showToast(t('enterClaimFirst')); return; }
+    if (!currentSection) { showToast(t('selectSectionFirst')); return; }
     if (!canEditSection(currentSection)) {
-      showToast("You cannot edit claims in this section.");
+      showToast(t('cannotEditClaims'));
       return;
     }
     const requestId = claimEvaluationRequestRef.current + 1;
@@ -681,13 +679,13 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   };
 
   const handleCreateClaim = async () => {
-    if (isLocked) { showToast("Project is locked."); return; }
+    if (isLocked) { showToast(t('projectLocked')); return; }
     if (creatingClaimRef.current) return;
     if (!newClaimContent.trim() || !project) return;
     const section = currentSection;
-    if (!section) { showToast("Select a section first."); return; }
+    if (!section) { showToast(t('selectSectionFirst')); return; }
     if (!canEditSection(section)) {
-      showToast("You cannot edit claims in this section.");
+      showToast(t('cannotEditClaims'));
       return;
     }
     const sectionId = selectedSectionId;
@@ -706,7 +704,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         await putSectionContent(sectionId, nextContent);
         dirtySectionsRef.current.delete(sectionId);
       }
-      showToast("Claim added.");
+      showToast(t('claimAdded'));
       setNewClaimContent('');
       setClaimEvaluation(null);
       setEvaluatedClaimContent('');
@@ -721,7 +719,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       setSections(sectionResponse.data || []);
       setGraphData(graphResponse.data);
       setClaimStats(statsResponse.data);
-    } catch { showToast("Add claim failed."); }
+    } catch { showToast(t('addClaimFailed')); }
     finally { creatingClaimRef.current = false; setCreatingClaim(false); }
   };
 
@@ -729,7 +727,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     if (!editingClaim || !editClaimContent.trim()) return;
     try {
       const updated = await api.put(`/api/claims/${editingClaim.id}`, { id: editingClaim.id, content: editClaimContent, active: true, aiConfidenceScore: editingClaim.aiConfidenceScore, functionalType: editClaimFunctionalType });
-      showToast("Claim updated.");
+      showToast(t('claimUpdated'));
       setEditingClaim(null); setEditClaimContent('');
       if (selectedClaim?.id === editingClaim.id) {
         setSelectedClaim(updated.data);
@@ -743,14 +741,14 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       setGraphData(g.data);
       const s = await api.get(`/api/projects/${project.id}/graph/claim-stats`);
       setClaimStats(s.data);
-    } catch { showToast("Update failed."); }
+    } catch { showToast(t('updateFailed')); }
   };
 
   const handleDeleteClaim = async (claimId) => {
-    if (!window.confirm("Delete this claim?")) return;
+    if (!window.confirm(t('deleteClaimConfirm'))) return;
     try {
       await api.delete(`/api/claims/${claimId}`);
-      showToast("Claim deleted.");
+      showToast(t('claimDeleted'));
       await fetchClaims();
       const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
       setGraphData(g.data);
@@ -763,22 +761,22 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         setClaimCandidates([]);
         setCandidateError('');
       }
-    } catch { showToast("Delete failed."); }
+    } catch { showToast(t('deleteFailed')); }
   };
 
   const handleAssignSection = async (sectionId, assignedUserId) => {
     if (!selectedPaper) return;
     try {
       await api.put(`/api/papers/${selectedPaper.id}/sections/${sectionId}/assign`, null, { params: { assignedUserId } });
-      showToast(assignedUserId ? 'Section assigned.' : 'Section unassigned.');
+      showToast(t(assignedUserId ? 'sectionAssigned' : 'sectionUnassigned'));
       const r = await api.get(`/api/papers/${selectedPaper.id}/sections`);
       setSections(r.data || []);
-    } catch { showToast('Assign failed.'); }
+    } catch { showToast(t('assignFailed')); }
   };
 
   const handleRollbackSection = async (sectionId) => {
     if (!selectedPaper) return;
-    if (!window.confirm('Restore this previous version?')) return;
+    if (!window.confirm(t('restoreConfirm'))) return;
     setRollingBack(true);
     try {
       const res = await api.post(`/api/papers/${selectedPaper.id}/sections/${sectionId}/rollback`);
@@ -788,9 +786,9 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         dirtySectionsRef.current.delete(updated.id);
         loadCode(updated.contentTex || '');
       }
-      showToast('Version restored.');
+      showToast(t('versionRestored'));
       setTimeout(() => { setShowHistoryModal(false); setRollingBack(false); }, 300);
-    } catch { showToast('Restore failed.'); setRollingBack(false); }
+    } catch { showToast(t('restoreFailed')); setRollingBack(false); }
   };
 
   const canEditClaim = (claim) => {
@@ -800,8 +798,8 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
   const handleSaveDraft = async () => {
     if (!requireEditableCurrentSection()) return false;
-    if (!selectedPaper) { showToast("No paper selected."); return false; }
-    if (!selectedSectionId) { showToast("No section selected."); return false; }
+    if (!selectedPaper) { showToast(t('noPaperSelected')); return false; }
+    if (!selectedSectionId) { showToast(t('noSectionSelected')); return false; }
     setSaveStatus('saving');
     const sectionId = selectedSectionId;
     const content = codeContentRef.current;
@@ -820,7 +818,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       setGraphData(graphResponse.data);
       setTimeout(() => setSaveStatus(''), 3000);
       return true;
-    } catch { setSaveStatus('error'); showToast("Save failed."); return false; }
+    } catch { setSaveStatus('error'); showToast(t('saveFailed')); return false; }
   };
 
   const [saveStatus, setSaveStatus] = useState('');
@@ -834,8 +832,8 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = `traceability-${project.title || 'export'}.json`;
       a.click(); URL.revokeObjectURL(url);
-      showToast('Downloaded traceability report.');
-    } catch { showToast('Export failed.'); }
+      showToast(t('traceabilityDownloaded'));
+    } catch { showToast(t('exportFailed')); }
   };
 
   const handleExportTraceabilityCsv = async () => {
@@ -845,8 +843,8 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       const url = URL.createObjectURL(r.data);
       const a = document.createElement('a'); a.href = url; a.download = `traceability-${project.title || 'export'}.csv`;
       a.click(); URL.revokeObjectURL(url);
-      showToast('Downloaded traceability CSV.');
-    } catch { showToast('Export failed.'); }
+      showToast(t('traceabilityCsvDownloaded'));
+    } catch { showToast(t('exportFailed')); }
   };
 
   const handleExportCsv = () => {
@@ -900,13 +898,11 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       if (candidateSearchRequestRef.current !== requestId) return;
       const candidates = response.data || [];
       setClaimCandidates(candidates);
-      showToast(candidates.length > 0
-        ? `Found ${candidates.length} source match${candidates.length > 1 ? 'es' : ''}.`
-        : 'No matches found. Check that source extraction is ready.');
+      showToast(candidates.length > 0 ? t('foundMatches', { count: candidates.length }) : t('noMatches'));
     } catch {
       if (candidateSearchRequestRef.current === requestId) {
-        setCandidateError('Find matches failed. Check that source extraction is ready.');
-        showToast("Find matches failed.");
+        setCandidateError(t('findMatchesFailedDetail'));
+        showToast(t('findMatchesFailed'));
       }
     }
     finally { if (candidateSearchRequestRef.current === requestId) setLoadingCandidates(false); }
@@ -928,7 +924,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       setClaimMappings(mappingResponse.data || []);
     } catch {
       if (matchFetchRequestRef.current !== requestId) return;
-      showToast("Fetch matches failed.");
+      showToast(t('fetchMatchesFailed'));
     }
     finally { if (matchFetchRequestRef.current === requestId) setLoadingMatches(false); }
   };
@@ -938,9 +934,9 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     try {
       const { data: submit } = await api.post(`/api/claims/${claimId}/suggestions/evaluate`, { documentChunkId });
       await pollAiJob(submit.jobId);
-      showToast("AI evaluation complete. Review it before accepting.");
+      showToast(t('aiEvaluationComplete'));
       await handleFetchMatches(claimId);
-    } catch (error) { showToast(error.message || "AI evaluation failed."); }
+    } catch (error) { showToast(error.message || t('aiEvaluationFailed')); }
     finally { setEvaluatingChunkId(null); }
   };
 
@@ -949,13 +945,13 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     setUpdatingSuggestionId(suggestionId);
     try {
       await api.patch(`/api/claims/suggestions/${suggestionId}/status`, null, { params: { status } });
-      showToast(status === 'ACCEPTED' ? 'Evidence accepted.' : 'Suggestion rejected.');
+      showToast(status === 'ACCEPTED' ? t('evidenceAccepted') : t('suggestionRejected'));
       await handleFetchMatches(selectedClaim.id);
       if (status === 'ACCEPTED') {
         const graph = await api.get(`/api/projects/${project.id}/graph?scope=${graphScopeRef.current}`);
         setGraphData(graph.data);
       }
-    } catch { showToast("Update suggestion failed."); }
+    } catch { showToast(t('updateSuggestionFailed')); }
     finally { setUpdatingSuggestionId(null); }
   };
 
@@ -971,7 +967,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     if (!sec) return;
     const current = selectedSectionIdRef.current;
     if (current && current !== claim.sectionId && dirtySectionsRef.current.has(current)) {
-      if (!window.confirm('You have unsaved changes in the current section. Switch anyway?')) {
+      if (!window.confirm(t('unsavedSectionSwitch'))) {
         return;
       }
       dirtySectionsRef.current.delete(current);
@@ -981,20 +977,20 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   };
 
   const handleScanCitations = async () => {
-    if (isLocked) { showToast("Project is locked."); return; }
-    if (!selectedPaper) { showToast("Select a paper first."); return; }
+    if (isLocked) { showToast(t('projectLocked')); return; }
+    if (!selectedPaper) { showToast(t('selectPaperFirst')); return; }
     setLoadingCitation(true);
     setCitationResult(null);
     try {
       const r = await api.get(`/api/papers/${selectedPaper.id}/format-scan`);
       setCitationResult(r.data);
-    } catch { showToast("Format scan failed."); }
+    } catch { showToast(t('formatScanFailed')); }
     finally { setLoadingCitation(false); }
   };
 
   const handleRunAiReview = async () => {
-    if (isLocked) { showToast("Project is locked."); return; }
-    if (!selectedPaper) { showToast("Select a paper first."); return; }
+    if (isLocked) { showToast(t('projectLocked')); return; }
+    if (!selectedPaper) { showToast(t('selectPaperFirst')); return; }
     if (aiReviewAbortRef.current) aiReviewAbortRef.current.abort();
     const controller = new AbortController();
     aiReviewAbortRef.current = controller;
@@ -1004,16 +1000,16 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     try {
       const r = await api.post(`/api/papers/${selectedPaper.id}/review`, null, { signal: controller.signal, timeout: 120000 });
       setAiReviewResult(r.data);
-      showToast("AI Review complete.");
+      showToast(t('aiReviewComplete'));
       if (project) fetchGraphData(project.id);
     } catch (error) {
       if (error.name === 'CanceledError' || controller.signal.aborted) return;
       const status = error.response?.status;
       const message = status === 503
-        ? 'AI Review worker is unavailable or timed out.'
+        ? t('aiWorkerUnavailable')
         : status === 502
-          ? 'AI Review returned an invalid response after retrying.'
-          : 'AI Review failed. Please retry.';
+          ? t('aiInvalidResponse')
+          : t('aiReviewFailed');
       setAiReviewError({ status, message });
       showToast(message);
     } finally { if (aiReviewAbortRef.current === controller) { aiReviewAbortRef.current = null; setLoadingAiReview(false); } }
@@ -1025,7 +1021,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     setShowSubmitReviewModal(false);
     if (canEditSection(sections.find(section => String(section.id) === String(selectedSectionId)))) {
       const saved = await handleSaveDraft();
-      if (!saved) { showToast("Save failed — submission cancelled."); return; }
+      if (!saved) { showToast(t('saveSubmissionCancelled')); return; }
     }
     let freshClaims = claims;
     try {
@@ -1033,19 +1029,13 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       freshClaims = claimResponse.data?.content || [];
       setClaims(freshClaims);
     } catch { console.warn('Failed to refresh claims before submission'); }
-    const blocked = freshClaims.filter(claim =>
-      claim.contentStatus && claim.contentStatus !== 'PRESENT');
-    if (blocked.length > 0) {
-      showToast(`Submission blocked: ${blocked.length} claim(s) missing from the owning section.`);
-      return;
-    }
     submittingReviewRef.current = true;
     setSubmittingReview(true);
     try {
       await api.post(`/api/projects/${project.id}/reviews`);
-      showToast("Submitted for review.");
+      showToast(t('submittedForReview'));
       await loadProjectData(project.id);
-    } catch { showToast("Submit failed."); }
+    } catch { showToast(t('submitFailed')); }
     finally { submittingReviewRef.current = false; setSubmittingReview(false); }
   };
 
@@ -1055,7 +1045,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     a.href = URL.createObjectURL(blob);
     a.download = selectedPaper ? `${selectedPaper.originalFilename?.replace(/\.pdf|\.docx/g, '') || 'document'}.tex` : 'document.tex';
     a.click(); URL.revokeObjectURL(a.href);
-    showToast('Downloaded .tex');
+    showToast(t('downloadedTex'));
   };
 
   const insertLatexTag = (tagType) => {
@@ -1093,14 +1083,14 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     if (!requireEditableCurrentSection()) return;
     if (!searchQuery) return;
     const text = codeContent;
-    if (replaceAll) { updateCode(text.replaceAll(searchQuery, replaceQuery)); showToast('Replaced all.'); return; }
+    if (replaceAll) { updateCode(text.replaceAll(searchQuery, replaceQuery)); showToast(t('replacedAll')); return; }
     const ta = document.getElementById('latex-textarea');
     if (ta) {
       const start = ta.selectionStart, end = ta.selectionEnd, selText = text.substring(start, end);
       if (selText === searchQuery) { updateCode(text.substring(0, start) + replaceQuery + text.substring(end)); setTimeout(() => { ta.focus(); ta.setSelectionRange(start, start + replaceQuery.length); }, 50); return; }
     }
     const idx = text.indexOf(searchQuery);
-    if (idx !== -1) { updateCode(text.substring(0, idx) + replaceQuery + text.substring(idx + searchQuery.length)); } else showToast('Not found.');
+    if (idx !== -1) { updateCode(text.substring(0, idx) + replaceQuery + text.substring(idx + searchQuery.length)); } else showToast(t('notFound'));
   };
 
   const generateRichTextHtml = (latexCode) => {
@@ -1138,7 +1128,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const renderModalPaperPdf = (paperName) => {
     const dbPaper = papers.find(p => p.filename === paperName || p.name === paperName);
     const content = dbPaper?.content || '';
-    if (!content) return <div className="text-center py-8 text-xs text-slate-400 italic">No content.</div>;
+    if (!content) return <div className="text-center py-8 text-xs text-slate-400 italic">{t('noContent')}</div>;
     const pages = content.split(/\\newpage|\\clearpage/);
     return pages.map((pageContent, pageIndex) => {
       const titleMatch = pageContent.match(/\\title\{([^}]+)\}/);
@@ -1177,6 +1167,26 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     .filter(claim => claim.contentStatus && claim.contentStatus !== 'PRESENT')
     .map(claim => ({ claimId: claim.id, type: claim.contentStatus }));
 
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 1023px)');
+    const syncLayout = ({ matches }) => {
+      setIsCompactWorkspace(matches);
+      setIsDrawerOpen(!matches);
+      setIsFileTreeOpen(!matches);
+    };
+    query.addEventListener('change', syncLayout);
+    return () => query.removeEventListener('change', syncLayout);
+  }, []);
+
+  const toggleFilePanel = () => setIsFileTreeOpen((open) => {
+    if (!open && isCompactWorkspace) setIsDrawerOpen(false);
+    return !open;
+  });
+  const toggleContextPanel = () => setIsDrawerOpen((open) => {
+    if (!open && isCompactWorkspace) setIsFileTreeOpen(false);
+    return !open;
+  });
+
   return (
     <div className="h-screen w-full flex flex-col bg-(--surface-secondary) overflow-hidden font-sans antialiased text-(--text-primary)">
       <WorkspaceHeader project={project} navigate={navigate} selectedPaper={selectedPaper} handleRunAiReview={handleRunAiReview} loadingAiReview={loadingAiReview} isLocked={isLocked} onShowHistory={() => setShowHistoryModal(true)} historyDisabled={assignedSections.length === 0}
@@ -1185,32 +1195,32 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
       {loadErrors.length > 0 && (
         <div className="flex items-center justify-between gap-4 px-4 py-2 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900 text-[11px] text-amber-900 dark:text-amber-200">
-          <span>Some areas failed to load: {loadErrors.join(', ')}. You can retry them from the file panel / right drawer.</span>
-          <button onClick={() => setLoadErrors([])} className="font-bold hover:underline cursor-pointer shrink-0">Dismiss</button>
+          <span>{t('someAreasFailed', { areas: loadErrors.map(area => t(area === 'media' ? 'mediaAssets' : area)).join(', ') })}</span>
+          <button onClick={() => setLoadErrors([])} className="font-bold hover:underline cursor-pointer shrink-0">{t('dismiss')}</button>
         </div>
       )}
 
-      <div id="workspace-container" className="flex-1 flex overflow-hidden">
+      <div id="workspace-container" className="relative flex-1 flex overflow-hidden min-w-0">
         <div data-tour="sidebar-left" className="w-14 bg-indigo-900 dark:bg-(--accent-bar) flex flex-col items-center py-4 shrink-0 z-20 border-r border-indigo-950 dark:border-(--border) shadow-[2px_0_8px_-2px_rgba(0,0,0,0.2)]">
-          <button onClick={() => setIsFileTreeOpen(!isFileTreeOpen)} className="w-full flex justify-center relative cursor-pointer mb-6 group outline-none" title="Toggle File Sidebar">
+          <button onClick={toggleFilePanel} className="w-full flex justify-center relative cursor-pointer mb-6 group outline-none" title={t('toggleFilePanel')} aria-pressed={isFileTreeOpen}>
             <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-r-md transition-colors ${isFileTreeOpen ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]' : 'bg-transparent'}`}></div>
             <svg className={`w-[22px] h-[22px] transition-colors ${isFileTreeOpen ? 'text-white' : 'text-indigo-300 group-hover:text-white'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
           </button>
-          <div onClick={() => setShowOverview(!showOverview)} className="w-full flex justify-center cursor-pointer mb-6 group relative" title="Overview">
+          <button onClick={() => setShowOverview(!showOverview)} className="w-full flex justify-center cursor-pointer mb-6 group relative" title={t('overview')} aria-pressed={showOverview}>
             <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-r-md transition-colors ${showOverview ? 'bg-indigo-400' : 'bg-transparent'}`}></div>
             <svg className={`w-[22px] h-[22px] transition-colors ${showOverview ? 'text-white' : 'text-indigo-300 group-hover:text-white'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-          </div>
-          <div onClick={() => setIsDrawerOpen(!isDrawerOpen)} className="w-full flex justify-center cursor-pointer mb-6 group relative" title="Toggle Right Drawer">
+          </button>
+          <button onClick={toggleContextPanel} className="w-full flex justify-center cursor-pointer mb-6 group relative" title={t('toggleContextPanel')} aria-pressed={isDrawerOpen}>
             <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-r-md transition-colors ${isDrawerOpen ? 'bg-indigo-400' : 'bg-transparent'}`}></div>
             <svg className={`w-[22px] h-[22px] transition-colors ${isDrawerOpen ? 'text-white' : 'text-indigo-300 group-hover:text-white'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-          </div>
+          </button>
         </div>
 
-        <FilePanel isOpen={isFileTreeOpen} width={fileTreeWidth} onResizeStart={handleLeftDividerMouseDown} sections={sections} assignedSections={assignedSections} selectedSectionId={selectedSectionId} onSelectSection={handleSelectSection} selectedPaper={selectedPaper} onSelectPaper={handleSelectPaper} papers={papers} onUploadPaper={isLocked ? undefined : handleUploadPaper} sources={sources} onUploadSource={isLocked ? undefined : handleUploadSource} onDeleteSource={handleDeleteSource} mediaAssets={mediaAssets} onUploadMedia={isLocked ? undefined : handleUploadMedia} onDeleteMedia={handleDeleteMedia} onInsertMedia={canEditCurrentSection ? handleInsertMedia : undefined} showToast={showToast} isLocked={isLocked} onSaveDraft={handleSaveDraft} saveStatus={saveStatus} />
+        <FilePanel compact={isCompactWorkspace} isOpen={isFileTreeOpen} width={fileTreeWidth} onResizeStart={handleLeftDividerMouseDown} sections={sections} assignedSections={assignedSections} selectedSectionId={selectedSectionId} onSelectSection={handleSelectSection} selectedPaper={selectedPaper} onSelectPaper={handleSelectPaper} papers={papers} onUploadPaper={isLocked ? undefined : handleUploadPaper} sources={sources} onUploadSource={isLocked ? undefined : handleUploadSource} onDeleteSource={handleDeleteSource} mediaAssets={mediaAssets} onUploadMedia={isLocked ? undefined : handleUploadMedia} onDeleteMedia={handleDeleteMedia} onInsertMedia={canEditCurrentSection ? handleInsertMedia : undefined} showToast={showToast} isLocked={isLocked} onSaveDraft={handleSaveDraft} saveStatus={saveStatus} />
 
-        <EditorPanel editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSections={assignedSections} canEditCurrentSection={canEditCurrentSection} currentSection={currentSection} displayContent={displayContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} handleScanCitations={handleScanCitations} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} isLocked={isLocked} />
+        <EditorPanel compact={isCompactWorkspace} editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSections={assignedSections} canEditCurrentSection={canEditCurrentSection} currentSection={currentSection} displayContent={displayContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} handleScanCitations={handleScanCitations} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} isLocked={isLocked} />
 
-        <ContextPanel isOpen={isDrawerOpen} width={rightDrawerWidth} onResizeStart={handleRightDividerMouseDown} activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); localStorage.setItem('student_workspace_active_tab', tab); }} showToast={showToast}
+        <ContextPanel compact={isCompactWorkspace} isOpen={isDrawerOpen} width={rightDrawerWidth} onResizeStart={handleRightDividerMouseDown} activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); localStorage.setItem('student_workspace_active_tab', tab); }} showToast={showToast}
           sources={sources} isUploading={isUploading} setIsUploading={setIsUploading} project={project} setViewerFile={setViewerFile} fetchSources={fetchSources} isLocked={isLocked}
           newClaimContent={newClaimContent} onNewClaimContentChange={handleNewClaimContentChange} newClaimFunctionalType={newClaimFunctionalType} setNewClaimFunctionalType={setNewClaimFunctionalType} claimEvaluation={claimEvaluation} evaluatingClaim={evaluatingClaim} claimEvaluationError={claimEvaluationError} handleEvaluateClaim={handleEvaluateClaim} canAddEvaluatedClaim={canAddEvaluatedClaim} handleCreateClaim={handleCreateClaim} canCreateClaim={canEditCurrentSection} creatingClaim={creatingClaim}
           claims={claims} selectedClaim={selectedClaim} claimMatches={claimMatches} claimMappings={claimMappings} loadingMatches={loadingMatches}
@@ -1229,7 +1239,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
             <div className="flex justify-between items-center px-6 py-4 border-b border-(--border-light) shrink-0">
               <h2 className="text-base font-bold text-(--text-primary) flex items-center gap-2">
                 <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                Version History
+                {t('versionHistory')}
               </h2>
               <button onClick={() => setShowHistoryModal(false)} className="text-(--text-tertiary) hover:text-(--text-secondary) transition-colors p-1 rounded-lg hover:bg-(--surface-tertiary)">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1237,7 +1247,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {assignedSections.length === 0 ? (
-                <div className="text-xs text-(--text-tertiary) italic text-center py-8">No section is assigned to you.</div>
+                <div className="text-xs text-(--text-tertiary) italic text-center py-8">{t('noAssignedHistory')}</div>
               ) : (() => {
                 const sec = sections.find(s => String(s.id) === String(selectedSectionId)) || assignedSections[0];
                 return sec ? (
@@ -1246,16 +1256,16 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                       <div className="border border-(--border) rounded-xl p-4 bg-(--surface-secondary)/50 hover:border-amber-300 transition-colors">
                         <div className="flex items-start justify-between mb-2">
                           <div>
-                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-full border border-amber-200">Version {sec.version}</span>
-                            <p className="text-[10px] text-(--text-tertiary) mt-1.5">Updated at: {sec.updatedAt ? new Date(sec.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Unknown'}</p>
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded-full border border-amber-200">{t('versionLabel', { version: sec.version })}</span>
+                            <p className="text-[10px] text-(--text-tertiary) mt-1.5">{t('updatedAtLabel', { date: sec.updatedAt ? new Date(sec.updatedAt).toLocaleString(i18n.language === 'vi' ? 'vi-VN' : 'en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : t('unknown') })}</p>
                           </div>
                         </div>
                         <p className="text-[11px] text-(--text-secondary) leading-relaxed font-mono bg-(--surface) rounded-lg p-2.5 border border-(--border-light)">{(sec.previousContentTex || '').substring(0, 140)}{(sec.previousContentTex || '').length > 140 ? '...' : ''}</p>
                         <button onClick={handleRollbackSection.bind(null, sec.id)} disabled={rollingBack} className="mt-3 w-full bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs font-bold px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer">
                           {rollingBack ? (
-                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></span> Restoring...</span>
+                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></span> {t('restoring')}</span>
                           ) : (
-                            <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a5 5 0 015 5v2a5 5 0 01-5 5H6m0-10l4-4m-4 4l4 4" /></svg> Restore this version</>
+                            <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a5 5 0 015 5v2a5 5 0 01-5 5H6m0-10l4-4m-4 4l4 4" /></svg> {t('restoreVersion')}</>
                           )}
                         </button>
                       </div>
@@ -1263,21 +1273,21 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                     <div className="border border-indigo-200 dark:border-indigo-800 rounded-xl p-4 bg-indigo-50/30 dark:bg-indigo-900/10">
                       <div className="flex items-start justify-between mb-2">
                         <div>
-                          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">Version {sec.version + 1} (current)</span>
-                          <p className="text-[10px] text-(--text-tertiary) mt-1.5">Updated at: {sec.updatedAt ? new Date(sec.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Unknown'}</p>
+                          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">{t('currentVersionLabel', { version: sec.version + 1 })}</span>
+                          <p className="text-[10px] text-(--text-tertiary) mt-1.5">{t('updatedAtLabel', { date: sec.updatedAt ? new Date(sec.updatedAt).toLocaleString(i18n.language === 'vi' ? 'vi-VN' : 'en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : t('unknown') })}</p>
                         </div>
                       </div>
                       <p className="text-[11px] text-(--text-secondary) leading-relaxed font-mono bg-(--surface) rounded-lg p-2.5 border border-(--border-light)">{(sec.contentTex || '').substring(0, 140)}{(sec.contentTex || '').length > 140 ? '...' : ''}</p>
-                      <div className="mt-2 text-[10px] text-(--text-tertiary) italic flex items-center gap-1"><svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg> This is the current version being edited.</div>
+                      <div className="mt-2 text-[10px] text-(--text-tertiary) italic flex items-center gap-1"><svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg> {t('currentEditedVersion')}</div>
                     </div>
                   </>
                 ) : (
-                  <div className="text-xs text-(--text-tertiary) italic text-center py-8">Select a section to see version history.</div>
+                  <div className="text-xs text-(--text-tertiary) italic text-center py-8">{t('selectSectionHistory')}</div>
                 );
               })()}
             </div>
             <div className="px-6 py-3 border-t border-(--border-light) flex justify-end shrink-0 bg-(--surface-secondary)/50">
-              <button onClick={() => setShowHistoryModal(false)} className="text-xs font-semibold text-(--text-secondary) hover:text-(--text-primary) px-4 py-1.5 rounded-lg hover:bg-(--surface-tertiary) transition-colors cursor-pointer border border-(--border) bg-(--surface)">Close</button>
+              <button onClick={() => setShowHistoryModal(false)} className="text-xs font-semibold text-(--text-secondary) hover:text-(--text-primary) px-4 py-1.5 rounded-lg hover:bg-(--surface-tertiary) transition-colors cursor-pointer border border-(--border) bg-(--surface)">{t('close')}</button>
             </div>
           </div>
         </div>
@@ -1294,7 +1304,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-1">
             <button onClick={() => setSectionsExpanded(!sectionsExpanded)}
-              className="w-full flex items-center justify-between px-2 py-1.5 text-[10px] font-bold text-(--text-secondary) tracking-wider uppercase cursor-pointer hover:bg-(--surface-secondary) rounded-lg">
+              className="w-full flex items-center justify-between px-2 py-1.5 text-xs font-bold text-(--text-secondary) tracking-wider uppercase cursor-pointer hover:bg-(--surface-secondary) rounded-lg">
               <span className="flex items-center gap-1.5">{sectionsExpanded ? '▼' : '▶'} {t('sections')} ({sections.length})</span>
             </button>
             {sectionsExpanded && (
@@ -1310,7 +1320,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                         className={`flex items-center justify-between p-2.5 rounded-lg text-xs border cursor-pointer transition-all ${isMySection ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' : 'bg-(--surface-secondary) border-(--border) hover:bg-(--surface-tertiary)'}`}>
                         <div className="flex items-center gap-2 truncate min-w-0">
                           {isMySection && <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title={t('assignedToYou')}></span>}
-                          <span className="truncate font-medium text-(--text-primary)">{sec.sectionTitle || 'Untitled'}</span>
+                          <span className="truncate font-medium text-(--text-primary)">{sec.sectionTitle || t('untitled')}</span>
                           <span className="text-[9px] text-(--text-tertiary) font-mono shrink-0">#{sec.sectionOrder}</span>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
@@ -1338,12 +1348,12 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-(--surface) rounded-xl shadow-2xl w-full max-w-md p-6 transform transition-all">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-bold text-(--text-primary)">Auto Revise</h2>
+              <h2 className="text-lg font-bold text-(--text-primary)">{t('autoRevise')}</h2>
               <button onClick={() => setShowReviseModal(false)} className="text-(--text-tertiary) hover:text-(--text-secondary) transition-colors">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <p className="text-sm text-(--text-secondary) mb-4">Select sections for AI revision based on instructor feedback.</p>
+            <p className="text-sm text-(--text-secondary) mb-4">{t('autoReviseDescription')}</p>
             <div className="space-y-2 mb-4 max-h-60 overflow-y-auto">
               {sections.map(sec => (
                 <label key={sec.id} className="flex items-center gap-3 p-2.5 border border-(--border) rounded-lg cursor-pointer hover:bg-(--surface-secondary) transition-colors">
@@ -1351,15 +1361,15 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                   <span className="text-sm font-medium text-(--text-primary)">{sec.sectionTitle} <span className="text-[10px] text-(--text-tertiary)">v{sec.version || 1}</span></span>
                 </label>
               ))}
-              {sections.length === 0 && <div className="text-xs text-(--text-tertiary) italic text-center py-4">No sections available.</div>}
+              {sections.length === 0 && <div className="text-xs text-(--text-tertiary) italic text-center py-4">{t('noSectionsAvailable')}</div>}
             </div>
             <div className="flex justify-end gap-3">
-              <button onClick={() => setShowReviseModal(false)} className="px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors">Cancel</button>
+              <button onClick={() => setShowReviseModal(false)} className="px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors">{t('cancel')}</button>
               <button onClick={async () => {
-                if (!selectedPaper) { showToast('Select a paper first.'); return; }
+                if (!selectedPaper) { showToast(t('selectPaperFirst')); return; }
                 setShowReviseModal(false);
                 handleRunAiReview();
-              }} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm shadow-indigo-200 transition-colors">Start Revision</button>
+              }} className="px-4 py-2 text-sm font-bold text-(--on-brand) bg-(--brand) hover:bg-(--brand-hover) rounded-lg shadow-sm transition-colors">{t('startRevision')}</button>
             </div>
           </div>
         </div>
@@ -1376,11 +1386,11 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
               </button>
             </div>
             <p className="text-sm text-(--text-secondary) mb-6 leading-relaxed">
-              This will seal your entire paper for the instructor to review. No further edits will be possible until the instructor returns it. Are you sure?
+              {t('submitReviewDescription')}
             </p>
             {blockingClaimAlerts.length > 0 && (
               <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                <p className="font-bold">Submission blocked: {blockingClaimAlerts.length} claim{blockingClaimAlerts.length > 1 ? 's are' : ' is'} missing from the owning section.</p>
+                <p className="font-bold">{t('submissionWarning', { count: blockingClaimAlerts.length })}</p>
                 <ul className="mt-2 list-disc space-y-1 pl-4">
                   {blockingClaimAlerts.slice(0, 5).map(alert => <li key={`${alert.claimId}-${alert.type}`}>{alert.claimId}: {alert.type}</li>)}
                 </ul>
@@ -1388,7 +1398,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
             )}
             <div className="flex justify-end gap-3">
               <button onClick={() => setShowSubmitReviewModal(false)} className="px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors">{t('cancel')}</button>
-              <button onClick={handleSubmitReview} disabled={blockingClaimAlerts.length > 0} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40 rounded-lg shadow-sm shadow-indigo-200 transition-colors">{t('submitReview')}</button>
+              <button onClick={handleSubmitReview} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm shadow-indigo-200 transition-colors cursor-pointer">{t('submitReview')}</button>
             </div>
           </div>
         </div>
@@ -1401,7 +1411,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
             <div className="bg-indigo-900 dark:bg-(--accent-bar) text-white px-6 py-4 flex justify-between items-center shrink-0">
               <div className="flex items-center gap-2">
                 <svg className="w-5 h-5 text-indigo-300 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 01-2 2h0a2 2 0 01-2-2v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-                <h2 className="text-base font-bold tracking-wide">AI Review Report</h2>
+                <h2 className="text-base font-bold tracking-wide">{t('aiReviewReport')}</h2>
               </div>
               <button onClick={() => { if (aiReviewAbortRef.current) aiReviewAbortRef.current.abort(); setShowAiReviewModal(false); }} className="text-indigo-200 hover:text-white transition-colors">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1412,11 +1422,11 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                 <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-800">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs font-bold">{aiReviewError.status ? `AI Review error ${aiReviewError.status}` : 'AI Review error'}</p>
+                      <p className="text-xs font-bold">{t('aiReviewError')}{aiReviewError.status ? ` ${aiReviewError.status}` : ''}</p>
                       <p className="mt-1 text-[11px]">{aiReviewError.message}</p>
-                      {aiReviewResult && <p className="mt-1 text-[10px] text-rose-600">The last successful review remains below.</p>}
+                      {aiReviewResult && <p className="mt-1 text-[10px] text-rose-600">{t('lastReviewAvailable')}</p>}
                     </div>
-                    <button onClick={handleRunAiReview} className="shrink-0 rounded-lg bg-rose-700 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-rose-800">Retry</button>
+                    <button onClick={handleRunAiReview} className="shrink-0 rounded-lg bg-rose-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-800">{t('retry')}</button>
                   </div>
                 </div>
               )}
@@ -1424,34 +1434,34 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                 <div className="flex flex-col items-center justify-center py-16 space-y-4">
                   <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
                   <div className="text-center">
-                    <p className="text-sm font-bold text-(--text-primary)">AI is analyzing...</p>
-                    <p className="text-xs text-(--text-tertiary) mt-1">Scanning every Section chunk, stored Claim, active Source mapping, and instructor feedback...</p>
+                    <p className="text-sm font-bold text-(--text-primary)">{t('aiAnalyzing')}</p>
+                    <p className="text-xs text-(--text-tertiary) mt-1">{t('aiAnalyzingDescription')}</p>
                   </div>
                 </div>
               ) : aiReviewResult ? (
                 <>
                   <div className="bg-(--surface) border border-(--border) rounded-xl p-5 shadow-sm hover:border-indigo-200 transition-colors">
                     <div className="flex justify-between items-start mb-3">
-                      <h3 className="text-sm font-bold text-(--text-primary) flex items-center gap-1.5"><span className="w-1.5 h-3 bg-indigo-600 rounded"></span>Project assessment</h3>
+                      <h3 className="text-sm font-bold text-(--text-primary) flex items-center gap-1.5"><span className="w-1.5 h-3 bg-(--brand) rounded"></span>{t('projectAssessment')}</h3>
                       <span className={`border text-[10px] font-bold px-2 py-0.5 rounded ${aiReviewResult.direction === 'ON_TRACK' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : aiReviewResult.direction === 'NEEDS_ATTENTION' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>{(aiReviewResult.direction || 'UNKNOWN').replaceAll('_', ' ')}</span>
                     </div>
                     <p className="text-xs text-(--text-secondary) leading-relaxed bg-(--surface-secondary) p-3.5 rounded-lg border border-(--border-light)">{aiReviewResult.summary}</p>
                     {aiReviewResult.rubricScore != null && (
                       <div className={`mt-3 rounded-xl border p-3.5 flex items-center justify-between ${aiReviewResult.passes ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
                         <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-(--text-tertiary)">Rubric Score</p>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('rubricScore')}</p>
                           <p className={`text-lg font-black ${aiReviewResult.passes ? 'text-emerald-700' : 'text-amber-700'}`}>{aiReviewResult.rubricScore.toFixed(1)} / 5.0</p>
                         </div>
                         <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${aiReviewResult.passes ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-amber-500 text-white border-amber-500'}`}>
-                          {aiReviewResult.passes ? 'PASS' : 'REVISE'}
+                          {aiReviewResult.passes ? t('pass') : t('revise')}
                         </span>
                       </div>
                     )}
                     {aiReviewResult.coverage && (
                       <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[10px]">
-                        <div className="rounded-lg bg-indigo-50 p-2 text-indigo-700"><strong>{aiReviewResult.coverage.sectionsScanned}/{aiReviewResult.coverage.totalSections}</strong><br />Sections</div>
-                        <div className="rounded-lg bg-indigo-50 p-2 text-indigo-700"><strong>{aiReviewResult.coverage.chunksScanned}/{aiReviewResult.coverage.totalChunks}</strong><br />Chunks</div>
-                        <div className="rounded-lg bg-indigo-50 p-2 text-indigo-700"><strong>{aiReviewResult.coverage.claimsChecked}/{aiReviewResult.coverage.totalClaims}</strong><br />Claims</div>
+                        <div className="rounded-lg bg-(--brand-soft) p-2 text-(--brand-foreground)"><strong>{aiReviewResult.coverage.sectionsScanned}/{aiReviewResult.coverage.totalSections}</strong><br />{t('sectionsScanned')}</div>
+                        <div className="rounded-lg bg-(--brand-soft) p-2 text-(--brand-foreground)"><strong>{aiReviewResult.coverage.chunksScanned}/{aiReviewResult.coverage.totalChunks}</strong><br />{t('chunksScanned')}</div>
+                        <div className="rounded-lg bg-(--brand-soft) p-2 text-(--brand-foreground)"><strong>{aiReviewResult.coverage.claimsChecked}/{aiReviewResult.coverage.totalClaims}</strong><br />{t('claimsChecked')}</div>
                       </div>
                     )}
                   </div>
@@ -1474,27 +1484,27 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                       </div>
                       <p className="text-xs text-(--text-secondary) leading-relaxed">{finding.message}</p>
                       {finding.excerpt && <blockquote className="mt-2 border-l-2 border-indigo-300 pl-2 text-[11px] italic text-(--text-tertiary)">“{finding.excerpt}”</blockquote>}
-                      <p className="mt-2 text-xs font-semibold text-indigo-700">Next: {finding.recommendedAction}</p>
+                      <p className="mt-2 text-xs font-semibold text-(--brand-foreground)">{t('nextAction', { action: finding.recommendedAction })}</p>
                       <div className="mt-3 flex flex-wrap gap-2 text-[9px] text-(--text-tertiary)">
-                        {finding.claimId && <span>Claim {finding.claimId}</span>}
-                        {finding.sourceIds?.length > 0 && <span>{finding.sourceIds.length} source{finding.sourceIds.length > 1 ? 's' : ''}</span>}
-                        {finding.feedbackIds?.length > 0 && <span>{finding.feedbackIds.length} feedback item{finding.feedbackIds.length > 1 ? 's' : ''}</span>}
+                        {finding.claimId && <span>{t('claim')} {finding.claimId}</span>}
+                        {finding.sourceIds?.length > 0 && <span>{t('sourceCount', { count: finding.sourceIds.length })}</span>}
+                        {finding.feedbackIds?.length > 0 && <span>{t('feedbackCount', { count: finding.feedbackIds.length })}</span>}
                       </div>
                     </button>
                   ))}
                   {(aiReviewResult.findings || []).length === 0 && (
                     <div className={`rounded-xl border p-4 text-xs ${aiReviewResult.direction === 'INSUFFICIENT_DATA' ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
                       <p>{aiReviewResult.direction === 'INSUFFICIENT_DATA'
-                        ? 'Review not evaluated because the paper does not have enough processed content.'
-                        : 'No specific findings were returned.'}</p>
+                        ? t('insufficientReview')
+                        : t('noReviewFindings')}</p>
                       {aiReviewResult.direction === 'INSUFFICIENT_DATA' && (
-                        <button onClick={handleRunAiReview} className="mt-2 rounded-lg bg-slate-700 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-slate-800">Retry</button>
+                        <button onClick={handleRunAiReview} className="mt-2 rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800">{t('retry')}</button>
                       )}
                     </div>
                   )}
                   {(aiReviewResult.limitations || []).length > 0 && (
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                      <h3 className="mb-2 text-xs font-bold text-slate-700">Limitations</h3>
+                      <h3 className="mb-2 text-xs font-bold text-slate-700 dark:text-slate-200">{t('limitations')}</h3>
                       <ul className="list-disc space-y-1 pl-4 text-[11px] text-slate-600">
                         {aiReviewResult.limitations.map((limitation, index) => <li key={index}>{limitation}</li>)}
                       </ul>
@@ -1504,7 +1514,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
               ) : null}
             </div>
             <div className="px-6 py-4 border-t border-(--border-light) bg-(--surface-secondary)/50 flex justify-end gap-3 shrink-0">
-              <button onClick={() => { if (aiReviewAbortRef.current) aiReviewAbortRef.current.abort(); setShowAiReviewModal(false); }} className="px-4 py-2 text-xs font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors border border-(--border) bg-(--surface) cursor-pointer">Close</button>
+              <button onClick={() => { if (aiReviewAbortRef.current) aiReviewAbortRef.current.abort(); setShowAiReviewModal(false); }} className="px-4 py-2 text-xs font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors border border-(--border) bg-(--surface) cursor-pointer">{t('close')}</button>
             </div>
           </div>
         </div>
@@ -1516,21 +1526,21 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
             <div className="flex justify-between items-center px-6 py-4 border-b border-(--border-light) bg-(--surface-secondary) shrink-0">
               <h2 className="text-sm font-bold text-(--text-primary) flex items-center gap-2">
                 <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                Format Scan
+                {t('formatScan')}
               </h2>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${citationResult.findings?.length === 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                {citationResult.findings?.length === 0 ? 'ALL GOOD' : citationResult.findings?.length + ' ISSUES'}
+                {citationResult.findings?.length === 0 ? t('allGood') : t('issueCount', { count: citationResult.findings?.length })}
               </span>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-3 text-xs">
               {(citationResult.findings || []).length === 0 ? (
                 <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-4 text-center">
-                  <p className="text-emerald-700 font-bold">No issues found — paper looks good!</p>
+                  <p className="text-emerald-700 font-bold">{t('noIssues')}</p>
                 </div>
               ) : (
                 (citationResult.findings || []).map((f, i) => {
                   const sevColor = f.severity === 'ERROR' ? 'border-l-rose-500 bg-rose-50' : f.severity === 'WARN' ? 'border-l-amber-500 bg-amber-50' : 'border-l-indigo-500 bg-indigo-50';
-                  const sevLabel = f.severity === 'ERROR' ? 'Error' : f.severity === 'WARN' ? 'Warning' : 'Info';
+                  const sevLabel = f.severity === 'ERROR' ? t('errorLabel') : f.severity === 'WARN' ? t('warningLabel') : t('infoLabel');
                   return (
                     <div key={i} className={`border-l-4 ${sevColor} rounded-r-lg p-3 text-[11px]`}>
                       <div className="flex justify-between items-start mb-1">
@@ -1539,14 +1549,14 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
                       </div>
                       {f.section && <div className="text-[10px] text-(--text-tertiary) mb-0.5 font-mono">{f.section}</div>}
                       <div className="text-(--text-primary) font-medium">{f.message}</div>
-                      {f.suggestion && <div className="text-(--text-secondary) mt-1 italic">Tip: {f.suggestion}</div>}
+                      {f.suggestion && <div className="text-(--text-secondary) mt-1 italic">{t('tip', { suggestion: f.suggestion })}</div>}
                     </div>
                   );
                 })
               )}
             </div>
             <div className="px-6 py-4 border-t border-(--border-light) bg-(--surface-secondary) flex justify-end shrink-0">
-              <button onClick={() => setCitationResult(null)} className="px-4 py-2 text-xs font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors border border-(--border) bg-(--surface) cursor-pointer">Close</button>
+              <button onClick={() => setCitationResult(null)} className="px-4 py-2 text-xs font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors border border-(--border) bg-(--surface) cursor-pointer">{t('close')}</button>
             </div>
           </div>
         </div>
@@ -1560,7 +1570,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
           <div className="bg-(--surface) rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden transform transition-all border border-(--border-light) flex flex-col h-[85vh]">
             <div className="px-6 py-4 border-b border-(--border-light) bg-(--surface-secondary) flex justify-between items-center shrink-0">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black text-white px-2 py-0.5 rounded-full uppercase tracking-wider" style={{ backgroundColor: selectedPaperDetail.color }}>Paper #{selectedPaperDetail.num}</span>
+                <span className="text-[10px] font-black text-white px-2 py-0.5 rounded-full uppercase tracking-wider" style={{ backgroundColor: selectedPaperDetail.color }}>{t('paper')} #{selectedPaperDetail.num}</span>
                 <span className="text-[10px] font-bold text-(--text-tertiary) font-mono">{selectedPaperDetail.name}</span>
               </div>
               <button onClick={() => setSelectedPaperDetail(null)} className="text-(--text-tertiary) hover:text-(--text-secondary) transition-colors p-1.5 hover:bg-(--surface-tertiary) rounded-lg">
@@ -1570,26 +1580,26 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
             <div className="flex-1 flex overflow-hidden">
               <div className="w-1/2 p-6 overflow-y-auto custom-scrollbar space-y-4 border-r border-(--border)">
                 <h3 className="text-base font-extrabold text-(--text-primary) leading-snug">{selectedPaperDetail.title}</h3>
-                <p className="text-[10px] text-(--text-tertiary)">Created: {selectedPaperDetail.created}</p>
+                <p className="text-[10px] text-(--text-tertiary)">{t('created')}: {selectedPaperDetail.created}</p>
                 <div className="flex gap-2 items-center">
-                  <span className="text-xs font-bold text-(--text-secondary)">Category:</span>
+                  <span className="text-xs font-bold text-(--text-secondary)">{t('category')}:</span>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-md text-white shadow-sm" style={{ backgroundColor: selectedPaperDetail.color }}>{selectedPaperDetail.category}</span>
                 </div>
                 <div className="bg-(--surface-secondary) rounded-xl p-4 border border-(--border)/60">
-                  <h4 className="text-[10px] font-bold text-(--text-tertiary) uppercase tracking-widest mb-1.5">Summary</h4>
+                  <h4 className="text-[10px] font-bold text-(--text-tertiary) uppercase tracking-widest mb-1.5">{t('summary')}</h4>
                   <p className="text-xs text-(--text-secondary) leading-relaxed font-medium">{selectedPaperDetail.summary}</p>
                 </div>
               </div>
               <div className="w-1/2 p-6 bg-(--surface-tertiary) flex flex-col overflow-hidden">
                 <h4 className="text-[10px] font-black text-(--text-secondary) uppercase tracking-widest mb-3 flex items-center gap-1.5 shrink-0">
                   <svg className="w-3.5 h-3.5 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>
-                  PDF Preview
+                  {t('pdfPreview')}
                 </h4>
                 <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">{renderModalPaperPdf(selectedPaperDetail.name)}</div>
               </div>
             </div>
             <div className="px-6 py-4 border-t border-(--border-light) bg-(--surface-secondary) flex justify-end shrink-0">
-              <button onClick={() => setSelectedPaperDetail(null)} className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md transition-colors">Close</button>
+              <button onClick={() => setSelectedPaperDetail(null)} className="px-4 py-2 text-xs font-bold text-(--on-brand) bg-(--brand) hover:bg-(--brand-hover) rounded-lg shadow-md transition-colors">{t('close')}</button>
             </div>
           </div>
         </div>
@@ -1597,7 +1607,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
       {toastMessage && (
         <div className="fixed bottom-5 right-5 z-[9999] bg-slate-900 text-white text-xs font-semibold px-4.5 py-3 rounded-xl shadow-2xl border border-slate-800 flex items-center gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-200">
-          <span className="text-indigo-400">✦</span>
+          <svg className="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           <span>{toastMessage}</span>
         </div>
       )}

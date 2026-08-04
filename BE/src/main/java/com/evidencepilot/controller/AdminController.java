@@ -6,10 +6,12 @@ import com.evidencepilot.dto.request.AdminUserRoleRequest;
 import com.evidencepilot.dto.request.AdminUserStatusRequest;
 import com.evidencepilot.dto.response.AdminAuditLogResponse;
 import com.evidencepilot.dto.response.AdminDashboardResponse;
+import com.evidencepilot.dto.response.AdminProjectResponse;
 import com.evidencepilot.dto.response.AdminUserResponse;
 import com.evidencepilot.dto.response.BroadcastResponse;
 import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.model.enums.AccountStatus;
+import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.service.AdminService;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -63,6 +65,9 @@ public class AdminController {
     @Value("${openalex.api-base-url}")
     private String openalexBaseUrl;
 
+    @Value("${rabbitmq.management-url:}")
+    private String rabbitMqManagementUrl;
+
     @GetMapping("/config")
     public Map<String, String> getConfig() {
         return Map.of(
@@ -72,7 +77,8 @@ public class AdminController {
                 "minioPublicUrl", minioPublicUrl,
                 "qdrantUrl", qdrantUrl,
                 "aiModelBaseUrl", aiModelBaseUrl,
-                "openalexBaseUrl", openalexBaseUrl
+                "openalexBaseUrl", openalexBaseUrl,
+                "rabbitMqManagementUrl", rabbitMqManagementUrl
         );
     }
 
@@ -138,6 +144,25 @@ public class AdminController {
     @GetMapping("/documents/extraction-queue")
     public Map<String, Object> extractionQueue() {
         return adminService.getExtractionQueue();
+    }
+
+    @GetMapping("/documents")
+    public PagedResponse<Map<String, Object>> documents(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) UUID projectId,
+            @RequestParam(required = false) UUID collectionId) {
+        return adminService.getDocuments(page, size, q, projectId, collectionId);
+    }
+
+    @GetMapping("/projects")
+    public PagedResponse<AdminProjectResponse> projects(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) ProjectStatus status) {
+        return adminService.getProjects(page, size, q, status);
     }
 
     @GetMapping("/notifications/broadcast-history")

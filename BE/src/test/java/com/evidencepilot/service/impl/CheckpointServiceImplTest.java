@@ -77,19 +77,22 @@ class CheckpointServiceImplTest {
     }
 
     @Test
-    void getLatestSectionBaselineSkipsCheckpointsCreatedAfterBefore() {
+    void getLatestSectionBaselineSkipsCheckpointsCreatedAtOrAfterBefore() {
         String olderJson = "{\"sections\":{\"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\":"
                 + "{\"text\":\"baseline text\",\"words\":2}}}";
         String submitJson = "{\"sections\":{\"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\":"
                 + "{\"text\":\"submitted text\",\"words\":2}}}";
         ProjectCheckpoint submitLock = checkpoint(submitJson, "SUBMIT_FOR_REVIEW", 0);
         ProjectCheckpoint previousLock = checkpoint(olderJson, "REVIEW_STATUS:RETURNED", 2);
+        LocalDateTime cutoff = LocalDateTime.now().withNano(0);
+        submitLock.setCreatedAt(cutoff);
+        previousLock.setCreatedAt(cutoff.minusHours(2));
         when(checkpointRepository.findByProjectIdOrderByCreatedAtDesc(project.getId()))
                 .thenReturn(List.of(submitLock, previousLock));
 
         var baseline = service.getLatestSectionBaseline(
                 project.getId(), UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-                previousLock.getCreatedAt().plusHours(1));
+                cutoff);
 
         assertThat(baseline.contentTex()).isEqualTo("baseline text");
         assertThat(baseline.trigger()).isEqualTo("REVIEW_STATUS:RETURNED");

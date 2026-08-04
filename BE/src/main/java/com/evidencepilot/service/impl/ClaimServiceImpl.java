@@ -29,12 +29,14 @@ import com.evidencepilot.model.enums.MappingReviewStatus;
 import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.model.User;
+import com.evidencepilot.repository.AiEvaluationJobRepository;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectMemberRepository;
+import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.AiEvaluationService;
 import com.evidencepilot.service.ClaimMatchingService;
@@ -42,10 +44,12 @@ import com.evidencepilot.service.ClaimService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.dto.request.PagingRequest;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -60,6 +64,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ClaimServiceImpl implements ClaimService {
@@ -70,6 +75,7 @@ public class ClaimServiceImpl implements ClaimService {
     private final ClaimRepository claimRepository;
     private final ProjectRepository projectRepository;
     private final ProjectMemberRepository projectMemberRepository;
+    private final ProjectDocumentRepository projectDocumentRepository;
     private final PaperSectionRepository paperSectionRepository;
     private final DocumentRepository documentRepository;
     private final AiSuggestionRepository aiSuggestionRepository;
@@ -80,6 +86,7 @@ public class ClaimServiceImpl implements ClaimService {
     private final ClaimMapper claimMapper;
     private final AiEvaluationService aiEvaluationService;
     private final ObjectMapper objectMapper;
+    private final AiEvaluationJobRepository aiEvaluationJobRepository;
 
     @Override
     public List<ClaimResponse> getAllClaims() {
@@ -181,7 +188,34 @@ public class ClaimServiceImpl implements ClaimService {
         claim.setActive(true);
         claim.setCreatedAt(LocalDateTime.now());
 
-        return claimMapper.toClaimResponse(claimRepository.save(claim));
+        Claim saved = claimRepository.save(claim);
+        applyQualityScoreFromEvaluation(saved, section);
+        return claimMapper.toClaimResponse(saved);
+    }
+
+    // The claim quality job runs on the draft (sectionId + content) before the
+    // claim exists, so the score is written back here when the claim is saved.
+    private void applyQualityScoreFromEvaluation(Claim claim, PaperSection section) {
+        for (AiEvaluationJob job : aiEvaluationJobRepository
+                .findTop10ByProjectIdAndKindAndStatusOrderByCompletedAtDesc(
+                        claim.getProject().getId(),
+                        AiEvaluationJob.KIND_CLAIM_QUALITY,
+                        AiEvaluationJob.STATUS_SUCCESS)) {
+            try {
+                JsonNode payload = objectMapper.readTree(job.getPayloadJson());
+                if (!section.getId().toString().equals(payload.path("sectionId").asText())
+                        || !claim.getContent().equals(payload.path("content").asText())) {
+                    continue;
+                }
+                JsonNode result = objectMapper.readTree(job.getResultJson());
+                if (result.path("totalScore").isNumber()) {
+                    claim.setClaimQualityScore((float) (result.path("totalScore").asDouble() / 10.0));
+                }
+                return;
+            } catch (JsonProcessingException | IllegalArgumentException e) {
+                log.warn("Could not apply claim quality score from job {}: {}", job.getId(), e.getMessage());
+            }
+        }
     }
 
     @Override
@@ -208,8 +242,13 @@ public class ClaimServiceImpl implements ClaimService {
     }
 
     private void requireProjectHasSource(Project project) {
-        if (documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
-                project.getId(), DocumentType.SOURCE).isEmpty()) {
+        boolean hasDirectSource = !documentRepository
+                .findByProjectIdAndDocTypeAndActiveTrue(
+                        project.getId(), DocumentType.SOURCE).isEmpty();
+        boolean hasSharedSource = projectDocumentRepository
+                .existsByProjectIdAndDocument_DocTypeAndDocument_ActiveTrue(
+                        project.getId(), DocumentType.SOURCE);
+        if (!hasDirectSource && !hasSharedSource) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Attach at least one source before evaluating claims");
@@ -223,7 +262,12 @@ public class ClaimServiceImpl implements ClaimService {
         User currentUser = currentUserService.requireCurrentUser();
         requireClaimContentWriteAccess(currentUser, claim);
 
+        boolean contentChanged = !Objects.equals(claim.getContent(), content);
         claim.setContent(content);
+        // evaluation scores only match the content that was evaluated
+        if (contentChanged) {
+            claim.setClaimQualityScore(null);
+        }
         if (aiConfidenceScore != null) {
             claim.setAiConfidenceScore(aiConfidenceScore);
         }

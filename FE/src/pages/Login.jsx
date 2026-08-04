@@ -67,33 +67,11 @@ export default function Login() {
     }
   }
 
-  async function handleFptGoogleLogin(email) {
-    setError('');
-    setLoading(true);
-    try {
-      // Try to log in with dev seed password 'Password@123' first
-      const res = await api.post('/api/auth/login', {
-        email,
-        password: 'Password@123'
-      });
-      const token = res.data.token ?? res.data.accessToken ?? res.data.jwt;
-      const role = res.data.user?.role ?? res.data.role;
-
-      if (!token) throw new Error('Token not found in response');
-
-      login(token, role);
-      redirectAfterLogin(role);
-    } catch (err) {
-      // Fallback: fill email and let user enter password manually
-      setForm({ email, passwordHash: '' });
-      const msg = err.response?.data?.message
-        ?? err.response?.data?.error
-        ?? err.message
-        ?? 'Google login failed. Please enter password manually.';
-      setError(msg + ' (Email has been populated)');
-    } finally {
-      setLoading(false);
-    }
+  function handleFptGoogleLogin(email) {
+    // Direct the user to the manual password entry flow; never attempt
+    // a login with a hardcoded dev password.
+    setForm({ email, passwordHash: '' });
+    setError('Google sign-in is unavailable. Please enter your password manually (email has been populated).');
   }
 
   async function handleGoogleCredentialResponse(response) {

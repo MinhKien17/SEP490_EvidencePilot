@@ -7,10 +7,12 @@ import com.evidencepilot.dto.request.AdminUserStatusRequest;
 import com.evidencepilot.dto.request.PagingRequest;
 import com.evidencepilot.dto.response.AdminAuditLogResponse;
 import com.evidencepilot.dto.response.AdminDashboardResponse;
+import com.evidencepilot.dto.response.AdminProjectResponse;
 import com.evidencepilot.dto.response.AdminUserResponse;
 import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Document;
+import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.DocumentType;
@@ -35,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -58,7 +61,6 @@ public class AdminService {
     private final AuditLogRepository auditLogs;
     private final CurrentUserService currentUsers;
     private final PasswordResetService passwordResets;
-    private final HealthService health;
     private final AuditService audit;
     private final SystemNotificationService notifications;
     private final ObjectMapper objectMapper;
@@ -192,8 +194,7 @@ public class AdminService {
                 projects.countByActiveTrue(), projectsByStatus,
                 collectionCategories.countByActiveTrue(), collections.countByActiveTrue(),
                 documents.countByActiveTrueAndDocType(DocumentType.SOURCE),
-                documents.countByActiveTrueAndDocType(DocumentType.PAPER),
-                health.checkReadiness());
+                documents.countByActiveTrueAndDocType(DocumentType.PAPER));
     }
 
     @Transactional(readOnly = true)
@@ -220,11 +221,14 @@ public class AdminService {
         List<User> recipients = request.role() == null
                 ? users.findByAccountStatus(AccountStatus.ACTIVE)
                 : users.findByAccountStatusAndRole(AccountStatus.ACTIVE, request.role());
+        String actionType = request.urgent() ? "ADMIN_BROADCAST_URGENT" : "ADMIN_BROADCAST";
         for (User recipient : recipients) {
-            notifications.createNotification(recipient, actor, "ADMIN_BROADCAST", null, request.message());
+            notifications.createNotification(recipient, actor, actionType, null, request.message());
         }
         Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("message", request.message());
         metadata.put("role", request.role());
+        metadata.put("urgent", request.urgent());
         metadata.put("recipientCount", recipients.size());
         audit.record("NOTIFICATION_BROADCAST", "SYSTEM_NOTIFICATION", null, actor, null, metadata);
         return recipients.size();
@@ -236,16 +240,78 @@ public class AdminService {
         for (ProcessingStatus s : ProcessingStatus.values()) {
             counts.put(s.name(), documents.countByProcessingStatus(s));
         }
-        List<Document> failed = documents.findByProcessingStatusAndActiveTrue(ProcessingStatus.FAILED);
-        List<Map<String, Object>> failedList = failed.stream().limit(50).<Map<String, Object>>map(d -> {
+        List<Map<String, Object>> queued = queueRows(ProcessingStatus.QUEUED);
+        List<Map<String, Object>> processing = queueRows(ProcessingStatus.PROCESSING);
+        List<Map<String, Object>> ready = queueRows(ProcessingStatus.READY);
+        List<Map<String, Object>> failed = queueRows(ProcessingStatus.FAILED);
+        return Map.of("counts", counts, "queued", queued, "processing", processing, "ready", ready, "failed", failed);
+    }
+
+    private List<Map<String, Object>> queueRows(ProcessingStatus status) {
+        return documents.findByProcessingStatusAndActiveTrue(status).stream().limit(50).map(d -> {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("id", d.getId());
             m.put("originalFilename", d.getOriginalFilename());
+            m.put("projectName", d.getProject() != null ? d.getProject().getTitle() : null);
             m.put("processingError", d.getProcessingError());
             m.put("createdAt", d.getCreatedAt() != null ? d.getCreatedAt().toString() : null);
             return m;
         }).toList();
-        return Map.of("counts", counts, "failed", failedList);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponse<Map<String, Object>> getDocuments(int page, int size, String q, UUID projectId, UUID collectionId) {
+        Pageable pageable = PagingRequest.pageable(page, size, "createdAt,desc",
+                Set.of("createdAt", "title", "doi", "processingStatus"), "createdAt,desc");
+        Specification<Document> spec = (root, query, cb) -> {
+            List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
+            if (projectId != null) {
+                predicates.add(cb.equal(root.get("project").get("id"), projectId));
+            }
+            if (collectionId != null) {
+                predicates.add(cb.equal(root.get("collection").get("id"), collectionId));
+            }
+            if (q != null && !q.isBlank()) {
+                String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("title")), like),
+                        cb.like(cb.lower(root.get("originalFilename")), like)));
+            }
+            return cb.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
+        };
+        return PagedResponse.from(documents.findAll(spec, pageable).map(this::documentRow));
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponse<AdminProjectResponse> getProjects(int page, int size, String q, ProjectStatus status) {
+        Pageable pageable = PagingRequest.pageable(page, size, "createdAt,desc",
+                Set.of("createdAt", "title", "status"), "createdAt,desc");
+        Specification<Project> spec = (root, query, cb) -> {
+            List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("active"), true));
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (q != null && !q.isBlank()) {
+                String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("title")), like),
+                        cb.like(cb.lower(root.get("description")), like)));
+            }
+            return cb.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
+        };
+        return PagedResponse.from(projects.findAll(spec, pageable).map(AdminProjectResponse::from));
+    }
+
+    private Map<String, Object> documentRow(Document d) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("id", d.getId());
+        m.put("title", d.getTitle());
+        m.put("originalFilename", d.getOriginalFilename());
+        m.put("doi", d.getDoi());
+        m.put("processingStatus", d.getProcessingStatus() != null ? d.getProcessingStatus().name() : null);
+        m.put("projectName", d.getProject() != null ? d.getProject().getTitle() : null);
+        return m;
     }
 
     @Transactional(readOnly = true)
@@ -276,9 +342,10 @@ public class AdminService {
                     m.put("id", c.getId());
                     m.put("name", c.getTitle());
                     m.put("description", c.getDescription());
-                    m.put("instructorEmail", c.getInstructor().getEmail());
+                    m.put("instructorEmail", c.getInstructor() != null ? c.getInstructor().getEmail() : null);
                     m.put("createdAt", c.getCreatedAt() != null ? c.getCreatedAt().toString() : null);
                     m.put("active", c.isActive());
+                    m.put("documentCount", documents.countByCollectionId(c.getId()));
                     return m;
                 }).toList();
     }

@@ -212,7 +212,7 @@ public class GraphServiceImpl implements GraphService {
         return new GraphResponse.ClaimStatsResponse((int) total, byFunctionalType);
     }
 
-    // ponytail: section radar/coverage must reflect the paper's full structure, not just
+    // section radar/coverage must reflect the paper's full structure, not just
     // sections that happen to have claims; claims tallied by section id
     private List<GraphResponse.GraphSectionSummary> buildSectionSummaries(
             UUID projectId, Map<UUID, SectionTally> tallyBySection) {

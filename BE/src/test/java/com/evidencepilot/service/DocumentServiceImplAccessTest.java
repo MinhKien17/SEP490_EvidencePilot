@@ -33,6 +33,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -85,6 +86,12 @@ class DocumentServiceImplAccessTest {
 
     @Mock
     private MinioClient minioClient;
+
+    @Mock
+    private DocumentObjectStorage documentObjectStorage;
+
+    @Mock
+    private com.evidencepilot.client.openalex.OpenAlexClient openAlexClient;
 
     @Test
     void getDocumentByIdRequiresProjectAccess() {
@@ -434,6 +441,35 @@ class DocumentServiceImplAccessTest {
     }
 
     @Test
+    void getSourcesByCollectionEnrichesSharedProjectIds() {
+        User user = user();
+        com.evidencepilot.model.Collection collection = collection();
+        Document source = document(null);
+        source.setDocType(DocumentType.SOURCE);
+        source.setOriginalFilename("evidence.pdf");
+        Project targetProject = project();
+        targetProject.setTitle("Capstone A");
+        ProjectDocument projectDocument = new ProjectDocument();
+        projectDocument.setProject(targetProject);
+        projectDocument.setDocument(source);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
+        when(documentRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(source)));
+        when(projectDocumentRepository.findByDocumentId(source.getId()))
+                .thenReturn(List.of(projectDocument));
+
+        var page = service().getSourcesByCollection(
+                collection.getId(), 0, 10, "createdAt,desc", null);
+
+        assertThat(page.content()).singleElement()
+                .extracting(response -> response.projectIds())
+                .isEqualTo(List.of(targetProject.getId()));
+        verify(currentUserService).requireCollectionAccess(user, collection);
+    }
+
+    @Test
     void getDocumentTextMapsExistingTextAndRejectsMissingText() {
         User user = user();
         Project project = project();
@@ -452,6 +488,36 @@ class DocumentServiceImplAccessTest {
                 .hasMessageContaining("Document text not found");
     }
 
+    @Test
+    void getDiagnosticsSurfacesMetadataOpenAlexFailureAndExtractionCheckpoint() throws Exception {
+        Project project = project();
+        project.setTitle("Test Project");
+        Document document = document(project);
+        document.setDoi("10.1000/xyz");
+        document.setProcessingStatus(ProcessingStatus.FAILED);
+        document.setProcessingError("boom");
+        document.setChunkCount(3);
+        document.setProcessedAt(java.time.LocalDateTime.of(2026, 1, 1, 12, 0));
+
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(openAlexClient.fetchWork("10.1000/xyz"))
+                .thenThrow(new com.evidencepilot.client.openalex.OpenAlexClient.OpenAlexApiException("rate limited", 429));
+        when(documentObjectStorage.exists(anyString())).thenReturn(true);
+        when(documentObjectStorage.readText(anyString())).thenReturn("{\"key\":\"value\"}");
+
+        Map<String, Object> diag = service().getDiagnostics(document.getId());
+
+        assertThat(diag.get("doi")).isEqualTo("10.1000/xyz");
+        assertThat(diag.get("processingStatus")).isEqualTo("FAILED");
+        assertThat(diag.get("processingError")).isEqualTo("boom");
+        assertThat(diag.get("chunkCount")).isEqualTo(3);
+        assertThat(diag.get("processedAt")).isEqualTo("2026-01-01T12:00");
+        assertThat(diag.get("projectName")).isEqualTo("Test Project");
+        assertThat(diag.get("openAlexError")).isEqualTo("rate limited");
+        assertThat(diag.get("extractionAvailable")).isEqualTo(true);
+        assertThat(diag.get("extractionJson")).isEqualTo(Map.of("key", "value"));
+    }
+
     private DocumentServiceImpl service() {
         var service = new DocumentServiceImpl(
                 documentRepository,
@@ -465,7 +531,10 @@ class DocumentServiceImplAccessTest {
                 currentUserService,
                 documentPersistenceService,
                 documentMapper,
-                minioClient);
+                minioClient,
+                documentObjectStorage,
+                openAlexClient,
+                new com.fasterxml.jackson.databind.ObjectMapper());
         ReflectionTestUtils.setField(service, "bucketName", "test-bucket");
         return service;
     }

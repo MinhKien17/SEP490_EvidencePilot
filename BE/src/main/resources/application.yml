@@ -46,6 +46,7 @@ spring:
     virtual-host: ${RABBITMQ_VIRTUAL_HOST}
     username: ${RABBITMQ_USERNAME}
     password: ${RABBITMQ_PASSWORD}
+    management-url: ${RABBITMQ_MANAGEMENT_URL:}
     listener:
       simple:
         prefetch: ${RABBITMQ_LISTENER_PREFETCH:1}
@@ -131,8 +132,6 @@ openalex:
 ollama:
   embedding:
     model: ${OLLAMA_EMBEDDING_MODEL:nomic-embed-text}
-  generation:
-    model: ${OLLAMA_GENERATION_MODEL:evidencopilot:latest}
 
 springdoc:
   swagger-ui:

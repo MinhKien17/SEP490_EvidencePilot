@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitMQConfig {
 
-    // ponytail: one work queue; add a DLQ only when failed-job replay is required.
+    // one work queue; add a DLQ only when failed-job replay is required.
     public static final String EXTRACTION_QUEUE = "extraction.queue";
     public static final String EXPORT_QUEUE = "export.queue";
     public static final String AI_EVALUATION_QUEUE = "ai.evaluation.queue";

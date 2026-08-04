@@ -10,6 +10,7 @@ import com.evidencepilot.service.impl.ClaimQualityEvaluationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -27,8 +28,27 @@ class ClaimQualityEvaluationServiceTest {
     private AiModelClient aiModelClient;
 
     @Test
+    void sendsTaskInstructionsAsSystemAndUntrustedDataAsJsonPrompt() throws Exception {
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenReturn(generated(validEvaluationJson()));
+
+        service().evaluate(
+                project(), section(), "The prototype reduced processing latency by 24%.");
+
+        ArgumentCaptor<String> system = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(aiModelClient).generate(system.capture(), prompt.capture());
+        assertThat(system.getValue())
+                .contains("writing quality", "Return exactly one JSON object")
+                .doesNotContain("reduced processing latency by 24%");
+        assertThat(new ObjectMapper().readTree(prompt.getValue()).path("claim").asText())
+                .isEqualTo("The prototype reduced processing latency by 24%.");
+    }
+
+    @Test
     void computesTotalAndDecisionFromValidatedCriteria() {
-        when(aiModelClient.generate(anyString())).thenReturn(validEvaluationJson());
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenReturn(generated(validEvaluationJson()));
 
         ClaimQualityEvaluationResponse response = service().evaluate(
                 project(), section(), "The prototype reduced processing latency by 24%.");
@@ -43,70 +63,80 @@ class ClaimQualityEvaluationServiceTest {
 
     @Test
     void retriesInvalidResponseOnce() {
-        when(aiModelClient.generate(anyString()))
-                .thenReturn("not-json", validEvaluationJson());
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenReturn(generated("not-json"), generated(validEvaluationJson()));
 
         assertThat(service().evaluate(project(), section(), "Claim").totalScore()).isEqualTo(8);
 
-        verify(aiModelClient, times(2)).generate(anyString());
+        ArgumentCaptor<String> systems = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> prompts = ArgumentCaptor.forClass(String.class);
+        verify(aiModelClient, times(2)).generate(systems.capture(), prompts.capture());
+        assertThat(systems.getAllValues().get(0)).doesNotContain("previous response was invalid");
+        assertThat(systems.getAllValues().get(1)).contains("previous response was invalid");
+        assertThat(prompts.getAllValues()).containsOnly(prompts.getAllValues().get(0));
     }
 
     @Test
     void rejectsUnknownAiFieldsAfterOneRetry() {
         String responseWithServerOwnedScore = validEvaluationJson()
                 .replace("\"suggestedRevision\"", "\"totalScore\":10,\"suggestedRevision\"");
-        when(aiModelClient.generate(anyString())).thenReturn(responseWithServerOwnedScore);
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenReturn(generated(responseWithServerOwnedScore));
 
         assertThatThrownBy(() -> service().evaluate(project(), section(), "Claim"))
                 .isInstanceOf(AiValidationException.class)
                 .hasMessageContaining("invalid Claim Quality evaluation");
-        verify(aiModelClient, times(2)).generate(anyString());
+        verify(aiModelClient, times(2)).generate(anyString(), anyString());
     }
 
     @Test
     void rejectsFractionalScoresAfterOneRetry() {
         String fractionalScore = validEvaluationJson().replace("\"score\":2", "\"score\":1.7");
-        when(aiModelClient.generate(anyString())).thenReturn(fractionalScore);
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenReturn(generated(fractionalScore));
 
         assertThatThrownBy(() -> service().evaluate(project(), section(), "Claim"))
                 .isInstanceOf(AiValidationException.class);
-        verify(aiModelClient, times(2)).generate(anyString());
+        verify(aiModelClient, times(2)).generate(anyString(), anyString());
     }
 
     @Test
     void rejectsStringScoresAfterOneRetry() {
         String stringScore = validEvaluationJson().replace("\"score\":2", "\"score\":\"2\"");
-        when(aiModelClient.generate(anyString())).thenReturn(stringScore);
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenReturn(generated(stringScore));
 
         assertThatThrownBy(() -> service().evaluate(project(), section(), "Claim"))
                 .isInstanceOf(AiValidationException.class);
-        verify(aiModelClient, times(2)).generate(anyString());
+        verify(aiModelClient, times(2)).generate(anyString(), anyString());
     }
 
     @Test
     void rejectsLowercaseEnumsAfterOneRetry() {
         String lowercaseEnum = validEvaluationJson().replace("CLARITY", "clarity");
-        when(aiModelClient.generate(anyString())).thenReturn(lowercaseEnum);
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenReturn(generated(lowercaseEnum));
 
         assertThatThrownBy(() -> service().evaluate(project(), section(), "Claim"))
                 .isInstanceOf(AiValidationException.class);
-        verify(aiModelClient, times(2)).generate(anyString());
+        verify(aiModelClient, times(2)).generate(anyString(), anyString());
     }
 
     @Test
     void rejectsNumericEnumsAfterOneRetry() {
         String numericEnum = validEvaluationJson()
                 .replace("\"code\":\"CLARITY\"", "\"code\":0");
-        when(aiModelClient.generate(anyString())).thenReturn(numericEnum);
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenReturn(generated(numericEnum));
 
         assertThatThrownBy(() -> service().evaluate(project(), section(), "Claim"))
                 .isInstanceOf(AiValidationException.class);
-        verify(aiModelClient, times(2)).generate(anyString());
+        verify(aiModelClient, times(2)).generate(anyString(), anyString());
     }
 
     @Test
     void propagatesAiWorkerFailure() {
-        when(aiModelClient.generate(anyString()))
+        when(aiModelClient.generate(anyString(), anyString()))
                 .thenThrow(new AiModelClient.AiApiException("/ai/generate", 503));
 
         assertThatThrownBy(() -> service().evaluate(project(), section(), "Claim"))
@@ -145,5 +175,9 @@ class ClaimQualityEvaluationServiceTest {
                 ],"suggestedFunctionalType":"EMPIRICAL",
                 "suggestedRevision":"The prototype reduced processing latency by 24%."}
                 """;
+    }
+
+    private AiModelClient.GenerationResult generated(String response) {
+        return new AiModelClient.GenerationResult("ollama", "qwen3.5:9b", response);
     }
 }

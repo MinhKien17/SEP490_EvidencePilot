@@ -18,6 +18,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -32,6 +33,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -189,5 +191,15 @@ public class DocumentController {
     public DocumentResponse reExtract(
             @Parameter(description = "Document UUID") @PathVariable UUID id) {
         return documentService.reExtract(id);
+    }
+
+    @Operation(summary = "Get document pipeline diagnostics",
+            description = "ADMIN only. Returns document metadata, a live OpenAlex metadata re-fetch, "
+                    + "and the stored extraction checkpoint from MinIO for debugging the processing pipeline.")
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping("/{id}/diagnostics")
+    public Map<String, Object> getDiagnostics(
+            @Parameter(description = "Document UUID") @PathVariable UUID id) {
+        return documentService.getDiagnostics(id);
     }
 }

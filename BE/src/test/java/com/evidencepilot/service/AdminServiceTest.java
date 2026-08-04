@@ -54,7 +54,6 @@ class AdminServiceTest {
     @Mock AuditLogRepository auditLogs;
     @Mock CurrentUserService currentUsers;
     @Mock PasswordResetService passwordResets;
-    @Mock HealthService health;
     @Mock AuditService audit;
     @Mock SystemNotificationService notifications;
     @Mock PasswordEncoder passwords;
@@ -204,8 +203,7 @@ class AdminServiceTest {
     }
 
     @Test
-    void dashboardIncludesEveryEnumAndDelegatesReadinessExactly() {
-        Map<String, Object> readiness = Map.of("status", "UP");
+    void dashboardIncludesEveryEnumValue() {
         when(users.count()).thenReturn(9L);
         when(users.countByRole()).thenReturn(List.<Object[]>of(new Object[]{UserRole.STUDENT, 5L}));
         when(users.countByAccountStatus()).thenReturn(List.<Object[]>of(new Object[]{AccountStatus.ACTIVE, 4L}));
@@ -215,15 +213,12 @@ class AdminServiceTest {
         when(collections.countByActiveTrue()).thenReturn(6L);
         when(documents.countByActiveTrueAndDocType(DocumentType.SOURCE)).thenReturn(11L);
         when(documents.countByActiveTrueAndDocType(DocumentType.PAPER)).thenReturn(12L);
-        when(health.checkReadiness()).thenReturn(readiness);
-
         var result = service.getDashboard();
 
         assertThat(result.usersByRole()).containsOnlyKeys(UserRole.values());
         assertThat(result.usersByStatus()).containsOnlyKeys(AccountStatus.values());
         assertThat(result.activeProjectsByStatus()).containsOnlyKeys(ProjectStatus.values());
         assertThat(result.usersByRole().get(UserRole.ADMIN)).isZero();
-        assertThat(result.infrastructureReadiness()).isSameAs(readiness);
     }
 
     @Test
@@ -271,13 +266,30 @@ class AdminServiceTest {
         when(users.findByAccountStatusAndRole(AccountStatus.ACTIVE, UserRole.STUDENT))
                 .thenReturn(List.of(first, second));
 
-        long count = service.broadcast(new AdminBroadcastRequest("Maintenance soon", UserRole.STUDENT));
+        long count = service.broadcast(new AdminBroadcastRequest("Maintenance soon", UserRole.STUDENT, false));
 
         assertThat(count).isEqualTo(2);
         verify(notifications).createNotification(first, admin, "ADMIN_BROADCAST", null, "Maintenance soon");
         verify(notifications).createNotification(second, admin, "ADMIN_BROADCAST", null, "Maintenance soon");
         verify(audit).record(eq("NOTIFICATION_BROADCAST"), eq("SYSTEM_NOTIFICATION"), isNull(), eq(admin),
                 isNull(), any(Map.class));
+    }
+
+    @Test
+    void urgentBroadcastTargetsAllActiveUsersWithUrgentActionType() {
+        User admin = user(UserRole.ADMIN, AccountStatus.ACTIVE);
+        User student = user(UserRole.STUDENT, AccountStatus.ACTIVE);
+        User instructor = user(UserRole.INSTRUCTOR, AccountStatus.ACTIVE);
+        when(currentUsers.requireCurrentUser()).thenReturn(admin);
+        when(users.findByAccountStatus(AccountStatus.ACTIVE)).thenReturn(List.of(student, instructor));
+
+        long count = service.broadcast(new AdminBroadcastRequest("System maintenance", null, true));
+
+        assertThat(count).isEqualTo(2);
+        verify(notifications).createNotification(
+                student, admin, "ADMIN_BROADCAST_URGENT", null, "System maintenance");
+        verify(notifications).createNotification(
+                instructor, admin, "ADMIN_BROADCAST_URGENT", null, "System maintenance");
     }
 
     private User user(UserRole role, AccountStatus status) {

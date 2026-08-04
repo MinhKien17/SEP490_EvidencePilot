@@ -107,7 +107,7 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
             case AiEvaluationJob.KIND_CLAIM_QUALITY -> {
                 UUID sectionId = UUID.fromString(payload.path("sectionId").asText());
                 String content = payload.path("content").asText();
-                PaperSection section = paperSectionRepository.findById(sectionId)
+                PaperSection section = paperSectionRepository.findByIdWithDocument(sectionId)
                         .orElseThrow(() -> new ResourceNotFoundException(sectionId, "PaperSection"));
                 yield objectMapper.valueToTree(claimQualityEvaluationService.evaluate(
                         section.getDocument().getProject(), section, content));
@@ -128,7 +128,7 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
             rabbitTemplate.convertAndSend(
                     RabbitMQConfig.AI_EVALUATION_QUEUE, Map.of("jobId", jobId.toString()));
         } catch (Exception e) {
-            // ponytail: job stays PENDING and is re-enqueued on next startup
+            // job stays PENDING and is re-enqueued on next startup
             log.error("Failed to publish AI evaluation job {}: {}", jobId, e.getMessage());
         }
     }

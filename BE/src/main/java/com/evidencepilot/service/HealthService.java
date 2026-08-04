@@ -17,11 +17,16 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class HealthService {
 
+    private static final long READINESS_CACHE_TTL_NANOS = 5_000_000_000L;
+
     private final DataSource dataSource;
     private final AiModelClient aiModelClient;
     private final QdrantClient qdrantClient;
     private final MinioClient minioClient;
     private final RabbitTemplate rabbitTemplate;
+
+    private Map<String, Object> cachedReadiness;
+    private long cachedReadinessAtNanos;
 
     @Value("${minio.bucket-name}")
     private String bucketName;
@@ -30,7 +35,12 @@ public class HealthService {
         return Map.of("status", "UP");
     }
 
-    public Map<String, Object> checkReadiness() {
+    public synchronized Map<String, Object> checkReadiness() {
+        long now = System.nanoTime();
+        if (cachedReadiness != null && now - cachedReadinessAtNanos < READINESS_CACHE_TTL_NANOS) {
+            return cachedReadiness;
+        }
+
         Map<String, Object> components = new LinkedHashMap<>();
         String overall = "UP";
 
@@ -92,6 +102,8 @@ public class HealthService {
             if (!"DOWN".equals(overall)) overall = "DEGRADED";
         }
 
-        return Map.of("status", overall, "components", components);
+        cachedReadiness = Map.of("status", overall, "components", components);
+        cachedReadinessAtNanos = System.nanoTime();
+        return cachedReadiness;
     }
 }

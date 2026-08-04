@@ -187,6 +187,7 @@ CREATE TABLE claims (
     created_by BINARY(16),
     content TEXT NOT NULL,
     ai_confidence_score FLOAT,
+    claim_quality_score FLOAT,
     functional_type VARCHAR(50) CHECK (functional_type IN ('EMPIRICAL','THEORETICAL','METHODOLOGICAL','ANALYTICAL','APPLIED')),
     claim_version INT NOT NULL DEFAULT 1,
     opt_version BIGINT NOT NULL DEFAULT 0,

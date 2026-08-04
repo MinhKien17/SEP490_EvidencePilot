@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-export default function Modal({ open, onClose, title, children, wide }) {
+export default function Modal({ open, onClose, title, children, wide, className, closeLabel = 'Close' }) {
   const ref = useRef();
 
   useEffect(() => {
@@ -13,11 +13,11 @@ export default function Modal({ open, onClose, title, children, wide }) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={ref} className={`bg-white rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto ${wide ? 'max-w-3xl w-[94%]' : 'max-w-lg w-[94%]'}`}>
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200">
-          <h2 className="text-base font-bold text-slate-800">{title}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">&times;</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 backdrop-blur-sm p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={ref} role="dialog" aria-modal="true" aria-label={title} className={`bg-(--surface) text-(--text-primary) border border-(--border) rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto ${wide ? 'max-w-3xl w-full' : 'max-w-lg w-full'} ${className || ''}`}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-(--border)">
+          <h2 className="text-base font-bold text-(--text-primary)">{title}</h2>
+          <button onClick={onClose} aria-label={closeLabel} title={closeLabel} className="w-8 h-8 flex items-center justify-center text-(--text-tertiary) hover:text-(--text-primary) hover:bg-(--surface-secondary) rounded-lg text-xl leading-none">&times;</button>
         </div>
         <div className="p-5">{children}</div>
       </div>

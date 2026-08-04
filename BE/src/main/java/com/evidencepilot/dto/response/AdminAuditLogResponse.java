@@ -1,6 +1,7 @@
 package com.evidencepilot.dto.response;
 
 import com.evidencepilot.model.AuditLog;
+import com.evidencepilot.model.User;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -16,7 +17,15 @@ public record AdminAuditLogResponse(
         LocalDateTime occurredAt) {
 
     public static AdminAuditLogResponse from(AuditLog log) {
-        return new AdminAuditLogResponse(log.getActor().getId(), log.getActor().getEmail(), log.getAction(),
-                log.getEntityType(), log.getEntityId(), log.getOldValue(), log.getNewValue(), log.getOccurredAt());
+        User actor = log.getActor();
+        return new AdminAuditLogResponse(
+                actor != null ? actor.getId() : null,
+                actor != null ? actor.getEmail() : null,
+                log.getAction(),
+                log.getEntityType(),
+                log.getEntityId(),
+                log.getOldValue(),
+                log.getNewValue(),
+                log.getOccurredAt());
     }
 }

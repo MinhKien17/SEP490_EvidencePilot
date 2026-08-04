@@ -97,7 +97,7 @@ class FeedbackServiceImplTest {
     }
 
     @Test
-    void submitForReviewRejectsClaimsMissingFromTheirSections() {
+    void submitForReviewProceedsEvenWhenClaimsMissingFromTheirSections() {
         User instructor = user(UserRole.INSTRUCTOR);
         User student = user(UserRole.STUDENT);
         Project project = project(instructor, student);
@@ -107,10 +107,16 @@ class FeedbackServiceImplTest {
                 org.springframework.http.HttpStatus.CONFLICT,
                 "Claims must appear in their owning sections: claim=MISSING"))
                 .when(claimContentConsistencyService).requireAllPresent(project.getId());
+        when(feedbackRequestRepository.save(any(FeedbackRequest.class))).thenAnswer(invocation -> {
+            FeedbackRequest request = invocation.getArgument(0);
+            request.setId(UUID.randomUUID());
+            return request;
+        });
 
-        assertThatThrownBy(() -> service().submitForReview(project.getId(), null))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("MISSING");
+        FeedbackRequestResponseDto response = service().submitForReview(project.getId(), null);
+
+        assertThat(response).isNotNull();
+        verify(feedbackRequestRepository).save(any(FeedbackRequest.class));
     }
 
     @Test

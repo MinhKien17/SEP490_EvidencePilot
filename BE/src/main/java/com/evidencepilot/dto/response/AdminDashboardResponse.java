@@ -15,6 +15,5 @@ public record AdminDashboardResponse(
         long activeCollectionCategories,
         long activeCollections,
         long activeSourceDocuments,
-        long activePaperDocuments,
-        Map<String, Object> infrastructureReadiness) {
+        long activePaperDocuments) {
 }

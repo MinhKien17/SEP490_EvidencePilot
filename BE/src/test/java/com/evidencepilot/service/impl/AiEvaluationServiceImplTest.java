@@ -53,7 +53,7 @@ class AiEvaluationServiceImplTest {
         section.setDocument(document);
         AiEvaluationJob job = job(sectionId, projectId, "{\"sectionId\":\"" + sectionId + "\",\"content\":\"draft\"}");
         when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
-        when(paperSectionRepository.findById(sectionId)).thenReturn(Optional.of(section));
+        when(paperSectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
         when(qualityService.evaluate(project, section, "draft")).thenReturn(
                 com.evidencepilot.dto.response.ClaimQualityEvaluationResponse.from(
                         List.of(
