@@ -85,15 +85,14 @@ public class SourceController {
     }
 
     @Operation(summary = "Remove shared source from project",
-            description = "Removes a collection-shared source from a project by deleting the reference. "
-                    + "Original document remains in collection. "
-                    + "Blocked with 409 if evidence mappings exist.")
+            description = "Removes a manual share. A source inherited from a linked collection remains visible "
+                    + "but is no longer pinned. Blocked with 409 if removing the effective source would break mappings.")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Shared source removed"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
             @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
             @ApiResponse(responseCode = "404", description = "Shared source not found"),
-            @ApiResponse(responseCode = "409", description = "Evidence mappings exist — remove them first")
+            @ApiResponse(responseCode = "409", description = "Project is locked or evidence mappings exist")
     })
     @DeleteMapping("/projects/{projectId}/sources/{sourceId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

@@ -31,6 +31,13 @@ public class ProjectDocument {
     private Document document;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "project_collection_id", columnDefinition = "BINARY(16)", referencedColumnName = "id")
+    private ProjectCollection projectCollection;
+
+    @Column(nullable = false)
+    private boolean pinned = true;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "shared_by", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     private User sharedBy;
 

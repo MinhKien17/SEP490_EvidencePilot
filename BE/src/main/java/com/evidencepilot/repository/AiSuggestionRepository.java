@@ -1,6 +1,7 @@
 package com.evidencepilot.repository;
 
 import com.evidencepilot.model.AiSuggestion;
+import com.evidencepilot.model.enums.SuggestionStatus;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
@@ -23,4 +24,6 @@ public interface AiSuggestionRepository extends JpaRepository<AiSuggestion, UUID
 
     List<AiSuggestion> findByDocumentChunkId(UUID documentChunkId);
     List<AiSuggestion> findByStatusOrderByCreatedAtDesc(String status);
+    List<AiSuggestion> findByClaimProjectIdAndDocumentChunkDocumentIdAndStatus(
+            UUID projectId, UUID documentId, SuggestionStatus status);
 }

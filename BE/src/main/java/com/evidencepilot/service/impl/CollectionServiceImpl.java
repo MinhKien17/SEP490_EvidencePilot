@@ -37,6 +37,7 @@ public class CollectionServiceImpl implements CollectionService {
     private final CollectionRepository collectionRepository;
     private final CollectionCategoryRepository collectionCategoryRepository;
     private final CurrentUserService currentUserService;
+    private final ProjectCollectionService projectCollectionService;
 
     @Override
     @Transactional
@@ -95,19 +96,13 @@ public class CollectionServiceImpl implements CollectionService {
         Collection collection = collectionRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(id, "Collection"));
         currentUserService.requireCollectionAccess(currentUser, collection);
+        projectCollectionService.prepareCollectionDeletion(collection);
         collection.setActive(false);
         collectionRepository.save(collection);
     }
 
     private CollectionResponse toResponse(Collection collection) {
-        return new CollectionResponse(
-                collection.getId(),
-                collection.getTitle(),
-                collection.getDescription(),
-                collection.getCategory() != null ? collection.getCategory().getId() : null,
-                collection.getCategory() != null ? collection.getCategory().getName() : null,
-                null,
-                collection.getCreatedAt());
+        return CollectionResponse.from(collection);
     }
 
     private Specification<Collection> myCollectionSpec(UUID instructorId, String q, UUID categoryId) {

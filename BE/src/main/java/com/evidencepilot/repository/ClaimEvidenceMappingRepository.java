@@ -13,4 +13,6 @@ public interface ClaimEvidenceMappingRepository extends JpaRepository<ClaimEvide
     List<ClaimEvidenceMapping> findByDocumentChunkId(UUID documentChunkId);
     List<ClaimEvidenceMapping> findByClaimIdAndDocumentChunkId(UUID claimId, UUID documentChunkId);
     List<ClaimEvidenceMapping> findByDocumentChunkDocumentIdAndStatus(UUID documentId, MappingStatus status);
+    boolean existsByClaimProjectIdAndDocumentChunkDocumentIdAndStatus(
+            UUID projectId, UUID documentId, MappingStatus status);
 }

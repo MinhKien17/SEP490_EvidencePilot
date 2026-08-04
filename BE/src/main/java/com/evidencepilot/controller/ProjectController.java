@@ -15,10 +15,10 @@ import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.service.ClaimService;
 import com.evidencepilot.service.ClaimContentConsistencyService;
-import com.evidencepilot.service.CollectionService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.ProjectService;
+import com.evidencepilot.service.impl.ProjectCollectionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -58,7 +58,7 @@ public class ProjectController {
     private final ProjectService projectService;
     private final DocumentService documentService;
     private final ClaimService claimService;
-    private final CollectionService collectionService;
+    private final ProjectCollectionService projectCollectionService;
     private final PaperProcessingService paperProcessingService;
     private final ClaimContentConsistencyService claimContentConsistencyService;
 
@@ -204,6 +204,30 @@ public class ProjectController {
             @RequestParam(required = false) Boolean active) {
         return documentService.getSourcesByProject(
                 projectId, page, size, sort, q, processingStatus, active);
+    }
+
+    @Operation(summary = "List collections linked to a project")
+    @GetMapping("/{projectId}/collections")
+    public List<CollectionResponse> getLinkedCollections(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
+        return projectCollectionService.getLinkedCollections(projectId);
+    }
+
+    @Operation(summary = "Link and synchronize a collection to a project")
+    @PutMapping("/{projectId}/collections/{collectionId}")
+    public CollectionResponse linkCollection(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId,
+            @Parameter(description = "Collection UUID") @PathVariable UUID collectionId) {
+        return projectCollectionService.link(projectId, collectionId);
+    }
+
+    @Operation(summary = "Stop synchronizing a collection with a project")
+    @DeleteMapping("/{projectId}/collections/{collectionId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void unlinkCollection(
+            @Parameter(description = "Project UUID") @PathVariable UUID projectId,
+            @Parameter(description = "Collection UUID") @PathVariable UUID collectionId) {
+        projectCollectionService.unlink(projectId, collectionId);
     }
 
     @Operation(summary = "List project claims",

@@ -1,5 +1,7 @@
 package com.evidencepilot.dto.response;
 
+import com.evidencepilot.model.Collection;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -9,6 +11,15 @@ public record CollectionResponse(
     String description,
     UUID categoryId,
     String categoryName,
-    UUID projectId,
     LocalDateTime createdAt
-) {}
+) {
+    public static CollectionResponse from(Collection collection) {
+        return new CollectionResponse(
+                collection.getId(),
+                collection.getTitle(),
+                collection.getDescription(),
+                collection.getCategory() != null ? collection.getCategory().getId() : null,
+                collection.getCategory() != null ? collection.getCategory().getName() : null,
+                collection.getCreatedAt());
+    }
+}

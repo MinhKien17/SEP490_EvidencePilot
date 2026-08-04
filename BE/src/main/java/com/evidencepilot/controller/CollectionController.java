@@ -41,8 +41,7 @@ public class CollectionController {
     private final OpenAlexIngestionService openAlexIngestionService;
 
     @Operation(summary = "Create a collection",
-            description = "Creates a new evidence collection owned by the current instructor user. "
-                    + "Optionally associates it with a project.")
+            description = "Creates a new evidence collection owned by the current instructor user.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Collection created"),
             @ApiResponse(responseCode = "400", description = "Validation error"),
@@ -80,7 +79,7 @@ public class CollectionController {
     }
 
     @Operation(summary = "Update a collection",
-            description = "Updates the name, description, or project association of a collection.")
+            description = "Updates the name, description, or category of a collection.")
     @PutMapping("/{id}")
     public CollectionResponse updateCollection(
             @Parameter(description = "Collection UUID") @PathVariable UUID id,
@@ -106,7 +105,7 @@ public class CollectionController {
             @ApiResponse(responseCode = "200", description = "Document shared with suitability info"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
             @ApiResponse(responseCode = "404", description = "Collection, source, or project not found"),
-            @ApiResponse(responseCode = "409", description = "Document already shared to this project")
+            @ApiResponse(responseCode = "409", description = "Project corpus is locked")
     })
     @PostMapping("/{collectionId}/sources/{sourceId}/share-to-project/{projectId}")
     public Map<String, Object> shareToProject(

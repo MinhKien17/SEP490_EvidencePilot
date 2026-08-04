@@ -58,14 +58,12 @@ CREATE TABLE collection_categories (
 
 CREATE TABLE collections (
     id BINARY(16) NOT NULL PRIMARY KEY,
-    project_id BINARY(16),
     instructor_id BINARY(16) NOT NULL,
     title VARCHAR(255),
     description TEXT,
     category_id BINARY(16),
     active BOOLEAN DEFAULT TRUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (category_id) REFERENCES collection_categories(id) ON DELETE SET NULL
 );
@@ -250,17 +248,34 @@ CREATE TABLE claim_evidence_mappings (
 );
 
 -- ==========================================
--- 7. SHARED DOCUMENTS (project <-> source bridge)
+-- 7. SHARED COLLECTIONS & DOCUMENTS
 -- ==========================================
+CREATE TABLE project_collections (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    project_id BINARY(16) NOT NULL,
+    collection_id BINARY(16) NOT NULL,
+    linked_by BINARY(16) NOT NULL,
+    linked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE INDEX idx_project_collections_unique (project_id, collection_id),
+    INDEX idx_project_collections_collection (collection_id),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+    FOREIGN KEY (linked_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE project_documents (
     id BINARY(16) NOT NULL PRIMARY KEY,
     project_id BINARY(16) NOT NULL,
     document_id BINARY(16) NOT NULL,
+    project_collection_id BINARY(16),
+    pinned BOOLEAN NOT NULL DEFAULT TRUE,
     shared_by BINARY(16) NOT NULL,
     shared_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE INDEX idx_project_documents_unique (project_id, document_id),
+    INDEX idx_project_documents_collection_link (project_collection_id),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_collection_id) REFERENCES project_collections(id) ON DELETE SET NULL,
     FOREIGN KEY (shared_by) REFERENCES users(id) ON DELETE CASCADE
 );
 

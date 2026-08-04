@@ -52,6 +52,7 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
     private final DocumentPersistenceService documentPersistenceService;
     private final DocumentReferenceRepository documentReferenceRepository;
     private final ObjectMapper objectMapper;
+    private final ProjectCollectionService projectCollectionService;
 
     @Override
     public OpenAlexPreview lookupByDoi(String doi) {
@@ -129,6 +130,7 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
             document.setProcessingStatus(ProcessingStatus.METADATA_FETCHED);
             document.setProcessingError("No open-access PDF available for this DOI");
             document = documentRepository.save(document);
+            projectCollectionService.syncSource(document);
             return DocumentResponse.from(document);
         }
 
@@ -151,6 +153,7 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
 
         persistReferences(document, work);
         persistCitedBy(document, work);
+        projectCollectionService.syncSource(document);
 
         return DocumentResponse.from(document);
     }

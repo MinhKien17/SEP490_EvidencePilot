@@ -56,6 +56,7 @@ public class FeedbackServiceImpl implements FeedbackService {
     private final PaperProcessingService paperProcessingService;
     private final ClaimContentConsistencyService claimContentConsistencyService;
     private final CheckpointService checkpointService;
+    private final ProjectCollectionService projectCollectionService;
 
     @Override
     public List<FeedbackRequestResponseDto> findAllForCurrentUser() {
@@ -369,6 +370,9 @@ public class FeedbackServiceImpl implements FeedbackService {
         project.setStatus(projectStatus);
         project.setUpdatedAt(LocalDateTime.now());
         projectRepository.save(project);
+        if (projectStatus == ProjectStatus.IN_PROGRESS || projectStatus == ProjectStatus.RETURNED) {
+            projectCollectionService.syncProject(project);
+        }
         FeedbackRequest saved = feedbackRequestRepository.save(feedbackRequest);
         checkpointService.capture(project.getId(), "REVIEW_STATUS:" + status);
         return saved;

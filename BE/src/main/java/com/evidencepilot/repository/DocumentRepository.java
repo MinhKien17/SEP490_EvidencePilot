@@ -20,6 +20,7 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, JpaSp
     List<Document> findByProjectId(UUID projectId);
     List<Document> findByProjectIdAndDocTypeAndActiveTrue(UUID projectId, DocumentType docType);
     List<Document> findByCollectionId(UUID collectionId);
+    List<Document> findByCollectionIdAndDocTypeAndActiveTrue(UUID collectionId, DocumentType docType);
     List<Document> findByUploadedById(UUID uploadedById);
     List<Document> findByProjectIdOrCollectionId(UUID projectId, UUID collectionId);
     List<Document> findByProcessingStatusAndActiveTrue(ProcessingStatus processingStatus);

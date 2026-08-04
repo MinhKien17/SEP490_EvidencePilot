@@ -13,5 +13,6 @@ public interface ProjectDocumentRepository extends JpaRepository<ProjectDocument
     boolean existsByProjectIdAndDocumentId(UUID projectId, UUID documentId);
     boolean existsByDocumentId(UUID documentId);
     List<ProjectDocument> findByDocumentId(UUID documentId);
+    List<ProjectDocument> findByProjectCollectionId(UUID projectCollectionId);
     boolean existsByProjectIdAndDocument_DocTypeAndDocument_ActiveTrue(UUID projectId, DocumentType docType);
 }

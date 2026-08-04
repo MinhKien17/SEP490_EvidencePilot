@@ -14,11 +14,9 @@ import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
-import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.CollectionRepository;
-import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.DocumentTextRepository;
@@ -49,7 +47,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -79,7 +76,6 @@ public class DocumentServiceImpl implements DocumentService {
     private final CollectionRepository collectionRepository;
     private final ProjectDocumentRepository projectDocumentRepository;
     private final PaperSectionRepository paperSectionRepository;
-    private final ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
     private final CurrentUserService currentUserService;
     private final DocumentPersistenceService documentPersistenceService;
     private final DocumentMapper documentMapper;
@@ -87,6 +83,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final DocumentObjectStorage documentObjectStorage;
     private final OpenAlexClient openAlexClient;
     private final ObjectMapper objectMapper;
+    private final ProjectCollectionService projectCollectionService;
 
     @PostConstruct
     void ensureBucketExists() {
@@ -199,8 +196,8 @@ public class DocumentServiceImpl implements DocumentService {
         if (doc.getDocType() != DocumentType.SOURCE || !doc.isActive()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source not found or inactive");
         }
-        doc.setCollection(collection);
-        return DocumentResponse.from(documentRepository.save(doc));
+        requireDocumentWriteAccess(currentUser, doc);
+        return DocumentResponse.from(projectCollectionService.moveSource(doc, collection));
     }
 
     @Override
@@ -299,9 +296,6 @@ public class DocumentServiceImpl implements DocumentService {
             collection = collectionRepository.findById(collectionId)
                     .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
             currentUserService.requireCollectionAccess(currentUser, collection);
-            if (collection.getProject() != null) {
-                currentUserService.requireProjectWriteAccess(currentUser, collection.getProject());
-            }
         }
 
         String originalName = file.getOriginalFilename();
@@ -329,7 +323,10 @@ public class DocumentServiceImpl implements DocumentService {
         document = documentPersistenceService.markDocumentAsUploaded(document.getId(), objectKey);
 
         if (project != null) {
-            refreshProjectStatus(project);
+            projectCollectionService.refreshProjectStatus(project);
+        }
+        if (collection != null) {
+            projectCollectionService.syncSource(document);
         }
 
         return DocumentResponse.from(document);
@@ -347,23 +344,15 @@ public class DocumentServiceImpl implements DocumentService {
         if (doc.getDocType() != DocumentType.SOURCE || !doc.isActive()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source not found or inactive");
         }
+        if (doc.getCollection() == null || !collectionId.equals(doc.getCollection().getId())) {
+            throw new ResourceNotFoundException(sourceId, "Source in collection");
+        }
 
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
         currentUserService.requireProjectWriteAccess(currentUser, project);
 
-        if (projectDocumentRepository.existsByProjectIdAndDocumentId(projectId, sourceId)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Document already shared to this project");
-        }
-
-        ProjectDocument pd = new ProjectDocument();
-        pd.setProject(project);
-        pd.setDocument(doc);
-        pd.setSharedBy(currentUser);
-        pd.setSharedAt(LocalDateTime.now());
-        projectDocumentRepository.save(pd);
-
-        refreshProjectStatus(project);
+        projectCollectionService.pinSource(project, doc, currentUser);
 
         String score = "MEDIUM";
         String explanation = "Document shared to project \"" + project.getTitle() + "\"";
@@ -405,6 +394,13 @@ public class DocumentServiceImpl implements DocumentService {
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
         currentUserService.requireProjectWriteAccess(currentUser, project);
 
+        ProjectDocument pd = projectDocumentRepository.findByProjectIdAndDocumentId(projectId, sourceId)
+                .orElseThrow(() -> new ResourceNotFoundException("Shared document not found"));
+        if (pd.getProjectCollection() != null) {
+            projectCollectionService.unshare(pd);
+            return;
+        }
+
         // Guard: only allow unshare if sections are clean
         List<Document> papers = documentRepository
                 .findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER);
@@ -428,18 +424,7 @@ public class DocumentServiceImpl implements DocumentService {
             }
         }
 
-        ProjectDocument pd = projectDocumentRepository.findByProjectIdAndDocumentId(projectId, sourceId)
-                .orElseThrow(() -> new ResourceNotFoundException("Shared document not found"));
-
-        boolean hasMappings = documentChunkRepository.findByDocumentId(sourceId).stream()
-                .anyMatch(chunk -> !claimEvidenceMappingRepository
-                        .findByDocumentChunkId(chunk.getId()).isEmpty());
-        if (hasMappings) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Evidence mappings exist for this source. Remove mappings first.");
-        }
-
-        projectDocumentRepository.delete(pd);
+        projectCollectionService.unshare(pd);
     }
 
     @Override
@@ -550,7 +535,7 @@ public class DocumentServiceImpl implements DocumentService {
         doc = documentPersistenceService.markDocumentAsUploaded(doc.getId(), objectKey);
 
         if (doc.getProject() != null) {
-            refreshProjectStatus(doc.getProject());
+            projectCollectionService.refreshProjectStatus(doc.getProject());
         }
 
         return DocumentResponse.from(doc);
@@ -562,21 +547,11 @@ public class DocumentServiceImpl implements DocumentService {
         var currentUser = currentUserService.requireCurrentUser();
         Document doc = findDocument(id);
         requireDocumentWriteAccess(currentUser, doc);
-        Project project = doc.getProject();
-        if (project == null && doc.getCollection() != null) {
-            project = doc.getCollection().getProject();
-        }
-        long activeMappingCount = claimEvidenceMappingRepository
-                .findByDocumentChunkDocumentIdAndStatus(id, MappingStatus.ACTIVE).size();
-        if (activeMappingCount > 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Source is mapped to " + activeMappingCount + " active claim evidence mapping(s). "
-                            + "Remove those mappings before deleting this source.");
-        }
+        projectCollectionService.removeSource(doc);
         doc.setActive(false);
         documentRepository.save(doc);
         if (doc.getProject() != null) {
-            refreshProjectStatus(doc.getProject());
+            projectCollectionService.refreshProjectStatus(doc.getProject());
         }
     }
 
@@ -609,21 +584,19 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     private void requireDocumentWriteAccess(User currentUser, Document doc) {
-        requireDocumentAccess(currentUser, doc);
-        Project project = doc.getProject();
-        if (project == null && doc.getCollection() != null) {
-            project = doc.getCollection().getProject();
-        }
-        if (project != null) {
-            currentUserService.requireProjectWriteAccess(currentUser, project);
+        if (doc.getProject() != null) {
+            currentUserService.requireProjectWriteAccess(currentUser, doc.getProject());
+        } else if (doc.getCollection() != null) {
+            currentUserService.requireCollectionAccess(currentUser, doc.getCollection());
+        } else {
+            currentUserService.requireUserIdOrAdmin(currentUser, doc.getUploadedBy().getId());
         }
         for (ProjectDocument link : projectDocumentRepository.findByDocumentId(doc.getId())) {
             ProjectStatus status = link.getProject().getStatus();
             if (status.isReadOnly()) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
             }
-            if (status == ProjectStatus.SUBMITTED_FOR_REVIEW
-                    && !currentUserService.isAdmin(currentUser)) {
+            if (status == ProjectStatus.SUBMITTED_FOR_REVIEW) {
                 throw new ResponseStatusException(
                         HttpStatus.CONFLICT, "Project is locked and cannot be modified.");
             }
@@ -635,33 +608,6 @@ public class DocumentServiceImpl implements DocumentService {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
         currentUserService.requireProjectAccess(currentUser, project);
-    }
-
-    private void refreshProjectStatus(Project project) {
-        if (project.getStatus() != ProjectStatus.CREATED && project.getStatus() != ProjectStatus.ASSIGNED && project.getStatus() != ProjectStatus.IN_PROGRESS) {
-            return;
-        }
-        boolean hasPaper = !documentRepository
-                .findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.PAPER)
-                .isEmpty();
-        boolean hasSource = !documentRepository
-                .findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.SOURCE)
-                .isEmpty()
-                || projectDocumentRepository
-                        .existsByProjectIdAndDocument_DocTypeAndDocument_ActiveTrue(
-                                project.getId(), DocumentType.SOURCE);
-        ProjectStatus status;
-        if (hasPaper && hasSource) {
-            status = ProjectStatus.IN_PROGRESS;
-        } else if (hasPaper || hasSource) {
-            status = ProjectStatus.ASSIGNED;
-        } else {
-            status = ProjectStatus.CREATED;
-        }
-        if (project.getStatus() != status) {
-            project.setStatus(status);
-            projectRepository.save(project);
-        }
     }
 
     private Specification<Document> collectionSourceSpec(UUID collectionId, String q) {
