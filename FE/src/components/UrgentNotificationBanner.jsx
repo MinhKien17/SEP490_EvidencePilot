@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Client } from '@stomp/stompjs';
-import api from '../api.js';
+import api, { baseURL } from '../api.js';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -23,10 +23,9 @@ export default function UrgentNotificationBanner() {
       }
     }).catch(() => {});
 
-    const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
     // the student workspace keeps its existing inbox socket; unify them if notification traffic grows.
     const client = new Client({
-      brokerURL: base.replace(/^http/, 'ws') + '/ws',
+      brokerURL: baseURL.replace(/^http/, 'ws') + '/ws',
       connectHeaders: { Authorization: `Bearer ${token}` },
       onConnect: () => {
         client.subscribe('/user/queue/notifications', message => {

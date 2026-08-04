@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import TourLauncher from '../../components/TourLauncher';
 import FileViewerModal from '../../components/FileViewerModal';
-import api from '../../api.js';
+import api, { baseURL } from '../../api.js';
 import { Client } from '@stomp/stompjs';
 import WorkspaceHeader from './WorkspaceHeader.jsx';
 import FilePanel from './FilePanel.jsx';
@@ -471,10 +471,8 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) return;
-    const base = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
-    const wsUrl = base.replace(/^http/, 'ws') + '/ws';
     const client = new Client({
-      brokerURL: wsUrl,
+      brokerURL: baseURL.replace(/^http/, 'ws') + '/ws',
       connectHeaders: { Authorization: 'Bearer ' + token },
       onConnect: () => {
         client.subscribe('/user/queue/notifications', msg => {

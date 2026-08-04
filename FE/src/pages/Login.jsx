@@ -3,6 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api.js';
 
+let googleCredentialHandler;
+let googleIdentityInitialized = false;
+
 export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -99,42 +102,55 @@ export default function Login() {
   }
 
   useEffect(() => {
+    googleCredentialHandler = handleGoogleCredentialResponse;
+
     const initializeGoogleSignIn = () => {
-      if (window.google) {
-        try {
+      if (!window.google) return;
+      try {
+        if (!googleIdentityInitialized) {
           window.google.accounts.id.initialize({
             client_id: googleClientId,
-            callback: handleGoogleCredentialResponse
+            callback: response => googleCredentialHandler?.(response)
           });
-          window.google.accounts.id.renderButton(
-            document.getElementById('google-signin-button'),
-            { 
-              theme: 'outline', 
-              size: 'large', 
-              width: 380, 
-              text: 'signin_with',
-              shape: 'rectangular',
-              logo_alignment: 'left'
-            }
-          );
-        } catch (e) {
-          console.warn('Google Identity Services initialization failed. Using fallback.');
+          googleIdentityInitialized = true;
         }
+
+        const button = document.getElementById('google-signin-button');
+        if (!button) return;
+        button.replaceChildren();
+        window.google.accounts.id.renderButton(button, {
+          theme: 'outline',
+          size: 'large',
+          width: 380,
+          text: 'signin_with',
+          shape: 'rectangular',
+          logo_alignment: 'left'
+        });
+      } catch (e) {
+        console.warn('Google Identity Services initialization failed. Using fallback.');
       }
     };
 
-    if (!document.getElementById('google-gsi-script')) {
-      const script = document.createElement('script');
+    let script = document.getElementById('google-gsi-script');
+    if (!script) {
+      script = document.createElement('script');
       script.id = 'google-gsi-script';
       script.src = 'https://accounts.google.com/gsi/client';
       script.async = true;
       script.defer = true;
-      script.onload = initializeGoogleSignIn;
       document.body.appendChild(script);
-    } else {
-      const timer = setTimeout(initializeGoogleSignIn, 500);
-      return () => clearTimeout(timer);
     }
+
+    if (window.google) {
+      initializeGoogleSignIn();
+    } else {
+      script.addEventListener('load', initializeGoogleSignIn);
+    }
+
+    return () => {
+      script.removeEventListener('load', initializeGoogleSignIn);
+      if (googleCredentialHandler === handleGoogleCredentialResponse) googleCredentialHandler = undefined;
+    };
   }, [googleClientId]);
 
   return (
