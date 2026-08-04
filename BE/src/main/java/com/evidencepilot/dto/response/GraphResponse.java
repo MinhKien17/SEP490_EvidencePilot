@@ -53,6 +53,6 @@ public record GraphResponse(
 
     public record ClaimStatsResponse(
         int totalClaims,
-        Map<String, Double> byFunctionalType
+        Map<String, Long> byFunctionalType
     ) {}
 }

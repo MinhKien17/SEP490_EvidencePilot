@@ -198,22 +198,18 @@ public class GraphServiceImpl implements GraphService {
         }
         currentUserService.requireProjectAccess(currentUser, project);
 
-        Map<String, Double> byFunctionalType = new LinkedHashMap<>();
+        Map<String, Long> byFunctionalType = new LinkedHashMap<>();
         for (FunctionalType type : FunctionalType.values()) {
-            byFunctionalType.put(type.name(), 0.0);
+            byFunctionalType.put(type.name(), 0L);
         }
-        int total = 0;
-        for (ClaimRepository.FunctionalTypeScore row : claimRepository.findFunctionalTypeScores(projectId)) {
-            total += 1;
-            if (row.getFunctionalType() == null) {
-                continue;
+        long total = 0;
+        for (ClaimRepository.FunctionalTypeCount row : claimRepository.countByFunctionalType(projectId)) {
+            if (row.getFunctionalType() != null) {
+                byFunctionalType.put(row.getFunctionalType().name(), row.getClaimCount());
             }
-            double weight = row.getClaimQualityScore() != null ? row.getClaimQualityScore() : 0.0;
-            byFunctionalType.put(
-                    row.getFunctionalType().name(),
-                    byFunctionalType.get(row.getFunctionalType().name()) + weight);
+            total += row.getClaimCount();
         }
-        return new GraphResponse.ClaimStatsResponse(total, byFunctionalType);
+        return new GraphResponse.ClaimStatsResponse((int) total, byFunctionalType);
     }
 
     // section radar/coverage must reflect the paper's full structure, not just
