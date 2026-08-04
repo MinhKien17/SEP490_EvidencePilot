@@ -236,7 +236,10 @@ export default function Projects() {
             </button>
           </div>
         ) : projects.length === 0 ? (
-          <EmptyState title={t.noProjects} description={t.noProjectsDescription} />
+          <EmptyState
+            title={stats.total === 0 ? t.noProjects : t.noMatchingProjects}
+            description={stats.total === 0 ? t.noProjectsDescription : t.noMatchingProjectsDesc}
+          />
         ) : isGridView ? (
           /* Grid View Layout */
           <div id="projects-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
