@@ -292,6 +292,30 @@ class PaperProcessingServiceImplTest {
     }
 
     @Test
+    void reviewPreservesBadGatewayAfterRetry() {
+        User user = user();
+        Project project = project();
+        Document document = document(project);
+        PaperSection section = section(document);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(document.getId())).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(instructorFeedbackRepository.findByRequestProjectId(project.getId()))
+                .thenReturn(List.of());
+        when(claimRepository.findByProjectId(project.getId())).thenReturn(List.of());
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenThrow(new AiModelClient.AiApiException("/ai/generate", 502));
+
+        assertThatThrownBy(() -> service().review(document.getId(), null))
+                .isInstanceOfSatisfying(ResponseStatusException.class, error -> {
+                    assertThat(error.getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+                    assertThat(error.getReason()).contains("invalid response");
+                });
+        verify(aiModelClient, times(2)).generate(anyString(), anyString());
+    }
+
+    @Test
     void reviewMapsNullAiJsonToValidationFailureAfterRetry() {
         User user = user();
         Project project = project();

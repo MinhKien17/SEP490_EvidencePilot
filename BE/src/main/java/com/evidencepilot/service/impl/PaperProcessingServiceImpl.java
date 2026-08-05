@@ -373,12 +373,16 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             log.error("Paper review failed for document {}: {}", document.getId(), e.getMessage());
             HttpStatus status = e.getStatusCode() == 429
                     ? HttpStatus.TOO_MANY_REQUESTS
-                    : HttpStatus.SERVICE_UNAVAILABLE;
+                    : e.getStatusCode() == 502
+                            ? HttpStatus.BAD_GATEWAY
+                            : HttpStatus.SERVICE_UNAVAILABLE;
             throw new ResponseStatusException(
                     status,
                     status == HttpStatus.TOO_MANY_REQUESTS
                             ? "Paper review provider rate limit exceeded"
-                            : "Paper review service unavailable",
+                            : status == HttpStatus.BAD_GATEWAY
+                                    ? "Paper review provider returned an invalid response"
+                                    : "Paper review service unavailable",
                     e);
         }
     }
