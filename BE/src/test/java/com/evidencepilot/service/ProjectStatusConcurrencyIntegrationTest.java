@@ -265,7 +265,6 @@ class ProjectStatusConcurrencyIntegrationTest {
         user.setPasswordHash("hash");
         user.setRole(role);
         user.setAccountStatus(AccountStatus.ACTIVE);
-        user.setEmailVerified(true);
         return users.saveAndFlush(user);
     }
 

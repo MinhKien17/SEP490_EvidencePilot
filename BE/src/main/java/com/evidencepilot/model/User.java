@@ -35,14 +35,11 @@ public class User {
     @Column(name = "account_status", nullable = false)
     private AccountStatus accountStatus = AccountStatus.ACTIVE;
 
-    @Column(name = "email_verified", nullable = false)
-    private Boolean emailVerified = true;
+    @Column(name = "student_code", unique = true, length = 50)
+    private String studentCode;
 
-    @Column(name = "email_verification_token_hash", unique = true)
-    private String emailVerificationTokenHash;
-
-    @Column(name = "email_verification_token_expires_at")
-    private LocalDateTime emailVerificationTokenExpiresAt;
+    @Column(name = "password_change_notice_pending", nullable = false)
+    private boolean passwordChangeNoticePending;
 
     @Column(name = "password_reset_token_hash", unique = true)
     private String passwordResetTokenHash;

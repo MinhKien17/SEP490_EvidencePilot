@@ -131,7 +131,7 @@ public class PasswordResetService {
         user.setPasswordResetTokenHash(null);
         user.setPasswordResetTokenExpiresAt(null);
         user.setPasswordResetRequestedAt(null);
-        user.setEmailVerified(true);
+        user.setPasswordChangeNoticePending(false);
         user.setTokenVersion(user.getTokenVersion() + 1);
         if (user.getAccountStatus() == AccountStatus.PENDING) {
             user.setAccountStatus(AccountStatus.ACTIVE);

@@ -8,4 +8,5 @@ import lombok.RequiredArgsConstructor;
 public class AuthResponse {
     private final String token;
     private final UserResponse user;
+    private final boolean passwordChangeNotice;
 }

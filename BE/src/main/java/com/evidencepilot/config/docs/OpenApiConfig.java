@@ -28,7 +28,7 @@ import java.util.Set;
                 description = "API documentation for the Evidence Pilot prototype"
         ),
         tags = {
-                @Tag(name = "Authentication", description = "Public registration and login endpoints"),
+                @Tag(name = "Authentication", description = "Login and password management endpoints"),
                 @Tag(name = "Users", description = "User lookup and profile self-service endpoints"),
                 @Tag(name = "Health", description = "Backend and AI worker health checks"),
                 @Tag(name = "Projects", description = "Project lifecycle and membership management"),
@@ -55,7 +55,7 @@ import java.util.Set;
 public class OpenApiConfig {
 
     private static final List<io.swagger.v3.oas.models.tags.Tag> ORDERED_TAGS = List.of(
-            modelTag("Authentication", "Public registration and login endpoints"),
+            modelTag("Authentication", "Login and password management endpoints"),
             modelTag("Users", "User lookup and profile self-service endpoints"),
             modelTag("Health", "Backend and AI worker health checks"),
             modelTag("Projects", "Project lifecycle and membership management"),

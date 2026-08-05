@@ -38,26 +38,40 @@ class DatabaseSeederTest {
                 passwordEncoder,
                 "configured-admin@example.com",
                 "admin-password",
+                "Configured",
+                "Admin",
                 "configured-student@example.com",
                 "student-password",
+                "Configured",
+                "Student",
+                " se123456 ",
                 "configured-instructor@example.com",
-                "instructor-password")
+                "instructor-password",
+                "Configured",
+                "Instructor")
                 .run();
 
         ArgumentCaptor<User> users = ArgumentCaptor.forClass(User.class);
         verify(userRepository, org.mockito.Mockito.times(3)).save(users.capture());
 
         assertThat(users.getAllValues())
-                .extracting(User::getEmail, User::getRole, User::getPasswordHash, User::getAccountStatus)
+                .extracting(
+                        User::getEmail,
+                        User::getFirstName,
+                        User::getLastName,
+                        User::getStudentCode,
+                        User::getRole,
+                        User::getPasswordHash,
+                        User::getAccountStatus)
                 .containsExactly(
                         org.assertj.core.groups.Tuple.tuple(
-                                "configured-admin@example.com", UserRole.ADMIN,
+                                "configured-admin@example.com", "Configured", "Admin", null, UserRole.ADMIN,
                                 "encoded:admin-password", AccountStatus.ACTIVE),
                         org.assertj.core.groups.Tuple.tuple(
-                                "configured-student@example.com", UserRole.STUDENT,
+                                "configured-student@example.com", "Configured", "Student", "SE123456", UserRole.STUDENT,
                                 "encoded:student-password", AccountStatus.ACTIVE),
                         org.assertj.core.groups.Tuple.tuple(
-                                "configured-instructor@example.com", UserRole.INSTRUCTOR,
+                                "configured-instructor@example.com", "Configured", "Instructor", null, UserRole.INSTRUCTOR,
                                 "encoded:instructor-password", AccountStatus.ACTIVE));
     }
 
@@ -67,6 +81,36 @@ class DatabaseSeederTest {
                 userRepository,
                 passwordEncoder,
                 "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "")
+                .run();
+
+        verifyNoInteractions(userRepository, passwordEncoder);
+    }
+
+    @Test
+    void skipsStudentSeedWhenStudentCodeIsMissing() {
+        new DatabaseSeeder(
+                userRepository,
+                passwordEncoder,
+                "",
+                "",
+                "",
+                "",
+                "student@example.com",
+                "password",
+                "Test",
+                "Student",
                 "",
                 "",
                 "",
@@ -89,13 +133,21 @@ class DatabaseSeederTest {
                 passwordEncoder,
                 "",
                 "",
+                "",
+                "",
                 "student@example.com",
                 "password",
+                "Test",
+                "Student",
+                "SE000001",
+                "",
+                "",
                 "",
                 "")
                 .run();
 
         verify(userRepository).save(existing);
         assertThat(existing.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThat(existing.getStudentCode()).isEqualTo("SE000001");
     }
 }

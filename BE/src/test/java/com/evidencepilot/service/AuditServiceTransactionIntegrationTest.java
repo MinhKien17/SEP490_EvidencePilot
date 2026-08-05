@@ -65,7 +65,6 @@ class AuditServiceTransactionIntegrationTest {
         actor.setPasswordHash("hash");
         actor.setRole(UserRole.ADMIN);
         actor.setAccountStatus(AccountStatus.ACTIVE);
-        actor.setEmailVerified(true);
         return users.save(actor);
     }
 

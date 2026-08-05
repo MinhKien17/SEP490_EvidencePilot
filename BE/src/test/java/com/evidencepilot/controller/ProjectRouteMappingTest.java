@@ -50,10 +50,9 @@ class ProjectRouteMappingTest {
                 .collect(Collectors.toSet());
 
         assertThat(routes).containsExactlyInAnyOrderElementsOf(Set.of(
-                "POST /api/auth/register",
-                "GET /api/auth/verify-email",
                 "POST /api/auth/login",
                 "POST /api/auth/refresh",
+                "POST /api/auth/update-password",
                 "POST /api/auth/password-reset/request",
                 "POST /api/auth/password-reset/confirm",
                 "GET /api/users",
@@ -124,7 +123,7 @@ class ProjectRouteMappingTest {
                 "DELETE /api/admin/collection-categories/{id}",
                 "GET /api/admin/users",
                 "POST /api/admin/users",
-                "PATCH /api/admin/users/{id}/role",
+                "POST /api/admin/users/import",
                 "PATCH /api/admin/users/{id}/status",
                 "DELETE /api/admin/users/{id}",
                 "POST /api/admin/users/{id}/password-reset",
@@ -176,7 +175,7 @@ class ProjectRouteMappingTest {
                 "POST /api/projects/{projectId}/papers/init",
                 "POST /api/projects/{projectId}/papers/reset-standard",
                 "GET /api/jobs/{jobId}"));
-        assertThat(routes).hasSize(126);
+        assertThat(routes).hasSize(125);
     }
 
     @Test

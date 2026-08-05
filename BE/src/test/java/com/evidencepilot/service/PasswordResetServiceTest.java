@@ -82,7 +82,7 @@ class PasswordResetServiceTest {
     @MethodSource("resetTransitions")
     void confirmationPreservesRequiredStatus(AccountStatus before, AccountStatus after) throws Exception {
         User user = user(UserRole.STUDENT, before);
-        user.setEmailVerified(false);
+        user.setPasswordChangeNoticePending(true);
         user.setTokenVersion(4);
         user.setPasswordResetTokenHash(hash("raw-token"));
         user.setPasswordResetTokenExpiresAt(LocalDateTime.now().plusMinutes(5));
@@ -97,7 +97,7 @@ class PasswordResetServiceTest {
         assertThat(user.getPasswordResetTokenHash()).isNull();
         assertThat(user.getPasswordResetTokenExpiresAt()).isNull();
         assertThat(user.getPasswordResetRequestedAt()).isNull();
-        assertThat(user.getEmailVerified()).isTrue();
+        assertThat(user.isPasswordChangeNoticePending()).isFalse();
         assertThat(user.getTokenVersion()).isEqualTo(5);
         assertThat(user.getAccountStatus()).isEqualTo(after);
     }

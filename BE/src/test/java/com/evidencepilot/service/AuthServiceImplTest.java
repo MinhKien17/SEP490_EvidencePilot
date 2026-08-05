@@ -3,8 +3,9 @@ package com.evidencepilot.service;
 import com.evidencepilot.config.security.JwtSessionRegistry;
 import com.evidencepilot.config.security.JwtUtils;
 import com.evidencepilot.dto.request.LoginRequest;
-import com.evidencepilot.dto.request.RegisterRequest;
+import com.evidencepilot.dto.request.UpdatePasswordRequest;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.impl.AuthServiceImpl;
@@ -19,98 +20,58 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class AuthServiceImplTest {
 
     private final UserRepository users = mock(UserRepository.class);
     private final PasswordEncoder encoder = mock(PasswordEncoder.class);
     private final JwtUtils jwtUtils = mock(JwtUtils.class);
-    private final EmailVerificationService verification = mock(EmailVerificationService.class);
     private final JwtSessionRegistry registry = new JwtSessionRegistry();
     private AuthServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new AuthServiceImpl(users, encoder, jwtUtils, verification, registry);
+        service = new AuthServiceImpl(users, encoder, jwtUtils, registry);
     }
 
     @Test
-    void register_createsUnverifiedStudentAndSendsToken() {
-        RegisterRequest request = registerRequest();
-        when(encoder.encode("StrongPass1!")).thenReturn("hash");
-        when(verification.createVerificationToken(any(User.class))).thenReturn("raw-token");
-
-        var response = service.register(request);
-
-        assertThat(response.getToken()).isNull();
-        verify(users).save(argThat(user -> user.getRole() == UserRole.STUDENT
-                && user.getPasswordHash().equals("hash")));
-        verify(verification).sendVerificationEmail(any(User.class), eq("raw-token"));
-    }
-
-    @Test
-    void register_rejectsDuplicateEmail() {
-        RegisterRequest request = registerRequest();
-        when(users.existsByEmail(request.getEmail())).thenReturn(true);
-
-        assertThatThrownBy(() -> service.register(request))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
-                        .isEqualTo(HttpStatus.CONFLICT));
-        verify(users, never()).save(any());
-    }
-
-    @Test
-    void login_returnsJwtForVerifiedCredentials() {
-        User user = user(true);
+    void loginConsumesPasswordNoticeOnlyOnce() {
+        User user = activeUser();
         LoginRequest request = loginRequest();
         when(users.findByEmail(request.getEmail())).thenReturn(Optional.of(user));
         when(encoder.matches(request.getPassword(), user.getPasswordHash())).thenReturn(true);
+        when(users.consumePasswordChangeNotice(user.getId())).thenReturn(1, 0);
         when(jwtUtils.generateToken(user)).thenReturn("jwt");
 
-        assertThat(service.login(request).getToken()).isEqualTo("jwt");
+        assertThat(service.login(request).isPasswordChangeNotice()).isTrue();
+        assertThat(service.login(request).isPasswordChangeNotice()).isFalse();
+        verify(users, org.mockito.Mockito.times(2)).consumePasswordChangeNotice(user.getId());
     }
 
     @Test
-    void login_rejectsUnknownOrWrongCredentials() {
+    void loginRejectsUnknownOrWrongCredentialsWithoutConsumingNotice() {
         LoginRequest request = loginRequest();
         assertThatThrownBy(() -> service.login(request))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("401");
 
-        User user = user(true);
+        User user = activeUser();
         when(users.findByEmail(request.getEmail())).thenReturn(Optional.of(user));
         when(encoder.matches(anyString(), anyString())).thenReturn(false);
         assertThatThrownBy(() -> service.login(request))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("401");
+        verify(users, never()).consumePasswordChangeNotice(user.getId());
     }
 
     @Test
-    void login_rejectsUnverifiedEmail() {
-        User user = user(false);
-        LoginRequest request = loginRequest();
-        when(users.findByEmail(request.getEmail())).thenReturn(Optional.of(user));
-        when(encoder.matches(request.getPassword(), user.getPasswordHash())).thenReturn(true);
-
-        assertThatThrownBy(() -> service.login(request))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("403");
-        verifyNoInteractions(jwtUtils);
-    }
-
-    @Test
-    void verifyEmail_delegatesToken() {
-        when(verification.verifyEmail("token")).thenReturn("user@test.com");
-        assertThat(service.verifyEmail("token")).isEqualTo("user@test.com");
-    }
-
-    @Test
-    void refresh_revokesOldJtiAndIssuesNewToken() {
-        User user = user(true);
-        user.setId(UUID.randomUUID());
+    void refreshRevokesOldJtiAndNeverReturnsPasswordNotice() {
+        User user = activeUser();
         when(jwtUtils.validateToken("old")).thenReturn(true);
         when(jwtUtils.extractJti("old")).thenReturn("jti-old");
         when(jwtUtils.extractJti("new")).thenReturn("jti-new");
@@ -122,36 +83,54 @@ class AuthServiceImplTest {
         var response = service.refresh("old");
 
         assertThat(response.getToken()).isEqualTo("new");
+        assertThat(response.isPasswordChangeNotice()).isFalse();
         assertThat(registry.isValid("jti-old")).isFalse();
         assertThat(registry.isValid("jti-new")).isTrue();
     }
 
     @Test
-    void refresh_rejectsRevokedToken() {
+    void refreshRejectsInvalidOrRevokedToken() {
+        when(jwtUtils.validateToken("bad")).thenReturn(false);
+        assertThatThrownBy(() -> service.refresh("bad"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("401");
+
         when(jwtUtils.validateToken("old")).thenReturn(true);
         when(jwtUtils.extractJti("old")).thenReturn("jti-old");
-
         assertThatThrownBy(() -> service.refresh("old"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("401");
     }
 
     @Test
-    void refresh_rejectsInvalidToken() {
-        when(jwtUtils.validateToken("bad")).thenReturn(false);
+    void updatePasswordChecksCurrentPasswordAndInvalidatesExistingTokens() {
+        User user = activeUser();
+        user.setPasswordChangeNoticePending(true);
+        user.setTokenVersion(4);
+        when(users.findById(user.getId())).thenReturn(Optional.of(user));
+        when(encoder.matches("current", "hash")).thenReturn(true);
+        when(encoder.encode("NewPass123!")).thenReturn("new-hash");
 
-        assertThatThrownBy(() -> service.refresh("bad"))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("401");
+        service.updatePassword(user.getId(), new UpdatePasswordRequest("current", "NewPass123!"));
+
+        assertThat(user.getPasswordHash()).isEqualTo("new-hash");
+        assertThat(user.getTokenVersion()).isEqualTo(5);
+        assertThat(user.isPasswordChangeNoticePending()).isFalse();
+        verify(users).save(user);
     }
 
-    private static RegisterRequest registerRequest() {
-        RegisterRequest request = new RegisterRequest();
-        request.setEmail("user@test.com");
-        request.setPassword("StrongPass1!");
-        request.setFirstName("Test");
-        request.setLastName("User");
-        return request;
+    @Test
+    void updatePasswordRejectsWrongCurrentPassword() {
+        User user = activeUser();
+        when(users.findById(user.getId())).thenReturn(Optional.of(user));
+        when(encoder.matches("wrong", "hash")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.updatePassword(
+                user.getId(), new UpdatePasswordRequest("wrong", "NewPass123!")))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(HttpStatus.BAD_REQUEST));
+        verify(users, never()).save(user);
     }
 
     private static LoginRequest loginRequest() {
@@ -161,12 +140,13 @@ class AuthServiceImplTest {
         return request;
     }
 
-    private static User user(boolean verified) {
+    private static User activeUser() {
         User user = new User();
+        user.setId(UUID.randomUUID());
         user.setEmail("user@test.com");
         user.setPasswordHash("hash");
         user.setRole(UserRole.STUDENT);
-        user.setEmailVerified(verified);
+        user.setAccountStatus(AccountStatus.ACTIVE);
         return user;
     }
 }

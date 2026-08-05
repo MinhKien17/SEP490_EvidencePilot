@@ -12,13 +12,13 @@ public record AdminUserResponse(
         String email,
         UserRole role,
         AccountStatus accountStatus,
-        Boolean emailVerified,
+        String studentCode,
         String firstName,
         String lastName,
         LocalDateTime createdAt) {
 
     public static AdminUserResponse from(User user) {
         return new AdminUserResponse(user.getId(), user.getEmail(), user.getRole(), user.getAccountStatus(),
-                user.getEmailVerified(), user.getFirstName(), user.getLastName(), user.getCreatedAt());
+                user.getStudentCode(), user.getFirstName(), user.getLastName(), user.getCreatedAt());
     }
 }

@@ -170,7 +170,6 @@ class PasswordResetConcurrencyIntegrationTest {
         user.setPasswordHash("existing-hash");
         user.setRole(role);
         user.setAccountStatus(status);
-        user.setEmailVerified(true);
         return users.saveAndFlush(user);
     }
 

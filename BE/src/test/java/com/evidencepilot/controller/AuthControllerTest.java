@@ -1,13 +1,12 @@
 package com.evidencepilot.controller;
 
-import com.evidencepilot.dto.request.LoginRequest;
-import com.evidencepilot.model.User;
-import com.evidencepilot.model.enums.UserRole;
-import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.config.security.JwtUtils;
+import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.AccountStatus;
+import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.UserRepository;
-import com.evidencepilot.service.EmailVerificationService;
 import com.evidencepilot.service.PasswordResetService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.minio.MinioClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -24,12 +23,8 @@ import java.time.LocalDateTime;
 
 import static org.hamcrest.Matchers.blankOrNullString;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.not;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -40,129 +35,72 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class AuthControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+    @Autowired MockMvc mockMvc;
+    @Autowired UserRepository userRepository;
+    @Autowired PasswordEncoder passwordEncoder;
+    @Autowired JwtUtils jwtUtils;
+    @Autowired ObjectMapper objectMapper;
 
-    @Autowired
-    private UserRepository userRepository;
-
-    @Autowired
-    private PasswordEncoder passwordEncoder;
-
-    @Autowired
-    private JwtUtils jwtUtils;
-
-    @MockBean
-    private EmailVerificationService emailVerificationService;
-
-    @MockBean
-    private PasswordResetService passwordResetService;
-
-    @MockBean(name = "minioClient")
-    private MinioClient minioClient;
-
-    @MockBean
-    private RabbitTemplate rabbitTemplate;
+    @MockBean PasswordResetService passwordResetService;
+    @MockBean(name = "minioClient") MinioClient minioClient;
+    @MockBean RabbitTemplate rabbitTemplate;
 
     @Test
-    void register_shouldCreateUnverifiedStudentWithoutIssuingToken() throws Exception {
-        when(emailVerificationService.createVerificationToken(any(User.class))).thenAnswer(invocation -> {
-            User user = invocation.getArgument(0);
-            user.setEmailVerified(false);
-            user.setEmailVerificationTokenHash("hashed-token");
-            user.setEmailVerificationTokenExpiresAt(LocalDateTime.now().plusHours(24));
-            return "raw-token";
-        });
-
-        String body = """
-                {
-                    "email": "newuser@test.com",
-                    "password": "StrongPass1!",
-                    "firstName": "Jane",
-                    "lastName": "Doe"
-                }
-                """;
-
+    void removedRegistrationAndVerificationEndpointsAreNotPublic() throws Exception {
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token", blankOrNullString()))
-                .andExpect(jsonPath("$.user.id", matchesPattern(
-                        "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")))
-                .andExpect(jsonPath("$.user.email", is("newuser@test.com")))
-                .andExpect(jsonPath("$.user.role", is("STUDENT")));
-
-        User user = userRepository.findByEmail("newuser@test.com").orElseThrow();
-        org.assertj.core.api.Assertions.assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.PENDING);
-        verify(emailVerificationService).sendVerificationEmail(eq(user), eq("raw-token"));
-    }
-
-    @Test
-    void login_shouldReturnValidJwtForVerifiedUser() throws Exception {
-        String email = "loginuser@test.com";
-        String rawPassword = "ValidPass1!";
-
-        User user = new User();
-        user.setEmail(email);
-        user.setPasswordHash(passwordEncoder.encode(rawPassword));
-        user.setRole(UserRole.INSTRUCTOR);
-        user.setEmailVerified(true);
-        user.setFirstName("John");
-        user.setLastName("Smith");
-        user.setCreatedAt(LocalDateTime.now());
-        userRepository.saveAndFlush(user);
-
-        LoginRequest request = new LoginRequest();
-        request.setEmail(email);
-        request.setPassword(rawPassword);
-        String body = new com.fasterxml.jackson.databind.ObjectMapper()
-                .writeValueAsString(request);
-
-        mockMvc.perform(post("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token", not(blankOrNullString())))
-                .andExpect(jsonPath("$.user.email", is(email)))
-                .andExpect(jsonPath("$.user.role", is("INSTRUCTOR")));
-    }
-
-    @Test
-    void login_shouldRejectUnverifiedEmail() throws Exception {
-        User user = new User();
-        user.setEmail("student@test.com");
-        user.setPasswordHash(passwordEncoder.encode("ValidPass1!"));
-        user.setRole(UserRole.STUDENT);
-        user.setEmailVerified(false);
-        userRepository.saveAndFlush(user);
-
-        String body = """
-                {
-                    "email": "student@test.com",
-                    "password": "ValidPass1!"
-                }
-                """;
-
-        mockMvc.perform(post("/api/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(body))
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/auth/verify-email").param("token", "old-token"))
                 .andExpect(status().isForbidden());
     }
 
     @Test
-    void verifyEmail_shouldReturnVerifiedEmail() throws Exception {
-        when(emailVerificationService.verifyEmail("raw-token")).thenReturn("student@test.com");
+    void loginReturnsPasswordNoticeOnlyOnce() throws Exception {
+        User user = saveUser("loginuser@test.com", "ValidPass1!", UserRole.INSTRUCTOR);
+        user.setPasswordChangeNoticePending(true);
+        userRepository.saveAndFlush(user);
+        String body = "{\"email\":\"loginuser@test.com\",\"password\":\"ValidPass1!\"}";
 
-        mockMvc.perform(get("/api/auth/verify-email")
-                        .param("token", "raw-token"))
+        mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message", is("Email verified successfully")))
-                .andExpect(jsonPath("$.email", is("student@test.com")));
+                .andExpect(jsonPath("$.token", not(blankOrNullString())))
+                .andExpect(jsonPath("$.user.role", is("INSTRUCTOR")))
+                .andExpect(jsonPath("$.user.emailVerified").doesNotExist())
+                .andExpect(jsonPath("$.passwordChangeNotice", is(true)));
+
+        mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.passwordChangeNotice", is(false)));
     }
 
     @Test
-    void passwordResetRequest_alwaysReturnsSameAcceptedResponse() throws Exception {
+    void updatePasswordInvalidatesOldJwtAndRequiresNewPassword() throws Exception {
+        saveUser("student@test.com", "CurrentPass1!", UserRole.STUDENT);
+        String loginBody = "{\"email\":\"student@test.com\",\"password\":\"CurrentPass1!\"}";
+        String loginJson = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON).content(loginBody))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String token = objectMapper.readTree(loginJson).path("token").asText();
+
+        mockMvc.perform(post("/api/auth/update-password")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"CurrentPass1!\",\"newPassword\":\"NewStrongPass1!\"}"))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/users/profile").header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content(loginBody))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"student@test.com\",\"password\":\"NewStrongPass1!\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void passwordResetRequestAlwaysReturnsSameAcceptedResponse() throws Exception {
         org.mockito.Mockito.doThrow(new IllegalStateException("mail unavailable"))
                 .when(passwordResetService).requestReset("student@test.com");
 
@@ -174,7 +112,7 @@ class AuthControllerTest {
     }
 
     @Test
-    void passwordResetConfirm_isPublic() throws Exception {
+    void passwordResetConfirmIsPublic() throws Exception {
         mockMvc.perform(post("/api/auth/password-reset/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"token\":\"raw-token\",\"newPassword\":\"NewStrongPass1!\"}"))
@@ -185,13 +123,7 @@ class AuthControllerTest {
 
     @Test
     void publicPasswordResetPathsIgnoreStaleBearerToken() throws Exception {
-        User user = new User();
-        user.setEmail("banned@test.com");
-        user.setPasswordHash(passwordEncoder.encode("ValidPass1!"));
-        user.setRole(UserRole.STUDENT);
-        user.setEmailVerified(true);
-        user.setAccountStatus(AccountStatus.ACTIVE);
-        userRepository.saveAndFlush(user);
+        User user = saveUser("banned@test.com", "ValidPass1!", UserRole.STUDENT);
         String staleToken = jwtUtils.generateToken(user);
         user.setAccountStatus(AccountStatus.BANNED);
         user.setTokenVersion(1);
@@ -202,11 +134,22 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"banned@test.com\"}"))
                 .andExpect(status().isAccepted());
-
         mockMvc.perform(post("/api/auth/password-reset/confirm")
                         .header("Authorization", "Bearer " + staleToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"token\":\"raw-token\",\"newPassword\":\"NewStrongPass1!\"}"))
                 .andExpect(status().isOk());
+    }
+
+    private User saveUser(String email, String rawPassword, UserRole role) {
+        User user = new User();
+        user.setEmail(email);
+        user.setPasswordHash(passwordEncoder.encode(rawPassword));
+        user.setRole(role);
+        user.setAccountStatus(AccountStatus.ACTIVE);
+        user.setFirstName("Test");
+        user.setLastName("User");
+        user.setCreatedAt(LocalDateTime.now());
+        return userRepository.saveAndFlush(user);
     }
 }

@@ -157,9 +157,9 @@ class GlobalExceptionHandlerTest {
         MethodArgumentNotValidException exception =
                 new MethodArgumentNotValidException(mock(MethodParameter.class), bindingResult);
 
-        ResponseEntity<ApiErrorResponse> response = handler().handleValidation(exception, request("/api/auth/register"));
+        ResponseEntity<ApiErrorResponse> response = handler().handleValidation(exception, request("/api/admin/users"));
 
-        assertError(response, HttpStatus.BAD_REQUEST, "Validation failed", "/api/auth/register");
+        assertError(response, HttpStatus.BAD_REQUEST, "Validation failed", "/api/admin/users");
         assertThat(response.getBody().fieldErrors()).containsExactlyEntriesOf(java.util.Map.of("email", "must be valid"));
     }
 
@@ -168,9 +168,9 @@ class GlobalExceptionHandlerTest {
         MissingServletRequestParameterException exception =
                 new MissingServletRequestParameterException("token", "String");
 
-        ResponseEntity<ApiErrorResponse> response = handler().handleMissingParameter(exception, request("/api/auth/verify-email"));
+        ResponseEntity<ApiErrorResponse> response = handler().handleMissingParameter(exception, request("/api/documents/lookup"));
 
-        assertError(response, HttpStatus.BAD_REQUEST, exception.getMessage(), "/api/auth/verify-email");
+        assertError(response, HttpStatus.BAD_REQUEST, exception.getMessage(), "/api/documents/lookup");
     }
 
     @Test
@@ -212,9 +212,9 @@ class GlobalExceptionHandlerTest {
     @Test
     void handleDataIntegrity_returnsConflictWithoutDatabaseDetails() {
         ResponseEntity<ApiErrorResponse> response = handler().handleDataIntegrity(
-                new DataIntegrityViolationException("constraint users_email_key"), request("/api/auth/register"));
+                new DataIntegrityViolationException("constraint users_email_key"), request("/api/admin/users"));
 
-        assertError(response, HttpStatus.CONFLICT, "Request conflicts with existing data.", "/api/auth/register");
+        assertError(response, HttpStatus.CONFLICT, "Request conflicts with existing data.", "/api/admin/users");
     }
 
     @Test

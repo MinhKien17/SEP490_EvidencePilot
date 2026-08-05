@@ -2,13 +2,10 @@ package com.evidencepilot.service.impl;
 
 import com.evidencepilot.config.security.JwtUtils;
 import com.evidencepilot.dto.request.LoginRequest;
-import com.evidencepilot.dto.request.RegisterRequest;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.UserRepository;
-import com.evidencepilot.service.EmailVerificationService;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -18,7 +15,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class AuthServiceImplAccountStatusTest {
@@ -26,24 +22,8 @@ class AuthServiceImplAccountStatusTest {
     private final UserRepository users = mock(UserRepository.class);
     private final PasswordEncoder passwords = mock(PasswordEncoder.class);
     private final JwtUtils jwt = mock(JwtUtils.class);
-    private final EmailVerificationService verification = mock(EmailVerificationService.class);
     private final AuthServiceImpl service = new AuthServiceImpl(
-            users, passwords, jwt, verification, new com.evidencepilot.config.security.JwtSessionRegistry());
-
-    @Test
-    void registrationCreatesPendingStudent() {
-        RegisterRequest request = new RegisterRequest();
-        request.setEmail("new@test.com");
-        request.setPassword("StrongPass1!");
-        when(passwords.encode(request.getPassword())).thenReturn("hash");
-        when(verification.createVerificationToken(any())).thenReturn("raw");
-        when(users.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-
-        service.register(request);
-
-        verify(users).save(argThat(user -> user.getRole() == UserRole.STUDENT
-                && user.getAccountStatus() == AccountStatus.PENDING));
-    }
+            users, passwords, jwt, new com.evidencepilot.config.security.JwtSessionRegistry());
 
     @ParameterizedTest
     @EnumSource(value = AccountStatus.class, names = {"PENDING", "BANNED", "DELETED"})
@@ -66,7 +46,6 @@ class AuthServiceImplAccountStatusTest {
         user.setEmail("student@test.com");
         user.setPasswordHash("hash");
         user.setRole(UserRole.STUDENT);
-        user.setEmailVerified(true);
         user.setAccountStatus(status);
         return user;
     }

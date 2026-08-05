@@ -2,23 +2,28 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.request.AdminBroadcastRequest;
 import com.evidencepilot.dto.request.AdminUserCreateRequest;
-import com.evidencepilot.dto.request.AdminUserRoleRequest;
+import com.evidencepilot.dto.request.AdminUserImportRequest;
 import com.evidencepilot.dto.request.AdminUserStatusRequest;
 import com.evidencepilot.dto.response.AdminAuditLogResponse;
 import com.evidencepilot.dto.response.AdminDashboardResponse;
 import com.evidencepilot.dto.response.AdminProjectResponse;
 import com.evidencepilot.dto.response.AdminUserResponse;
+import com.evidencepilot.dto.response.AdminUserImportResponse;
 import com.evidencepilot.dto.response.BroadcastResponse;
 import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.service.AdminService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -43,6 +48,7 @@ import java.util.UUID;
 public class AdminController {
 
     private final AdminService adminService;
+    private final ObjectMapper objectMapper;
 
     @Value("${jwt.expiration-ms}")
     private String jwtExpirationMs;
@@ -99,9 +105,20 @@ public class AdminController {
         return adminService.createUser(request);
     }
 
-    @PatchMapping("/users/{id}/role")
-    public AdminUserResponse updateRole(@PathVariable UUID id, @Valid @RequestBody AdminUserRoleRequest request) {
-        return adminService.updateRole(id, request);
+    @PostMapping(value = "/users/import", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<AdminUserImportResponse> importUsers(
+            @RequestBody(required = false) String json) {
+        AdminUserImportRequest request;
+        try {
+            request = json == null ? null : objectMapper.readValue(json, AdminUserImportRequest.class);
+        } catch (JsonProcessingException exception) {
+            return ResponseEntity.badRequest().body(new AdminUserImportResponse(
+                    0, 0, List.of(new AdminUserImportResponse.ImportError(
+                            0, "body", "Invalid JSON structure"))));
+        }
+        AdminUserImportResponse response = adminService.importUsers(request);
+        HttpStatus status = response.errors().isEmpty() ? HttpStatus.CREATED : HttpStatus.BAD_REQUEST;
+        return ResponseEntity.status(status).body(response);
     }
 
     @PatchMapping("/users/{id}/status")

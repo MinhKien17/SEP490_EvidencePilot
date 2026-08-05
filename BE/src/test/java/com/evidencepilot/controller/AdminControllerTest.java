@@ -2,17 +2,20 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.request.AdminBroadcastRequest;
 import com.evidencepilot.dto.request.AdminUserCreateRequest;
-import com.evidencepilot.dto.request.AdminUserRoleRequest;
+import com.evidencepilot.dto.request.AdminUserImportRequest;
 import com.evidencepilot.dto.request.AdminUserStatusRequest;
+import com.evidencepilot.dto.response.AdminUserImportResponse;
 import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.service.AdminService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -20,6 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -35,7 +39,7 @@ class AdminControllerTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = standaloneSetup(new AdminController(service)).build();
+        mockMvc = standaloneSetup(new AdminController(service, new ObjectMapper())).build();
     }
 
     @Test
@@ -61,11 +65,20 @@ class AdminControllerTest {
                 .andExpect(status().isCreated());
         verify(service).createUser(any(AdminUserCreateRequest.class));
 
-        mockMvc.perform(patch("/api/admin/users/{id}/role", id)
+        when(service.importUsers(any(AdminUserImportRequest.class)))
+                .thenReturn(new AdminUserImportResponse(1, 0, List.of()));
+        mockMvc.perform(post("/api/admin/users/import")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"role\":\"STUDENT\"}"))
-                .andExpect(status().isOk());
-        verify(service).updateRole(eq(id), any(AdminUserRoleRequest.class));
+                        .content("{\"role\":\"STUDENT\",\"users\":[{\"email\":\"new@example.com\",\"firstName\":\"New\",\"lastName\":\"User\",\"studentCode\":\"SE170608\"}]}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.created").value(1));
+        verify(service).importUsers(any(AdminUserImportRequest.class));
+
+        mockMvc.perform(post("/api/admin/users/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{not-json"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("body"));
 
         mockMvc.perform(patch("/api/admin/users/{id}/status", id)
                         .contentType(MediaType.APPLICATION_JSON)

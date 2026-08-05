@@ -5,8 +5,10 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import java.util.Collection;
 import java.util.Optional;
 import java.util.List;
 import java.util.UUID;
@@ -16,7 +18,19 @@ import com.evidencepilot.model.enums.UserRole;
 public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificationExecutor<User> {
     Optional<User> findByEmail(String email);
 
-    Optional<User> findByEmailVerificationTokenHash(String tokenHash);
+    @Query("select user from User user where lower(user.email) in :emails")
+    List<User> findAllByEmailIn(@Param("emails") Collection<String> emails);
+
+    @Query("select user from User user where upper(user.studentCode) = :studentCode")
+    Optional<User> findByStudentCode(@Param("studentCode") String studentCode);
+
+    @Query("select user from User user where upper(user.studentCode) in :studentCodes")
+    List<User> findAllByStudentCodeIn(@Param("studentCodes") Collection<String> studentCodes);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update User user set user.passwordChangeNoticePending = false "
+            + "where user.id = :id and user.passwordChangeNoticePending = true")
+    int consumePasswordChangeNotice(@Param("id") UUID id);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select user from User user where user.email = :email")
@@ -29,8 +43,6 @@ public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificat
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select user from User user where user.passwordResetTokenHash = :tokenHash")
     Optional<User> findByPasswordResetTokenHashForUpdate(@Param("tokenHash") String tokenHash);
-
-    boolean existsByEmail(String email);
 
     boolean existsByEmailIgnoreCase(String email);
 

@@ -1,12 +1,13 @@
 package com.evidencepilot.service;
 
 import com.evidencepilot.dto.request.LoginRequest;
-import com.evidencepilot.dto.request.RegisterRequest;
+import com.evidencepilot.dto.request.UpdatePasswordRequest;
 import com.evidencepilot.dto.response.AuthResponse;
 
+import java.util.UUID;
+
 public interface AuthService {
-    AuthResponse register(RegisterRequest request);
     AuthResponse login(LoginRequest request);
     AuthResponse refresh(String token);
-    String verifyEmail(String token);
+    void updatePassword(UUID userId, UpdatePasswordRequest request);
 }
