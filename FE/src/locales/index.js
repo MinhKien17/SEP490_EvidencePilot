@@ -3,5 +3,4 @@ export { commonText } from './common';
 export { studentText } from './student';
 export { instructorText } from './instructor';
 export { adminText } from './admin';
-export { userText } from './user';
 export { notificationText } from './notifications';

@@ -51,7 +51,7 @@ export default function Navbar({ t }) {
               <button type="button" onClick={logout} className="text-xs font-bold text-(--text-secondary) hover:text-rose-600 transition-colors px-3 py-1.5 border border-(--border) rounded-lg">{t.nav.signOut}</button>
             </>
           ) : (
-            <Link to="/register" className="text-xs font-bold text-(--on-brand) bg-(--brand) hover:bg-(--brand-hover) transition-colors px-4 py-2 rounded-lg shadow-sm">{t.nav.register}</Link>
+            null
           )}
           <Link to={wsLink} className="text-xs font-bold text-(--brand-foreground) bg-(--brand-soft) hover:brightness-95 transition px-4 py-2 rounded-lg">{wsLabel}</Link>
         </nav>
@@ -91,9 +91,8 @@ export default function Navbar({ t }) {
               <Link to={wsLink} className="col-span-2 text-center text-xs font-bold text-(--on-brand) bg-(--brand) rounded-xl px-3 py-2.5" onClick={closeMenu}>{wsLabel}</Link>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <Link to="/login" className="text-center text-xs font-bold text-(--text-secondary) border border-(--border) rounded-xl px-3 py-2.5" onClick={closeMenu}>{t.nav.login}</Link>
-              <Link to="/register" className="text-center text-xs font-bold text-(--on-brand) bg-(--brand) rounded-xl px-3 py-2.5" onClick={closeMenu}>{t.nav.register}</Link>
+            <div className="pt-1">
+              <Link to="/login" className="block text-center text-xs font-bold text-(--on-brand) bg-(--brand) rounded-xl px-3 py-2.5" onClick={closeMenu}>{t.nav.login}</Link>
             </div>
           )}
         </div>

@@ -45,14 +45,9 @@ export default function HeroSection({ t }) {
                 {t.nav.workspace}
               </Link>
             ) : (
-              <>
-                <Link to="/register" className="bg-(--brand) hover:bg-(--brand-hover) text-(--on-brand) px-8 py-3.5 rounded-xl font-semibold shadow-lg shadow-indigo-200 dark:shadow-none transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
-                  {t.hero.cta}
-                </Link>
-                <Link to="/login" className="text-sm font-medium text-(--text-secondary) hover:text-(--brand-foreground) transition border border-(--border) px-6 py-3.5 rounded-xl">
-                  {t.nav.login}
-                </Link>
-              </>
+              <Link to="/login" className="bg-(--brand) hover:bg-(--brand-hover) text-(--on-brand) px-8 py-3.5 rounded-xl font-semibold shadow-lg shadow-indigo-200 dark:shadow-none transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5">
+                {t.hero.cta}
+              </Link>
             )}
           </div>
         </AnimateIn>

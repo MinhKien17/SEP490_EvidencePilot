@@ -1,12 +1,12 @@
 export const homeText = {
   en: {
-    nav: { home: 'Home', features: 'Features', about: 'About', terms: 'Terms', privacy: 'Privacy', login: 'Log In', register: 'Register', signOut: 'Sign Out', workspace: 'Go to Workspace', lang: 'Tiếng Việt', profile: 'Profile' },
+    nav: { home: 'Home', features: 'Features', about: 'About', terms: 'Terms', privacy: 'Privacy', login: 'Log In', signOut: 'Sign Out', workspace: 'Go to Workspace', lang: 'Tiếng Việt', profile: 'Profile' },
     hero: {
       titleStart: 'The',
       titleHighlight: 'Evidence-Powered',
       titleEnd: 'Research Platform',
       subtitle: 'Evidence Pilot supports instructor-led research projects: students develop papers and evidence mappings, then submit their work for structured review and export.',
-      cta: 'Create an Account',
+      cta: 'Sign In',
       ctaSub: '',
       stats: 'Structured Research Workspace',
     },
@@ -57,9 +57,8 @@ export const homeText = {
     },
     cta: {
       heading: 'Ready to Get Started?',
-      subtitle: 'Join Evidence Pilot today and transform your research workflow.',
-      button: 'Create an Account',
-      login: 'Already have an account? Sign in',
+      subtitle: 'Sign in with the account provided by your administrator.',
+      button: 'Sign In',
     },
     footer: {
       copyright: 'Evidence Pilot. All rights reserved.',
@@ -77,7 +76,7 @@ export const homeText = {
       lastUpdated: 'Last updated: July 2026',
       intro: 'Welcome to Evidence Pilot. By accessing or using our platform, you agree to be bound by these Terms of Service. If you do not agree, please do not use the Service.',
       section1Title: '1. Acceptance of Terms',
-      section1: 'By creating an account or using Evidence Pilot, you confirm that you have read, understood, and agree to these Terms. We may update these terms from time to time; continued use after changes constitutes acceptance.',
+      section1: 'By using Evidence Pilot, you confirm that you have read, understood, and agree to these Terms. We may update these terms from time to time; continued use after changes constitutes acceptance.',
       section2Title: '2. Description of Service',
       section2: 'Evidence Pilot provides an AI-assisted research management platform including document upload, claim extraction, evidence mapping, instructor feedback workflows, and semantic search. The Service is provided "as is" without warranties of any kind.',
       section3Title: '3. AI-Generated Suggestions',
@@ -130,13 +129,13 @@ export const homeText = {
     },
   },
   vi: {
-    nav: { home: 'Trang chủ', features: 'Tính năng', about: 'Giới thiệu', terms: 'Điều khoản', privacy: 'Bảo mật', login: 'Đăng nhập', register: 'Đăng ký', signOut: 'Đăng xuất', workspace: 'Vào làm việc', lang: 'English', profile: 'Hồ sơ' },
+    nav: { home: 'Trang chủ', features: 'Tính năng', about: 'Giới thiệu', terms: 'Điều khoản', privacy: 'Bảo mật', login: 'Đăng nhập', signOut: 'Đăng xuất', workspace: 'Vào làm việc', lang: 'English', profile: 'Hồ sơ' },
     hero: {
       titleStart: 'Nền tảng',
       titleHighlight: 'Nghiên cứu Dựa trên Bằng chứng',
       titleEnd: '',
       subtitle: 'Evidence Pilot hỗ trợ dự án nghiên cứu do giảng viên quản lý: sinh viên làm việc với bài viết và mapping bằng chứng, sau đó gửi để được đánh giá có cấu trúc và xuất kết quả.',
-      cta: 'Tạo tài khoản',
+      cta: 'Đăng nhập',
       ctaSub: '',
       stats: 'Không gian nghiên cứu có cấu trúc',
     },
@@ -187,9 +186,8 @@ export const homeText = {
     },
     cta: {
       heading: 'Sẵn sàng bắt đầu?',
-      subtitle: 'Tham gia Evidence Pilot ngay hôm nay để chuyển đổi quy trình nghiên cứu của bạn.',
-      button: 'Tạo tài khoản',
-      login: 'Đã có tài khoản? Đăng nhập',
+      subtitle: 'Đăng nhập bằng tài khoản do quản trị viên cung cấp.',
+      button: 'Đăng nhập',
     },
     footer: {
       copyright: 'Evidence Pilot. Bảo lưu mọi quyền.',
@@ -207,7 +205,7 @@ export const homeText = {
       lastUpdated: 'Cập nhật lần cuối: Tháng 7, 2026',
       intro: 'Chào mừng bạn đến với Evidence Pilot. Bằng cách truy cập hoặc sử dụng nền tảng của chúng tôi, bạn đồng ý bị ràng buộc bởi các Điều khoản Dịch vụ này. Nếu bạn không đồng ý, vui lòng không sử dụng Dịch vụ.',
       section1Title: '1. Chấp nhận Điều khoản',
-      section1: 'Bằng cách tạo tài khoản hoặc sử dụng Evidence Pilot, bạn xác nhận rằng bạn đã đọc, hiểu và đồng ý với các Điều khoản này. Chúng tôi có thể cập nhật các điều khoản này theo thời gian; việc tiếp tục sử dụng sau khi có thay đổi được coi là chấp nhận.',
+      section1: 'Bằng cách sử dụng Evidence Pilot, bạn xác nhận rằng bạn đã đọc, hiểu và đồng ý với các Điều khoản này. Chúng tôi có thể cập nhật các điều khoản này theo thời gian; việc tiếp tục sử dụng sau khi có thay đổi được coi là chấp nhận.',
       section2Title: '2. Mô tả Dịch vụ',
       section2: 'Evidence Pilot cung cấp nền tảng quản lý nghiên cứu có hỗ trợ AI bao gồm tải lên tài liệu, trích xuất luận điểm, lập bản đồ bằng chứng, quy trình phản hồi giảng viên và tìm kiếm ngữ nghĩa. Dịch vụ được cung cấp "nguyên trạng" mà không có bất kỳ bảo đảm nào.',
       section3Title: '3. Gợi ý do AI Tạo ra',

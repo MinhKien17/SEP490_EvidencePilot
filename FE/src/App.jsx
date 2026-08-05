@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Navigate, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -12,7 +12,6 @@ import Terms from './pages/Terms.jsx';
 import Privacy from './pages/Privacy.jsx';
 import About from './pages/About.jsx';
 import Login from './pages/Login.jsx';
-import Register from './pages/Register.jsx';
 import Profile from './pages/Profile.jsx';
 import AdminDashboard from './pages/Admin/AdminDashboard.jsx';
 
@@ -44,10 +43,11 @@ function App() {
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/about" element={<About />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+            <Route path="/register" element={<Navigate to="/login" replace />} />
 
-            {/* Mở khóa trang Profile chung để test mock mượt mà */}
-            <Route path="/profile" element={<Profile />} />
+            <Route path="/profile" element={
+              <ProtectedRoute allowedRoles={['STUDENT', 'INSTRUCTOR', 'ADMIN']}><Profile /></ProtectedRoute>
+            } />
 
             {/* =========================================================================
                 🔓 INSTRUCTOR & ADMIN (role-gated)

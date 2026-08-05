@@ -58,7 +58,11 @@ export default function Login() {
       if (!token) throw new Error('Token not found in response');
 
       login(token, role);
-      redirectAfterLogin(role);
+      if (res.data.passwordChangeNotice) {
+        navigate('/profile', { replace: true, state: { passwordChangeNotice: true } });
+      } else {
+        redirectAfterLogin(role);
+      }
     } catch (err) {
       const msg = err.response?.data?.message
         ?? err.response?.data?.error
@@ -253,11 +257,8 @@ export default function Login() {
             </div>
           </div>
 
-          <p className="text-center text-sm text-gray-600 mt-8">
-            Don't have an account?{' '}
-            <Link to="/register" className="text-blue-600 font-semibold hover:underline">
-              Create an account
-            </Link>
+          <p className="text-center text-sm text-gray-500 mt-8">
+            Need an account? Contact your administrator.
           </p>
         </div>
       </div>
