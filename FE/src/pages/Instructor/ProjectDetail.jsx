@@ -6,6 +6,7 @@ import { Marker, MarkerIcon, MarkerContent } from '../../components/Marker';
 import { instructorText, commonText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
 import api from '../../api';
+import { getSourceShareChanges } from './sourceShareSelection';
 
 const STANDARDS = ['IEEE', 'ACM', 'SPRINGER_LNCS', 'APA', 'MLA', 'CUSTOM'];
 
@@ -48,6 +49,9 @@ export default function ProjectDetail() {
   const [collections, setCollections] = useState([]);
   const [linkedCollections, setLinkedCollections] = useState([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState('');
+  const [collectionSources, setCollectionSources] = useState([]);
+  const [selectedSourceIds, setSelectedSourceIds] = useState([]);
+  const [collectionSourcesLoading, setCollectionSourcesLoading] = useState(false);
   const [showSetUpPaper, setShowSetUpPaper] = useState(false);
   const [setupMode, setSetupMode] = useState('standard');
   const [editingPaperId, setEditingPaperId] = useState(null);
@@ -251,19 +255,82 @@ export default function ProjectDetail() {
     }
   };
 
-  const handleToggleCollection = async () => {
+  const resetSourceSharing = () => {
+    setSelectedCollectionId('');
+    setCollectionSources([]);
+    setSelectedSourceIds([]);
+  };
+
+  const loadCollectionSources = async (collectionId) => {
+    if (!collectionId) {
+      setCollectionSources([]);
+      setSelectedSourceIds([]);
+      return;
+    }
+    setCollectionSourcesLoading(true);
+    try {
+      // ponytail: backend caps source pages at 100; add modal pagination when a collection exceeds that.
+      const res = await api.get(`/api/collections/${collectionId}/sources`, { params: { size: 100 } });
+      const loaded = res.data?.content || res.data || [];
+      setCollectionSources(loaded);
+      setSelectedSourceIds(loaded
+        .filter(source => (source.projectIds || []).some(projectId => String(projectId) === String(id)))
+        .map(source => source.id));
+    } catch {
+      setCollectionSources([]);
+      setSelectedSourceIds([]);
+      alert(t.operationFailed);
+    } finally {
+      setCollectionSourcesLoading(false);
+    }
+  };
+
+  const handleCollectionSelection = async (collectionId) => {
+    setSelectedCollectionId(collectionId);
+    await loadCollectionSources(collectionId);
+  };
+
+  const toggleSourceSelection = (sourceId) => {
+    setSelectedSourceIds(current => current.includes(sourceId)
+      ? current.filter(id => id !== sourceId)
+      : [...current, sourceId]);
+  };
+
+  const handleShareSources = async () => {
     if (!selectedCollectionId) return;
-    const linked = linkedCollections.some(c => String(c.id) === String(selectedCollectionId));
+    const { toShare, toUnshare } = getSourceShareChanges(
+      collectionSources, id, selectedSourceIds);
     setShareLoadingId(selectedCollectionId);
     try {
-      if (linked) {
-        await api.delete(`/api/projects/${id}/collections/${selectedCollectionId}`);
-      } else {
-        await api.put(`/api/projects/${id}/collections/${selectedCollectionId}`);
+      const results = await Promise.allSettled([
+        ...toShare.map(sourceId => api.post(
+          `/api/collections/${selectedCollectionId}/sources/${sourceId}/share-to-project/${id}`)),
+        ...toUnshare.map(sourceId => api.delete(
+          `/api/sources/projects/${id}/sources/${sourceId}`)),
+      ]);
+      await Promise.all([loadSources(), loadCollectionSources(selectedCollectionId)]);
+      if (results.some(result => result.status === 'rejected')) {
+        alert(t.operationFailed);
+        return;
       }
-      await Promise.all([loadCollections(), loadSources()]);
-    } catch { alert(t.operationFailed); }
-    finally { setShareLoadingId(null); }
+      setShowShareCollection(false);
+      resetSourceSharing();
+    } finally {
+      setShareLoadingId(null);
+    }
+  };
+
+  const handleStopCollectionSync = async () => {
+    if (!selectedCollectionId) return;
+    setShareLoadingId(selectedCollectionId);
+    try {
+      await api.delete(`/api/projects/${id}/collections/${selectedCollectionId}`);
+      await Promise.all([loadCollections(), loadSources(), loadCollectionSources(selectedCollectionId)]);
+    } catch {
+      alert(t.operationFailed);
+    } finally {
+      setShareLoadingId(null);
+    }
   };
 
   const handleStartRename = (paper) => {
@@ -1141,12 +1208,12 @@ export default function ProjectDetail() {
         )}
       </Modal>
 
-      <Modal open={showShareCollection} onClose={() => { setShowShareCollection(false); setSelectedCollectionId(''); }} title={t.shareFromCollection}>
+      <Modal open={showShareCollection} onClose={() => { setShowShareCollection(false); resetSourceSharing(); }} title={t.shareFromCollection}>
         <div className="space-y-4 text-xs">
           {collections.length === 0 ? (
             <p className="italic text-[var(--text-tertiary)]">{t.noCollectionsFound}</p>
           ) : (
-            <select value={selectedCollectionId} onChange={e => setSelectedCollectionId(e.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs outline-none">
+            <select value={selectedCollectionId} onChange={e => handleCollectionSelection(e.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs outline-none">
               <option value="">{t.selectCollection}</option>
               {collections.map(c => {
                 const linked = linkedCollections.some(item => String(item.id) === String(c.id));
@@ -1154,25 +1221,46 @@ export default function ProjectDetail() {
               })}
             </select>
           )}
-          {selectedCollectionId && (
-            <p className="rounded-lg bg-[var(--surface-secondary)] px-3 py-2 text-[var(--text-secondary)]">
-              {linkedCollections.some(c => String(c.id) === String(selectedCollectionId))
-                ? t.collectionLinked : t.collectionNotLinked}
-            </p>
+          {selectedCollectionId && linkedCollections.some(c => String(c.id) === String(selectedCollectionId)) && (
+            <div className="space-y-3 rounded-lg bg-[var(--surface-secondary)] px-3 py-3 text-[var(--text-secondary)]">
+              <p>{t.collectionLinked}</p>
+              <button onClick={handleStopCollectionSync} disabled={projectReadOnly || shareLoadingId !== null} className="w-full rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)] disabled:cursor-not-allowed disabled:opacity-50">
+                {shareLoadingId === selectedCollectionId ? ct.saving : t.stopCollectionSync}
+              </button>
+            </div>
           )}
-          {projectReadOnly && (
+          {selectedCollectionId && projectReadOnly && (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">{t.collectionSyncPaused}</p>
           )}
-          {selectedCollectionId && (
-            <button onClick={handleToggleCollection} disabled={projectReadOnly || shareLoadingId !== null} className="w-full rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)] disabled:cursor-not-allowed disabled:opacity-50">
-              {shareLoadingId === selectedCollectionId
-                ? ct.saving
-                : linkedCollections.some(c => String(c.id) === String(selectedCollectionId))
-                  ? t.stopCollectionSync : t.shareEntireCollection}
+          {selectedCollectionId && collectionSourcesLoading && (
+            <p className="italic text-[var(--text-tertiary)]">{ct.loading}</p>
+          )}
+          {selectedCollectionId && !collectionSourcesLoading
+            && !linkedCollections.some(c => String(c.id) === String(selectedCollectionId))
+            && collectionSources.length === 0 && (
+            <p className="italic text-[var(--text-tertiary)]">{t.noCollectionSources}</p>
+          )}
+          {!collectionSourcesLoading
+            && !linkedCollections.some(c => String(c.id) === String(selectedCollectionId))
+            && collectionSources.length > 0 && (
+            <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-[var(--border-light)] p-1">
+              {collectionSources.map(source => (
+                <label key={source.id} className="flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--surface-secondary)] px-3 py-2 hover:bg-[var(--surface-tertiary)]">
+                  <input type="checkbox" checked={selectedSourceIds.includes(source.id)} onChange={() => toggleSourceSelection(source.id)} disabled={projectReadOnly || shareLoadingId !== null} className="accent-indigo-600" />
+                  <span className="flex-1 text-xs font-medium">{source.title || source.originalFilename || source.id}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          {!collectionSourcesLoading
+            && !linkedCollections.some(c => String(c.id) === String(selectedCollectionId))
+            && collectionSources.length > 0 && (
+            <button onClick={handleShareSources} disabled={projectReadOnly || shareLoadingId !== null} className="w-full rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)] disabled:cursor-not-allowed disabled:opacity-50">
+              {shareLoadingId === selectedCollectionId ? ct.saving : t.applyChanges}
             </button>
           )}
           <div className="flex justify-end gap-2">
-            <button onClick={() => { setShowShareCollection(false); setSelectedCollectionId(''); }} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.close}</button>
+            <button onClick={() => { setShowShareCollection(false); resetSourceSharing(); }} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.close}</button>
           </div>
         </div>
       </Modal>
