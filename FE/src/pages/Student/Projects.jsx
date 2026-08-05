@@ -4,7 +4,27 @@ import { AppHeader, EmptyState, LoadingSkeleton, TourLauncher, StatusBadge } fro
 import { commonText, studentText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
-import api from '../../api.js';
+import api from '../../api';
+function getPaginationRange(currentPage, totalPages) {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, i) => i);
+  }
+  const pages = [0];
+  const start = Math.max(1, currentPage - 1);
+  const end = Math.min(totalPages - 2, currentPage + 1);
+
+  if (start > 1) {
+    pages.push('DOTS_LEFT');
+  }
+  for (let i = start; i <= end; i++) {
+    pages.push(i);
+  }
+  if (end < totalPages - 2) {
+    pages.push('DOTS_RIGHT');
+  }
+  pages.push(totalPages - 1);
+  return pages;
+}
 
 export default function Projects() {
   const navigate = useNavigate();
@@ -377,30 +397,28 @@ export default function Projects() {
               </button>
 
               {/* Page Number Buttons */}
-              {Array.from({ length: Math.max(1, projectsData.totalPages) }).map((_, i) => {
-                if (i === 0 || i === projectsData.totalPages - 1 || (i >= page - 1 && i <= page + 1)) {
-                  const isActive = page === i;
+              {getPaginationRange(page, Math.max(1, projectsData.totalPages)).map((item, idx) => {
+                if (typeof item === 'string') {
                   return (
-                    <button
-                      key={i}
-                      onClick={() => setPage(i)}
-                      className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold transition cursor-pointer ${
-                        isActive
-                          ? 'bg-[#0c162e] text-white shadow-xs'
-                          : 'border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
-                      }`}
-                    >
-                      {i + 1}
-                    </button>
-                  );
-                } else if (i === 1 || i === projectsData.totalPages - 2) {
-                  return (
-                    <span key={i} className="text-gray-400 text-xs px-1">
+                    <span key={`${item}-${idx}`} className="text-gray-400 text-xs px-1 select-none">
                       ...
                     </span>
                   );
                 }
-                return null;
+                const isActive = page === item;
+                return (
+                  <button
+                    key={item}
+                    onClick={() => setPage(item)}
+                    className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold transition cursor-pointer ${
+                      isActive
+                        ? 'bg-[#0c162e] text-white shadow-xs'
+                        : 'border border-gray-200 dark:border-gray-700 bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {item + 1}
+                  </button>
+                );
               })}
 
               {/* Next Button */}

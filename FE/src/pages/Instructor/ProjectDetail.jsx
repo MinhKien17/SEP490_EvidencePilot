@@ -177,7 +177,7 @@ export default function ProjectDetail() {
     setSaving(true);
     try {
       await api.post(`/api/projects/${id}/papers/reset-standard?standard=${standard}`);
-      await api.put(`/api/projects/${id}`, { ...project, targetStandard: standard });
+      await api.put(`/api/projects/${id}`, { title: project.title, description: project.description, targetStandard: standard });
       await loadProject();
       const papersRes = await api.get(`/api/projects/${id}/papers`);
       const freshPapers = papersRes.data || [];
@@ -344,7 +344,7 @@ export default function ProjectDetail() {
   };
 
   const handleDeleteSection = async (sectionId) => {
-    if (!selectedPaper || !confirm(t.deleteSectionConfirm)) return;
+    if (!selectedPaper || !window.confirm(t.deleteSectionConfirm)) return;
     setSectionStructureSaving(true);
     try {
       await api.delete(`/api/papers/${selectedPaper.id}/sections/${sectionId}`);
