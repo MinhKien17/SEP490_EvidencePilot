@@ -9,8 +9,11 @@ function UsersSection({ lang, api }) {
   const [pwMsg, setPwMsg] = useState({});
   const [loadingAction, setLoadingAction] = useState({});
   const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState({ email: '', firstName: '', lastName: '', password: '', role: 'STUDENT' });
+  const [createForm, setCreateForm] = useState({ email: '', firstName: '', lastName: '', studentCode: '', role: 'STUDENT' });
   const [createErr, setCreateErr] = useState('');
+  const [showImport, setShowImport] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importState, setImportState] = useState({ loading: false, error: '', result: null });
 
   const [q, setQ] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
@@ -50,29 +53,13 @@ function UsersSection({ lang, api }) {
         steps: [
           { popover: { title: lang.processGuide, description: lang.guideUsersDesc, side: 'center' } },
           { element: '[data-guide="create-btn"]', popover: { title: lang.createUser, description: lang.guideUsersCreate, side: 'bottom' } },
+          { element: '[data-guide="import-btn"]', popover: { title: lang.importUsers, description: lang.guideUsersImport, side: 'bottom' } },
           { element: '[data-guide="table"]', popover: { title: lang.userAccounts, description: lang.guideUsersTable, side: 'left' } },
           { element: '[data-guide="action-ban"]', popover: { title: lang.actions, description: lang.guideUsersActions, side: 'left' } },
           { popover: { title: lang.done, description: lang.guideUsersDone, side: 'center' } },
         ],
       }).drive();
     }, 300);
-  };
-
-  const doToggleRole = async (u) => {
-    if (u.role === 'ADMIN') return;
-    const newRole = u.role === 'STUDENT' ? 'INSTRUCTOR' : 'STUDENT';
-    setLoadingAction(p => ({ ...p, ['role_' + u.id]: true }));
-    try {
-      await api.patch(`/api/admin/users/${u.id}/role`, { role: newRole });
-      setUsers(prev => ({
-        ...prev,
-        content: prev.content.map(x => x.id === u.id ? { ...x, role: newRole } : x)
-      }));
-    } catch (e) {
-      setError(e.response?.data?.message || e.message);
-    } finally {
-      setLoadingAction(p => ({ ...p, ['role_' + u.id]: false }));
-    }
   };
 
   const toggleStatus = async (u) => {
@@ -113,12 +100,32 @@ function UsersSection({ lang, api }) {
   const doCreate = async (e) => {
     e.preventDefault(); setCreateErr('');
     try {
-      await api.post('/api/admin/users', createForm);
+      const { studentCode, ...base } = createForm;
+      await api.post('/api/admin/users', createForm.role === 'STUDENT' ? { ...base, studentCode } : base);
       setShowCreate(false);
-      setCreateForm({ email: '', firstName: '', lastName: '', password: '', role: 'STUDENT' });
+      setCreateForm({ email: '', firstName: '', lastName: '', studentCode: '', role: 'STUDENT' });
       fetch(0);
     }
     catch (err) { setCreateErr(err.response?.data?.message || err.message); }
+  };
+
+  const doImport = async (e) => {
+    e.preventDefault();
+    if (!importFile) return;
+    setImportState({ loading: true, error: '', result: null });
+    try {
+      if (!importFile.name.toLowerCase().endsWith('.json')) throw new Error(lang.jsonFileRequired);
+      const payload = await importFile.text();
+      const { data } = await api.post('/api/admin/users/import', payload, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      setImportState({ loading: false, error: '', result: data });
+      fetch(0);
+    } catch (err) {
+      const result = err.response?.data?.errors ? err.response.data : null;
+      const error = result ? '' : err.response?.data?.message || err.message;
+      setImportState({ loading: false, error, result });
+    }
   };
 
   return (
@@ -135,6 +142,10 @@ function UsersSection({ lang, api }) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <span>{lang.processGuide}</span>
+          </button>
+          <button data-guide="import-btn" onClick={() => { setImportFile(null); setShowImport(true); setImportState({ loading: false, error: '', result: null }); }}
+            className="px-4 py-2 text-xs font-bold text-[#1e3a8a] bg-white border border-blue-200 hover:bg-blue-50 rounded-xl transition shadow-sm">
+            {lang.importUsers}
           </button>
           <button data-guide="create-btn" onClick={() => setShowCreate(true)} 
             className="px-4 py-2 text-xs font-bold text-white bg-[#0c162e] hover:bg-[#152447] rounded-xl transition shadow-sm">
@@ -190,13 +201,55 @@ function UsersSection({ lang, api }) {
         </button>
       </div>
 
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs" onClick={() => setShowImport(false)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="import-users-title" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-4">
+              <h3 id="import-users-title" className="text-lg font-bold text-slate-800">{lang.importUsers}</h3>
+              <button type="button" aria-label={lang.close} onClick={() => setShowImport(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18 18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-500">{lang.importUsersHint}</p>
+            <form onSubmit={doImport} className="mt-5 space-y-4">
+              <label className="block text-xs font-bold text-slate-600">
+                <span>{lang.jsonFile}</span>
+                <input type="file" accept=".json,application/json" required onChange={e => { setImportFile(e.target.files?.[0] || null); setImportState({ loading: false, error: '', result: null }); }} className="mt-2 block w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-blue-100 file:px-3 file:py-1.5 file:font-bold file:text-blue-800" />
+              </label>
+              {importState.error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">{importState.error}</div>}
+              {importState.result && importState.result.errors?.length === 0 && (
+                <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">
+                  {lang.importSuccess.replace('{created}', importState.result.created).replace('{updated}', importState.result.updated)}
+                </div>
+              )}
+              {importState.result?.errors?.length > 0 && (
+                <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+                  <p className="font-bold">{lang.importFailed}</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    {importState.result.errors.map((item, index) => (
+                      <li key={`${item.item}-${item.field}-${index}`}>{lang.item} {item.item}: {item.field} — {item.message}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="flex justify-end gap-2.5 pt-2">
+                <button type="button" onClick={() => setShowImport(false)} className="rounded-xl border border-gray-200 px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50">{lang.cancel}</button>
+                <button type="submit" disabled={!importFile || importState.loading} className="rounded-xl bg-[#0c162e] px-4 py-2 text-xs font-bold text-white hover:bg-[#152447] disabled:cursor-not-allowed disabled:opacity-50">
+                  {importState.loading ? lang.importing : lang.importUsers}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* User creation modal */}
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs" onClick={() => setShowCreate(false)}>
-          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md mx-4 transform transition-all" onClick={e => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-labelledby="create-user-title" className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md mx-4 transform transition-all" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-lg text-slate-800">{lang.createUser}</h3>
-              <button onClick={() => setShowCreate(false)} className="text-gray-400 hover:text-gray-600 transition">
+              <h3 id="create-user-title" className="font-bold text-lg text-slate-800">{lang.createUser}</h3>
+              <button type="button" aria-label={lang.close} onClick={() => setShowCreate(false)} className="text-gray-400 hover:text-gray-600 transition">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -218,16 +271,19 @@ function UsersSection({ lang, api }) {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{lang.password}</label>
-                <input name="password" type="password" placeholder="••••••••" value={createForm.password} onChange={e => setCreateForm(p => ({ ...p, password: e.target.value }))} required className="w-full border border-gray-300 rounded-xl px-3.5 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-              </div>
-              <div>
                 <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{lang.userRole}</label>
-                <select value={createForm.role} onChange={e => setCreateForm(p => ({ ...p, role: e.target.value }))} className="w-full border border-gray-300 rounded-xl px-3.5 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer">
+                <select value={createForm.role} onChange={e => setCreateForm(p => ({ ...p, role: e.target.value, studentCode: '' }))} className="w-full border border-gray-300 rounded-xl px-3.5 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer">
                   <option value="STUDENT">{lang.students}</option>
                   <option value="INSTRUCTOR">{lang.instructors}</option>
                 </select>
               </div>
+              {createForm.role === 'STUDENT' && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">{lang.studentCode}</label>
+                  <input name="studentCode" maxLength={50} placeholder="SE170608" value={createForm.studentCode} onChange={e => setCreateForm(p => ({ ...p, studentCode: e.target.value }))} required className="w-full border border-gray-300 rounded-xl px-3.5 py-2 text-xs uppercase focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+                </div>
+              )}
+              <p className="rounded-xl bg-blue-50 p-3 text-xs leading-5 text-blue-800">{lang.temporaryPasswordHint}</p>
               {createErr && <div className="text-xs text-rose-600 bg-rose-50 p-2.5 rounded-lg border border-rose-100 font-semibold">{createErr}</div>}
               <div className="flex gap-2.5 justify-end pt-2">
                 <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 text-xs font-bold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition">{lang.cancel}</button>
@@ -248,6 +304,7 @@ function UsersSection({ lang, api }) {
               <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-gray-100">
                 <th className="px-6 py-3.5 font-bold tracking-wider">{lang.email}</th>
                 <th className="px-6 py-3.5 font-bold tracking-wider">{lang.fullName}</th>
+                <th className="px-6 py-3.5 font-bold tracking-wider">{lang.studentCode}</th>
                 <th className="px-6 py-3.5 font-bold tracking-wider">{lang.role}</th>
                 <th className="px-6 py-3.5 font-bold tracking-wider">{lang.status}</th>
                 <th className="px-6 py-3.5 font-bold tracking-wider text-right">{lang.actions}</th>
@@ -255,33 +312,18 @@ function UsersSection({ lang, api }) {
             </thead>
             <tbody className="divide-y divide-gray-100 text-slate-700 font-semibold">
               {loading ? Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i} className="animate-pulse">{Array.from({ length: 5 }).map((_, j) => (
+                <tr key={i} className="animate-pulse">{Array.from({ length: 6 }).map((_, j) => (
                   <td key={j} className="px-6 py-5"><div className="h-4 bg-gray-200 rounded w-full" /></td>
                 ))}</tr>
               )) : users.content.length === 0 ? (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 font-medium">{lang.noUsers}</td></tr>
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400 font-medium">{lang.noUsers}</td></tr>
               ) : users.content.map(u => (
                 <tr key={u.id} className="hover:bg-slate-50/50 transition">
                   <td className="px-6 py-4 font-mono text-gray-600 font-medium">{u.email}</td>
                   <td className="px-6 py-4 font-bold text-slate-800">{u.firstName} {u.lastName}</td>
+                  <td className="px-6 py-4 font-mono text-slate-600">{u.role === 'STUDENT' ? u.studentCode || '—' : ''}</td>
                   <td className="px-6 py-4">
-                    <button
-                      onClick={() => doToggleRole(u)}
-                      disabled={u.role === 'ADMIN' || loadingAction['role_' + u.id]}
-                      title={u.role === 'ADMIN' ? lang.adminRoleFixed : `${lang.changeRoleTo} ${u.role === 'STUDENT' ? 'INSTRUCTOR' : 'STUDENT'}`}
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 transition ${
-                        u.role === 'ADMIN' ? 'bg-rose-100 text-rose-700 cursor-not-allowed' :
-                        u.role === 'INSTRUCTOR' ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer' :
-                        'bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer'
-                      }`}
-                    >
-                      <span>{loadingAction['role_' + u.id] ? '...' : u.role}</span>
-                      {u.role !== 'ADMIN' && (
-                        <svg className="w-2.5 h-2.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                        </svg>
-                      )}
-                    </button>
+                    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold ${u.role === 'ADMIN' ? 'bg-rose-100 text-rose-700' : u.role === 'INSTRUCTOR' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{u.role}</span>
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${u.accountStatus === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>{u.accountStatus === 'ACTIVE' ? lang.active : lang.banned}</span>
