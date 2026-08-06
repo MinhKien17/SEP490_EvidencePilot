@@ -10,6 +10,7 @@ import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
+import com.evidencepilot.service.impl.SourceMatchingService;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -28,22 +29,32 @@ import static org.mockito.Mockito.when;
 class TexArchiveBuilderTest {
 
     @Test
-    void writesStandardTemplateClaimMarkerAndVisibleWarnings() throws Exception {
+    void writesStandardTemplateClaimWarningsAndGeneratedBibliography() throws Exception {
         ProjectRepository projects = mock(ProjectRepository.class);
         DocumentRepository documents = mock(DocumentRepository.class);
         PaperSectionRepository sections = mock(PaperSectionRepository.class);
         ClaimContentConsistencyService consistency =
                 mock(ClaimContentConsistencyService.class);
         TexArchiveMediaWriter media = mock(TexArchiveMediaWriter.class);
+        SourceMatchingService sourceMatchingService = mock(SourceMatchingService.class);
         TexArchiveBuilder builder = new TexArchiveBuilder(
                 projects,
                 documents,
                 sections,
                 new PaperStandardService(),
                 consistency,
-                media);
+                media,
+                sourceMatchingService);
         UUID projectId = UUID.randomUUID();
         UUID claimId = UUID.randomUUID();
+        Document source = new Document();
+        source.setId(UUID.randomUUID());
+        source.setTitle("Evidence Source");
+        source.setAuthors("A. Researcher");
+        source.setPublicationYear(2026);
+        source.setDocType(DocumentType.SOURCE);
+        source.setActive(true);
+        String citationKey = SourceMatchingService.citationKey(source.getId());
         Project project = new Project();
         project.setId(projectId);
         project.setTitle("AI_Project");
@@ -57,7 +68,7 @@ class TexArchiveBuilderTest {
         section.setDocument(paper);
         section.setSectionTitle("Introduction");
         section.setSectionOrder(0);
-        section.setContentTex("\\epclaim{" + claimId + "}{Supported Claim}");
+        section.setContentTex("\\epclaim{" + claimId + "}{Supported Claim} \\cite{" + citationKey + "}");
         section.setActive(true);
         when(projects.findById(projectId)).thenReturn(Optional.of(project));
         when(documents.findByProjectIdAndDocTypeAndActiveTrue(
@@ -71,6 +82,7 @@ class TexArchiveBuilderTest {
                                 section.getId(),
                                 ClaimContentStatus.MISSING,
                                 "Claim is saved but not used."))));
+        when(sourceMatchingService.activeSources(projectId)).thenReturn(List.of(source));
         var archive = Files.createTempFile("tex-builder-test-", ".zip");
 
         try {
@@ -83,7 +95,12 @@ class TexArchiveBuilderTest {
                         .contains("\\title{AI\\_Project}")
                         .contains("\\input{sections/01-introduction.tex}");
                 assertThat(text(zip, "sections/01-introduction.tex"))
-                        .contains("\\epclaim{" + claimId + "}{Supported Claim}");
+                        .contains("\\epclaim{" + claimId + "}{Supported Claim}")
+                        .contains("\\cite{" + citationKey + "}");
+                assertThat(text(zip, "references.tex"))
+                        .contains("\\begin{thebibliography}{99}")
+                        .contains("\\bibitem{" + citationKey + "}")
+                        .contains("A. Researcher", "Evidence Source", "2026");
                 assertThat(text(zip, "CLAIM_WARNINGS.md"))
                         .contains(claimId.toString(), "MISSING");
             }

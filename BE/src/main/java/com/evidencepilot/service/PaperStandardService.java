@@ -94,11 +94,11 @@ public class PaperStandardService {
             case "Abstract" -> "Summarize the problem, method, main result, and contribution.";
             case "Introduction" -> "Explain the context, research gap, objectives, and contributions.";
             case "Method", "Methodology" -> "Describe the design, data, procedure, and evaluation method.";
-            case "Results" -> "Present findings with the evidence needed to support each Claim.";
+            case "Results" -> "Present findings and cite external baselines, methods, or comparisons.";
             case "Discussion" -> "Interpret results, limitations, threats, and implications.";
             case "Conclusion" -> "Summarize contributions and justified future work.";
             case "References", "Works Cited" -> "Add references using the selected paper standard.";
-            default -> "Write this section and mark stored Claims with \\epclaim{claim-id}{claim text}.";
+            default -> "Write this section and cite external facts, methods, data, and prior work.";
         };
     }
 }

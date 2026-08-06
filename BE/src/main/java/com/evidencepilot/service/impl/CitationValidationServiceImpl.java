@@ -30,6 +30,7 @@ public class CitationValidationServiceImpl implements CitationValidationService 
     private final PaperSectionRepository paperSectionRepository;
     private final PaperProcessingService paperProcessingService;
     private final CurrentUserService currentUserService;
+    private final SourceMatchingService sourceMatchingService;
 
     @Override
     public CitationValidationResponse validateCitations(UUID documentId) {
@@ -53,8 +54,7 @@ public class CitationValidationServiceImpl implements CitationValidationService 
 
             Matcher citeMatcher = CITE_PATTERN.matcher(tex);
             while (citeMatcher.find()) {
-                String key = citeMatcher.group(2).trim();
-                allCitedKeys.add(key);
+                addCitationKeys(allCitedKeys, citeMatcher.group(2));
             }
 
             Matcher bibMatcher = BIBITEM_PATTERN.matcher(tex);
@@ -73,7 +73,7 @@ public class CitationValidationServiceImpl implements CitationValidationService 
             String tex = extractedText;
             Matcher citeMatcher = CITE_PATTERN.matcher(tex);
             while (citeMatcher.find()) {
-                allCitedKeys.add(citeMatcher.group(2).trim());
+                addCitationKeys(allCitedKeys, citeMatcher.group(2));
             }
             Matcher bibMatcher = BIBITEM_PATTERN.matcher(tex);
             while (bibMatcher.find()) {
@@ -94,6 +94,11 @@ public class CitationValidationServiceImpl implements CitationValidationService 
         Project project = document.getProject();
         Set<String> sourceDois = new HashSet<>();
         Set<String> sourceTitles = new HashSet<>();
+        Set<UUID> activeSourceIds = project == null
+                ? Set.of()
+                : sourceMatchingService.activeSources(project.getId()).stream()
+                        .map(Document::getId)
+                        .collect(Collectors.toSet());
         if (project != null && sectionValidation.standardUsed() != null) {
             List<DocumentReference> refs = documentReferenceRepository
                     .findByDocumentProjectIdAndDocumentDocTypeAndDocumentActiveTrueOrderByDocumentIdAscReferenceIndexAsc(
@@ -112,7 +117,10 @@ public class CitationValidationServiceImpl implements CitationValidationService 
         List<String> unmatchedKeys = new ArrayList<>();
 
         for (String key : citedKeys) {
-            boolean matchedSource = false;
+            boolean autoCitation = SourceMatchingService.citationDocumentId(key)
+                    .filter(activeSourceIds::contains)
+                    .isPresent();
+            boolean matchedSource = autoCitation;
             for (String doi : sourceDois) {
                 if (normalize(key).contains(normalize(doi))
                         || normalize(doi).contains(normalize(key))) {
@@ -133,7 +141,7 @@ public class CitationValidationServiceImpl implements CitationValidationService 
                 missingCitations.add(key);
             }
 
-            if (!definedKeys.contains(key) && !hasExternalBib) {
+            if (!definedKeys.contains(key) && !hasExternalBib && !autoCitation) {
                 unmatchedKeys.add(key);
             }
         }
@@ -227,5 +235,12 @@ public class CitationValidationServiceImpl implements CitationValidationService 
         return s.toLowerCase()
                 .replaceAll("[^a-z0-9]", "")
                 .trim();
+    }
+
+    private static void addCitationKeys(List<String> target, String keys) {
+        Arrays.stream(keys.split(","))
+                .map(String::trim)
+                .filter(key -> !key.isBlank())
+                .forEach(target::add);
     }
 }
