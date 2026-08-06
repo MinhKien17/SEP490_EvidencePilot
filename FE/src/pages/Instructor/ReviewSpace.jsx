@@ -6,6 +6,7 @@ import api from '../../api.js';
 import { renderLatexToHtml } from '../../components/latexHtml.js';
 import { commonText, instructorText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
+import { legacyClaimsEnabled } from '../../featureFlags.js';
 
 function wrapLatexLines(latex) {
   if (!latex) return '';
@@ -208,7 +209,7 @@ export default function ReviewSpace() {
           api.get(`/api/projects/${projectId}/papers`),
           api.get('/api/feedback-requests'),
           loadAllProjectSources(projectId).catch(() => []),
-          api.get(`/api/projects/${projectId}/graph`).catch(() => null),
+          legacyClaimsEnabled ? api.get(`/api/projects/${projectId}/graph`).catch(() => null) : null,
         ]);
         if (cancelled) return;
         setProject(proj.data);
@@ -561,7 +562,7 @@ export default function ReviewSpace() {
 
           {/* Right column: claims + feedback + sources */}
           <div className="space-y-6">
-            <div className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm p-4 sm:p-6">
+            {legacyClaimsEnabled && <div className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm p-4 sm:p-6">
               <h2 className="text-sm font-bold text-(--brand-foreground) mb-4">{t.claimsInSection}</h2>
               {!selectedSectionId ? (
                 <p className="text-xs text-(--text-tertiary) italic">{t.selectSectionClaims}</p>
@@ -610,15 +611,15 @@ export default function ReviewSpace() {
                   })}
                 </div>
               )}
-            </div>
+            </div>}
 
             <div className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm p-4 sm:p-6">
               <div className="flex items-center justify-between gap-3 mb-4">
                 <h2 className="text-sm font-bold text-(--brand-foreground)">{t.sectionFeedback}</h2>
-                <button type="button" onClick={handleOpenCoverage}
+                {legacyClaimsEnabled && <button type="button" onClick={handleOpenCoverage}
                   className="text-xs font-bold text-(--brand-foreground) bg-(--brand-soft) hover:bg-(--surface-tertiary) rounded-lg px-2 py-1 transition-colors">
                   {t.coverageGraph}
-                </button>
+                </button>}
               </div>
               {!selectedSectionId ? (
                 <p className="text-xs text-(--text-tertiary) italic">{t.selectSectionFeedback}</p>
@@ -697,7 +698,7 @@ export default function ReviewSpace() {
         </div>
       </main>
 
-      <Modal open={coverageOpen} onClose={() => setCoverageOpen(false)} title={t.coverageGraph} closeLabel={ct.close} wide
+      {legacyClaimsEnabled && <Modal open={coverageOpen} onClose={() => setCoverageOpen(false)} title={t.coverageGraph} closeLabel={ct.close} wide
         className="hide-scrollbar">
         {claimStats ? (
           <FunctionalTypeRadar stats={claimStats} />
@@ -719,7 +720,7 @@ export default function ReviewSpace() {
             </div>
           ))}
         </div>
-      </Modal>
+      </Modal>}
       {hoveredLine && (
         <div 
           className="fixed z-50 bg-[#1e3a8a] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md pointer-events-none transition-all duration-75"

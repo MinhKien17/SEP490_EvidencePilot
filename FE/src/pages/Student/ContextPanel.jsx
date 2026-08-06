@@ -133,8 +133,14 @@ export default function ContextPanel({
   onSelectClaim,
   // Feedback tab
   feedbacks, setShowSubmitReviewModal, userProjectRole,
+  // AI Review tab
+  aiReview, aiReviewLoading, aiReviewError, aiReviewStale, aiSourceMatches,
+  aiSourcesLoading, aiSourcesError, resolvedFindingIndexes, reviewSectionTitle,
+  onRunAiReview, onSelectReviewFinding, onInsertCitation, onRetryReviewSources,
+  canReviewSection,
   // Coverage tab
   graphData, graphScope, onGraphScopeToggle, claimStats,
+  legacyClaimsEnabled,
   isLocked,
 }) {
   const [showSourceModal, setShowSourceModal] = useState(false);
@@ -178,11 +184,16 @@ export default function ContextPanel({
             {t('sources')}
             {activeTab === 'Source' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 shadow-[0_-2px_8px_rgba(79,70,229,0.5)]"></div>}
           </button>
-          <button data-tour="context-claims-tab" onClick={() => setActiveTab('Claims')} className={activeClass('Claims')}>
+          <button data-tour="context-ai-review-tab" onClick={() => setActiveTab('AI Review')} className={activeClass('AI Review')}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 3.5h4.5M12 2v3m6.36.64-.7.7M21 12h-3m-12 0H3m3.34-5.66-.7-.7M8 19h8m-7-3h6a5 5 0 10-6 0z" /></svg>
+            {t('aiReview')}
+            {activeTab === 'AI Review' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 shadow-[0_-2px_8px_rgba(79,70,229,0.5)]"></div>}
+          </button>
+          {legacyClaimsEnabled && <button data-tour="context-claims-tab" onClick={() => setActiveTab('Claims')} className={activeClass('Claims')}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
             {t('claims')}
             {activeTab === 'Claims' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 shadow-[0_-2px_8px_rgba(79,70,229,0.5)]"></div>}
-          </button>
+          </button>}
           <button data-tour="context-feedback-tab" onClick={() => setActiveTab('Feedback')} className={activeClass('Feedback')}>
             <div className="relative">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
@@ -191,11 +202,11 @@ export default function ContextPanel({
             {t('feedback')}
             {activeTab === 'Feedback' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 shadow-[0_-2px_8px_rgba(79,70,229,0.5)]"></div>}
           </button>
-          <button data-tour="context-graph-tab" onClick={() => setActiveTab('Graph')} className={activeClass('Graph')}>
+          {legacyClaimsEnabled && <button data-tour="context-graph-tab" onClick={() => setActiveTab('Graph')} className={activeClass('Graph')}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" /></svg>
             {t('coverage')}
             {activeTab === 'Graph' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 shadow-[0_-2px_8px_rgba(79,70,229,0.5)]"></div>}
-          </button>
+          </button>}
         </div>
 
         <div className="flex-1 overflow-y-auto bg-(--surface-secondary)/50 p-4">
@@ -299,7 +310,7 @@ export default function ContextPanel({
             </div>
           )}
 
-          {activeTab === 'Claims' && (
+          {legacyClaimsEnabled && activeTab === 'Claims' && (
             <div className="space-y-3">
               {canCreateClaim && (
                 <div className="bg-(--surface) border border-(--border) rounded-xl p-3.5 shadow-sm">
@@ -495,6 +506,108 @@ export default function ContextPanel({
             </div>
           )}
 
+          {activeTab === 'AI Review' && (
+            <div className="space-y-4 animate-in fade-in duration-300">
+              <div className="rounded-xl border border-(--border) bg-(--surface) p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-(--text-primary)">{t('citationReview')}</h3>
+                    <p className="mt-1 text-[11px] text-(--text-tertiary)">{reviewSectionTitle || t('selectSectionFirst')}</p>
+                  </div>
+                  <button type="button" onClick={onRunAiReview} disabled={!canReviewSection || aiReviewLoading || isLocked}
+                    className="shrink-0 rounded-lg bg-(--brand) px-3 py-1.5 text-xs font-bold text-(--on-brand) hover:bg-(--brand-hover) disabled:opacity-40">
+                    {aiReviewLoading ? t('reviewing') : t('runReview')}
+                  </button>
+                </div>
+                <p className="mt-3 text-[11px] leading-relaxed text-(--text-secondary)">{t('citationReviewDescription')}</p>
+              </div>
+
+              {aiReviewError && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+                  <p>{aiReviewError.message}</p>
+                  <button type="button" onClick={onRunAiReview} className="mt-2 font-bold underline">{t('retry')}</button>
+                </div>
+              )}
+              {aiReviewStale && aiReview && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900">
+                  {t('reviewStale')}
+                </div>
+              )}
+              {aiReviewLoading && (
+                <div className="flex items-center justify-center gap-2 rounded-xl border border-(--border) bg-(--surface) p-8 text-xs text-(--text-secondary)">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600"></span>
+                  {t('aiAnalyzing')}
+                </div>
+              )}
+              {!aiReviewLoading && !aiReview && !aiReviewError && (
+                <div className="rounded-xl border border-dashed border-(--border) p-6 text-center text-xs text-(--text-tertiary)">{t('sectionNotReviewed')}</div>
+              )}
+              {aiReview && !aiReviewLoading && (
+                <>
+                  {aiReview.summary && <p className="rounded-xl border border-(--border) bg-(--surface) p-3 text-xs leading-relaxed text-(--text-secondary)">{aiReview.summary}</p>}
+                  {(aiReview.findings || []).map((finding, index) => {
+                    const candidates = aiSourceMatches?.[index] || [];
+                    const resolved = resolvedFindingIndexes?.includes(index);
+                    return (
+                      <div key={`${finding.ruleCode}-${finding.startOffset}-${finding.endOffset}`} className={`rounded-xl border bg-(--surface) p-4 shadow-sm ${resolved ? 'border-emerald-300 opacity-70' : 'border-(--border)'}`}>
+                        <button type="button" onClick={() => onSelectReviewFinding(finding)} className="w-full text-left">
+                          <div className="flex items-start justify-between gap-2">
+                            <h4 className="text-[11px] font-black text-indigo-700">{finding.ruleCode.replaceAll('_', ' ')}</h4>
+                            {resolved && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">{t('citationInserted')}</span>}
+                          </div>
+                          <blockquote className="mt-2 border-l-2 border-amber-400 pl-2 text-[11px] italic leading-relaxed text-(--text-secondary)">“{finding.excerpt}”</blockquote>
+                          <p className="mt-2 text-[11px] leading-relaxed text-(--text-secondary)">{finding.reason}</p>
+                          <p className="mt-1 text-[10px] font-semibold text-(--brand-foreground)">{finding.recommendedAction}</p>
+                        </button>
+                        <div className="mt-3 border-t border-(--border-light) pt-3">
+                          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('relatedSources')}</p>
+                          {aiSourcesLoading ? (
+                            <p className="text-[10px] italic text-(--text-tertiary)">{t('searchingSources')}</p>
+                          ) : candidates.length === 0 ? (
+                            <p className="text-[10px] italic text-(--text-tertiary)">{t('noRelatedSources')}</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {candidates.map(candidate => (
+                                <div key={candidate.documentChunkId} className="rounded-lg border border-(--border) bg-(--surface-secondary) p-2.5">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <p className="truncate text-[11px] font-bold text-(--text-primary)">{candidate.title || candidate.sourceFilename}</p>
+                                      <p className="text-[9px] text-(--text-tertiary)">{[candidate.authors, candidate.publicationYear].filter(Boolean).join(' · ')}</p>
+                                    </div>
+                                    <span className="text-[9px] font-bold text-indigo-600">{Math.round(candidate.similarityScore * 100)}%</span>
+                                  </div>
+                                  <p className="mt-1 line-clamp-3 text-[10px] italic leading-relaxed text-(--text-secondary)">“{candidate.excerpt}”</p>
+                                  <button type="button" onClick={() => onInsertCitation(finding, index, candidate)} disabled={resolved || !canReviewSection}
+                                    className="mt-2 w-full rounded bg-(--brand) px-2 py-1 text-[10px] font-bold text-(--on-brand) hover:bg-(--brand-hover) disabled:opacity-40">
+                                    {t('insertCitation')}
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {(aiReview.findings || []).length === 0 && (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-800">{t('noCitationFindings')}</div>
+                  )}
+                  {(aiReview.limitations || []).length > 0 && (
+                    <ul className="list-disc space-y-1 rounded-xl border border-slate-200 bg-slate-50 p-4 pl-8 text-[10px] text-slate-700">
+                      {aiReview.limitations.map((limitation, index) => <li key={index}>{limitation}</li>)}
+                    </ul>
+                  )}
+                </>
+              )}
+              {aiSourcesError && aiReview && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900">
+                  <p>{aiSourcesError}</p>
+                  <button type="button" onClick={onRetryReviewSources} className="mt-1 font-bold underline">{t('retrySourceSearch')}</button>
+                </div>
+              )}
+            </div>
+          )}
+
           {activeTab === 'Feedback' && (
             <div className="flex flex-col gap-4 animate-in fade-in duration-200">
               <div className="flex justify-between items-center mb-1 bg-(--surface) border border-(--border) rounded-xl p-3.5 shadow-sm">
@@ -557,7 +670,7 @@ export default function ContextPanel({
             </div>
           )}
 
-          {activeTab === 'Graph' && (
+          {legacyClaimsEnabled && activeTab === 'Graph' && (
             <div className="flex flex-col gap-4 animate-in fade-in duration-200">
               <FunctionalTypeRadar stats={claimStats} compact />
               {graphData && graphData.sectionSummaries && graphData.sectionSummaries.length > 0 && (

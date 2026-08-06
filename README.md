@@ -116,6 +116,8 @@ npm run dev
 
 The frontend uses `http://localhost:8080` by default. Set
 `VITE_API_BASE_URL` when the backend is hosted elsewhere.
+Legacy Claim/Graph screens are hidden by default while their data and APIs remain intact.
+Set `VITE_ENABLE_LEGACY_CLAIMS=true` only when those screens need to be restored temporarily.
 
 ## Local endpoints
 

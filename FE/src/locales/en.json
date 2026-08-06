@@ -128,7 +128,7 @@
     "versionHistory": "Version History",
     "versionHistoryDesc": "View and restore previous versions of your assigned section.",
     "aiReview": "AI Review",
-    "aiReviewDesc": "Get AI-powered feedback on your paper structure and style.",
+    "aiReviewDesc": "Find statements in the selected section that may need citations.",
     "sidebarLeft": "Workspace Navigation",
     "sidebarLeftDesc": "Toggle the file sidebar, overview panel, and context panel.",
     "filePanel": "Sections",
@@ -359,5 +359,22 @@
   ,"versionLabel": "Version {{version}}"
   ,"currentVersionLabel": "Version {{version}} (current)"
   ,"updatedAtLabel": "Updated at: {{date}}"
+  ,"citationReview": "Citation review"
+  ,"reviewing": "Reviewing..."
+  ,"runReview": "Review"
+  ,"citationReviewDescription": "AI checks only the selected section for statements that may need external citations. Suggested sources are related matches and should be verified before use."
+  ,"reviewStale": "The section changed after this review. Rerun the review for current highlights; unchanged excerpts can still receive citations."
+  ,"sectionNotReviewed": "This section has not been reviewed yet."
+  ,"citationInserted": "Citation inserted"
+  ,"relatedSources": "Related sources"
+  ,"noRelatedSources": "No related project sources found."
+  ,"insertCitation": "Insert citation"
+  ,"noCitationFindings": "No statements requiring citations were found in this section."
+  ,"retrySourceSearch": "Retry source search"
+  ,"sourceSearchFailed": "The citation review succeeded, but related-source search failed."
+  ,"reviewSectionChanged": "The saved section changed while AI Review was queued. Save and run it again."
+  ,"reviewExcerptChanged": "This excerpt changed or is ambiguous. Run AI Review again."
+  ,"citationAlreadyInserted": "This source citation is already next to the excerpt."
+  ,"cachedReviewFailed": "Could not load the cached review for this section."
   ,"unknown": "Unknown"
 }

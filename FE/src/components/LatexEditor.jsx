@@ -1,12 +1,29 @@
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
-import { EditorView, basicSetup } from 'codemirror';
-import { EditorState } from '@codemirror/state';
+import { basicSetup } from 'codemirror';
+import { EditorState, StateEffect, StateField } from '@codemirror/state';
+import { Decoration, EditorView } from '@codemirror/view';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { latex } from 'codemirror-lang-latex';
 
 const lightTheme = EditorView.theme({
   '&': { backgroundColor: '#ffffff' },
   '.cm-scroller': { fontFamily: '"JetBrains Mono", "Fira Code", monospace' },
+});
+
+const setReviewRanges = StateEffect.define();
+const reviewRanges = StateField.define({
+  create: () => Decoration.none,
+  update: (decorations, transaction) => {
+    let next = decorations.map(transaction.changes);
+    for (const effect of transaction.effects) {
+      if (effect.is(setReviewRanges)) {
+        next = Decoration.set(effect.value.map(({ from, to }) =>
+          Decoration.mark({ class: 'cm-review-finding' }).range(from, to)), true);
+      }
+    }
+    return next;
+  },
+  provide: field => EditorView.decorations.from(field),
 });
 
 const LatexEditor = forwardRef(function LatexEditor({ content, onChange, readOnly = false, fontSize = 14 }, ref) {
@@ -31,6 +48,40 @@ const LatexEditor = forwardRef(function LatexEditor({ content, onChange, readOnl
         selection: { anchor: cursorOffset != null ? from + cursorOffset : from + text.length },
       });
       return v.state.doc.toString();
+    },
+    insertAtOffset: (offset, text) => {
+      const v = viewRef.current;
+      if (!v) return null;
+      const at = Math.max(0, Math.min(offset, v.state.doc.length));
+      v.dispatch({
+        changes: { from: at, insert: text },
+        selection: { anchor: at + text.length },
+        scrollIntoView: true,
+      });
+      return v.state.doc.toString();
+    },
+    selectRange: (from, to) => {
+      const v = viewRef.current;
+      if (!v) return;
+      const start = Math.max(0, Math.min(from, v.state.doc.length));
+      const end = Math.max(start, Math.min(to, v.state.doc.length));
+      v.dispatch({
+        selection: { anchor: start, head: end },
+        effects: EditorView.scrollIntoView(start, { y: 'center' }),
+      });
+      v.focus();
+    },
+    setReviewRanges: (ranges = []) => {
+      const v = viewRef.current;
+      if (!v) return;
+      const valid = ranges
+        .map(({ from, to }) => ({
+          from: Math.max(0, Math.min(from, v.state.doc.length)),
+          to: Math.max(0, Math.min(to, v.state.doc.length)),
+        }))
+        .filter(({ from, to }) => to > from)
+        .sort((left, right) => left.from - right.from);
+      v.dispatch({ effects: setReviewRanges.of(valid) });
     },
   }));
 
@@ -60,6 +111,7 @@ const LatexEditor = forwardRef(function LatexEditor({ content, onChange, readOnl
         isDark ? oneDark : lightTheme,
         EditorView.editable.of(!readOnly),
         EditorView.lineWrapping,
+        reviewRanges,
         updateListener,
         EditorView.theme({
           '&': { fontSize: `${fontSize}px`, backgroundColor: isDark ? '#0f172a' : '#ffffff', color: isDark ? '#f8fafc' : '#000000', height: '100%' },
@@ -74,6 +126,7 @@ const LatexEditor = forwardRef(function LatexEditor({ content, onChange, readOnl
           '.cm-lintRange': { wordBreak: 'break-word', overflowWrap: 'anywhere', maxWidth: '100%' },
           '.cm-lintRange-warning': { backgroundColor: 'transparent', borderBottom: '2px solid #eab308' },
           '.cm-lintRange-error': { backgroundColor: 'transparent', borderBottom: '2px solid #ef4444' },
+          '.cm-review-finding': { backgroundColor: 'rgba(245, 158, 11, 0.18)', borderBottom: '2px solid #f59e0b' },
           '.cm-gutters': { display: 'none' },
         }),
       ],

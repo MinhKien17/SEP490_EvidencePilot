@@ -128,7 +128,7 @@
     "versionHistory": "Lịch sử phiên bản",
     "versionHistoryDesc": "Xem và khôi phục các phiên bản trước của phần được giao.",
     "aiReview": "AI Review",
-    "aiReviewDesc": "Nhận phản hồi từ AI về cấu trúc và phong cách bài viết.",
+    "aiReviewDesc": "Tìm các phát biểu trong phần đang chọn có thể cần trích dẫn.",
     "sidebarLeft": "Điều hướng",
     "sidebarLeftDesc": "Chuyển đổi bảng tệp, tổng quan và bảng ngữ cảnh.",
     "filePanel": "Phần bài viết",
@@ -359,5 +359,22 @@
   ,"versionLabel": "Phiên bản {{version}}"
   ,"currentVersionLabel": "Phiên bản {{version}} (hiện tại)"
   ,"updatedAtLabel": "Cập nhật lúc: {{date}}"
+  ,"citationReview": "Kiểm tra trích dẫn"
+  ,"reviewing": "Đang kiểm tra..."
+  ,"runReview": "Kiểm tra"
+  ,"citationReviewDescription": "AI chỉ kiểm tra phần đang chọn để tìm nội dung có thể cần nguồn bên ngoài. Nguồn gợi ý chỉ là kết quả liên quan và cần được xác minh trước khi dùng."
+  ,"reviewStale": "Nội dung đã thay đổi sau lần kiểm tra này. Hãy chạy lại để cập nhật đánh dấu; các đoạn không đổi vẫn có thể được chèn trích dẫn."
+  ,"sectionNotReviewed": "Phần này chưa được AI kiểm tra."
+  ,"citationInserted": "Đã chèn trích dẫn"
+  ,"relatedSources": "Nguồn liên quan"
+  ,"noRelatedSources": "Không tìm thấy nguồn liên quan trong dự án."
+  ,"insertCitation": "Chèn trích dẫn"
+  ,"noCitationFindings": "Không phát hiện nội dung cần bổ sung trích dẫn trong phần này."
+  ,"retrySourceSearch": "Tìm nguồn lại"
+  ,"sourceSearchFailed": "AI Review đã hoàn tất nhưng bước tìm nguồn liên quan thất bại."
+  ,"reviewSectionChanged": "Phần đã lưu thay đổi trong lúc AI Review chờ xử lý. Hãy lưu và chạy lại."
+  ,"reviewExcerptChanged": "Đoạn văn đã thay đổi hoặc xuất hiện nhiều lần. Hãy chạy AI Review lại."
+  ,"citationAlreadyInserted": "Trích dẫn nguồn này đã nằm cạnh đoạn văn."
+  ,"cachedReviewFailed": "Không thể tải kết quả AI Review đã lưu của phần này."
   ,"unknown": "Không xác định"
 }

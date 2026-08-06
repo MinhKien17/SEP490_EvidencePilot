@@ -7,6 +7,7 @@ import { instructorText, commonText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
 import api from '../../api';
 import { getSourceShareChanges } from './sourceShareSelection';
+import { legacyClaimsEnabled } from '../../featureFlags';
 
 const STANDARDS = ['IEEE', 'ACM', 'SPRINGER_LNCS', 'APA', 'MLA', 'CUSTOM'];
 
@@ -100,9 +101,9 @@ export default function ProjectDetail() {
     try {
       const [fbRes, traceRes, graphRes, statsRes] = await Promise.all([
         api.get('/api/feedback-requests'),
-        api.get(`/api/projects/${id}/traceability`).catch(() => null),
-        api.get(`/api/projects/${id}/graph?scope=all`).catch(() => null),
-        api.get(`/api/projects/${id}/graph/claim-stats`).catch(() => null),
+        legacyClaimsEnabled ? api.get(`/api/projects/${id}/traceability`).catch(() => null) : null,
+        legacyClaimsEnabled ? api.get(`/api/projects/${id}/graph?scope=all`).catch(() => null) : null,
+        legacyClaimsEnabled ? api.get(`/api/projects/${id}/graph/claim-stats`).catch(() => null) : null,
       ]);
       const projectFbs = (fbRes.data || []).filter(fb => fb.projectId === id);
       setFeedbackRequests(projectFbs);
@@ -173,7 +174,7 @@ export default function ProjectDetail() {
 
   useEffect(() => {
     if (activeTab === 'review') loadFeedbackAndTraceability();
-    if (activeTab === 'progress') loadProgressReport();
+    if (legacyClaimsEnabled && activeTab === 'progress') loadProgressReport();
   }, [activeTab, loadFeedbackAndTraceability, loadProgressReport]);
 
   const handleUpdateStandard = async () => {
@@ -542,7 +543,7 @@ export default function ProjectDetail() {
             { key: 'setup', label: t.projectSetup },
             { key: 'sections', label: t.projectSections },
             { key: 'review', label: t.projectReview },
-            { key: 'progress', label: t.projectProgressReport },
+            ...(legacyClaimsEnabled ? [{ key: 'progress', label: t.projectProgressReport }] : []),
             { key: 'settings', label: t.projectSettings },
           ].map(tab => (
             <button
@@ -794,7 +795,7 @@ export default function ProjectDetail() {
 
         {/* Tab: Review */}
         {activeTab === 'review' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className={`grid grid-cols-1 gap-6 ${legacyClaimsEnabled ? 'lg:grid-cols-2' : ''}`}>
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
               <h2 className="mb-4 text-sm font-bold text-[var(--brand-foreground)]">{t.feedbackRequests}</h2>
               {feedbackRequests.length === 0 ? (
@@ -813,7 +814,7 @@ export default function ProjectDetail() {
                 </div>
               )}
             </div>
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
+            {legacyClaimsEnabled && <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-bold text-[var(--brand-foreground)]">
                   {reviewPane === 'distribution' ? t.claimTypeDistribution : t.evidenceMap}
@@ -830,12 +831,12 @@ export default function ProjectDetail() {
               {reviewPane === 'distribution'
                 ? <FunctionalTypeRadar stats={claimStats} />
                 : <EvidenceGraph traceabilityData={traceability} height={500} />}
-            </div>
+            </div>}
           </div>
         )}
 
         {/* Tab: Project Process Report */}
-        {activeTab === 'progress' && (
+        {legacyClaimsEnabled && activeTab === 'progress' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {progressReport?.readiness && (
               <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6 lg:col-span-3">
@@ -1274,14 +1275,14 @@ export default function ProjectDetail() {
               const a = document.createElement('a'); a.href = url; a.download = `papers-${project?.title || 'export'}.zip`;
               a.click(); URL.revokeObjectURL(url);
               const warningCount = Number(r.headers?.['x-claim-warning-count'] || 0);
-              if (warningCount > 0) alert(t.exportWarning.replace('{{count}}', warningCount));
+              if (legacyClaimsEnabled && warningCount > 0) alert(t.exportWarning.replace('{{count}}', warningCount));
               setShowExportModal(false);
             } catch { alert(t.exportFailed); }
           }} className="w-full rounded-lg bg-emerald-50 px-4 py-3 text-left font-medium text-emerald-800 transition hover:bg-emerald-100">
             {t.paperArchive}
             <span className="block text-[10px] font-normal text-emerald-900/70">{t.paperArchiveDesc}</span>
           </button>
-          <button onClick={async () => {
+          {legacyClaimsEnabled && <button onClick={async () => {
             try {
               const r = await api.get(`/api/projects/${id}/traceability`);
               const blob = new Blob([JSON.stringify(r.data, null, 2)], { type: 'application/json' });
@@ -1293,8 +1294,8 @@ export default function ProjectDetail() {
           }} className="w-full rounded-lg bg-emerald-50 px-4 py-3 text-left font-medium text-emerald-800 transition hover:bg-emerald-100">
             {t.traceabilityJson}
             <span className="block text-[10px] font-normal text-emerald-900/70">{t.traceabilityJsonDesc}</span>
-          </button>
-          <button onClick={async () => {
+          </button>}
+          {legacyClaimsEnabled && <button onClick={async () => {
             try {
               const r = await api.get(`/api/projects/${id}/traceability/csv`, { responseType: 'blob' });
               const url = URL.createObjectURL(r.data);
@@ -1305,7 +1306,7 @@ export default function ProjectDetail() {
           }} className="w-full rounded-lg bg-emerald-50 px-4 py-3 text-left font-medium text-emerald-800 transition hover:bg-emerald-100">
             {t.traceabilityCsv}
             <span className="block text-[10px] font-normal text-emerald-900/70">{t.traceabilityCsvDesc}</span>
-          </button>
+          </button>}
           <div className="flex justify-end">
             <button onClick={() => setShowExportModal(false)} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.cancel}</button>
           </div>

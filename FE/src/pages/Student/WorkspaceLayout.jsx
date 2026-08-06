@@ -12,6 +12,7 @@ import EditorPanel from './EditorPanel.jsx';
 import ContextPanel from './ContextPanel.jsx';
 import FullPaperPreview from './FullPaperPreview.jsx';
 import { hasActiveExtraction } from './extractionPolling.js';
+import { legacyClaimsEnabled } from '../../featureFlags.js';
 
 async function loadAllProjectSources(projectId) {
   const sources = [];
@@ -34,7 +35,11 @@ export default function WorkspaceLayout() {
   const navigate = useNavigate();
   const { logout, user, role } = useAuth();
   const { t, i18n } = useTranslation();
-  const [activeTab, setActiveTab] = useState(() => localStorage.getItem('student_workspace_active_tab') || 'Source');
+  const [activeTab, setActiveTab] = useState(() => {
+    const stored = localStorage.getItem('student_workspace_active_tab') || 'Source';
+    return !legacyClaimsEnabled && (stored === 'Claims' || stored === 'Graph')
+      ? 'AI Review' : stored;
+  });
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showOverview, setShowOverview] = useState(false);
   const [sectionsExpanded, setSectionsExpanded] = useState(true);
@@ -78,7 +83,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
   const [showSubmitReviewModal, setShowSubmitReviewModal] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
-  const [showAiReviewModal, setShowAiReviewModal] = useState(false);
   const [citationResult, setCitationResult] = useState(null);
   const [loadingCitation, setLoadingCitation] = useState(false);
 
@@ -86,6 +90,11 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const [rollingBack, setRollingBack] = useState(false);
   const [aiReviewResult, setAiReviewResult] = useState(null);
   const [aiReviewError, setAiReviewError] = useState(null);
+  const [aiReviewedContent, setAiReviewedContent] = useState('');
+  const [aiSourceMatches, setAiSourceMatches] = useState({});
+  const [loadingAiSources, setLoadingAiSources] = useState(false);
+  const [aiSourcesError, setAiSourcesError] = useState('');
+  const [resolvedFindingIndexes, setResolvedFindingIndexes] = useState([]);
   const [newClaimContent, setNewClaimContent] = useState('');
   const [newClaimFunctionalType, setNewClaimFunctionalType] = useState('EMPIRICAL');
   const [claimEvaluation, setClaimEvaluation] = useState(null);
@@ -130,6 +139,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const submittingReviewRef = useRef(false);
   const aiReviewJobRef = useRef(null);
   const aiReviewRequestRef = useRef(0);
+  const aiSourceRequestRef = useRef(0);
 
   const updateCode = (newVal) => {
     codeContentRef.current = newVal;
@@ -209,12 +219,21 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
   useEffect(() => {
     aiReviewRequestRef.current += 1;
+    aiSourceRequestRef.current += 1;
     aiReviewJobRef.current = null;
     setLoadingAiReview(false);
-  }, [selectedPaper?.id]);
+    setAiReviewResult(null);
+    setAiReviewError(null);
+    setAiReviewedContent('');
+    setLoadingAiSources(false);
+    setAiSourceMatches({});
+    setAiSourcesError('');
+    setResolvedFindingIndexes([]);
+    editorRef.current?.setReviewRanges([]);
+  }, [selectedPaper?.id, selectedSectionId]);
 
   const fetchClaims = async () => {
-    if (!project) return;
+    if (!legacyClaimsEnabled || !project) return;
     const r = await api.get(`/api/projects/${project.id}/claims`, {
       params: selectedSectionIdRef.current ? { sectionId: selectedSectionIdRef.current } : {},
     });
@@ -222,7 +241,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   };
 
   useEffect(() => {
-    if (!project) return;
+    if (!legacyClaimsEnabled || !project) return;
     fetchClaims().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project, selectedSectionId]);
@@ -305,6 +324,10 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     setCitationResult(null);
     setAiReviewResult(null);
     setAiReviewError(null);
+    setAiReviewedContent('');
+    setAiSourceMatches({});
+    setAiSourcesError('');
+    setResolvedFindingIndexes([]);
     setClaimEvaluation(null);
     setEvaluatedClaimContent('');
     setEvaluatedClaimSectionId('');
@@ -341,7 +364,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         const all = r.data || [];
         setFeedbacks(all.filter(fb => String(fb.projectId) === String(projId)));
       } catch { if (!stale()) setLoadErrors(errs => [...errs, 'feedback']); }
-      try {
+      if (legacyClaimsEnabled) try {
         const r = await api.get(`/api/projects/${projId}/graph?scope=${graphScopeRef.current}`);
         if (stale()) return;
         setGraphData(r.data);
@@ -434,6 +457,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const currentSection = sections.find(section =>
     String(section.id) === String(selectedSectionId));
   const canEditCurrentSection = canEditSection(currentSection);
+  const aiReviewStale = Boolean(aiReviewResult && aiReviewedContent !== codeContent);
   const canAddEvaluatedClaim = Boolean(
     claimEvaluation
     && evaluatedClaimContent === newClaimContent.trim()
@@ -444,6 +468,16 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     showToast(t('readOnlySection'));
     return false;
   };
+
+  useEffect(() => {
+    const ranges = !aiReviewStale
+      ? (aiReviewResult?.findings || []).map(finding => ({
+          from: finding.startOffset,
+          to: finding.endOffset,
+        }))
+      : [];
+    editorRef.current?.setReviewRanges(ranges);
+  }, [aiReviewResult, aiReviewStale]);
 
   useEffect(() => {
     claimEvaluationRequestRef.current += 1;
@@ -583,8 +617,10 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       await api.post('/api/sources', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       showToast(t('sourceUploaded'));
       setSources(await loadAllProjectSources(project.id));
-      const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
-      setGraphData(g.data);
+      if (legacyClaimsEnabled) {
+        const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
+        setGraphData(g.data);
+      }
     } catch { showToast(t('uploadFailed')); }
   };
 
@@ -594,8 +630,10 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       await api.delete(`/api/documents/${sourceId}`);
       showToast(t('sourceDeleted'));
       setSources(await loadAllProjectSources(project.id));
-      const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
-      setGraphData(g.data);
+      if (legacyClaimsEnabled) {
+        const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
+        setGraphData(g.data);
+      }
     } catch (err) {
       showToast(err?.response?.data?.message || t('deleteFailed'));
     }
@@ -817,14 +855,14 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       setSaveStatus('saved'); setLastSaved(new Date());
       dirtySectionsRef.current.delete(sectionId);
       localStorage.removeItem(`workspace_draft_${projectRef.current?.id}_${sectionId}`);
-      const [sectionResponse, graphResponse] = await Promise.all([
-        api.get(`/api/papers/${selectedPaper.id}/sections`),
-        api.get(`/api/projects/${project.id}/graph?scope=${graphScopeRef.current}`),
-      ]);
+      const sectionResponse = await api.get(`/api/papers/${selectedPaper.id}/sections`);
       setSections((sectionResponse.data || []).map(s =>
         String(s.id) === String(sectionId) ? { ...s, contentTex: content } : s));
-      await fetchClaims();
-      setGraphData(graphResponse.data);
+      if (legacyClaimsEnabled) {
+        const graphResponse = await api.get(`/api/projects/${project.id}/graph?scope=${graphScopeRef.current}`);
+        await fetchClaims();
+        setGraphData(graphResponse.data);
+      }
       setTimeout(() => setSaveStatus(''), 3000);
       return true;
     } catch { setSaveStatus('error'); showToast(t('saveFailed')); return false; }
@@ -888,11 +926,11 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   };
 
   useEffect(() => {
-    if (activeTab === 'Graph' && project?.id && !graphData) fetchGraphData(project.id);
+    if (legacyClaimsEnabled && activeTab === 'Graph' && project?.id && !graphData) fetchGraphData(project.id);
   }, [activeTab, project?.id, graphData, fetchGraphData]);
 
   useEffect(() => {
-    if (activeTab === 'Graph' && project?.id && !claimStats) fetchClaimStats(project.id);
+    if (legacyClaimsEnabled && activeTab === 'Graph' && project?.id && !claimStats) fetchClaimStats(project.id);
   }, [activeTab, project?.id, claimStats, fetchClaimStats]);
 
   const handleSearchClaimMatches = async (claim) => {
@@ -997,34 +1035,86 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     finally { setLoadingCitation(false); }
   };
 
+  const fetchAiReviewSources = async (review, reviewRequestId = aiReviewRequestRef.current) => {
+    const findings = review?.findings || [];
+    if (!selectedPaper || !selectedSectionId || findings.length === 0) {
+      setAiSourceMatches({});
+      setLoadingAiSources(false);
+      return;
+    }
+    const sourceRequestId = ++aiSourceRequestRef.current;
+    setLoadingAiSources(true);
+    setAiSourcesError('');
+    try {
+      const { data } = await api.post(
+        `/api/papers/${selectedPaper.id}/sections/${selectedSectionId}/review/source-matches`,
+        {
+          findings: findings.map((finding, findingIndex) => ({
+            findingIndex,
+            excerpt: finding.excerpt,
+            startOffset: finding.startOffset,
+            endOffset: finding.endOffset,
+          })),
+        },
+      );
+      if (aiReviewRequestRef.current !== reviewRequestId
+          || aiSourceRequestRef.current !== sourceRequestId) return;
+      const grouped = {};
+      (data?.findings || []).forEach(item => { grouped[item.findingIndex] = item.candidates || []; });
+      setAiSourceMatches(grouped);
+    } catch {
+      if (aiReviewRequestRef.current === reviewRequestId
+          && aiSourceRequestRef.current === sourceRequestId) {
+        setAiSourcesError(t('sourceSearchFailed'));
+      }
+    } finally {
+      if (aiSourceRequestRef.current === sourceRequestId) setLoadingAiSources(false);
+    }
+  };
+
   const handleRunAiReview = async () => {
+    setActiveTab('AI Review');
+    localStorage.setItem('student_workspace_active_tab', 'AI Review');
+    setIsDrawerOpen(true);
     if (isLocked) { showToast(t('projectLocked')); return; }
     if (!selectedPaper) { showToast(t('selectPaperFirst')); return; }
-    if (aiReviewJobRef.current) { setShowAiReviewModal(true); return; }
+    if (!selectedSectionId || !requireEditableCurrentSection()) return;
+    if (aiReviewJobRef.current) return;
+    const saved = await handleSaveDraft();
+    if (!saved) return;
+
+    const reviewedContent = codeContentRef.current;
+    const sectionId = selectedSectionId;
     const requestId = ++aiReviewRequestRef.current;
     aiReviewJobRef.current = 'submitting';
     setLoadingAiReview(true);
     setAiReviewError(null);
-    setShowAiReviewModal(true);
+    setAiSourceMatches({});
+    setAiSourcesError('');
+    setResolvedFindingIndexes([]);
     try {
-      const { data: submit } = await api.post(`/api/papers/${selectedPaper.id}/review`);
+      const { data: submit } = await api.post(
+        `/api/papers/${selectedPaper.id}/sections/${sectionId}/review`);
       if (aiReviewRequestRef.current !== requestId) return;
       aiReviewJobRef.current = submit.jobId;
       const job = await pollAiJob(submit.jobId, () => aiReviewRequestRef.current !== requestId);
       if (!job) return;
       setAiReviewResult(job.result);
+      setAiReviewedContent(reviewedContent);
       showToast(t('aiReviewComplete'));
-      if (project) fetchGraphData(project.id);
+      await fetchAiReviewSources(job.result, requestId);
     } catch (error) {
       if (aiReviewRequestRef.current !== requestId) return;
       const status = error.response?.status || error.status;
-      const message = status === 429
-        ? t('aiProviderRateLimited')
-        : status === 503
-          ? t('aiWorkerUnavailable')
-          : status === 502
-            ? t('aiInvalidResponse')
-            : t('aiReviewFailed');
+      const message = status === 409
+        ? t('reviewSectionChanged')
+        : status === 429
+          ? t('aiProviderRateLimited')
+          : status === 503
+            ? t('aiWorkerUnavailable')
+            : status === 502
+              ? t('aiInvalidResponse')
+              : t('aiReviewFailed');
       setAiReviewError({ status, message });
       showToast(message);
     } finally {
@@ -1035,6 +1125,80 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     }
   };
 
+  const locateReviewFinding = (finding) => {
+    const content = codeContentRef.current;
+    if (content.slice(finding.startOffset, finding.endOffset) === finding.excerpt) {
+      return { start: finding.startOffset, end: finding.endOffset };
+    }
+    const start = content.indexOf(finding.excerpt);
+    if (start < 0 || content.indexOf(finding.excerpt, start + 1) >= 0) return null;
+    return { start, end: start + finding.excerpt.length };
+  };
+
+  const handleSelectReviewFinding = (finding) => {
+    const range = locateReviewFinding(finding);
+    if (!range) { showToast(t('reviewExcerptChanged')); return; }
+    editorRef.current?.selectRange(range.start, range.end);
+  };
+
+  const handleInsertReviewCitation = async (finding, findingIndex, candidate) => {
+    if (!selectedPaper || !selectedSectionId || !requireEditableCurrentSection()) return;
+    const range = locateReviewFinding(finding);
+    if (!range) { showToast(t('reviewExcerptChanged')); return; }
+    const current = codeContentRef.current;
+    const nearby = current.slice(Math.max(0, range.start - 20), Math.min(current.length, range.end + 100));
+    const citation = `\\cite{${candidate.citationKey}}`;
+    if (nearby.includes(citation)) {
+      setResolvedFindingIndexes(previous => [...new Set([...previous, findingIndex])]);
+      showToast(t('citationAlreadyInserted'));
+      return;
+    }
+    const punctuation = /[.,;:!?]/.test(current.charAt(range.end - 1));
+    const insertionOffset = punctuation ? range.end - 1 : range.end;
+    const next = editorRef.current?.insertAtOffset(insertionOffset, ` ${citation}`);
+    if (next == null) return;
+    setSaveStatus('saving');
+    try {
+      await putSectionContent(selectedSectionId, next);
+      setSections(previous => previous.map(section =>
+        String(section.id) === String(selectedSectionId)
+          ? { ...section, contentTex: next }
+          : section));
+      dirtySectionsRef.current.delete(selectedSectionId);
+      localStorage.removeItem(`workspace_draft_${projectRef.current?.id}_${selectedSectionId}`);
+      setSaveStatus('saved');
+      setLastSaved(new Date());
+      setResolvedFindingIndexes(previous => [...new Set([...previous, findingIndex])]);
+      showToast(t('citationInserted'));
+    } catch {
+      setSaveStatus('error');
+      showToast(t('saveFailed'));
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedPaper?.id || !selectedSectionId) return;
+    const requestId = ++aiReviewRequestRef.current;
+    setAiReviewResult(null);
+    setAiReviewError(null);
+    setAiReviewedContent('');
+    api.get(`/api/papers/${selectedPaper.id}/sections/${selectedSectionId}/review`)
+      .then(response => {
+        if (aiReviewRequestRef.current !== requestId || response.status === 204) return;
+        const review = response.data;
+        setAiReviewResult(review);
+        setAiReviewedContent(codeContentRef.current);
+        fetchAiReviewSources(review, requestId);
+      })
+      .catch(() => {
+        if (aiReviewRequestRef.current === requestId) {
+          setAiReviewError({ message: t('cachedReviewFailed') });
+        }
+      });
+  // Fetch only when the selected saved section changes; draft edits make the result stale locally.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPaper?.id, selectedSectionId]);
+
   const handleSubmitReview = async () => {
     if (!project) return;
     if (submittingReviewRef.current) return;
@@ -1043,12 +1207,12 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       const saved = await handleSaveDraft();
       if (!saved) { showToast(t('saveSubmissionCancelled')); return; }
     }
-    let freshClaims = claims;
-    try {
-      const claimResponse = await api.get(`/api/projects/${project.id}/claims`);
-      freshClaims = claimResponse.data?.content || [];
-      setClaims(freshClaims);
-    } catch { console.warn('Failed to refresh claims before submission'); }
+    if (legacyClaimsEnabled) {
+      try {
+        const claimResponse = await api.get(`/api/projects/${project.id}/claims`);
+        setClaims(claimResponse.data?.content || []);
+      } catch { console.warn('Failed to refresh claims before submission'); }
+    }
     submittingReviewRef.current = true;
     setSubmittingReview(true);
     try {
@@ -1177,13 +1341,16 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     { element: '[data-tour="editor-toolbar"]', popover: { title: t('tour.editorToolbar'), description: t('tour.editorToolbarDesc'), side: 'bottom' } },
     { element: '[data-tour="editor-section-name"]', popover: { title: t('tour.editorSectionName'), description: t('tour.editorSectionNameDesc'), side: 'bottom' } },
     { element: '[data-tour="context-panel"]', popover: { title: t('tour.contextPanel'), description: t('tour.contextPanelDesc'), side: 'left' } },
-    { element: '[data-tour="context-claims-tab"]', popover: { title: t('tour.claims'), description: t('tour.claimsDesc'), side: 'left' } },
+    { element: '[data-tour="context-ai-review-tab"]', popover: { title: t('tour.aiReview'), description: t('tour.aiReviewDesc'), side: 'left' } },
+    ...(legacyClaimsEnabled ? [
+      { element: '[data-tour="context-claims-tab"]', popover: { title: t('tour.claims'), description: t('tour.claimsDesc'), side: 'left' } },
+      { element: '[data-tour="context-graph-tab"]', popover: { title: t('tour.graph'), description: t('tour.graphDesc'), side: 'left' } },
+    ] : []),
     { element: '[data-tour="context-feedback-tab"]', popover: { title: t('tour.feedback'), description: t('tour.feedbackDesc'), side: 'left' } },
-    { element: '[data-tour="context-graph-tab"]', popover: { title: t('tour.graph'), description: t('tour.graphDesc'), side: 'left' } },
     { element: '[data-tour="header-dark-mode"]', popover: { title: t('tour.darkMode'), description: t('tour.darkModeDesc'), side: 'bottom' } },
     { element: '[data-tour="header-language"]', popover: { title: t('tour.language'), description: t('tour.languageDesc'), side: 'bottom' } },
   ], [t]);
-  const blockingClaimAlerts = claims
+  const blockingClaimAlerts = (legacyClaimsEnabled ? claims : [])
     .filter(claim => claim.contentStatus && claim.contentStatus !== 'PRESENT')
     .map(claim => ({ claimId: claim.id, type: claim.contentStatus }));
 
@@ -1211,7 +1378,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     <div className="h-screen w-full flex flex-col bg-(--surface-secondary) overflow-hidden font-sans antialiased text-(--text-primary)">
       <WorkspaceHeader project={project} navigate={navigate} selectedPaper={selectedPaper} handleRunAiReview={handleRunAiReview} loadingAiReview={loadingAiReview} isLocked={isLocked} onShowHistory={() => setShowHistoryModal(true)} historyDisabled={assignedSections.length === 0}
         notifications={notifications} unreadCount={unreadCount} showNotifications={showNotifications} setShowNotifications={setShowNotifications} onMarkNotificationRead={handleMarkNotificationRead}
-        showExportMenu={showExportMenu} setShowExportMenu={setShowExportMenu} handleExportTexArchive={handleExportTexArchive} handleExportTraceabilityJson={handleExportTraceabilityJson} handleExportTraceabilityCsv={handleExportTraceabilityCsv} handleExportGraphCsv={handleExportCsv} />
+        showExportMenu={showExportMenu} setShowExportMenu={setShowExportMenu} handleExportTexArchive={handleExportTexArchive} handleExportTraceabilityJson={handleExportTraceabilityJson} handleExportTraceabilityCsv={handleExportTraceabilityCsv} handleExportGraphCsv={handleExportCsv} legacyClaimsEnabled={legacyClaimsEnabled} />
 
       {loadErrors.length > 0 && (
         <div className="flex items-center justify-between gap-4 px-4 py-2 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900 text-[11px] text-amber-900 dark:text-amber-200">
@@ -1249,6 +1416,12 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
           editingClaim={editingClaim} setEditingClaim={setEditingClaim} editClaimContent={editClaimContent} setEditClaimContent={setEditClaimContent} editClaimFunctionalType={editClaimFunctionalType} setEditClaimFunctionalType={setEditClaimFunctionalType} handleDeleteClaim={handleDeleteClaim} handleUpdateClaim={handleUpdateClaim}
           onSelectClaim={handleSelectClaim}
           feedbacks={feedbacks} setShowSubmitReviewModal={setShowSubmitReviewModal} userProjectRole={project?.currentUserRole}
+          aiReview={aiReviewResult} aiReviewLoading={loadingAiReview} aiReviewError={aiReviewError} aiReviewStale={aiReviewStale}
+          aiSourceMatches={aiSourceMatches} aiSourcesLoading={loadingAiSources} aiSourcesError={aiSourcesError}
+          resolvedFindingIndexes={resolvedFindingIndexes} reviewSectionTitle={currentSection?.sectionTitle}
+          onRunAiReview={handleRunAiReview} onSelectReviewFinding={handleSelectReviewFinding}
+          onInsertCitation={handleInsertReviewCitation} onRetryReviewSources={() => fetchAiReviewSources(aiReviewResult)}
+          canReviewSection={canEditCurrentSection} legacyClaimsEnabled={legacyClaimsEnabled}
           graphData={graphData} graphScope={graphScope} onGraphScopeToggle={handleGraphScopeToggle} claimStats={claimStats} />
       </div>
 
@@ -1419,121 +1592,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
             <div className="flex justify-end gap-3">
               <button onClick={() => setShowSubmitReviewModal(false)} className="px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors">{t('cancel')}</button>
               <button onClick={handleSubmitReview} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm shadow-indigo-200 transition-colors cursor-pointer">{t('submitReview')}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* AI Review Modal */}
-      {showAiReviewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-(--surface) rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
-            <div className="bg-indigo-900 dark:bg-(--accent-bar) text-white px-6 py-4 flex justify-between items-center shrink-0">
-              <div className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-indigo-300 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 01-2 2h0a2 2 0 01-2-2v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-                <h2 className="text-base font-bold tracking-wide">{t('aiReviewReport')}</h2>
-              </div>
-              <button onClick={() => setShowAiReviewModal(false)} className="text-indigo-200 hover:text-white transition-colors">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6 bg-(--surface-secondary)/50 space-y-6 custom-scrollbar">
-              {aiReviewError && !loadingAiReview && (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-800">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-bold">{t('aiReviewError')}{aiReviewError.status ? ` ${aiReviewError.status}` : ''}</p>
-                      <p className="mt-1 text-[11px]">{aiReviewError.message}</p>
-                      {aiReviewResult && <p className="mt-1 text-[10px] text-rose-600">{t('lastReviewAvailable')}</p>}
-                    </div>
-                    <button onClick={handleRunAiReview} className="shrink-0 rounded-lg bg-rose-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-800">{t('retry')}</button>
-                  </div>
-                </div>
-              )}
-              {loadingAiReview ? (
-                <div className="flex flex-col items-center justify-center py-16 space-y-4">
-                  <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
-                  <div className="text-center">
-                    <p className="text-sm font-bold text-(--text-primary)">{t('aiAnalyzing')}</p>
-                    <p className="text-xs text-(--text-tertiary) mt-1">{t('aiAnalyzingDescription')}</p>
-                  </div>
-                </div>
-              ) : aiReviewResult ? (
-                <>
-                  <div className="bg-(--surface) border border-(--border) rounded-xl p-5 shadow-sm hover:border-indigo-200 transition-colors">
-                    <div className="flex justify-between items-start mb-3">
-                      <h3 className="text-sm font-bold text-(--text-primary) flex items-center gap-1.5"><span className="w-1.5 h-3 bg-(--brand) rounded"></span>{t('projectAssessment')}</h3>
-                      <span className={`border text-[10px] font-bold px-2 py-0.5 rounded ${aiReviewResult.direction === 'ON_TRACK' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : aiReviewResult.direction === 'NEEDS_ATTENTION' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200'}`}>{(aiReviewResult.direction || 'UNKNOWN').replaceAll('_', ' ')}</span>
-                    </div>
-                    <p className="text-xs text-(--text-secondary) leading-relaxed bg-(--surface-secondary) p-3.5 rounded-lg border border-(--border-light)">{aiReviewResult.summary}</p>
-                    {aiReviewResult.rubricScore != null && (
-                      <div className={`mt-3 rounded-xl border p-3.5 flex items-center justify-between ${aiReviewResult.passes ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('rubricScore')}</p>
-                          <p className={`text-lg font-black ${aiReviewResult.passes ? 'text-emerald-700' : 'text-amber-700'}`}>{aiReviewResult.rubricScore.toFixed(1)} / 5.0</p>
-                        </div>
-                        <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${aiReviewResult.passes ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-amber-500 text-white border-amber-500'}`}>
-                          {aiReviewResult.passes ? t('pass') : t('revise')}
-                        </span>
-                      </div>
-                    )}
-                    {aiReviewResult.coverage && (
-                      <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[10px]">
-                        <div className="rounded-lg bg-(--brand-soft) p-2 text-(--brand-foreground)"><strong>{aiReviewResult.coverage.sectionsScanned}/{aiReviewResult.coverage.totalSections}</strong><br />{t('sectionsScanned')}</div>
-                        <div className="rounded-lg bg-(--brand-soft) p-2 text-(--brand-foreground)"><strong>{aiReviewResult.coverage.chunksScanned}/{aiReviewResult.coverage.totalChunks}</strong><br />{t('chunksScanned')}</div>
-                        <div className="rounded-lg bg-(--brand-soft) p-2 text-(--brand-foreground)"><strong>{aiReviewResult.coverage.claimsChecked}/{aiReviewResult.coverage.totalClaims}</strong><br />{t('claimsChecked')}</div>
-                      </div>
-                    )}
-                  </div>
-                  {(aiReviewResult.findings || []).map((finding, index) => (
-                    <button key={`${finding.claimId || 'general'}-${index}`} type="button" onClick={() => {
-                      const claim = claims.find(item => String(item.id) === String(finding.claimId));
-                      if (claim) {
-                        handleSelectClaim(claim);
-                        setActiveTab('Claims');
-                        setShowAiReviewModal(false);
-                      }
-                    }} className="w-full text-left bg-(--surface) border border-(--border) rounded-xl p-5 shadow-sm hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors">
-                      <div className="flex justify-between items-start gap-3 mb-2">
-                        <h3 className="text-sm font-bold text-(--text-primary)">{(finding.type || 'OTHER').replaceAll('_', ' ')}</h3>
-                        <span className="flex items-center gap-1.5 shrink-0">
-                          {finding.score != null && <span className="text-[10px] font-black px-2 py-0.5 rounded bg-slate-900 text-white">{finding.score}/5</span>}
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${finding.severity === 'CRITICAL' ? 'bg-rose-50 text-rose-700 border-rose-200' : finding.severity === 'WARNING' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>{finding.severity}</span>
-                        </span>
-                      </div>
-                      <p className="text-xs text-(--text-secondary) leading-relaxed">{finding.message}</p>
-                      {finding.excerpt && <blockquote className="mt-2 border-l-2 border-indigo-300 pl-2 text-[11px] italic text-(--text-tertiary)">“{finding.excerpt}”</blockquote>}
-                      <p className="mt-2 text-xs font-semibold text-(--brand-foreground)">{t('nextAction', { action: finding.recommendedAction })}</p>
-                      <div className="mt-3 flex flex-wrap gap-2 text-[9px] text-(--text-tertiary)">
-                        {finding.claimId && <span>{t('claim')} {finding.claimId}</span>}
-                        {finding.sourceIds?.length > 0 && <span>{t('sourceCount', { count: finding.sourceIds.length })}</span>}
-                        {finding.feedbackIds?.length > 0 && <span>{t('feedbackCount', { count: finding.feedbackIds.length })}</span>}
-                      </div>
-                    </button>
-                  ))}
-                  {(aiReviewResult.findings || []).length === 0 && (
-                    <div className={`rounded-xl border p-4 text-xs ${aiReviewResult.direction === 'INSUFFICIENT_DATA' ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
-                      <p>{aiReviewResult.direction === 'INSUFFICIENT_DATA'
-                        ? t('insufficientReview')
-                        : t('noReviewFindings')}</p>
-                      {aiReviewResult.direction === 'INSUFFICIENT_DATA' && (
-                        <button onClick={handleRunAiReview} className="mt-2 rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800">{t('retry')}</button>
-                      )}
-                    </div>
-                  )}
-                  {(aiReviewResult.limitations || []).length > 0 && (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                      <h3 className="mb-2 text-xs font-bold text-slate-700 dark:text-slate-200">{t('limitations')}</h3>
-                      <ul className="list-disc space-y-1 pl-4 text-[11px] text-slate-600">
-                        {aiReviewResult.limitations.map((limitation, index) => <li key={index}>{limitation}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                </>
-              ) : null}
-            </div>
-            <div className="px-6 py-4 border-t border-(--border-light) bg-(--surface-secondary)/50 flex justify-end gap-3 shrink-0">
-              <button onClick={() => setShowAiReviewModal(false)} className="px-4 py-2 text-xs font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors border border-(--border) bg-(--surface) cursor-pointer">{t('close')}</button>
             </div>
           </div>
         </div>
