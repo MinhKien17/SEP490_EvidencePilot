@@ -1,6 +1,5 @@
 package com.evidencepilot.service;
 
-import com.evidencepilot.dto.response.ClaimConsistencyResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.PaperSection;
@@ -45,7 +44,6 @@ public class TexArchiveBuilder {
     private final DocumentRepository documentRepository;
     private final PaperSectionRepository paperSectionRepository;
     private final PaperStandardService paperStandardService;
-    private final ClaimContentConsistencyService consistencyService;
     private final TexArchiveMediaWriter mediaWriter;
     private final SourceMatchingService sourceMatchingService;
 
@@ -74,7 +72,6 @@ public class TexArchiveBuilder {
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
         List<Document> papers = documentRepository
                 .findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER);
-        ClaimConsistencyResponse preflight = consistencyService.preflight(projectId);
         List<PaperSection> sections = papers.stream()
                 .flatMap(paper -> paperSectionRepository
                         .findByDocumentIdOrderBySectionOrderAsc(paper.getId()).stream())
@@ -134,9 +131,6 @@ public class TexArchiveBuilder {
                     project.getTargetStandard(),
                     escapeLatex(project.getTitle() == null ? "Untitled" : project.getTitle()),
                     body.toString()));
-            if (preflight.warningCount() > 0) {
-                writeEntry(zip, "CLAIM_WARNINGS.md", warningText(preflight));
-            }
             if (!citationWarnings.isEmpty()) {
                 writeEntry(zip, "CITATION_WARNINGS.md", citationWarningText(citationWarnings));
             }
@@ -144,19 +138,6 @@ public class TexArchiveBuilder {
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to build export archive", exception);
         }
-    }
-
-    private static String warningText(ClaimConsistencyResponse preflight) {
-        StringBuilder content = new StringBuilder(
-                "# Claim usage warnings\n\n"
-                + "The paper was exported, but the following stored Claims are not "
-                + "consistently represented in their owning Sections:\n\n");
-        for (ClaimConsistencyResponse.Warning warning : preflight.warnings()) {
-            content.append("- `").append(warning.claimId()).append("` — ")
-                    .append(warning.status()).append(": ")
-                    .append(warning.message()).append('\n');
-        }
-        return content.toString();
     }
 
     private static Set<String> autoCitationKeys(List<PaperSection> sections) {

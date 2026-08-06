@@ -25,7 +25,6 @@ class ProjectRouteMappingTest {
     private static final Class<?>[] CONTROLLERS = {
             AdminController.class,
             AuthController.class,
-            ClaimController.class,
             CollectionController.class,
             DocumentController.class,
             FeedbackController.class,
@@ -39,6 +38,7 @@ class ProjectRouteMappingTest {
             SourceController.class,
             SystemNotificationController.class,
             TraceabilityExportController.class,
+            SectionAuditController.class,
             UserController.class,
             JobController.class
     };
@@ -73,10 +73,8 @@ class ProjectRouteMappingTest {
                 "GET /api/projects/{projectId}/collections",
                 "PUT /api/projects/{projectId}/collections/{collectionId}",
                 "DELETE /api/projects/{projectId}/collections/{collectionId}",
-                "GET /api/projects/{projectId}/claims",
                 "POST /api/projects/{id}/members",
                 "GET /api/projects/{projectId}/export",
-                "GET /api/projects/{projectId}/export-preflight",
                 "DELETE /api/projects/{id}/members/{userId}",
                 "GET /api/collections",
                 "POST /api/collections",
@@ -132,19 +130,6 @@ class ProjectRouteMappingTest {
                 "GET /api/admin/dashboard",
                 "GET /api/admin/audit-logs",
                 "POST /api/admin/notifications/broadcast",
-                "GET /api/claims",
-                "GET /api/claims/{id}",
-                "POST /api/claims",
-                "POST /api/claims/evaluate",
-                "PUT /api/claims/{id}",
-                "DELETE /api/claims/{id}",
-                "GET /api/claims/{id}/suggestions",
-                "POST /api/claims/{id}/matches/search",
-                "POST /api/claims/{id}/suggestions/evaluate",
-                "PATCH /api/claims/suggestions/{suggestionId}/status",
-                "GET /api/claims/{id}/mappings",
-                "GET /api/claims/audit/{projectId}",
-                "PATCH /api/claims/mappings/{mappingId}/review",
                 "GET /api/feedback-requests",
                 "GET /api/feedback-requests/{id}/feedback",
                 "POST /api/projects/{projectId}/reviews",
@@ -158,6 +143,9 @@ class ProjectRouteMappingTest {
                 "PATCH /api/notifications/{id}/read",
                 "GET /api/projects/{projectId}/traceability",
                 "GET /api/projects/{projectId}/traceability/csv",
+                "POST /api/projects/{projectId}/sections/{sectionId}/audit",
+                "GET /api/sections/{sectionId}/findings",
+                "PATCH /api/sections/findings/{id}/status",
                 "GET /api/projects/{projectId}/progress-report",
                 "GET /api/projects/{projectId}/checkpoints/diff",
                 "GET /api/projects/{projectId}/checkpoints/latest/sections/{sectionId}",
@@ -177,7 +165,7 @@ class ProjectRouteMappingTest {
                 "POST /api/projects/{projectId}/papers/init",
                 "POST /api/projects/{projectId}/papers/reset-standard",
                 "GET /api/jobs/{jobId}"));
-        assertThat(routes).hasSize(127);
+        assertThat(routes).hasSize(115);
     }
 
     @Test
@@ -187,7 +175,6 @@ class ProjectRouteMappingTest {
                 PaperController.class,
                 DocumentController.class,
                 SourceController.class,
-                ClaimController.class,
                 CollectionController.class
         })
                 .map(ProjectRouteMappingTest::controllerPaths)
@@ -197,13 +184,11 @@ class ProjectRouteMappingTest {
         assertThat(paths).contains(
                 "/api/projects/{projectId}/papers",
                 "/api/projects/{projectId}/documents",
-                "/api/projects/{projectId}/sources",
-                "/api/projects/{projectId}/claims");
+                "/api/projects/{projectId}/sources");
         assertThat(paths).doesNotContain(
                 "/api/papers/api/projects/{projectId}/papers",
                 "/api/documents/api/projects/{projectId}/documents",
-                "/api/sources/api/projects/{projectId}/sources",
-                "/api/claims/api/projects/{projectId}/claims");
+                "/api/sources/api/projects/{projectId}/sources");
     }
 
     @Test

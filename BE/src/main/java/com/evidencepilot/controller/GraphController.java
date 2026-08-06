@@ -12,22 +12,16 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/projects/{projectId}/graph")
 @RequiredArgsConstructor
-@Tag(name = "Graph", description = "Lightweight claim-evidence graph for the workspace")
+@Tag(name = "Graph", description = "Project graph for the workspace")
 public class GraphController {
 
     private final GraphService graphService;
 
     @GetMapping
-    @Operation(summary = "Get project graph data", description = "Returns claims, sources, and edges for the project graph view")
+    @Operation(summary = "Get project graph data", description = "Returns sources, edges, and section summaries for the project graph view")
     public GraphResponse getGraph(
             @PathVariable UUID projectId,
             @RequestParam(defaultValue = "all") String scope) {
         return graphService.getGraph(projectId, scope);
-    }
-
-    @GetMapping("/claim-stats")
-    @Operation(summary = "Get claim statistics", description = "Returns active claim counts grouped by functional type")
-    public GraphResponse.ClaimStatsResponse getClaimStats(@PathVariable UUID projectId) {
-        return graphService.getClaimStats(projectId);
     }
 }

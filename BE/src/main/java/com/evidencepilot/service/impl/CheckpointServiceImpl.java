@@ -2,16 +2,11 @@ package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.response.CheckpointDiffResponse;
 import com.evidencepilot.dto.response.CheckpointSectionBaselineResponse;
-import com.evidencepilot.model.Claim;
-import com.evidencepilot.model.ClaimEvidenceMapping;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.InstructorFeedback;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.ProjectCheckpoint;
 import com.evidencepilot.model.enums.DocumentType;
-import com.evidencepilot.model.enums.MappingStatus;
-import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
-import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
@@ -27,11 +22,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,8 +36,6 @@ public class CheckpointServiceImpl implements CheckpointService {
 
     private final ProjectCheckpointRepository checkpointRepository;
     private final ProjectRepository projectRepository;
-    private final ClaimRepository claimRepository;
-    private final ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
     private final DocumentRepository documentRepository;
     private final PaperSectionRepository paperSectionRepository;
     private final InstructorFeedbackRepository instructorFeedbackRepository;
@@ -56,35 +46,6 @@ public class CheckpointServiceImpl implements CheckpointService {
     public void capture(UUID projectId, String trigger) {
         try {
             ObjectNode snapshot = objectMapper.createObjectNode();
-
-            ArrayNode claims = snapshot.putArray("claims");
-            int mappingsAccepted = 0;
-            int mappingsRejected = 0;
-            List<Claim> activeClaims = claimRepository.findByProjectId(projectId).stream()
-                    .filter(Claim::isActive)
-                    .toList();
-            // Single batched query instead of one findByClaimId per claim.
-            Map<UUID, List<ClaimEvidenceMapping>> mappingsByClaim = new HashMap<>();
-            for (ClaimEvidenceMapping mapping : claimEvidenceMappingRepository
-                    .findByClaimIdIn(activeClaims.stream().map(Claim::getId).toList())) {
-                mappingsByClaim.computeIfAbsent(mapping.getClaim().getId(), k -> new ArrayList<>())
-                        .add(mapping);
-            }
-            for (Claim claim : activeClaims) {
-                ObjectNode claimNode = claims.addObject();
-                claimNode.put("id", claim.getId().toString());
-                UUID sectionId = claim.getSection() != null ? claim.getSection().getId() : null;
-                claimNode.put("sectionId", sectionId != null ? sectionId.toString() : (String) null);
-                claimNode.put("version", claim.getClaimVersion() != null ? claim.getClaimVersion() : 1);
-                claimNode.put("hash", contentHash(claim.getContent()));
-                for (ClaimEvidenceMapping mapping : mappingsByClaim.getOrDefault(claim.getId(), List.of())) {
-                    if (mapping.getStatus() == MappingStatus.ACTIVE) mappingsAccepted++;
-                    if (mapping.isInstructorRejected()) mappingsRejected++;
-                }
-            }
-            snapshot.set("mappings", objectMapper.createObjectNode()
-                    .put("accepted", mappingsAccepted)
-                    .put("rejected", mappingsRejected));
 
             ObjectNode sections = snapshot.putObject("sections");
             for (Document paper : documentRepository
@@ -126,30 +87,10 @@ public class CheckpointServiceImpl implements CheckpointService {
                 .findByProjectIdOrderByCreatedAtDesc(projectId);
         if (checkpoints.size() < 2) {
             return new CheckpointDiffResponse(projectId, null, null, null, null,
-                    List.of(), List.of(), List.of(), 0, 0, 0, List.of());
+                    0, List.of());
         }
         JsonNode newest = parse(checkpoints.get(0).getSnapshotJson());
         JsonNode previous = parse(checkpoints.get(1).getSnapshotJson());
-
-        Map<String, JsonNode> prevClaims = claimMap(previous.path("claims"));
-        Map<String, JsonNode> newClaims = claimMap(newest.path("claims"));
-
-        List<CheckpointDiffResponse.ClaimChange> added = new ArrayList<>();
-        List<CheckpointDiffResponse.ClaimChange> removed = new ArrayList<>();
-        List<CheckpointDiffResponse.ClaimChange> changed = new ArrayList<>();
-        newClaims.forEach((id, claim) -> {
-            JsonNode prev = prevClaims.get(id);
-            if (prev == null) {
-                added.add(claimChange(claim));
-            } else if (version(prev) != version(claim) || !hash(prev).equals(hash(claim))) {
-                changed.add(claimChange(claim));
-            }
-        });
-        prevClaims.forEach((id, claim) -> {
-            if (!newClaims.containsKey(id)) {
-                removed.add(claimChange(claim));
-            }
-        });
 
         Map<String, Integer> prevWords = wordMap(previous.path("sections"));
         Map<String, Integer> newWords = wordMap(newest.path("sections"));
@@ -166,10 +107,6 @@ public class CheckpointServiceImpl implements CheckpointService {
             }
         }
 
-        int mappingsAcceptedDelta = newest.path("mappings").path("accepted").asInt()
-                - previous.path("mappings").path("accepted").asInt();
-        int mappingsRejectedDelta = newest.path("mappings").path("rejected").asInt()
-                - previous.path("mappings").path("rejected").asInt();
         int feedbackAnsweredDelta = newest.path("feedback").path("answered").asInt()
                 - previous.path("feedback").path("answered").asInt();
 
@@ -179,8 +116,7 @@ public class CheckpointServiceImpl implements CheckpointService {
                 checkpoints.get(0).getCreatedAt(),
                 checkpoints.get(1).getTrigger(),
                 checkpoints.get(0).getTrigger(),
-                added, removed, changed,
-                mappingsAcceptedDelta, mappingsRejectedDelta, feedbackAnsweredDelta,
+                feedbackAnsweredDelta,
                 wordDeltas);
     }
 
@@ -207,14 +143,6 @@ public class CheckpointServiceImpl implements CheckpointService {
                 text, baseline.getTrigger(), baseline.getCreatedAt());
     }
 
-    private static Map<String, JsonNode> claimMap(JsonNode claims) {
-        Map<String, JsonNode> map = new LinkedHashMap<>();
-        for (JsonNode claim : claims) {
-            map.put(claim.path("id").asText(), claim);
-        }
-        return map;
-    }
-
     private static Map<String, Integer> wordMap(JsonNode sections) {
         Map<String, Integer> map = new LinkedHashMap<>();
         sections.fields().forEachRemaining(entry -> {
@@ -223,23 +151,6 @@ public class CheckpointServiceImpl implements CheckpointService {
             map.put(entry.getKey(), words);
         });
         return map;
-    }
-
-    private static CheckpointDiffResponse.ClaimChange claimChange(JsonNode claim) {
-        String sectionId = claim.path("sectionId").asText(null);
-        return new CheckpointDiffResponse.ClaimChange(
-                UUID.fromString(claim.path("id").asText()),
-                sectionId != null ? UUID.fromString(sectionId) : null,
-                claim.path("version").isMissingNode() ? null : claim.path("version").asInt(),
-                claim.path("hash").asText(null));
-    }
-
-    private static int version(JsonNode claim) {
-        return claim.path("version").asInt();
-    }
-
-    private static String hash(JsonNode claim) {
-        return claim.path("hash").asText();
     }
 
     private JsonNode parse(String json) {
@@ -253,20 +164,5 @@ public class CheckpointServiceImpl implements CheckpointService {
     private static int wordCount(String contentTex) {
         if (contentTex == null || contentTex.isBlank()) return 0;
         return contentTex.trim().split("\\s+").length;
-    }
-
-    private static String contentHash(String content) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] bytes = digest.digest(
-                    (content == null ? "" : content).getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : bytes) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.toString();
-        } catch (Exception e) {
-            return String.valueOf(content == null ? "" : content.hashCode());
-        }
     }
 }

@@ -2,10 +2,8 @@ package com.evidencepilot.dto.response;
 
 import com.evidencepilot.model.FeedbackStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
-import com.evidencepilot.model.enums.ClaimContentStatus;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 public record TraceabilityExportResponse(
@@ -13,37 +11,16 @@ public record TraceabilityExportResponse(
     String projectTitle,
     ProjectStatus projectStatus,
     Instant generatedAt,
-    List<TraceabilityClaim> claims,
+    List<TraceabilitySection> sections,
     List<TraceabilitySource> sources,
     List<TraceabilityFeedback> feedback
 ) {
-    public record TraceabilityClaim(
+    public record TraceabilitySection(
         UUID id,
-        String content,
-        Float aiConfidenceScore,
-        UUID sectionId,
-        String sectionTitle,
-        ClaimContentStatus contentStatus,
-        Map<String, Object> graphData,
-        List<TraceabilityMatch> matches,
-        boolean unsupported,
-        boolean weak,
-        boolean contradicted,
-        boolean pendingSuggestions
-    ) {}
-
-    public record TraceabilityMatch(
-        String sourceId,
-        String filename,
-        UUID chunkId,
-        Integer page,
-        String excerpt,
-        Float score,
-        String suitability,
-        String explanation,
-        String referenceTitle,
-        String referenceYear,
-        String referenceText
+        String title,
+        Integer wordCount,
+        Integer version,
+        UUID assignedUserId
     ) {}
 
     public record TraceabilitySource(

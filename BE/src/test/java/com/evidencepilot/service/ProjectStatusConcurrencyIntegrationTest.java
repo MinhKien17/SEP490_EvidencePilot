@@ -81,9 +81,6 @@ class ProjectStatusConcurrencyIntegrationTest {
     @MockBean
     private CheckpointService checkpoints;
 
-    @MockBean
-    private ClaimContentConsistencyService claimConsistency;
-
     @MockBean(name = "minioClient")
     private MinioClient minioClient;
 

@@ -2,7 +2,6 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.JobSubmitResponse;
-import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.FeedbackRequest;
 import com.evidencepilot.model.FeedbackStatus;
@@ -10,7 +9,6 @@ import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
-import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
@@ -53,7 +51,6 @@ class PaperControllerTest {
     private final PaperSectionRepository paperSectionRepository = mock(PaperSectionRepository.class);
     private final InstructorFeedbackRepository instructorFeedbackRepository = mock(InstructorFeedbackRepository.class);
     private final FeedbackRequestRepository feedbackRequestRepository = mock(FeedbackRequestRepository.class);
-    private final ClaimRepository claimRepository = mock(ClaimRepository.class);
     private final FormatScanService formatScanService = mock(FormatScanService.class);
     private final CurrentUserService currentUserService = mock(CurrentUserService.class);
     private final CheckpointService checkpointService = mock(CheckpointService.class);
@@ -63,7 +60,7 @@ class PaperControllerTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = standaloneSetup(new PaperController(documentService, paperService, citationValidationService, formatScanService, projectRepository, documentRepository, paperSectionRepository, instructorFeedbackRepository, feedbackRequestRepository, claimRepository, currentUserService, checkpointService, aiEvaluationService, sectionCitationReviewService))
+        mockMvc = standaloneSetup(new PaperController(documentService, paperService, citationValidationService, formatScanService, projectRepository, documentRepository, paperSectionRepository, instructorFeedbackRepository, feedbackRequestRepository, currentUserService, checkpointService, aiEvaluationService, sectionCitationReviewService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -291,27 +288,6 @@ class PaperControllerTest {
 
         verify(paperSectionRepository, never()).deleteByDocumentId(any());
         verify(documentRepository, never()).deleteById(any());
-        verify(documentService, never()).uploadDocument(any(), any(), any());
-    }
-
-    @Test
-    void upload_refusesWhenActiveClaimsExist() throws Exception {
-        UUID projectId = UUID.randomUUID();
-        when(projectRepository.findById(projectId)).thenReturn(Optional.of(project(projectId)));
-        Document paper = paperDocument(projectId);
-        PaperSection section = sectionOf(paper);
-        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER))
-                .thenReturn(List.of(paper));
-        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paper.getId()))
-                .thenReturn(List.of(section));
-        Claim claim = mock(Claim.class);
-        when(claim.isActive()).thenReturn(true);
-        when(claimRepository.findBySectionId(section.getId())).thenReturn(List.of(claim));
-        MockMultipartFile file = new MockMultipartFile("file", "paper.pdf", "application/pdf", "pdf".getBytes());
-
-        mockMvc.perform(multipart("/api/papers").file(file).param("projectId", projectId.toString()))
-                .andExpect(status().isConflict());
-
         verify(documentService, never()).uploadDocument(any(), any(), any());
     }
 

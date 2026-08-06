@@ -9,6 +9,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
+import java.util.concurrent.Semaphore;
 
 /**
  * Spring configuration for the external Python model service.
@@ -18,6 +19,7 @@ import java.time.Duration;
  *   <li>{@code ai.model.base-url}       / {@code AI_MODEL_BASE_URL}       - AI worker base URL</li>
  *   <li>{@code ai.model.api-key}        / {@code AI_MODEL_API_KEY}        - optional, sent as {@code X-API-Key}</li>
  *   <li>{@code ai.model.read-timeout-seconds} / {@code AI_MODEL_READ_TIMEOUT_SECONDS} - response timeout</li>
+ *   <li>{@code ai.model.max-concurrent-requests} / {@code AI_MODEL_MAX_CONCURRENT_REQUESTS} - global cap on concurrent AI calls</li>
  * </ul>
  * </p>
  *
@@ -37,6 +39,18 @@ public class AiClientConfig {
 
     @Value("${ai.model.read-timeout-seconds:660}")
     private long readTimeoutSeconds;
+
+    @Value("${ai.model.max-concurrent-requests:4}")
+    private int maxConcurrentRequests;
+
+    /**
+     * Global semaphore {@code aiRequestLimiter} capping concurrent AI model calls per JVM.
+     * Callers acquire around their HTTP call and release in {@code finally}.
+     */
+    @Bean("aiRequestLimiter")
+    public Semaphore aiRequestLimiter() {
+        return new Semaphore(Math.max(1, maxConcurrentRequests));
+    }
 
     @Bean("aiModelBaseUrl")
     public String aiModelBaseUrl() {

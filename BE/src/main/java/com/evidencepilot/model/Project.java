@@ -59,9 +59,6 @@ public class Project {
     @OneToMany(mappedBy = "project")
     private List<ProjectMedia> projectMedia;
 
-    @OneToMany(mappedBy = "project")
-    private List<Claim> claims;
-
     public User getStudent() {
         if (projectMembers == null) {
             return null;

@@ -9,8 +9,6 @@ import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.repository.AiEvaluationJobRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.service.AiEvaluationService;
-import com.evidencepilot.service.ClaimMatchingService;
-import com.evidencepilot.service.PaperProcessingService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -32,10 +30,8 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
 
     private final AiEvaluationJobRepository jobRepository;
     private final PaperSectionRepository paperSectionRepository;
-    private final ClaimQualityEvaluationService claimQualityEvaluationService;
-    private final ClaimMatchingService claimMatchingService;
-    private final PaperProcessingService paperProcessingService;
     private final SectionCitationReviewService sectionCitationReviewService;
+    private final SectionAuditService sectionAuditService;
     private final RabbitTemplate rabbitTemplate;
     private final ObjectMapper objectMapper;
 
@@ -50,34 +46,6 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
         jobRepository.save(job);
         publish(job);
         return new JobSubmitResponse(job.getId());
-    }
-
-    @Override
-    public synchronized JobSubmitResponse submitPaperReview(
-            UUID projectId, UUID documentId, String targetStyle, UUID requestedByUserId) {
-        String style = targetStyle == null || targetStyle.isBlank()
-                ? "default" : targetStyle.trim();
-        // ponytail: JVM-local dedupe; use a DB uniqueness lock if multiple backend
-        // instances ever enqueue paper reviews concurrently.
-        for (AiEvaluationJob job : jobRepository
-                .findByProjectIdAndKindAndStatusInOrderByCreatedAtDesc(
-                        projectId,
-                        AiEvaluationJob.KIND_PAPER_REVIEW,
-                        List.of(AiEvaluationJob.STATUS_PENDING, AiEvaluationJob.STATUS_PROCESSING))) {
-            if (samePaperReview(job, documentId, style)) {
-                return new JobSubmitResponse(job.getId());
-            }
-        }
-        try {
-            String payload = objectMapper.writeValueAsString(Map.of(
-                    "documentId", documentId,
-                    "projectId", projectId,
-                    "targetStyle", style,
-                    "requestedByUserId", requestedByUserId));
-            return submit(projectId, AiEvaluationJob.KIND_PAPER_REVIEW, payload);
-        } catch (Exception e) {
-            throw new IllegalStateException("Could not serialize paper review job", e);
-        }
     }
 
     @Override
@@ -106,6 +74,33 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
             return submit(projectId, AiEvaluationJob.KIND_SECTION_CITATION_REVIEW, payload);
         } catch (Exception exception) {
             throw new IllegalStateException("Could not serialize section citation review job", exception);
+        }
+    }
+
+    @Override
+    public synchronized JobSubmitResponse submitSectionAudit(
+            UUID projectId,
+            UUID sectionId,
+            String contentFingerprint,
+            UUID requestedByUserId) {
+        for (AiEvaluationJob job : jobRepository
+                .findByProjectIdAndKindAndStatusInOrderByCreatedAtDesc(
+                        projectId,
+                        AiEvaluationJob.KIND_SECTION_AUDIT,
+                        List.of(AiEvaluationJob.STATUS_PENDING, AiEvaluationJob.STATUS_PROCESSING))) {
+            if (sameSectionAudit(job, sectionId, contentFingerprint)) {
+                return new JobSubmitResponse(job.getId());
+            }
+        }
+        try {
+            String payload = objectMapper.writeValueAsString(Map.of(
+                    "projectId", projectId,
+                    "sectionId", sectionId,
+                    "contentFingerprint", contentFingerprint,
+                    "requestedByUserId", requestedByUserId));
+            return submit(projectId, AiEvaluationJob.KIND_SECTION_AUDIT, payload);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Could not serialize section audit job", exception);
         }
     }
 
@@ -164,36 +159,6 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
     private JsonNode run(AiEvaluationJob job) throws Exception {
         JsonNode payload = objectMapper.readTree(job.getPayloadJson());
         return switch (job.getKind()) {
-            case AiEvaluationJob.KIND_CLAIM_QUALITY -> {
-                UUID sectionId = UUID.fromString(payload.path("sectionId").asText());
-                String content = payload.path("content").asText();
-                PaperSection section = paperSectionRepository.findByIdWithDocument(sectionId)
-                        .orElseThrow(() -> new ResourceNotFoundException(sectionId, "PaperSection"));
-                yield objectMapper.valueToTree(claimQualityEvaluationService.evaluate(
-                        section.getDocument().getProject(), section, content));
-            }
-            case AiEvaluationJob.KIND_MATCH_EVALUATION -> {
-                UUID claimId = UUID.fromString(payload.path("claimId").asText());
-                UUID projectId = UUID.fromString(payload.path("projectId").asText());
-                UUID documentChunkId = UUID.fromString(payload.path("documentChunkId").asText());
-                yield objectMapper.valueToTree(claimMatchingService.evaluateMatch(
-                        claimId, projectId, documentChunkId));
-            }
-            case AiEvaluationJob.KIND_PAPER_REVIEW -> {
-                UUID documentId = UUID.fromString(payload.path("documentId").asText());
-                UUID projectId = UUID.fromString(payload.path("projectId").asText());
-                UUID requestedByUserId = UUID.fromString(
-                        payload.path("requestedByUserId").asText());
-                if (!job.getProjectId().equals(projectId)) {
-                    throw new IllegalArgumentException(
-                            "Paper review payload project does not match its job");
-                }
-                yield objectMapper.valueToTree(paperProcessingService.runReview(
-                        documentId,
-                        projectId,
-                        payload.path("targetStyle").asText("default"),
-                        requestedByUserId));
-            }
             case AiEvaluationJob.KIND_SECTION_CITATION_REVIEW -> {
                 UUID documentId = UUID.fromString(payload.path("documentId").asText());
                 UUID projectId = UUID.fromString(payload.path("projectId").asText());
@@ -211,17 +176,32 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
                         payload.path("contentFingerprint").asText(),
                         requestedByUserId));
             }
+            case AiEvaluationJob.KIND_SECTION_AUDIT -> {
+                UUID projectId = UUID.fromString(payload.path("projectId").asText());
+                UUID sectionId = UUID.fromString(payload.path("sectionId").asText());
+                UUID requestedByUserId = UUID.fromString(
+                        payload.path("requestedByUserId").asText());
+                if (!job.getProjectId().equals(projectId)) {
+                    throw new IllegalArgumentException(
+                            "Section audit payload project does not match its job");
+                }
+                yield objectMapper.valueToTree(sectionAuditService.run(
+                        projectId,
+                        sectionId,
+                        payload.path("contentFingerprint").asText(),
+                        requestedByUserId));
+            }
             default -> throw new IllegalStateException("Unknown AI evaluation job kind: " + job.getKind());
         };
     }
 
-    private boolean samePaperReview(AiEvaluationJob job, UUID documentId, String style) {
+    private boolean sameSectionAudit(AiEvaluationJob job, UUID sectionId, String contentFingerprint) {
         try {
             JsonNode payload = objectMapper.readTree(job.getPayloadJson());
-            return documentId.toString().equals(payload.path("documentId").asText())
-                    && style.equals(payload.path("targetStyle").asText("default"));
-        } catch (Exception e) {
-            log.warn("Paper review job {} has an invalid payload; not reusing it", job.getId());
+            return sectionId.toString().equals(payload.path("sectionId").asText())
+                    && contentFingerprint.equals(payload.path("contentFingerprint").asText());
+        } catch (Exception exception) {
+            log.warn("Section audit job {} has an invalid payload; not reusing it", job.getId());
             return false;
         }
     }
@@ -244,12 +224,8 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
 
     private void publish(AiEvaluationJob job) {
         try {
-            String queue = (AiEvaluationJob.KIND_PAPER_REVIEW.equals(job.getKind())
-                    || AiEvaluationJob.KIND_SECTION_CITATION_REVIEW.equals(job.getKind()))
-                    ? RabbitMQConfig.PAPER_REVIEW_QUEUE
-                    : RabbitMQConfig.AI_EVALUATION_QUEUE;
             rabbitTemplate.convertAndSend(
-                    queue, Map.of("jobId", job.getId().toString()));
+                    RabbitMQConfig.AI_EVALUATION_QUEUE, Map.of("jobId", job.getId().toString()));
         } catch (Exception e) {
             // job stays PENDING and is re-enqueued on next startup
             log.error("Failed to publish AI evaluation job {}: {}", job.getId(), e.getMessage());

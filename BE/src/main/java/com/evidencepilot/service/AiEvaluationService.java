@@ -8,12 +8,15 @@ import java.util.UUID;
 public interface AiEvaluationService {
     JobSubmitResponse submit(UUID projectId, String kind, String payloadJson);
 
-    JobSubmitResponse submitPaperReview(
-            UUID projectId, UUID documentId, String targetStyle, UUID requestedByUserId);
-
     JobSubmitResponse submitSectionCitationReview(
             UUID projectId,
             UUID documentId,
+            UUID sectionId,
+            String contentFingerprint,
+            UUID requestedByUserId);
+
+    JobSubmitResponse submitSectionAudit(
+            UUID projectId,
             UUID sectionId,
             String contentFingerprint,
             UUID requestedByUserId);

@@ -23,7 +23,6 @@ import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.CheckpointService;
-import com.evidencepilot.service.ClaimContentConsistencyService;
 import com.evidencepilot.service.FeedbackService;
 import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.SystemNotificationService;
@@ -54,7 +53,6 @@ public class FeedbackServiceImpl implements FeedbackService {
     private final CurrentUserService currentUserService;
     private final SystemNotificationService systemNotificationService;
     private final PaperProcessingService paperProcessingService;
-    private final ClaimContentConsistencyService claimContentConsistencyService;
     private final CheckpointService checkpointService;
     private final ProjectCollectionService projectCollectionService;
 
@@ -109,11 +107,6 @@ public class FeedbackServiceImpl implements FeedbackService {
                 ? currentUser : project.getStudent();
         if (student == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Project has no student.");
-        }
-        try {
-            claimContentConsistencyService.requireAllPresent(projectId);
-        } catch (ResponseStatusException e) {
-            log.warn("Claims missing from sections for project {}: {}", projectId, e.getReason());
         }
 
         List<Document> papers = documentRepository

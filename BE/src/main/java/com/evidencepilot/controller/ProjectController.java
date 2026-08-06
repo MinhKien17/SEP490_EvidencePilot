@@ -2,8 +2,6 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.request.ProjectCreateRequest;
 import com.evidencepilot.dto.request.ProjectUpdateRequest;
-import com.evidencepilot.dto.response.ClaimResponse;
-import com.evidencepilot.dto.response.ClaimConsistencyResponse;
 import com.evidencepilot.dto.response.CollectionResponse;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.PagedResponse;
@@ -13,8 +11,6 @@ import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
-import com.evidencepilot.service.ClaimService;
-import com.evidencepilot.service.ClaimContentConsistencyService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.ProjectService;
@@ -57,10 +53,8 @@ public class ProjectController {
 
     private final ProjectService projectService;
     private final DocumentService documentService;
-    private final ClaimService claimService;
     private final ProjectCollectionService projectCollectionService;
     private final PaperProcessingService paperProcessingService;
-    private final ClaimContentConsistencyService claimContentConsistencyService;
 
     @Operation(summary = "List all projects",
             description = "Returns all active projects accessible to the current user. "
@@ -230,30 +224,6 @@ public class ProjectController {
         projectCollectionService.unlink(projectId, collectionId);
     }
 
-    @Operation(summary = "List project claims",
-            description = "Returns paged claims in a project with optional text search, active filtering "
-                    + "and section scoping.")
-    @GetMapping("/{projectId}/claims")
-    public PagedResponse<ClaimResponse> getProjectClaims(
-            @Parameter(description = "Project UUID") @PathVariable UUID projectId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "createdAt,desc") String sort,
-            @RequestParam(required = false) String q,
-            @RequestParam(required = false) Boolean active,
-            @Parameter(description = "Optional section UUID to scope claims") @RequestParam(required = false) UUID sectionId) {
-        return claimService.getClaimsByProject(projectId, page, size, sort, q, active, sectionId);
-    }
-
-    @Operation(summary = "Preflight Claim usage before export",
-            description = "Returns active Claims that are missing from, or orphaned from, their owning Section.")
-    @GetMapping("/{projectId}/export-preflight")
-    public ClaimConsistencyResponse exportPreflight(
-            @Parameter(description = "Project UUID") @PathVariable UUID projectId) {
-        projectService.getProjectById(projectId);
-        return claimContentConsistencyService.preflight(projectId);
-    }
-
     @Operation(summary = "Export project as .tex archive",
             description = "Returns a ZIP of .tex files for all papers in the project.")
     @GetMapping("/{projectId}/export")
@@ -261,7 +231,6 @@ public class ProjectController {
             @Parameter(description = "Project UUID") @PathVariable UUID projectId,
             @RequestParam(defaultValue = "tex") String format) {
         Path archive = paperProcessingService.exportTexArchive(projectId);
-        int warningCount = claimContentConsistencyService.preflight(projectId).warningCount();
         StreamingResponseBody body = output -> {
             try (InputStream content = Files.newInputStream(archive)) {
                 content.transferTo(output);
@@ -271,7 +240,6 @@ public class ProjectController {
         };
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"export.zip\"")
-                .header("X-Claim-Warning-Count", String.valueOf(warningCount))
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(body);
     }

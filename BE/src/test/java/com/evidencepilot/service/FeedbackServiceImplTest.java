@@ -67,9 +67,6 @@ class FeedbackServiceImplTest {
     private PaperProcessingService paperProcessingService;
 
     @Mock
-    private ClaimContentConsistencyService claimContentConsistencyService;
-
-    @Mock
     private CheckpointService checkpointService;
 
     @Mock
@@ -98,29 +95,6 @@ class FeedbackServiceImplTest {
         assertThat(requestCaptor.getValue().getStudent()).isEqualTo(student);
         assertThat(response.instructorId()).isEqualTo(instructor.getId());
         assertThat(response.studentId()).isEqualTo(student.getId());
-    }
-
-    @Test
-    void submitForReviewProceedsEvenWhenClaimsMissingFromTheirSections() {
-        User instructor = user(UserRole.INSTRUCTOR);
-        User student = user(UserRole.STUDENT);
-        Project project = project(instructor, student);
-        when(currentUserService.requireCurrentUser()).thenReturn(student);
-        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
-        doThrow(new ResponseStatusException(
-                org.springframework.http.HttpStatus.CONFLICT,
-                "Claims must appear in their owning sections: claim=MISSING"))
-                .when(claimContentConsistencyService).requireAllPresent(project.getId());
-        when(feedbackRequestRepository.save(any(FeedbackRequest.class))).thenAnswer(invocation -> {
-            FeedbackRequest request = invocation.getArgument(0);
-            request.setId(UUID.randomUUID());
-            return request;
-        });
-
-        FeedbackRequestResponseDto response = service().submitForReview(project.getId(), null);
-
-        assertThat(response).isNotNull();
-        verify(feedbackRequestRepository).save(any(FeedbackRequest.class));
     }
 
     @Test
@@ -593,7 +567,6 @@ class FeedbackServiceImplTest {
                 currentUserService,
                 systemNotificationService,
                 paperProcessingService,
-                claimContentConsistencyService,
                 checkpointService,
                 projectCollectionService);
     }

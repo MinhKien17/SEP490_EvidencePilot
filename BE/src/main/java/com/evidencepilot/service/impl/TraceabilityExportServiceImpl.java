@@ -2,39 +2,27 @@ package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.response.TraceabilityExportResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
-import com.evidencepilot.model.Claim;
-import com.evidencepilot.model.DocumentChunk;
+import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentReference;
-import com.evidencepilot.model.ClaimEvidenceMapping;
+import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
+import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
-import com.evidencepilot.model.AiSuggestion;
-import com.evidencepilot.model.Document;
-import com.evidencepilot.model.ProjectDocument;
-import com.evidencepilot.repository.AiSuggestionRepository;
-import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
-import com.evidencepilot.repository.ClaimRepository;
-import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentReferenceRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
+import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.service.CurrentUserService;
-import com.evidencepilot.service.ClaimContentConsistencyService;
-import com.evidencepilot.service.GapDetectionService;
 import com.evidencepilot.service.TraceabilityExportService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -47,18 +35,12 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
     private static final String MISSING = "MISSING";
 
     private final ProjectRepository projectRepository;
-    private final ClaimRepository claimRepository;
     private final DocumentRepository documentRepository;
     private final DocumentReferenceRepository documentReferenceRepository;
     private final FeedbackRequestRepository feedbackRequestRepository;
     private final ProjectDocumentRepository projectDocumentRepository;
-    private final DocumentChunkRepository documentChunkRepository;
-    private final AiSuggestionRepository aiSuggestionRepository;
-    private final ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
+    private final PaperSectionRepository paperSectionRepository;
     private final CurrentUserService currentUserService;
-    private final GapDetectionService gapDetectionService;
-    private final ClaimContentConsistencyService claimContentConsistencyService;
-    private final ObjectMapper objectMapper;
 
     @Override
     public TraceabilityExportResponse exportTraceability(UUID projectId) {
@@ -73,28 +55,14 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
         List<DocumentReference> references = documentReferenceRepository
                 .findByDocumentProjectIdAndDocumentDocTypeAndDocumentActiveTrueOrderByDocumentIdAscReferenceIndexAsc(
                         projectId, DocumentType.SOURCE);
-
-        Map<UUID, DocumentReference> firstReferenceBySource = references.stream()
-                .collect(Collectors.toMap(
-                        reference -> reference.getDocument().getId(),
-                        reference -> reference,
-                        (first, ignored) -> first
-                ));
         Map<UUID, Long> referenceCountBySource = references.stream()
                 .collect(Collectors.groupingBy(
                         reference -> reference.getDocument().getId(),
                         Collectors.counting()));
 
-        List<TraceabilityExportResponse.TraceabilityClaim> claims = claimRepository
-                .findByProjectId(projectId)
-                .stream()
-                .filter(Claim::isActive)
-                .map(claim -> claimExport(claim, projectId, firstReferenceBySource))
-                .toList();
-
         List<Document> activeSources = new ArrayList<>();
         documentRepository.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.SOURCE)
-                .forEach(doc -> activeSources.add(doc));
+                .forEach(activeSources::add);
         projectDocumentRepository.findByProjectId(projectId).stream()
                 .map(ProjectDocument::getDocument)
                 .filter(doc -> doc.isActive() && doc.getDocType() == DocumentType.SOURCE)
@@ -111,6 +79,21 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
                         referenceCountBySource.getOrDefault(source.getId(), 0L).intValue()))
                 .toList();
 
+        List<TraceabilityExportResponse.TraceabilitySection> sections = new ArrayList<>();
+        for (Document paper : documentRepository
+                .findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER)) {
+            for (PaperSection section : paperSectionRepository
+                    .findByDocumentIdOrderBySectionOrderAsc(paper.getId())) {
+                if (!section.isActive()) continue;
+                sections.add(new TraceabilityExportResponse.TraceabilitySection(
+                        section.getId(),
+                        missingIfBlank(section.getSectionTitle()),
+                        wordCount(section.getContentTex()),
+                        section.getVersion() != null ? section.getVersion() : 1,
+                        section.getAssignedUser() == null ? null : section.getAssignedUser().getId()));
+            }
+        }
+
         List<TraceabilityExportResponse.TraceabilityFeedback> feedback = feedbackRequestRepository
                 .findByProjectIdOrderByRequestedAtDesc(projectId)
                 .stream()
@@ -125,90 +108,9 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
                 missingIfBlank(project.getTitle()),
                 project.getStatus(),
                 Instant.now(),
-                claims,
+                sections,
                 sources,
                 feedback);
-    }
-
-    private TraceabilityExportResponse.TraceabilityClaim claimExport(
-            Claim claim, UUID projectId,
-            Map<UUID, DocumentReference> firstReferenceBySource) {
-
-        List<TraceabilityExportResponse.TraceabilityMatch> matches = aiSuggestionRepository
-                .findByClaimId(claim.getId())
-                .stream()
-                .filter(suggestion -> suggestion.getStatus() != null
-                        && suggestion.getStatus() != com.evidencepilot.model.enums.SuggestionStatus.REJECTED)
-                .map(suggestion -> {
-                    DocumentChunk chunk = suggestion.getDocumentChunk();
-                    UUID sourceId = chunk != null && chunk.getDocument() != null
-                            ? chunk.getDocument().getId() : null;
-                    String filename = chunk != null && chunk.getDocument() != null
-                            ? missingIfBlank(chunk.getDocument().getOriginalFilename()) : MISSING;
-                    DocumentReference reference = sourceId != null
-                            ? firstReferenceBySource.get(sourceId) : null;
-                    String status = suggestion.getStatus() != null
-                            ? suggestion.getStatus().name() : MISSING;
-                    return new TraceabilityExportResponse.TraceabilityMatch(
-                            sourceId != null ? sourceId.toString() : MISSING,
-                            filename,
-                            chunk != null ? chunk.getId() : null,
-                            null,
-                            chunk != null ? missingIfBlank(chunk.getText()) : MISSING,
-                            suggestion.getScore(),
-                            status,
-                            missingIfBlank(suggestion.getExplanation()),
-                            reference == null ? MISSING : missingIfBlank(reference.getTitle()),
-                            reference == null || reference.getPublicationYear() == null
-                                    ? MISSING : String.valueOf(reference.getPublicationYear()),
-                            reference == null ? MISSING : missingIfBlank(reference.getRawText()));
-                })
-                .toList();
-
-        List<ClaimEvidenceMapping> mappings = claimEvidenceMappingRepository
-                .findByClaimId(claim.getId());
-        Map<String, Object> graphData;
-        if (mappings.isEmpty()) {
-            graphData = Map.of("status", MISSING);
-        } else {
-            ClaimEvidenceMapping mapping = mappings.get(0);
-            Map<String, Object> map = new LinkedHashMap<>();
-            String effectiveRelation = mapping.getRelationOverride() != null
-                    ? mapping.getRelationOverride().name() : mapping.getRelation() != null
-                    ? mapping.getRelation().name() : "SUPPORTIVE";
-            map.put("verdict", effectiveRelation);
-            map.put("confidence", mapping.getStrengthScore());
-            map.put("explanation", mapping.getReviewNote());
-
-            if (mapping.getDocumentChunk() != null && mapping.getDocumentChunk().getDocument() != null) {
-                map.put("matched_source_ids",
-                        List.of(String.valueOf(mapping.getDocumentChunk().getDocument().getId())));
-                map.put("_source_id_used",
-                        String.valueOf(mapping.getDocumentChunk().getDocument().getId()));
-            } else {
-                map.put("matched_source_ids", List.of());
-                map.put("_source_id_used", "");
-            }
-
-            map.put("missing_evidence", List.of());
-            graphData = map;
-        }
-
-        GapDetectionService.GapResult gaps = gapDetectionService.analyzeGaps(mappings);
-
-        return new TraceabilityExportResponse.TraceabilityClaim(
-                claim.getId(),
-                claim.getContent(),
-                claim.getAiConfidenceScore(),
-                claim.getSection() == null ? null : claim.getSection().getId(),
-                claim.getSection() == null ? null : claim.getSection().getSectionTitle(),
-                claimContentConsistencyService.evaluate(claim),
-                graphData,
-                matches,
-                gaps.unsupported(),
-                gaps.weak(),
-                gaps.contradicted(),
-                gaps.pendingSuggestions());
     }
 
     @Override
@@ -216,37 +118,22 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
         TraceabilityExportResponse data = exportTraceability(projectId);
         StringBuilder csv = new StringBuilder();
         csv.append('\uFEFF'); // BOM for Excel
-        csv.append("Claim ID,Claim Content,Section ID,Section Title,Content Status,Verdict,Confidence,AI Score,Unsupported,Weak,Contradicted,Matched Sources,Feedback Status\n");
-        for (var claim : data.claims()) {
-            String verdict = "MISSING";
-            String confidence = "";
-            if (claim.graphData() != null && claim.graphData().containsKey("verdict")) {
-                verdict = String.valueOf(claim.graphData().get("verdict"));
-            }
-            if (claim.graphData() != null && claim.graphData().containsKey("confidence")) {
-                Object c = claim.graphData().get("confidence");
-                confidence = c != null ? String.valueOf(c) : "";
-            }
-            String matchedSources = claim.matches().stream()
-                    .map(m -> m.filename())
-                    .distinct()
-                    .collect(Collectors.joining("; "));
-            csv.append(escCsv(claim.id().toString())).append(',')
-               .append(escCsv(claim.content())).append(',')
-               .append(escCsv(claim.sectionId() == null ? "" : claim.sectionId().toString())).append(',')
-               .append(escCsv(claim.sectionTitle())).append(',')
-               .append(claim.contentStatus()).append(',')
-               .append(escCsv(verdict)).append(',')
-               .append(escCsv(confidence)).append(',')
-               .append(claim.aiConfidenceScore() != null ? claim.aiConfidenceScore() : "").append(',')
-               .append(claim.unsupported()).append(',')
-               .append(claim.weak()).append(',')
-               .append(claim.contradicted()).append(',')
-               .append(escCsv(matchedSources)).append(',')
+        csv.append("Section ID,Section Title,Word Count,Version,Assigned User ID,Feedback Status\n");
+        for (var section : data.sections()) {
+            csv.append(escCsv(section.id().toString())).append(',')
+               .append(escCsv(section.title())).append(',')
+               .append(section.wordCount() != null ? section.wordCount() : "").append(',')
+               .append(section.version() != null ? section.version() : "").append(',')
+               .append(escCsv(section.assignedUserId() == null ? "" : section.assignedUserId().toString())).append(',')
                .append(escCsv(data.feedback().isEmpty() ? "NONE" : "PRESENT"))
                .append('\n');
         }
         return csv.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static int wordCount(String contentTex) {
+        if (contentTex == null || contentTex.isBlank()) return 0;
+        return contentTex.trim().split("\\s+").length;
     }
 
     private static String escCsv(String s) {

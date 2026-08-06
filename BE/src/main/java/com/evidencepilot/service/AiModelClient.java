@@ -1,5 +1,8 @@
 package com.evidencepilot.service;
 
+import com.evidencepilot.dto.ai.SectionContextRequest;
+import com.evidencepilot.dto.ai.SectionContextResponse;
+
 import java.util.List;
 import java.util.Map;
 
@@ -8,6 +11,8 @@ public interface AiModelClient {
     Map<String, Object> health();
 
     GenerationResult generate(String system, String prompt);
+
+    SectionContextResponse auditSection(SectionContextRequest request);
 
     ExtractionBundle extractDocument(String filename, String downloadUrl);
 

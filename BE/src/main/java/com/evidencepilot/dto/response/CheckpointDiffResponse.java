@@ -10,15 +10,8 @@ public record CheckpointDiffResponse(
     LocalDateTime to,
     String fromTrigger,
     String toTrigger,
-    List<ClaimChange> claimsAdded,
-    List<ClaimChange> claimsRemoved,
-    List<ClaimChange> claimsChanged,
-    int mappingsAcceptedDelta,
-    int mappingsRejectedDelta,
     int feedbackAnsweredDelta,
     List<WordCountDelta> sectionWordDeltas
 ) {
-    public record ClaimChange(UUID id, UUID sectionId, Integer version, String contentHash) {}
-
     public record WordCountDelta(UUID sectionId, int fromWords, int toWords) {}
 }

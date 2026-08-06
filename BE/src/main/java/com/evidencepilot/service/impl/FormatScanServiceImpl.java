@@ -10,7 +10,6 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.service.CitationValidationService;
-import com.evidencepilot.service.ClaimContentConsistencyService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.FormatScanService;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +33,6 @@ public class FormatScanServiceImpl implements FormatScanService {
     private final PaperSectionRepository paperSectionRepository;
     private final CitationValidationService citationValidationService;
     private final CurrentUserService currentUserService;
-    private final ClaimContentConsistencyService claimContentConsistencyService;
 
     @Override
     public FormatScanResponse scanFormat(UUID documentId) {
@@ -59,7 +57,6 @@ public class FormatScanServiceImpl implements FormatScanService {
         }
 
         checkCitationCoverage(citationResult, findings);
-        checkClaimCoverage(doc, findings);
 
         String paperTitle = doc.getTitle() != null ? doc.getTitle() : doc.getOriginalFilename();
         return new FormatScanResponse(paperTitle, findings);
@@ -113,19 +110,6 @@ public class FormatScanServiceImpl implements FormatScanService {
                     "general",
                     "Citation key '" + key + "' has no \\bibitem definition.",
                     "Add \\bibitem{" + key + "} or check for typos."));
-        }
-    }
-
-    private void checkClaimCoverage(Document doc, List<ScanFinding> findings) {
-        for (var result : claimContentConsistencyService.evaluateProject(doc.getProject().getId())) {
-            if (result.status() != com.evidencepilot.model.enums.ClaimContentStatus.PRESENT) {
-                var claim = result.claim();
-                String secName = claim.getSection() != null ? claim.getSection().getSectionTitle() : "general";
-                findings.add(new ScanFinding("CLAIMS", "INFO",
-                        secName,
-                        "Claim \"" + truncate(claim.getContent(), 80) + "\" is " + result.status() + ".",
-                        "Add text supporting this claim to the relevant section."));
-            }
         }
     }
 

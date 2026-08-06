@@ -2,7 +2,6 @@ package com.evidencepilot.service;
 
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectMember;
-import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.User;
@@ -244,16 +243,6 @@ class CurrentUserServiceImplTest {
         assertThatThrownBy(() -> service().requireCollectionAccess(user(UserRole.STUDENT), collection))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Students");
-    }
-
-    @Test
-    void requireClaimAccessDelegatesToProjectAccess() {
-        User admin = user(UserRole.ADMIN);
-        Project project = projectOwnedBy(user(UserRole.STUDENT));
-        Claim claim = new Claim();
-        claim.setProject(project);
-
-        assertThatCode(() -> service().requireClaimAccess(admin, claim)).doesNotThrowAnyException();
     }
 
     @Test

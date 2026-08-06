@@ -1,30 +1,15 @@
 package com.evidencepilot.dto.response;
 
-import com.evidencepilot.model.enums.ClaimContentStatus;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 public record GraphResponse(
-    List<GraphClaim> claims,
     List<GraphSource> sources,
     List<GraphEdge> edges,
     List<GraphSectionSummary> sectionSummaries,
     int totalEdges,
     boolean hasMore
 ) {
-    public record GraphClaim(
-        UUID id,
-        String content,
-        UUID sectionId,
-        String sectionTitle,
-        UUID createdById,
-        String createdByName,
-        ClaimContentStatus contentStatus,
-        Map<String, Object> graphData,
-        int matchCount
-    ) {}
-
     public record GraphSource(
         UUID id,
         String filename,
@@ -49,10 +34,5 @@ public record GraphResponse(
         int unsupportedCount,
         UUID assignedUserId,
         String assignedUserName
-    ) {}
-
-    public record ClaimStatsResponse(
-        int totalClaims,
-        Map<String, Long> byFunctionalType
     ) {}
 }

@@ -1,10 +1,8 @@
 package com.evidencepilot.service;
 
-import com.evidencepilot.dto.response.ClaimConsistencyResponse;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
-import com.evidencepilot.model.enums.ClaimContentStatus;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.repository.DocumentRepository;
@@ -29,12 +27,10 @@ import static org.mockito.Mockito.when;
 class TexArchiveBuilderTest {
 
     @Test
-    void writesStandardTemplateClaimWarningsAndGeneratedBibliography() throws Exception {
+    void writesStandardTemplateAndGeneratedBibliography() throws Exception {
         ProjectRepository projects = mock(ProjectRepository.class);
         DocumentRepository documents = mock(DocumentRepository.class);
         PaperSectionRepository sections = mock(PaperSectionRepository.class);
-        ClaimContentConsistencyService consistency =
-                mock(ClaimContentConsistencyService.class);
         TexArchiveMediaWriter media = mock(TexArchiveMediaWriter.class);
         SourceMatchingService sourceMatchingService = mock(SourceMatchingService.class);
         TexArchiveBuilder builder = new TexArchiveBuilder(
@@ -42,11 +38,9 @@ class TexArchiveBuilderTest {
                 documents,
                 sections,
                 new PaperStandardService(),
-                consistency,
                 media,
                 sourceMatchingService);
         UUID projectId = UUID.randomUUID();
-        UUID claimId = UUID.randomUUID();
         Document source = new Document();
         source.setId(UUID.randomUUID());
         source.setTitle("Evidence Source");
@@ -68,20 +62,13 @@ class TexArchiveBuilderTest {
         section.setDocument(paper);
         section.setSectionTitle("Introduction");
         section.setSectionOrder(0);
-        section.setContentTex("\\epclaim{" + claimId + "}{Supported Claim} \\cite{" + citationKey + "}");
+        section.setContentTex("Some text with a citation \\cite{" + citationKey + "}.");
         section.setActive(true);
         when(projects.findById(projectId)).thenReturn(Optional.of(project));
         when(documents.findByProjectIdAndDocTypeAndActiveTrue(
                 projectId, DocumentType.PAPER)).thenReturn(List.of(paper));
         when(sections.findByDocumentIdOrderBySectionOrderAsc(paper.getId()))
                 .thenReturn(List.of(section));
-        when(consistency.preflight(projectId)).thenReturn(
-                new ClaimConsistencyResponse(1, List.of(
-                        new ClaimConsistencyResponse.Warning(
-                                claimId,
-                                section.getId(),
-                                ClaimContentStatus.MISSING,
-                                "Claim is saved but not used."))));
         when(sourceMatchingService.activeSources(projectId)).thenReturn(List.of(source));
         var archive = Files.createTempFile("tex-builder-test-", ".zip");
 
@@ -91,18 +78,14 @@ class TexArchiveBuilderTest {
                 String main = text(zip, "main.tex");
                 assertThat(main)
                         .contains("\\documentclass[conference]{IEEEtran}")
-                        .contains("\\newcommand{\\epclaim}[2]{#2}")
                         .contains("\\title{AI\\_Project}")
                         .contains("\\input{sections/01-introduction.tex}");
                 assertThat(text(zip, "sections/01-introduction.tex"))
-                        .contains("\\epclaim{" + claimId + "}{Supported Claim}")
                         .contains("\\cite{" + citationKey + "}");
                 assertThat(text(zip, "references.tex"))
                         .contains("\\begin{thebibliography}{99}")
                         .contains("\\bibitem{" + citationKey + "}")
                         .contains("A. Researcher", "Evidence Source", "2026");
-                assertThat(text(zip, "CLAIM_WARNINGS.md"))
-                        .contains(claimId.toString(), "MISSING");
             }
             verify(media).writeProjectMedia(any(), any());
         } finally {

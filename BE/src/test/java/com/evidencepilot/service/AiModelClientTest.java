@@ -1,6 +1,12 @@
 package com.evidencepilot.service;
 
+import com.evidencepilot.dto.ai.AuditedSnippet;
+import com.evidencepilot.dto.ai.EvaluationCriterion;
+import com.evidencepilot.dto.ai.SectionAuditFlags;
+import com.evidencepilot.dto.ai.SectionContextRequest;
+import com.evidencepilot.dto.ai.SectionContextResponse;
 import com.evidencepilot.service.impl.AiModelClientImpl;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -37,7 +43,7 @@ class AiModelClientTest {
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess("{\"status\":\"ok\"}", MediaType.APPLICATION_JSON));
 
-        assertThat(new AiModelClientImpl(builder.build(), "http://ai.test/").health())
+        assertThat(new AiModelClientImpl(builder.build(), "http://ai.test/", new ObjectMapper()).health())
                 .containsEntry("status", "ok");
         server.verify();
     }
@@ -57,7 +63,7 @@ class AiModelClientTest {
                         """,
                         MediaType.APPLICATION_JSON));
 
-        AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test");
+        AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper());
 
         AiModelClient.GenerationResult result = client.generate(
                 "Judge claim quality", "Review this");
@@ -77,7 +83,7 @@ class AiModelClientTest {
 
         AiModelClient.AiApiException error = assertThrows(
                 AiModelClient.AiApiException.class,
-                () -> new AiModelClientImpl(builder.build(), "http://ai.test")
+                () -> new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper())
                         .generate("system", "prompt"));
 
         assertThat(error.getStatusCode()).isEqualTo(422);
@@ -101,7 +107,7 @@ class AiModelClientTest {
                         """, true))
                 .andRespond(withSuccess(extractionZip(), MediaType.valueOf("application/zip")));
 
-        AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test");
+        AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper());
 
         ExtractionBundle bundle = client.extractDocument("source.pdf", "https://storage.test/source.pdf");
 
@@ -128,7 +134,7 @@ class AiModelClientTest {
                         "{\"filename\":\"source.pdf\",\"method\":\"mineru\",\"markdown\":\"# Extracted\"}",
                         MediaType.APPLICATION_JSON));
 
-        AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test");
+        AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper());
 
         assertThatThrownBy(() -> client.extractDocument("source.pdf", "https://storage.test/source.pdf"))
                 .isInstanceOf(AiModelClient.AiApiException.class)
@@ -143,7 +149,7 @@ class AiModelClientTest {
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("{\"embedding\":[0.25,-0.5,1]}", MediaType.APPLICATION_JSON));
 
-        assertThat(new AiModelClientImpl(builder.build(), "http://ai.test").generateEmbedding("text"))
+        assertThat(new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper()).generateEmbedding("text"))
                 .containsExactly(0.25f, -0.5f, 1.0f);
         server.verify();
     }
@@ -158,7 +164,7 @@ class AiModelClientTest {
                         "{\"embeddings\":[[0.25,-0.5],[1,2]]}",
                         MediaType.APPLICATION_JSON));
 
-        assertThat(new AiModelClientImpl(builder.build(), "http://ai.test")
+        assertThat(new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper())
                 .generateEmbeddings(List.of("one", "two")))
                 .containsExactly(List.of(0.25f, -0.5f), List.of(1.0f, 2.0f));
         server.verify();
@@ -166,7 +172,7 @@ class AiModelClientTest {
 
     @Test
     void missingBaseUrlAndEmptyResponsesThrowAiApiException() {
-        assertThatThrownBy(() -> new AiModelClientImpl(RestClient.create(), " ").health())
+        assertThatThrownBy(() -> new AiModelClientImpl(RestClient.create(), " ", new ObjectMapper()).health())
                 .isInstanceOf(AiModelClient.AiApiException.class)
                 .hasMessageContaining("not configured");
 
@@ -174,10 +180,42 @@ class AiModelClientTest {
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(requestTo("http://ai.test/ai/generate"))
                 .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
-        assertThatThrownBy(() -> new AiModelClientImpl(builder.build(), "http://ai.test")
+        assertThatThrownBy(() -> new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper())
                 .generate("system", "prompt"))
                 .isInstanceOf(AiModelClient.AiApiException.class)
                 .hasMessageContaining("empty response");
+    }
+
+    @Test
+    void auditSectionPostsSnakeCasePayloadAndParsesResponse() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("http://ai.test/audit/section"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().json("""
+                        {
+                          "section_name":"Introduction",
+                          "current_context":"Full section",
+                          "source_chunk":"Full section",
+                          "evaluation_criteria":[{"code":"PARAPHRASE_RISK","description":"d","weight":0.6}],
+                          "flags":{"requires_citation_check":false}
+                        }
+                        """, true))
+                .andRespond(withSuccess("""
+                        {"snippets":[{"original_text_snippet":"Full section","start_index":0,"end_index":12,
+                        "issue_type":"PARAPHRASE_RISK","rationale":"r","suggested_paraphrase":null}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        SectionContextResponse response = new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper())
+                .auditSection(new SectionContextRequest(
+                        "Introduction", "Full section", "Full section",
+                        List.of(new EvaluationCriterion("PARAPHRASE_RISK", "d", 0.6)),
+                        new SectionAuditFlags(false)));
+
+        assertThat(response.snippets()).hasSize(1);
+        assertThat(response.snippets().getFirst().originalTextSnippet()).isEqualTo("Full section");
+        assertThat(response.snippets().getFirst().issueType()).isEqualTo("PARAPHRASE_RISK");
+        server.verify();
     }
 
     private static byte[] extractionZip() throws IOException {

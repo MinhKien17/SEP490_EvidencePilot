@@ -175,75 +175,35 @@ CREATE TABLE project_media (
 );
 
 -- ==========================================
--- 6. CLAIMS & AI TRACEABILITY
+-- 6. SECTION AUDIT FINDINGS (interactive state)
 -- ==========================================
-CREATE TABLE claims (
+DROP TABLE IF EXISTS claim_evidence_mappings;
+DROP TABLE IF EXISTS ai_suggestions;
+DROP TABLE IF EXISTS claims;
+
+CREATE TABLE section_audit_findings (
     id BINARY(16) NOT NULL PRIMARY KEY,
     project_id BINARY(16) NOT NULL,
-    section_id BINARY(16),
+    section_id BINARY(16) NOT NULL,
+    content_fingerprint CHAR(64) NOT NULL,
+    start_index INT NOT NULL,
+    end_index INT NOT NULL,
+    original_text_snippet TEXT NOT NULL,
+    issue_type VARCHAR(100) NOT NULL,
+    suggested_paraphrase TEXT,
+    rationale TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL CHECK (status IN ('PENDING','RESOLVED','DISMISSED')),
     created_by BINARY(16),
-    content TEXT NOT NULL,
-    ai_confidence_score FLOAT,
-    claim_quality_score FLOAT,
-    functional_type VARCHAR(50) CHECK (functional_type IN ('EMPIRICAL','THEORETICAL','METHODOLOGICAL','ANALYTICAL','APPLIED')),
-    claim_version INT NOT NULL DEFAULT 1,
-    opt_version BIGINT NOT NULL DEFAULT 0,
-    active BOOLEAN NOT NULL DEFAULT TRUE,
+    model_name VARCHAR(255),
+    prompt_version VARCHAR(255),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_claims_project_id (project_id),
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-    FOREIGN KEY (section_id) REFERENCES paper_sections(id) ON DELETE SET NULL,
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
-);
-
-CREATE TABLE ai_suggestions (
-    id BINARY(16) NOT NULL PRIMARY KEY,
-    claim_id BINARY(16) NOT NULL,
-    document_chunk_id BINARY(16) NOT NULL,
-    status VARCHAR(50) NOT NULL CHECK (status IN ('PENDING', 'ACCEPTED', 'REJECTED', 'INVALIDATED')),
-    instructor_rejected BOOLEAN NOT NULL DEFAULT FALSE,
-    score FLOAT,
-    explanation TEXT,
-    claim_version INT NOT NULL,
-    model_name VARCHAR(255),
-    model_version VARCHAR(255),
-    prompt_version VARCHAR(255),
-    rubric_version VARCHAR(255),
-    evaluated_at DATETIME,
-    score_breakdown JSON,
-    relation VARCHAR(50) CHECK (relation IN ('SUPPORTS', 'CONTRADICTS', 'NEUTRAL', 'EXTENDS', 'DETAILS', 'GENERALIZES')),
-    strength_score INT,
-    strength_band VARCHAR(20) CHECK (strength_band IN ('HIGH', 'MEDIUM', 'LOW')),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (claim_id) REFERENCES claims(id) ON DELETE CASCADE,
-    FOREIGN KEY (document_chunk_id) REFERENCES document_chunks(id) ON DELETE CASCADE
-);
-
-CREATE TABLE claim_evidence_mappings (
-    id BINARY(16) NOT NULL PRIMARY KEY,
-    claim_id BINARY(16) NOT NULL,
-    document_chunk_id BINARY(16) NOT NULL,
-    suggestion_id BINARY(16),
-    created_by BINARY(16) NOT NULL,
-    status VARCHAR(50) NOT NULL CHECK (status IN ('ACTIVE', 'INACTIVE')),
-    instructor_rejected BOOLEAN NOT NULL DEFAULT FALSE,
-    relation VARCHAR(50) CHECK (relation IN ('SUPPORTS', 'CONTRADICTS', 'NEUTRAL', 'EXTENDS', 'DETAILS', 'GENERALIZES')),
-    strength_score INT,
-    strength_band VARCHAR(20) CHECK (strength_band IN ('HIGH', 'MEDIUM', 'LOW')),
-    review_status VARCHAR(50) CHECK (review_status IN ('PENDING', 'VERIFIED', 'REJECTED')),
-    reviewed_by BINARY(16),
-    reviewed_at DATETIME,
-    review_note TEXT,
-    relation_override VARCHAR(50) CHECK (relation_override IN ('SUPPORTS', 'CONTRADICTS', 'NEUTRAL', 'EXTENDS', 'DETAILS', 'GENERALIZES')),
-    score_breakdown JSON,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE INDEX idx_claim_evidence_mappings_unique (claim_id, document_chunk_id),
-    FOREIGN KEY (claim_id) REFERENCES claims(id) ON DELETE CASCADE,
-    FOREIGN KEY (document_chunk_id) REFERENCES document_chunks(id) ON DELETE CASCADE,
-    FOREIGN KEY (suggestion_id) REFERENCES ai_suggestions(id) ON DELETE SET NULL,
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+    INDEX idx_saf_section_status (section_id, status),
+    INDEX idx_saf_project (project_id),
+    CONSTRAINT fk_saf_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    CONSTRAINT fk_saf_section FOREIGN KEY (section_id) REFERENCES paper_sections(id) ON DELETE CASCADE,
+    CONSTRAINT fk_saf_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT chk_saf_offsets CHECK (start_index >= 0 AND end_index > start_index)
 );
 
 -- ==========================================
@@ -397,7 +357,7 @@ CREATE TABLE review_snapshots (
 );
 
 -- ==========================================
--- 14. AI EVALUATION JOBS (async claim-quality / match evaluation)
+-- 14. AI EVALUATION JOBS (async section-audit / paper-review evaluation)
 -- ==========================================
 CREATE TABLE ai_evaluation_jobs (
     id BINARY(16) NOT NULL PRIMARY KEY,

@@ -11,7 +11,6 @@ import com.evidencepilot.dto.request.SectionReviewSourceMatchRequest;
 import com.evidencepilot.dto.response.SectionCitationReviewResponse;
 import com.evidencepilot.dto.response.SectionReviewSourceMatchesResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
-import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.FeedbackStatus;
 import com.evidencepilot.model.PaperSection;
@@ -20,7 +19,6 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.model.enums.ProcessingStatus;
-import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
@@ -78,7 +76,6 @@ public class PaperController {
     private final PaperSectionRepository paperSectionRepository;
     private final InstructorFeedbackRepository instructorFeedbackRepository;
     private final FeedbackRequestRepository feedbackRequestRepository;
-    private final ClaimRepository claimRepository;
     private final CurrentUserService currentUserService;
     private final CheckpointService checkpointService;
     private final AiEvaluationService aiEvaluationService;
@@ -265,7 +262,7 @@ public class PaperController {
 
     @Operation(summary = "Soft-delete a paper section",
             description = "Instructors may delete an unassigned setup section only when it has "
-                    + "no student content, active Claims, or feedback.")
+                    + "no student content or feedback.")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Section soft-deleted"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
@@ -483,9 +480,8 @@ public class PaperController {
             Document paper = existing.getFirst();
             List<PaperSection> sections = paperSectionRepository
                     .findByDocumentIdOrderBySectionOrderAsc(paper.getId());
-            // DEBT-01: refuse to wipe a paper whose sections carry work, claims,
-            // feedback, or an open review round — otherwise claims are orphaned
-            // (section_id SET NULL) and instructor feedback is cascade-deleted.
+            // DEBT-01: refuse to wipe a paper whose sections carry work,
+            // feedback, or an open review round.
             requirePaperReplaceable(projectId, sections);
             paperSectionRepository.deleteByDocumentId(paper.getId());
             documentRepository.delete(paper);
@@ -507,13 +503,6 @@ public class PaperController {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Project already has a paper with student work. "
                     + "Delete the existing paper first.");
-        }
-        boolean hasActiveClaims = sections.stream()
-                .anyMatch(s -> claimRepository.findBySectionId(s.getId()).stream()
-                        .anyMatch(Claim::isActive));
-        if (hasActiveClaims) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Cannot replace paper: one or more sections have active claims.");
         }
         if (sections.stream().anyMatch(this::hasFeedback)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,

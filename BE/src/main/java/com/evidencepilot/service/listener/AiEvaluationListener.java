@@ -20,11 +20,6 @@ public class AiEvaluationListener {
         process(message);
     }
 
-    @RabbitListener(queues = RabbitMQConfig.PAPER_REVIEW_QUEUE)
-    public void handlePaperReview(Map<String, Object> message) {
-        process(message);
-    }
-
     private void process(Map<String, Object> message) {
         Object jobId = message.get("jobId");
         if (jobId != null) {

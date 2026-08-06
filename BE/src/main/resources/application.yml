@@ -119,6 +119,18 @@ ai:
     api-key: ${AI_MODEL_API_KEY:}
     # MinerU extraction can run for several minutes on large PDFs.
     read-timeout-seconds: ${AI_MODEL_READ_TIMEOUT_SECONDS:660}
+    # Cap concurrent AI model calls per JVM (section audit and other interactive calls queue).
+    max-concurrent-requests: ${AI_MODEL_MAX_CONCURRENT_REQUESTS:4}
+  section-audit:
+    # When false, the Python server adds "CITATIONS OUT OF SCOPE" to its prompt.
+    requires-citation-check: ${AI_SECTION_AUDIT_REQUIRES_CITATION_CHECK:false}
+    evaluation-criteria:
+      - code: PARAPHRASE_RISK
+        description: Spans that are near-verbatim copies of source material and should be rephrased into the author's own words.
+        weight: 0.6
+      - code: EXCESSIVE_QUOTATION
+        description: Direct quotations long enough to dominate the passage that should be shortened or paraphrased.
+        weight: 0.4
 
 # ── Qdrant vector database ────────────────────────────────────────────────
 qdrant:

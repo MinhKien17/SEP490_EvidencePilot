@@ -36,11 +36,11 @@ import java.util.Set;
                 @Tag(name = "Sources", description = "Source document management"),
                 @Tag(name = "Source Categories", description = "Source category configuration"),
                 @Tag(name = "Collections", description = "Instructor collection (evidence library) management"),
-                @Tag(name = "Claims", description = "Claim CRUD, AI suggestions, and evidence mapping"),
                 @Tag(name = "Documents", description = "Document metadata, chunks, and text retrieval"),
                 @Tag(name = "Feedback", description = "Feedback request lifecycle and instructor review"),
                 @Tag(name = "System Notifications", description = "In-app notification inbox and read state"),
-                @Tag(name = "Traceability", description = "Project-level traceability matrix export")
+                @Tag(name = "Traceability", description = "Project-level traceability matrix export"),
+                @Tag(name = "Section Audits", description = "AI paraphrase-risk and quotation audit of paper sections")
         },
         security = @SecurityRequirement(name = "Bearer Authentication")
 )
@@ -63,11 +63,11 @@ public class OpenApiConfig {
             modelTag("Sources", "Source document management"),
             modelTag("Source Categories", "Source category configuration"),
             modelTag("Collections", "Instructor collection (evidence library) management"),
-            modelTag("Claims", "Claim CRUD, AI suggestions, and evidence mapping"),
             modelTag("Documents", "Document metadata, chunks, and text retrieval"),
             modelTag("Feedback", "Feedback request lifecycle and instructor review"),
             modelTag("System Notifications", "In-app notification inbox and read state"),
-            modelTag("Traceability", "Project-level traceability matrix export")
+            modelTag("Traceability", "Project-level traceability matrix export"),
+            modelTag("Section Audits", "AI paraphrase-risk and quotation audit of paper sections")
     );
 
     @Bean

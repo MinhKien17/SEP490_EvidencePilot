@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.mockito.Mockito.mock;
@@ -26,7 +25,6 @@ class GraphControllerTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of(),
                 0,
                 false));
         MockMvc mockMvc = standaloneSetup(new GraphController(service)).build();
@@ -35,19 +33,5 @@ class GraphControllerTest {
                 .andExpect(status().isOk());
 
         verify(service).getGraph(projectId, "all");
-    }
-
-    @Test
-    void claimStatsDelegatesToService() throws Exception {
-        GraphService service = mock(GraphService.class);
-        UUID projectId = UUID.randomUUID();
-        when(service.getClaimStats(projectId))
-                .thenReturn(new GraphResponse.ClaimStatsResponse(0, Map.of()));
-        MockMvc mockMvc = standaloneSetup(new GraphController(service)).build();
-
-        mockMvc.perform(get("/api/projects/{projectId}/graph/claim-stats", projectId))
-                .andExpect(status().isOk());
-
-        verify(service).getClaimStats(projectId);
     }
 }

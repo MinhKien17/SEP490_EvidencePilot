@@ -1,6 +1,5 @@
 package com.evidencepilot.service.impl;
 
-import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectMember;
@@ -168,11 +167,6 @@ public class CurrentUserServiceImpl implements CurrentUserService {
         throw new ResponseStatusException(
                 org.springframework.http.HttpStatus.FORBIDDEN,
                 "Students cannot access collections");
-    }
-
-    @Override
-    public void requireClaimAccess(User currentUser, Claim claim) {
-        requireProjectAccess(currentUser, claim.getProject());
     }
 
     @Override

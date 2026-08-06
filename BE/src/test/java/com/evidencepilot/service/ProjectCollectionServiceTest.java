@@ -1,6 +1,5 @@
 package com.evidencepilot.service;
 
-import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Collection;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.Project;
@@ -8,12 +7,8 @@ import com.evidencepilot.model.ProjectCollection;
 import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
-import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
-import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.model.enums.UserRole;
-import com.evidencepilot.repository.AiSuggestionRepository;
-import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectCollectionRepository;
@@ -51,10 +46,6 @@ class ProjectCollectionServiceTest {
     private CollectionRepository collectionRepository;
     @Mock
     private DocumentRepository documentRepository;
-    @Mock
-    private ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
-    @Mock
-    private AiSuggestionRepository aiSuggestionRepository;
     @Mock
     private CurrentUserService currentUserService;
 
@@ -151,20 +142,16 @@ class ProjectCollectionServiceTest {
     }
 
     @Test
-    void unlinkPinsMappedSourceInsteadOfRemovingIt() {
+    void unlinkPinsPinnedSourceInsteadOfRemovingIt() {
         User instructor = instructor();
         Project project = project(ProjectStatus.IN_PROGRESS);
         Collection collection = collection(instructor);
         Document source = source(collection);
         ProjectCollection link = link(project, collection, instructor);
-        ProjectDocument projectDocument = projectDocument(project, source, link, false);
+        ProjectDocument projectDocument = projectDocument(project, source, link, true);
         stubAuthorizedLink(instructor, project, collection, link);
         when(projectDocumentRepository.findByProjectCollectionId(link.getId()))
                 .thenReturn(List.of(projectDocument));
-        when(claimEvidenceMappingRepository
-                .existsByClaimProjectIdAndDocumentChunkDocumentIdAndStatus(
-                        project.getId(), source.getId(), MappingStatus.ACTIVE))
-                .thenReturn(true);
 
         service().unlink(project.getId(), collection.getId());
 
@@ -176,27 +163,20 @@ class ProjectCollectionServiceTest {
     }
 
     @Test
-    void unlinkRemovesDerivedSourceAndInvalidatesPendingSuggestions() {
+    void unlinkRemovesDerivedSource() {
         User instructor = instructor();
         Project project = project(ProjectStatus.IN_PROGRESS);
         Collection collection = collection(instructor);
         Document source = source(collection);
         ProjectCollection link = link(project, collection, instructor);
         ProjectDocument projectDocument = projectDocument(project, source, link, false);
-        AiSuggestion suggestion = new AiSuggestion();
-        suggestion.setStatus(SuggestionStatus.PENDING);
         stubAuthorizedLink(instructor, project, collection, link);
         when(projectDocumentRepository.findByProjectCollectionId(link.getId()))
                 .thenReturn(List.of(projectDocument));
-        when(aiSuggestionRepository.findByClaimProjectIdAndDocumentChunkDocumentIdAndStatus(
-                project.getId(), source.getId(), SuggestionStatus.PENDING))
-                .thenReturn(List.of(suggestion));
 
         service().unlink(project.getId(), collection.getId());
 
         verify(projectDocumentRepository).delete(projectDocument);
-        assertThat(suggestion.getStatus()).isEqualTo(SuggestionStatus.INVALIDATED);
-        verify(aiSuggestionRepository).saveAll(List.of(suggestion));
     }
 
     @Test
@@ -295,8 +275,6 @@ class ProjectCollectionServiceTest {
                 projectRepository,
                 collectionRepository,
                 documentRepository,
-                claimEvidenceMappingRepository,
-                aiSuggestionRepository,
                 currentUserService);
     }
 

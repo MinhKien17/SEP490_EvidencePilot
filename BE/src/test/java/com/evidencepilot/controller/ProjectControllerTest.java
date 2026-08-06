@@ -2,11 +2,8 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.request.ProjectCreateRequest;
 import com.evidencepilot.dto.request.ProjectUpdateRequest;
-import com.evidencepilot.dto.response.ClaimConsistencyResponse;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
-import com.evidencepilot.service.ClaimService;
-import com.evidencepilot.service.ClaimContentConsistencyService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.ProjectService;
@@ -41,21 +38,16 @@ class ProjectControllerTest {
 
     private final ProjectService projectService = mock(ProjectService.class);
     private final DocumentService documentService = mock(DocumentService.class);
-    private final ClaimService claimService = mock(ClaimService.class);
     private final ProjectCollectionService projectCollectionService = mock(ProjectCollectionService.class);
     private final PaperProcessingService paperProcessingService = mock(PaperProcessingService.class);
-    private final ClaimContentConsistencyService claimContentConsistencyService =
-            mock(ClaimContentConsistencyService.class);
     private ProjectController controller;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         controller = new ProjectController(
-                projectService, documentService, claimService, projectCollectionService,
-                paperProcessingService, claimContentConsistencyService);
-        when(claimContentConsistencyService.preflight(any()))
-                .thenReturn(new ClaimConsistencyResponse(0, List.of()));
+                projectService, documentService, projectCollectionService,
+                paperProcessingService);
         mockMvc = standaloneSetup(controller).build();
     }
 
@@ -159,22 +151,6 @@ class ProjectControllerTest {
         verify(projectCollectionService).getLinkedCollections(projectId);
         verify(projectCollectionService).link(projectId, collectionId);
         verify(projectCollectionService).unlink(projectId, collectionId);
-    }
-
-    @Test
-    void getProjectClaims_bindsDefaultPaging() throws Exception {
-        UUID id = UUID.randomUUID();
-        mockMvc.perform(get("/api/projects/{id}/claims", id)).andExpect(status().isOk());
-        verify(claimService).getClaimsByProject(id, 0, 20, "createdAt,desc", null, null, null);
-    }
-
-    @Test
-    void getProjectClaims_bindsSectionId() throws Exception {
-        UUID id = UUID.randomUUID();
-        UUID sectionId = UUID.randomUUID();
-        mockMvc.perform(get("/api/projects/{id}/claims", id).param("sectionId", sectionId.toString()))
-                .andExpect(status().isOk());
-        verify(claimService).getClaimsByProject(id, 0, 20, "createdAt,desc", null, null, sectionId);
     }
 
     @Test

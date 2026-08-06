@@ -9,11 +9,7 @@ import com.evidencepilot.model.ProjectCollection;
 import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
-import com.evidencepilot.model.enums.MappingStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
-import com.evidencepilot.model.enums.SuggestionStatus;
-import com.evidencepilot.repository.AiSuggestionRepository;
-import com.evidencepilot.repository.ClaimEvidenceMappingRepository;
 import com.evidencepilot.repository.CollectionRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectCollectionRepository;
@@ -47,8 +43,6 @@ public class ProjectCollectionService {
     private final ProjectRepository projectRepository;
     private final CollectionRepository collectionRepository;
     private final DocumentRepository documentRepository;
-    private final ClaimEvidenceMappingRepository claimEvidenceMappingRepository;
-    private final AiSuggestionRepository aiSuggestionRepository;
     private final CurrentUserService currentUserService;
 
     public List<CollectionResponse> getLinkedCollections(UUID projectId) {
@@ -178,19 +172,10 @@ public class ProjectCollectionService {
 
     @Transactional
     public void removeSource(Document document) {
-        long activeMappingCount = claimEvidenceMappingRepository
-                .findByDocumentChunkDocumentIdAndStatus(document.getId(), MappingStatus.ACTIVE).size();
-        if (activeMappingCount > 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Source is mapped to " + activeMappingCount + " active claim evidence mapping(s). "
-                            + "Remove those mappings before deleting this source.");
-        }
-
         Map<UUID, Project> affectedProjects = new LinkedHashMap<>();
         for (ProjectDocument projectDocument : projectDocumentRepository.findByDocumentId(document.getId())) {
             requireCorpusMutable(projectDocument.getProject());
             affectedProjects.put(projectDocument.getProject().getId(), projectDocument.getProject());
-            invalidatePendingSuggestions(projectDocument.getProject().getId(), document.getId());
             projectDocumentRepository.delete(projectDocument);
         }
         affectedProjects.values().forEach(this::refreshProjectStatus);
@@ -230,11 +215,6 @@ public class ProjectCollectionService {
             projectDocumentRepository.save(projectDocument);
             return;
         }
-        if (hasActiveMapping(project.getId(), projectDocument.getDocument().getId())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Evidence mappings exist for this source. Remove mappings first.");
-        }
-        invalidatePendingSuggestions(project.getId(), projectDocument.getDocument().getId());
         projectDocumentRepository.delete(projectDocument);
         refreshProjectStatus(project);
     }
@@ -288,29 +268,13 @@ public class ProjectCollectionService {
     }
 
     private void detachDerivedShare(ProjectDocument projectDocument) {
-        if (projectDocument.isPinned()
-                || hasActiveMapping(projectDocument.getProject().getId(), projectDocument.getDocument().getId())) {
+        if (projectDocument.isPinned()) {
             projectDocument.setPinned(true);
             projectDocument.setProjectCollection(null);
             projectDocumentRepository.save(projectDocument);
             return;
         }
-        invalidatePendingSuggestions(projectDocument.getProject().getId(), projectDocument.getDocument().getId());
         projectDocumentRepository.delete(projectDocument);
-    }
-
-    private boolean hasActiveMapping(UUID projectId, UUID documentId) {
-        return claimEvidenceMappingRepository
-                .existsByClaimProjectIdAndDocumentChunkDocumentIdAndStatus(
-                        projectId, documentId, MappingStatus.ACTIVE);
-    }
-
-    private void invalidatePendingSuggestions(UUID projectId, UUID documentId) {
-        var suggestions = aiSuggestionRepository
-                .findByClaimProjectIdAndDocumentChunkDocumentIdAndStatus(
-                        projectId, documentId, SuggestionStatus.PENDING);
-        suggestions.forEach(suggestion -> suggestion.setStatus(SuggestionStatus.INVALIDATED));
-        aiSuggestionRepository.saveAll(suggestions);
     }
 
     private Project requireActiveProject(UUID projectId) {

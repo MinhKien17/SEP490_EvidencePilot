@@ -1,7 +1,11 @@
 package com.evidencepilot.service.impl;
 
+import com.evidencepilot.dto.ai.SectionContextRequest;
+import com.evidencepilot.dto.ai.SectionContextResponse;
 import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.ExtractionBundle;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
@@ -26,11 +30,14 @@ public class AiModelClientImpl implements AiModelClient {
 
     private final RestClient restClient;
     private final String baseUrl;
+    private final ObjectMapper objectMapper;
 
     public AiModelClientImpl(@Qualifier("aiRestClient") RestClient restClient,
-            @Qualifier("aiModelBaseUrl") String baseUrl) {
+            @Qualifier("aiModelBaseUrl") String baseUrl,
+            ObjectMapper objectMapper) {
         this.restClient = restClient;
         this.baseUrl = baseUrl == null || baseUrl.isBlank() ? "" : trimTrailingSlash(baseUrl);
+        this.objectMapper = objectMapper;
     }
 
     @SuppressWarnings("unchecked")
@@ -61,6 +68,32 @@ public class AiModelClientImpl implements AiModelClient {
                 String.valueOf(response.get("provider")),
                 String.valueOf(response.get("model")),
                 String.valueOf(response.get("response")));
+    }
+
+    @Override
+    public SectionContextResponse auditSection(SectionContextRequest request) {
+        if (request == null
+                || request.sectionName() == null || request.sectionName().isBlank()
+                || request.currentContext() == null || request.currentContext().isBlank()
+                || request.sourceChunk() == null || request.sourceChunk().isBlank()
+                || request.evaluationCriteria() == null || request.evaluationCriteria().isEmpty()
+                || request.flags() == null) {
+            throw new AiApiException("/audit/section", "invalid section audit request", null);
+        }
+        String raw = call("/audit/section", () -> restClient.post()
+                .uri(baseUrl + "/audit/section")
+                .body(request)
+                .retrieve()
+                .body(String.class));
+        try {
+            SectionContextResponse response = objectMapper.readValue(raw, SectionContextResponse.class);
+            if (response == null || response.snippets() == null) {
+                throw new AiApiException("/audit/section", "returned null or empty response", null);
+            }
+            return response;
+        } catch (JsonProcessingException e) {
+            throw new AiApiException("/audit/section", "returned an invalid audit response", e);
+        }
     }
 
     @Override

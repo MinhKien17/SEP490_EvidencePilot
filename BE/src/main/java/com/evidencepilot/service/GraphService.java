@@ -5,6 +5,4 @@ import java.util.UUID;
 
 public interface GraphService {
     GraphResponse getGraph(UUID projectId, String scope);
-
-    GraphResponse.ClaimStatsResponse getClaimStats(UUID projectId);
 }
