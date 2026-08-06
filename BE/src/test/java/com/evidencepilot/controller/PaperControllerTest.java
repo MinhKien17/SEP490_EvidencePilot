@@ -23,6 +23,7 @@ import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.FormatScanService;
 import com.evidencepilot.service.PaperProcessingService;
+import com.evidencepilot.service.impl.SectionCitationReviewService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -57,11 +58,12 @@ class PaperControllerTest {
     private final CurrentUserService currentUserService = mock(CurrentUserService.class);
     private final CheckpointService checkpointService = mock(CheckpointService.class);
     private final AiEvaluationService aiEvaluationService = mock(AiEvaluationService.class);
+    private final SectionCitationReviewService sectionCitationReviewService = mock(SectionCitationReviewService.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = standaloneSetup(new PaperController(documentService, paperService, citationValidationService, formatScanService, projectRepository, documentRepository, paperSectionRepository, instructorFeedbackRepository, feedbackRequestRepository, claimRepository, currentUserService, checkpointService, aiEvaluationService))
+        mockMvc = standaloneSetup(new PaperController(documentService, paperService, citationValidationService, formatScanService, projectRepository, documentRepository, paperSectionRepository, instructorFeedbackRepository, feedbackRequestRepository, claimRepository, currentUserService, checkpointService, aiEvaluationService, sectionCitationReviewService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -192,44 +194,62 @@ class PaperControllerTest {
     }
 
     @Test
-    void review_bindsTargetStyle() throws Exception {
-        UUID id = UUID.randomUUID();
+    void reviewSection_queuesSavedSectionFingerprint() throws Exception {
+        UUID documentId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         UUID jobId = UUID.randomUUID();
         Document document = paperDocument(projectId);
-        document.setId(id);
+        document.setId(documentId);
+        document.setActive(true);
+        document.setDocType(DocumentType.PAPER);
+        PaperSection section = sectionOf(document);
+        section.setId(sectionId);
+        section.setActive(true);
+        section.setContentTex("Draft section");
         User user = new User();
         user.setId(userId);
         when(currentUserService.requireCurrentUser()).thenReturn(user);
-        when(documentRepository.findById(id)).thenReturn(Optional.of(document));
-        when(aiEvaluationService.submitPaperReview(projectId, id, "APA", userId))
+        when(paperSectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
+        when(sectionCitationReviewService.fingerprint(section)).thenReturn("fingerprint");
+        when(aiEvaluationService.submitSectionCitationReview(
+                projectId, documentId, sectionId, "fingerprint", userId))
                 .thenReturn(new JobSubmitResponse(jobId));
 
-        mockMvc.perform(post("/api/papers/{id}/review", id).param("targetStyle", "APA"))
+        mockMvc.perform(post("/api/papers/{documentId}/sections/{sectionId}/review", documentId, sectionId))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.jobId").value(jobId.toString()));
-        verify(currentUserService).requireProjectAccess(user, document.getProject());
-        verify(aiEvaluationService).submitPaperReview(projectId, id, "APA", userId);
+        verify(currentUserService).requireSectionContentWriteAccess(user, section);
+        verify(aiEvaluationService).submitSectionCitationReview(
+                projectId, documentId, sectionId, "fingerprint", userId);
     }
 
     @Test
-    void review_authorizesBeforeSubmittingJob() throws Exception {
-        UUID id = UUID.randomUUID();
+    void reviewSection_authorizesBeforeSubmittingJob() throws Exception {
+        UUID documentId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
         Document document = paperDocument(projectId);
-        document.setId(id);
+        document.setId(documentId);
+        document.setActive(true);
+        document.setDocType(DocumentType.PAPER);
+        PaperSection section = sectionOf(document);
+        section.setId(sectionId);
+        section.setActive(true);
+        section.setContentTex("Draft section");
         User user = new User();
         user.setId(UUID.randomUUID());
         when(currentUserService.requireCurrentUser()).thenReturn(user);
-        when(documentRepository.findById(id)).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
         doThrow(new ResponseStatusException(HttpStatus.FORBIDDEN, "no access"))
-                .when(currentUserService).requireProjectAccess(user, document.getProject());
+                .when(currentUserService).requireSectionContentWriteAccess(user, section);
 
-        mockMvc.perform(post("/api/papers/{id}/review", id))
+        mockMvc.perform(post("/api/papers/{documentId}/sections/{sectionId}/review", documentId, sectionId))
                 .andExpect(status().isForbidden());
 
-        verify(aiEvaluationService, never()).submitPaperReview(any(), any(), any(), any());
+        verify(aiEvaluationService, never())
+                .submitSectionCitationReview(any(), any(), any(), any(), any());
     }
 
     @Test

@@ -11,6 +11,13 @@ public interface AiEvaluationService {
     JobSubmitResponse submitPaperReview(
             UUID projectId, UUID documentId, String targetStyle, UUID requestedByUserId);
 
+    JobSubmitResponse submitSectionCitationReview(
+            UUID projectId,
+            UUID documentId,
+            UUID sectionId,
+            String contentFingerprint,
+            UUID requestedByUserId);
+
     void process(UUID jobId);
 
     JobResponse getJob(UUID jobId);

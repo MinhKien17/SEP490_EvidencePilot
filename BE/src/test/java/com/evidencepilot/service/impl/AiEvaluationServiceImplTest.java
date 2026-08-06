@@ -1,6 +1,7 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.response.AiReviewResponse;
+import com.evidencepilot.dto.response.SectionCitationReviewResponse;
 import com.evidencepilot.model.AiEvaluationJob;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.PaperSection;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -32,13 +34,14 @@ class AiEvaluationServiceImplTest {
     private final ClaimQualityEvaluationService qualityService = mock(ClaimQualityEvaluationService.class);
     private final ClaimMatchingService matchingService = mock(ClaimMatchingService.class);
     private final PaperProcessingService paperProcessingService = mock(PaperProcessingService.class);
+    private final SectionCitationReviewService sectionCitationReviewService = mock(SectionCitationReviewService.class);
     private final RabbitTemplate rabbitTemplate = mock(RabbitTemplate.class);
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     private AiEvaluationServiceImpl service() {
         return new AiEvaluationServiceImpl(
                 jobRepository, paperSectionRepository, qualityService, matchingService,
-                paperProcessingService, rabbitTemplate, objectMapper);
+                paperProcessingService, sectionCitationReviewService, rabbitTemplate, objectMapper);
     }
 
     @Test
@@ -208,6 +211,70 @@ class AiEvaluationServiceImplTest {
     }
 
     @Test
+    void submitSectionCitationReview_publishesToDedicatedQueue() {
+        UUID projectId = UUID.randomUUID();
+        when(jobRepository.findByProjectIdAndKindAndStatusInOrderByCreatedAtDesc(
+                eq(projectId),
+                eq(AiEvaluationJob.KIND_SECTION_CITATION_REVIEW),
+                any())).thenReturn(List.of());
+        when(jobRepository.save(any(AiEvaluationJob.class))).thenAnswer(invocation -> {
+            AiEvaluationJob job = invocation.getArgument(0);
+            job.setId(UUID.randomUUID());
+            return job;
+        });
+
+        var response = service().submitSectionCitationReview(
+                projectId, UUID.randomUUID(), UUID.randomUUID(), "fingerprint", UUID.randomUUID());
+
+        assertThat(response.jobId()).isNotNull();
+        verify(rabbitTemplate).convertAndSend(
+                eq(com.evidencepilot.config.infrastructure.RabbitMQConfig.PAPER_REVIEW_QUEUE),
+                any(Map.class));
+    }
+
+    @Test
+    void process_sectionCitationReview_runsSectionReview() throws Exception {
+        UUID jobId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        UUID requesterId = UUID.randomUUID();
+        AiEvaluationJob job = job(
+                sectionId,
+                projectId,
+                objectMapper.writeValueAsString(Map.of(
+                        "documentId", documentId,
+                        "projectId", projectId,
+                        "sectionId", sectionId,
+                        "contentFingerprint", "fingerprint",
+                        "requestedByUserId", requesterId)));
+        job.setKind(AiEvaluationJob.KIND_SECTION_CITATION_REVIEW);
+        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
+        when(sectionCitationReviewService.run(
+                documentId, projectId, sectionId, "fingerprint", requesterId))
+                .thenReturn(new SectionCitationReviewResponse(
+                        "section-citation-v1",
+                        "citation-rules-v1",
+                        sectionId,
+                        1,
+                        "fingerprint",
+                        LocalDateTime.now(),
+                        "provider",
+                        "model",
+                        true,
+                        "Done",
+                        List.of(),
+                        List.of()));
+
+        service().process(jobId);
+
+        assertThat(job.getStatus()).isEqualTo(AiEvaluationJob.STATUS_SUCCESS);
+        assertThat(job.getResultJson()).contains("section-citation-v1");
+        verify(sectionCitationReviewService).run(
+                documentId, projectId, sectionId, "fingerprint", requesterId);
+    }
+
+    @Test
     void reenqueuePendingJobs_publishesEachPendingJob() {
         UUID jobId = UUID.randomUUID();
         AiEvaluationJob pending = job(UUID.randomUUID(), UUID.randomUUID(), "{\"x\":1}");
@@ -216,7 +283,7 @@ class AiEvaluationServiceImplTest {
 
         new AiEvaluationServiceImpl(
                 jobRepository, paperSectionRepository, qualityService, matchingService,
-                paperProcessingService, rabbitTemplate, objectMapper).reenqueuePendingJobs();
+                paperProcessingService, sectionCitationReviewService, rabbitTemplate, objectMapper).reenqueuePendingJobs();
 
         verify(rabbitTemplate).convertAndSend(
                 com.evidencepilot.config.infrastructure.RabbitMQConfig.AI_EVALUATION_QUEUE,

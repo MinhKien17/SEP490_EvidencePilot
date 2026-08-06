@@ -7,6 +7,9 @@ import com.evidencepilot.dto.response.PaperSectionResponse;
 import com.evidencepilot.dto.response.PaperValidationResponse;
 import com.evidencepilot.dto.response.JobSubmitResponse;
 import com.evidencepilot.dto.request.SectionContentUpdateRequest;
+import com.evidencepilot.dto.request.SectionReviewSourceMatchRequest;
+import com.evidencepilot.dto.response.SectionCitationReviewResponse;
+import com.evidencepilot.dto.response.SectionReviewSourceMatchesResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.Document;
@@ -30,6 +33,7 @@ import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.FormatScanService;
 import com.evidencepilot.service.AiEvaluationService;
 import com.evidencepilot.service.PaperProcessingService;
+import com.evidencepilot.service.impl.SectionCitationReviewService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -52,6 +56,8 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+
+import jakarta.validation.Valid;
 
 import java.util.List;
 import java.util.Map;
@@ -76,6 +82,7 @@ public class PaperController {
     private final CurrentUserService currentUserService;
     private final CheckpointService checkpointService;
     private final AiEvaluationService aiEvaluationService;
+    private final SectionCitationReviewService sectionCitationReviewService;
 
     @Operation(summary = "List all papers",
             description = "Returns all active paper documents. "
@@ -297,8 +304,8 @@ public class PaperController {
         return paperProcessingService.createSection(documentId, title, parentSectionId);
     }
 
-    @Operation(summary = "Generate AI paper review",
-            description = "Queues AI review for the paper and returns a jobId. "
+    @Operation(summary = "Generate AI citation review for a section",
+            description = "Queues citation-focused AI review for one saved section and returns a jobId. "
                     + "Poll GET /api/jobs/{jobId} for the result.")
     @ApiResponses({
             @ApiResponse(responseCode = "202", description = "Review queued"),
@@ -306,21 +313,45 @@ public class PaperController {
             @ApiResponse(responseCode = "403", description = "Access denied"),
             @ApiResponse(responseCode = "404", description = "Paper not found")
     })
-    @PostMapping("/papers/{id}/review")
-    public ResponseEntity<JobSubmitResponse> review(
-            @Parameter(description = "Paper document UUID") @PathVariable UUID id,
-            @Parameter(description = "Target output style (optional)") @RequestParam(required = false) String targetStyle) {
+    @PostMapping("/papers/{documentId}/sections/{sectionId}/review")
+    public ResponseEntity<JobSubmitResponse> reviewSection(
+            @Parameter(description = "Paper document UUID") @PathVariable UUID documentId,
+            @Parameter(description = "Section UUID") @PathVariable UUID sectionId) {
         User currentUser = currentUserService.requireCurrentUser();
-        Document document = documentRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException(id, "Document"));
-        Project project = document.getProject();
-        if (project == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "AI paper review requires a Project paper.");
-        }
-        currentUserService.requireProjectAccess(currentUser, project);
-        return ResponseEntity.accepted().body(aiEvaluationService.submitPaperReview(
-                project.getId(), id, targetStyle, currentUser.getId()));
+        PaperSection section = requireReviewSection(documentId, sectionId);
+        currentUserService.requireSectionContentWriteAccess(currentUser, section);
+        String fingerprint = sectionCitationReviewService.fingerprint(section);
+        return ResponseEntity.accepted().body(aiEvaluationService.submitSectionCitationReview(
+                section.getDocument().getProject().getId(),
+                documentId,
+                sectionId,
+                fingerprint,
+                currentUser.getId()));
+    }
+
+    @Operation(summary = "Get the current cached section citation review")
+    @GetMapping("/papers/{documentId}/sections/{sectionId}/review")
+    public ResponseEntity<SectionCitationReviewResponse> getSectionReview(
+            @PathVariable UUID documentId,
+            @PathVariable UUID sectionId) {
+        User currentUser = currentUserService.requireCurrentUser();
+        PaperSection section = requireReviewSection(documentId, sectionId);
+        currentUserService.requireProjectAccess(currentUser, section.getDocument().getProject());
+        return sectionCitationReviewService.cached(documentId, sectionId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    @Operation(summary = "Find related project sources for section review findings")
+    @PostMapping("/papers/{documentId}/sections/{sectionId}/review/source-matches")
+    public SectionReviewSourceMatchesResponse findReviewSources(
+            @PathVariable UUID documentId,
+            @PathVariable UUID sectionId,
+            @Valid @RequestBody SectionReviewSourceMatchRequest request) {
+        User currentUser = currentUserService.requireCurrentUser();
+        PaperSection section = requireReviewSection(documentId, sectionId);
+        currentUserService.requireProjectAccess(currentUser, section.getDocument().getProject());
+        return sectionCitationReviewService.sourceMatches(documentId, sectionId, request);
     }
 
     @Operation(summary = "Soft-delete a paper",
@@ -501,5 +532,15 @@ public class PaperController {
         return instructorFeedbackRepository
                 .findByRequestProjectId(section.getDocument().getProject().getId()).stream()
                 .anyMatch(f -> section.getId().equals(f.getSection().getId()));
+    }
+
+    private PaperSection requireReviewSection(UUID documentId, UUID sectionId) {
+        return paperSectionRepository.findByIdWithDocument(sectionId)
+                .filter(PaperSection::isActive)
+                .filter(section -> documentId.equals(section.getDocument().getId()))
+                .filter(section -> section.getDocument().isActive())
+                .filter(section -> section.getDocument().getDocType() == DocumentType.PAPER)
+                .filter(section -> section.getDocument().getProject() != null)
+                .orElseThrow(() -> new ResourceNotFoundException(sectionId, "PaperSection"));
     }
 }

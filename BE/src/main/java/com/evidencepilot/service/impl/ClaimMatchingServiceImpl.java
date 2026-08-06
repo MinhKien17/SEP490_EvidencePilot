@@ -1,6 +1,5 @@
 package com.evidencepilot.service.impl;
 
-import com.evidencepilot.dto.QdrantSearchResult;
 import com.evidencepilot.dto.response.AiSuggestionResponse;
 import com.evidencepilot.dto.response.ClaimMatchCandidateResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
@@ -9,19 +8,16 @@ import com.evidencepilot.model.AiSuggestion;
 import com.evidencepilot.model.Claim;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
-import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.EvidenceRelation;
 import com.evidencepilot.model.enums.SuggestionStatus;
 import com.evidencepilot.repository.AiSuggestionRepository;
 import com.evidencepilot.repository.ClaimRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
-import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.ClaimMatchingService;
 import com.evidencepilot.service.EvidenceScoringService;
-import com.evidencepilot.service.QdrantClient;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -32,11 +28,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -68,13 +62,12 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
             """;
 
     private final ClaimRepository claimRepository;
-    private final DocumentRepository documentRepository;
     private final DocumentChunkRepository documentChunkRepository;
     private final AiSuggestionRepository aiSuggestionRepository;
     private final ProjectDocumentRepository projectDocumentRepository;
     private final ClaimMapper claimMapper;
     private final AiModelClient aiModelClient;
-    private final QdrantClient qdrantClient;
+    private final SourceMatchingService sourceMatchingService;
     private final EvidenceScoringService evidenceScoringService;
     private final ObjectMapper objectMapper;
 
@@ -82,24 +75,10 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
     @Transactional(readOnly = true)
     public List<ClaimMatchCandidateResponse> searchMatches(UUID claimId, UUID projectId) {
         Claim claim = requireActiveClaim(claimId, projectId);
-        List<String> documentIds = activeSourceDocumentIds(projectId).stream()
-                .map(UUID::toString)
-                .toList();
-        if (documentIds.isEmpty()) {
-            return List.of();
-        }
-
-        List<Float> embedding = aiModelClient.generateEmbedding(claim.getContent());
-        List<QdrantSearchResult> matches = qdrantClient.findClosestChunks(
-                embedding, documentIds, TOP_K);
-        if (matches == null || matches.isEmpty()) {
-            return List.of();
-        }
-
-        return matches.stream()
-                .map(match -> matchedSourceChunk(match, projectId)
-                        .map(chunk -> toCandidate(chunk, match)))
-                .flatMap(Optional::stream)
+        return sourceMatchingService.search(
+                        projectId, List.of(claim.getContent()), TOP_K)
+                .getFirst().stream()
+                .map(this::toCandidate)
                 .toList();
     }
 
@@ -170,37 +149,6 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
                 .orElseThrow(() -> new ResourceNotFoundException(claimId, "Claim"));
     }
 
-    private Set<UUID> activeSourceDocumentIds(UUID projectId) {
-        Set<UUID> documentIds = new LinkedHashSet<>();
-        documentRepository.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.SOURCE)
-                .forEach(document -> documentIds.add(document.getId()));
-        projectDocumentRepository.findByProjectId(projectId).stream()
-                .map(ProjectDocument::getDocument)
-                .filter(Document::isActive)
-                .filter(document -> document.getDocType() == DocumentType.SOURCE)
-                .forEach(document -> documentIds.add(document.getId()));
-        return documentIds;
-    }
-
-    private Optional<DocumentChunk> matchedSourceChunk(
-            QdrantSearchResult match,
-            UUID projectId) {
-        UUID chunkId;
-        try {
-            chunkId = UUID.fromString(match.chunkId());
-        } catch (IllegalArgumentException e) {
-            log.warn("Qdrant returned invalid chunk id {}, skipping", match.chunkId());
-            return Optional.empty();
-        }
-
-        return documentChunkRepository.findById(chunkId)
-                .filter(DocumentChunk::isActive)
-                .filter(chunk -> chunk.getDocument() != null)
-                .filter(chunk -> chunk.getDocument().isActive())
-                .filter(chunk -> chunk.getDocument().getDocType() == DocumentType.SOURCE)
-                .filter(chunk -> isDocumentInProject(chunk.getDocument(), projectId));
-    }
-
     private void requireEligibleSourceChunk(DocumentChunk chunk, UUID projectId) {
         if (!chunk.isActive()
                 || chunk.getDocument() == null
@@ -220,16 +168,15 @@ public class ClaimMatchingServiceImpl implements ClaimMatchingService {
         return projectDocumentRepository.existsByProjectIdAndDocumentId(projectId, document.getId());
     }
 
-    private ClaimMatchCandidateResponse toCandidate(
-            DocumentChunk chunk,
-            QdrantSearchResult match) {
+    private ClaimMatchCandidateResponse toCandidate(SourceMatchingService.SourceMatch match) {
+        DocumentChunk chunk = match.chunk();
         return new ClaimMatchCandidateResponse(
                 chunk.getId(),
                 chunk.getDocument().getId(),
                 sourceName(chunk),
                 chunk.getChunkIndex(),
                 chunk.getText(),
-                match.score().floatValue());
+                match.similarityScore());
     }
 
     private String buildEvaluationContext(String claim, String sourceChunk) {

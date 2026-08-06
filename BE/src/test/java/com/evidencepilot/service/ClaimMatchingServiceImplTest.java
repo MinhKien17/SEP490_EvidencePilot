@@ -18,6 +18,7 @@ import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.service.impl.ClaimMatchingServiceImpl;
+import com.evidencepilot.service.impl.SourceMatchingService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -74,14 +75,15 @@ class ClaimMatchingServiceImplTest {
         when(claimRepository.findById(claim.getId())).thenReturn(Optional.of(claim));
         when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
                 projectId, DocumentType.SOURCE)).thenReturn(List.of(source));
-        when(aiModelClient.generateEmbedding(claim.getContent())).thenReturn(embedding);
+        when(aiModelClient.generateEmbeddings(List.of(claim.getContent())))
+                .thenReturn(List.of(embedding));
         when(qdrantClient.findClosestChunks(
                 embedding, List.of(source.getId().toString()), 20))
                 .thenReturn(List.of(
                         new QdrantSearchResult(sourceChunk.getId().toString(), new BigDecimal("0.82")),
                         new QdrantSearchResult(paperChunk.getId().toString(), new BigDecimal("0.91"))));
-        when(documentChunkRepository.findById(sourceChunk.getId())).thenReturn(Optional.of(sourceChunk));
-        when(documentChunkRepository.findById(paperChunk.getId())).thenReturn(Optional.of(paperChunk));
+        when(documentChunkRepository.findByIdWithDocument(sourceChunk.getId())).thenReturn(Optional.of(sourceChunk));
+        when(documentChunkRepository.findByIdWithDocument(paperChunk.getId())).thenReturn(Optional.of(paperChunk));
 
         List<ClaimMatchCandidateResponse> candidates = service()
                 .searchMatches(claim.getId(), projectId);
@@ -216,15 +218,20 @@ class ClaimMatchingServiceImplTest {
     }
 
     private ClaimMatchingServiceImpl service() {
+        SourceMatchingService sourceMatchingService = new SourceMatchingService(
+                documentRepository,
+                projectDocumentRepository,
+                documentChunkRepository,
+                aiModelClient,
+                qdrantClient);
         return new ClaimMatchingServiceImpl(
                 claimRepository,
-                documentRepository,
                 documentChunkRepository,
                 aiSuggestionRepository,
                 projectDocumentRepository,
                 claimMapper,
                 aiModelClient,
-                qdrantClient,
+                sourceMatchingService,
                 new EvidenceScoringService(),
                 new ObjectMapper());
     }
