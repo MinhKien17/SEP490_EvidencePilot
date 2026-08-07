@@ -185,7 +185,7 @@ CREATE TABLE section_audit_findings (
     id BINARY(16) NOT NULL PRIMARY KEY,
     project_id BINARY(16) NOT NULL,
     section_id BINARY(16) NOT NULL,
-    content_fingerprint CHAR(64) NOT NULL,
+    content_fingerprint VARCHAR(64) NOT NULL,
     start_index INT NOT NULL,
     end_index INT NOT NULL,
     original_text_snippet TEXT NOT NULL,

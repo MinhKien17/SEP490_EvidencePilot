@@ -40,7 +40,7 @@ public class SectionAuditFinding {
     @JoinColumn(name = "section_id", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     private PaperSection section;
 
-    @Column(name = "content_fingerprint", nullable = false, length = 64)
+    @Column(name = "content_fingerprint", nullable = false, length = 64, columnDefinition = "VARCHAR(64)")
     private String contentFingerprint;
 
     @Column(name = "start_index", nullable = false)
