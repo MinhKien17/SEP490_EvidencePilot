@@ -115,6 +115,10 @@ class GlobalExceptionHandlerTest {
     void securityConfig_allowsPublicHealthAndOptions() throws Exception {
         mockMvc.perform(get("/api/health"))
                 .andExpect(status().isOk());
+        mockMvc.perform(get("/api/health/live"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/health/ready"))
+                .andExpect(status().isOk());
         mockMvc.perform(options("/api/projects"))
                 .andExpect(status().isOk());
     }
