@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -27,7 +28,16 @@ public class FormatScanServiceImpl implements FormatScanService {
     private static final Pattern FIRST_PERSON = Pattern.compile(
             "\\b(I|we|my|our|us|mine|ours)\\b", Pattern.CASE_INSENSITIVE);
     private static final int ABSTRACT_MAX_WORDS = 250;
+    private static final int EXCESSIVE_QUOTATION_MIN_WORDS = 40;
     private static final Pattern CITE_PATTERN = Pattern.compile("\\\\cite(?:\\[[^\\]]*\\])?\\{[^}]+\\}");
+    private static final Pattern QUOTATION_ENVIRONMENT = Pattern.compile(
+            "\\\\begin\\{(quote|quotation)}(.*?)\\\\end\\{\\1}", Pattern.DOTALL);
+    private static final Pattern TEX_QUOTATION = Pattern.compile("``(.*?)''", Pattern.DOTALL);
+    private static final Pattern CURLY_QUOTATION = Pattern.compile("“(.*?)”", Pattern.DOTALL);
+    private static final Pattern ASCII_QUOTATION = Pattern.compile("(?<!\\\\)\"(.*?)(?<!\\\\)\"", Pattern.DOTALL);
+    private static final Pattern LATEX_COMMENT = Pattern.compile("(?m)(?<!\\\\)%.*$");
+    private static final Pattern LATEX_COMMAND_NAME = Pattern.compile("\\\\[a-zA-Z]+\\*?");
+    private static final Pattern WORD = Pattern.compile("[\\p{L}\\p{N}]+(?:['’\\-][\\p{L}\\p{N}]+)*");
 
     private final DocumentRepository documentRepository;
     private final PaperSectionRepository paperSectionRepository;
@@ -54,6 +64,7 @@ public class FormatScanServiceImpl implements FormatScanService {
 
             checkFirstPerson(tex, title, findings);
             checkAbstractRules(tex, title, findings);
+            checkExcessiveQuotation(tex, title, findings);
         }
 
         checkCitationCoverage(citationResult, findings);
@@ -92,6 +103,61 @@ public class FormatScanServiceImpl implements FormatScanService {
         }
     }
 
+    private void checkExcessiveQuotation(String tex, String sectionTitle, List<ScanFinding> findings) {
+        String content = LATEX_COMMENT.matcher(tex).replaceAll("");
+        List<QuoteSpan> quotes = new ArrayList<>();
+        collectQuoteSpans(QUOTATION_ENVIRONMENT, 2, content, quotes);
+        collectQuoteSpans(TEX_QUOTATION, 1, content, quotes);
+        collectQuoteSpans(CURLY_QUOTATION, 1, content, quotes);
+        collectQuoteSpans(ASCII_QUOTATION, 1, content, quotes);
+        quotes.sort(Comparator.comparingInt(QuoteSpan::start)
+                .thenComparing(Comparator.comparingInt(QuoteSpan::end).reversed()));
+
+        int coveredUntil = -1;
+        for (QuoteSpan quote : quotes) {
+            if (quote.start() < coveredUntil) {
+                continue;
+            }
+            coveredUntil = quote.end();
+            int wordCount = countWords(plainQuoteText(quote.text()));
+            if (wordCount < EXCESSIVE_QUOTATION_MIN_WORDS) {
+                continue;
+            }
+            findings.add(new ScanFinding("EXCESSIVE_QUOTATION", "WARN",
+                    sectionTitle.isEmpty() ? "general" : sectionTitle,
+                    "Marked quotation contains " + wordCount + " words (review threshold: "
+                            + EXCESSIVE_QUOTATION_MIN_WORDS + ").",
+                    "Keep the quotation only when necessary, cite its source, and use the required block-quote formatting."));
+        }
+    }
+
+    private static void collectQuoteSpans(
+            Pattern pattern, int contentGroup, String content, List<QuoteSpan> quotes) {
+        var matcher = pattern.matcher(content);
+        while (matcher.find()) {
+            quotes.add(new QuoteSpan(
+                    matcher.start(contentGroup), matcher.end(contentGroup), matcher.group(contentGroup)));
+        }
+    }
+
+    private static String plainQuoteText(String text) {
+        String withoutCitations = CITE_PATTERN.matcher(text).replaceAll(" ");
+        return LATEX_COMMAND_NAME.matcher(withoutCitations).replaceAll(" ")
+                .replace('{', ' ')
+                .replace('}', ' ')
+                .replace('[', ' ')
+                .replace(']', ' ');
+    }
+
+    private static int countWords(String text) {
+        var matcher = WORD.matcher(text);
+        int count = 0;
+        while (matcher.find()) {
+            count++;
+        }
+        return count;
+    }
+
     private void checkCitationCoverage(CitationValidationResponse citationResult, List<ScanFinding> findings) {
         if (citationResult.totalCitations() == 0) {
             findings.add(new ScanFinding("CITATIONS", "WARN",
@@ -116,4 +182,6 @@ public class FormatScanServiceImpl implements FormatScanService {
     private static String truncate(String s, int max) {
         return s.length() <= max ? s : s.substring(0, max) + "...";
     }
+
+    private record QuoteSpan(int start, int end, String text) {}
 }

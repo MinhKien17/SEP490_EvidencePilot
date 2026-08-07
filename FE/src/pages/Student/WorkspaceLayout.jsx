@@ -84,6 +84,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const [showSubmitReviewModal, setShowSubmitReviewModal] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [citationResult, setCitationResult] = useState(null);
+  const [showFormatScanModal, setShowFormatScanModal] = useState(false);
   const [loadingCitation, setLoadingCitation] = useState(false);
 
   const [loadingAiReview, setLoadingAiReview] = useState(false);
@@ -140,6 +141,19 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const aiReviewJobRef = useRef(null);
   const aiReviewRequestRef = useRef(0);
   const aiSourceRequestRef = useRef(0);
+  const formatScanRequestRef = useRef(0);
+
+  const formatScanInputKey = useMemo(() => {
+    if (!selectedPaper?.id) return '';
+    const sectionState = sections
+      .map(section => [section.id, section.sectionOrder, section.sectionTitle, section.active, section.contentTex].join('\u0001'))
+      .join('\u0002');
+    const sourceState = sources
+      .map(source => [source.id, source.active, source.processingStatus].join('\u0001'))
+      .sort()
+      .join('\u0002');
+    return [selectedPaper.id, project?.targetStandard || '', sectionState, sourceState].join('\u0003');
+  }, [project?.targetStandard, sections, selectedPaper?.id, sources]);
 
   const updateCode = (newVal) => {
     codeContentRef.current = newVal;
@@ -232,6 +246,39 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     editorRef.current?.setReviewRanges([]);
   }, [selectedPaper?.id, selectedSectionId]);
 
+  useEffect(() => {
+    if (!selectedPaper?.id) {
+      formatScanRequestRef.current += 1;
+      setCitationResult(null);
+      setShowFormatScanModal(false);
+      return undefined;
+    }
+
+    const paperId = selectedPaper.id;
+    const requestId = ++formatScanRequestRef.current;
+    setCitationResult(null);
+    setShowFormatScanModal(false);
+    const timer = window.setTimeout(async () => {
+      setLoadingCitation(true);
+      try {
+        const response = await api.get(`/api/papers/${paperId}/format-scan`);
+        if (formatScanRequestRef.current === requestId) {
+          setCitationResult(response.data);
+        }
+      } catch {
+        if (formatScanRequestRef.current === requestId) {
+          setCitationResult(null);
+          showToast(t('formatScanFailed'));
+        }
+      } finally {
+        if (formatScanRequestRef.current === requestId) {
+          setLoadingCitation(false);
+        }
+      }
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [formatScanInputKey]);
+
   const fetchClaims = async () => {
     if (!legacyClaimsEnabled || !project) return;
     const r = await api.get(`/api/projects/${project.id}/claims`, {
@@ -322,6 +369,8 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     setClaimCandidates([]);
     setCandidateError('');
     setCitationResult(null);
+    setShowFormatScanModal(false);
+    formatScanRequestRef.current += 1;
     setAiReviewResult(null);
     setAiReviewError(null);
     setAiReviewedContent('');
@@ -1026,13 +1075,21 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const handleScanCitations = async () => {
     if (isLocked) { showToast(t('projectLocked')); return; }
     if (!selectedPaper) { showToast(t('selectPaperFirst')); return; }
+    const requestId = ++formatScanRequestRef.current;
     setLoadingCitation(true);
     setCitationResult(null);
+    setShowFormatScanModal(false);
     try {
       const r = await api.get(`/api/papers/${selectedPaper.id}/format-scan`);
-      setCitationResult(r.data);
-    } catch { showToast(t('formatScanFailed')); }
-    finally { setLoadingCitation(false); }
+      if (formatScanRequestRef.current === requestId) {
+        setCitationResult(r.data);
+        setShowFormatScanModal(true);
+      }
+    } catch {
+      if (formatScanRequestRef.current === requestId) showToast(t('formatScanFailed'));
+    } finally {
+      if (formatScanRequestRef.current === requestId) setLoadingCitation(false);
+    }
   };
 
   const fetchAiReviewSources = async (review, reviewRequestId = aiReviewRequestRef.current) => {
@@ -1597,7 +1654,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         </div>
       )}
 
-      {citationResult && (
+      {showFormatScanModal && citationResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-(--surface) rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center px-6 py-4 border-b border-(--border-light) bg-(--surface-secondary) shrink-0">
@@ -1633,7 +1690,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
               )}
             </div>
             <div className="px-6 py-4 border-t border-(--border-light) bg-(--surface-secondary) flex justify-end shrink-0">
-              <button onClick={() => setCitationResult(null)} className="px-4 py-2 text-xs font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors border border-(--border) bg-(--surface) cursor-pointer">{t('close')}</button>
+              <button onClick={() => setShowFormatScanModal(false)} className="px-4 py-2 text-xs font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors border border-(--border) bg-(--surface) cursor-pointer">{t('close')}</button>
             </div>
           </div>
         </div>
