@@ -38,7 +38,6 @@ class ProjectRouteMappingTest {
             SourceController.class,
             SystemNotificationController.class,
             TraceabilityExportController.class,
-            SectionAuditController.class,
             UserController.class,
             JobController.class
     };
@@ -143,9 +142,6 @@ class ProjectRouteMappingTest {
                 "PATCH /api/notifications/{id}/read",
                 "GET /api/projects/{projectId}/traceability",
                 "GET /api/projects/{projectId}/traceability/csv",
-                "POST /api/projects/{projectId}/sections/{sectionId}/audit",
-                "GET /api/sections/{sectionId}/findings",
-                "PATCH /api/sections/findings/{id}/status",
                 "GET /api/projects/{projectId}/progress-report",
                 "GET /api/projects/{projectId}/checkpoints/diff",
                 "GET /api/projects/{projectId}/checkpoints/latest/sections/{sectionId}",
@@ -165,7 +161,7 @@ class ProjectRouteMappingTest {
                 "POST /api/projects/{projectId}/papers/init",
                 "POST /api/projects/{projectId}/papers/reset-standard",
                 "GET /api/jobs/{jobId}"));
-        assertThat(routes).hasSize(115);
+        assertThat(routes).hasSize(112);
     }
 
     @Test

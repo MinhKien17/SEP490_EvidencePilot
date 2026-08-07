@@ -24,7 +24,6 @@ public class AiEvaluationJob {
     public static final String STATUS_SUCCESS = "SUCCESS";
     public static final String STATUS_FAILED = "FAILED";
 
-    public static final String KIND_SECTION_AUDIT = "SECTION_AUDIT";
     public static final String KIND_SECTION_CITATION_REVIEW = "SECTION_CITATION_REVIEW";
 
     @Id

@@ -1,6 +1,5 @@
 package com.evidencepilot.service.impl;
 
-import com.evidencepilot.dto.response.SectionAuditResponse;
 import com.evidencepilot.dto.response.SectionCitationReviewResponse;
 import com.evidencepilot.model.AiEvaluationJob;
 import com.evidencepilot.repository.AiEvaluationJobRepository;
@@ -27,14 +26,13 @@ class AiEvaluationServiceImplTest {
     private final AiEvaluationJobRepository jobRepository = mock(AiEvaluationJobRepository.class);
     private final PaperSectionRepository paperSectionRepository = mock(PaperSectionRepository.class);
     private final SectionCitationReviewService sectionCitationReviewService = mock(SectionCitationReviewService.class);
-    private final SectionAuditService sectionAuditService = mock(SectionAuditService.class);
     private final RabbitTemplate rabbitTemplate = mock(RabbitTemplate.class);
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     private AiEvaluationServiceImpl service() {
         return new AiEvaluationServiceImpl(
                 jobRepository, paperSectionRepository, sectionCitationReviewService,
-                sectionAuditService, rabbitTemplate, objectMapper);
+                rabbitTemplate, objectMapper);
     }
 
     @Test
@@ -71,7 +69,7 @@ class AiEvaluationServiceImplTest {
             return job;
         });
 
-        var response = service().submit(projectId, AiEvaluationJob.KIND_SECTION_AUDIT, "{\"x\":1}");
+        var response = service().submit(projectId, AiEvaluationJob.KIND_SECTION_CITATION_REVIEW, "{\"x\":1}");
 
         assertThat(response.jobId()).isNotNull();
         verify(rabbitTemplate).convertAndSend(
@@ -141,52 +139,6 @@ class AiEvaluationServiceImplTest {
         assertThat(job.getResultJson()).contains("section-citation-v1");
         verify(sectionCitationReviewService).run(
                 documentId, projectId, sectionId, "fingerprint", requesterId);
-    }
-
-    @Test
-    void process_sectionAudit_runsSectionAudit() throws Exception {
-        UUID jobId = UUID.randomUUID();
-        UUID projectId = UUID.randomUUID();
-        UUID sectionId = UUID.randomUUID();
-        UUID requesterId = UUID.randomUUID();
-        AiEvaluationJob job = job(
-                sectionId,
-                projectId,
-                objectMapper.writeValueAsString(Map.of(
-                        "projectId", projectId,
-                        "sectionId", sectionId,
-                        "contentFingerprint", "fingerprint",
-                        "requestedByUserId", requesterId)));
-        job.setKind(AiEvaluationJob.KIND_SECTION_AUDIT);
-        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
-        when(sectionAuditService.run(projectId, sectionId, "fingerprint", requesterId))
-                .thenReturn(new SectionAuditResponse(sectionId, "fingerprint", List.of()));
-
-        service().process(jobId);
-
-        assertThat(job.getStatus()).isEqualTo(AiEvaluationJob.STATUS_SUCCESS);
-        assertThat(job.getResultJson()).contains("\"fingerprint\"");
-        verify(sectionAuditService).run(projectId, sectionId, "fingerprint", requesterId);
-    }
-
-    @Test
-    void submitSectionAudit_dedupesInFlightJob() {
-        UUID projectId = UUID.randomUUID();
-        UUID sectionId = UUID.randomUUID();
-        AiEvaluationJob inFlight = job(sectionId, projectId, "{\"sectionId\":\""
-                + sectionId + "\",\"contentFingerprint\":\"fp\",\"projectId\":\""
-                + projectId + "\",\"requestedByUserId\":\""
-                + UUID.randomUUID() + "\"}");
-        inFlight.setKind(AiEvaluationJob.KIND_SECTION_AUDIT);
-        when(jobRepository.findByProjectIdAndKindAndStatusInOrderByCreatedAtDesc(
-                eq(projectId),
-                eq(AiEvaluationJob.KIND_SECTION_AUDIT),
-                any())).thenReturn(List.of(inFlight));
-
-        var response = service().submitSectionAudit(projectId, sectionId, "fp", UUID.randomUUID());
-
-        assertThat(response.jobId()).isEqualTo(inFlight.getId());
-        verify(jobRepository, org.mockito.Mockito.never()).save(any(AiEvaluationJob.class));
     }
 
     @Test

@@ -64,7 +64,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
-@Tag(name = "Papers", description = "Student paper submissions, sections, and AI review")
+@Tag(name = "Papers", description = "Student paper submissions, sections, and Citation Review")
 public class PaperController {
 
     private final DocumentService documentService;
@@ -302,7 +302,7 @@ public class PaperController {
     }
 
     @Operation(summary = "Generate AI citation review for a section",
-            description = "Queues citation-focused AI review for one saved section and returns a jobId. "
+            description = "Queues Citation Review for one saved section and returns a jobId. "
                     + "Poll GET /api/jobs/{jobId} for the result.")
     @ApiResponses({
             @ApiResponse(responseCode = "202", description = "Review queued"),

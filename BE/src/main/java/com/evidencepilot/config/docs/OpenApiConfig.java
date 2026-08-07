@@ -32,15 +32,14 @@ import java.util.Set;
                 @Tag(name = "Users", description = "User lookup and profile self-service endpoints"),
                 @Tag(name = "Health", description = "Backend and AI worker health checks"),
                 @Tag(name = "Projects", description = "Project lifecycle and membership management"),
-                @Tag(name = "Papers", description = "Student paper submissions, sections, and AI review"),
+                @Tag(name = "Papers", description = "Student paper submissions, sections, and Citation Review"),
                 @Tag(name = "Sources", description = "Source document management"),
                 @Tag(name = "Source Categories", description = "Source category configuration"),
                 @Tag(name = "Collections", description = "Instructor collection (evidence library) management"),
                 @Tag(name = "Documents", description = "Document metadata, chunks, and text retrieval"),
                 @Tag(name = "Feedback", description = "Feedback request lifecycle and instructor review"),
                 @Tag(name = "System Notifications", description = "In-app notification inbox and read state"),
-                @Tag(name = "Traceability", description = "Project-level traceability matrix export"),
-                @Tag(name = "Section Audits", description = "AI paraphrase-risk and quotation audit of paper sections")
+                @Tag(name = "Traceability", description = "Project-level traceability matrix export")
         },
         security = @SecurityRequirement(name = "Bearer Authentication")
 )
@@ -59,15 +58,14 @@ public class OpenApiConfig {
             modelTag("Users", "User lookup and profile self-service endpoints"),
             modelTag("Health", "Backend and AI worker health checks"),
             modelTag("Projects", "Project lifecycle and membership management"),
-            modelTag("Papers", "Student paper submissions, sections, and AI review"),
+            modelTag("Papers", "Student paper submissions, sections, and Citation Review"),
             modelTag("Sources", "Source document management"),
             modelTag("Source Categories", "Source category configuration"),
             modelTag("Collections", "Instructor collection (evidence library) management"),
             modelTag("Documents", "Document metadata, chunks, and text retrieval"),
             modelTag("Feedback", "Feedback request lifecycle and instructor review"),
             modelTag("System Notifications", "In-app notification inbox and read state"),
-            modelTag("Traceability", "Project-level traceability matrix export"),
-            modelTag("Section Audits", "AI paraphrase-risk and quotation audit of paper sections")
+            modelTag("Traceability", "Project-level traceability matrix export")
     );
 
     @Bean

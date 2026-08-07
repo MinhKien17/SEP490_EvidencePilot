@@ -174,37 +174,9 @@ CREATE TABLE project_media (
     FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- ==========================================
--- 6. SECTION AUDIT FINDINGS (interactive state)
--- ==========================================
 DROP TABLE IF EXISTS claim_evidence_mappings;
 DROP TABLE IF EXISTS ai_suggestions;
 DROP TABLE IF EXISTS claims;
-
-CREATE TABLE section_audit_findings (
-    id BINARY(16) NOT NULL PRIMARY KEY,
-    project_id BINARY(16) NOT NULL,
-    section_id BINARY(16) NOT NULL,
-    content_fingerprint VARCHAR(64) NOT NULL,
-    start_index INT NOT NULL,
-    end_index INT NOT NULL,
-    original_text_snippet TEXT NOT NULL,
-    issue_type VARCHAR(100) NOT NULL,
-    suggested_paraphrase TEXT,
-    rationale TEXT NOT NULL,
-    status VARCHAR(20) NOT NULL CHECK (status IN ('PENDING','RESOLVED','DISMISSED')),
-    created_by BINARY(16),
-    model_name VARCHAR(255),
-    prompt_version VARCHAR(255),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_saf_section_status (section_id, status),
-    INDEX idx_saf_project (project_id),
-    CONSTRAINT fk_saf_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-    CONSTRAINT fk_saf_section FOREIGN KEY (section_id) REFERENCES paper_sections(id) ON DELETE CASCADE,
-    CONSTRAINT fk_saf_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-    CONSTRAINT chk_saf_offsets CHECK (start_index >= 0 AND end_index > start_index)
-);
 
 -- ==========================================
 -- 7. SHARED COLLECTIONS & DOCUMENTS

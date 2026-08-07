@@ -1,10 +1,5 @@
 package com.evidencepilot.service;
 
-import com.evidencepilot.dto.ai.AuditedSnippet;
-import com.evidencepilot.dto.ai.EvaluationCriterion;
-import com.evidencepilot.dto.ai.SectionAuditFlags;
-import com.evidencepilot.dto.ai.SectionContextRequest;
-import com.evidencepilot.dto.ai.SectionContextResponse;
 import com.evidencepilot.service.impl.AiModelClientImpl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -184,38 +179,6 @@ class AiModelClientTest {
                 .generate("system", "prompt"))
                 .isInstanceOf(AiModelClient.AiApiException.class)
                 .hasMessageContaining("empty response");
-    }
-
-    @Test
-    void auditSectionPostsSnakeCasePayloadAndParsesResponse() {
-        RestClient.Builder builder = RestClient.builder();
-        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
-        server.expect(requestTo("http://ai.test/audit/section"))
-                .andExpect(method(HttpMethod.POST))
-                .andExpect(content().json("""
-                        {
-                          "section_name":"Introduction",
-                          "current_context":"Full section",
-                          "source_chunk":"Full section",
-                          "evaluation_criteria":[{"code":"PARAPHRASE_RISK","description":"d","weight":0.6}],
-                          "flags":{"requires_citation_check":false}
-                        }
-                        """, true))
-                .andRespond(withSuccess("""
-                        {"snippets":[{"original_text_snippet":"Full section","start_index":0,"end_index":12,
-                        "issue_type":"PARAPHRASE_RISK","rationale":"r","suggested_paraphrase":null}]}
-                        """, MediaType.APPLICATION_JSON));
-
-        SectionContextResponse response = new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper())
-                .auditSection(new SectionContextRequest(
-                        "Introduction", "Full section", "Full section",
-                        List.of(new EvaluationCriterion("PARAPHRASE_RISK", "d", 0.6)),
-                        new SectionAuditFlags(false)));
-
-        assertThat(response.snippets()).hasSize(1);
-        assertThat(response.snippets().getFirst().originalTextSnippet()).isEqualTo("Full section");
-        assertThat(response.snippets().getFirst().issueType()).isEqualTo("PARAPHRASE_RISK");
-        server.verify();
     }
 
     private static byte[] extractionZip() throws IOException {

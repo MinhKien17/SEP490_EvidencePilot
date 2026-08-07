@@ -36,8 +36,6 @@ public class GraphServiceImpl implements GraphService {
         }
         currentUserService.requireProjectAccess(currentUser, project);
 
-        // ponytail: claim nodes were removed with the Claim purge; the graph is
-        // rebuilt from section_audit_findings in the section-audit phase
         List<GraphResponse.GraphSectionSummary> sectionSummaries = documentRepository
                 .findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER)
                 .stream()

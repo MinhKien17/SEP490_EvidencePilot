@@ -15,12 +15,6 @@ public interface AiEvaluationService {
             String contentFingerprint,
             UUID requestedByUserId);
 
-    JobSubmitResponse submitSectionAudit(
-            UUID projectId,
-            UUID sectionId,
-            String contentFingerprint,
-            UUID requestedByUserId);
-
     void process(UUID jobId);
 
     JobResponse getJob(UUID jobId);

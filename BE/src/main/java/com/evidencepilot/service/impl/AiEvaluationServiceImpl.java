@@ -31,7 +31,6 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
     private final AiEvaluationJobRepository jobRepository;
     private final PaperSectionRepository paperSectionRepository;
     private final SectionCitationReviewService sectionCitationReviewService;
-    private final SectionAuditService sectionAuditService;
     private final RabbitTemplate rabbitTemplate;
     private final ObjectMapper objectMapper;
 
@@ -74,33 +73,6 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
             return submit(projectId, AiEvaluationJob.KIND_SECTION_CITATION_REVIEW, payload);
         } catch (Exception exception) {
             throw new IllegalStateException("Could not serialize section citation review job", exception);
-        }
-    }
-
-    @Override
-    public synchronized JobSubmitResponse submitSectionAudit(
-            UUID projectId,
-            UUID sectionId,
-            String contentFingerprint,
-            UUID requestedByUserId) {
-        for (AiEvaluationJob job : jobRepository
-                .findByProjectIdAndKindAndStatusInOrderByCreatedAtDesc(
-                        projectId,
-                        AiEvaluationJob.KIND_SECTION_AUDIT,
-                        List.of(AiEvaluationJob.STATUS_PENDING, AiEvaluationJob.STATUS_PROCESSING))) {
-            if (sameSectionAudit(job, sectionId, contentFingerprint)) {
-                return new JobSubmitResponse(job.getId());
-            }
-        }
-        try {
-            String payload = objectMapper.writeValueAsString(Map.of(
-                    "projectId", projectId,
-                    "sectionId", sectionId,
-                    "contentFingerprint", contentFingerprint,
-                    "requestedByUserId", requestedByUserId));
-            return submit(projectId, AiEvaluationJob.KIND_SECTION_AUDIT, payload);
-        } catch (Exception exception) {
-            throw new IllegalStateException("Could not serialize section audit job", exception);
         }
     }
 
@@ -176,34 +148,8 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
                         payload.path("contentFingerprint").asText(),
                         requestedByUserId));
             }
-            case AiEvaluationJob.KIND_SECTION_AUDIT -> {
-                UUID projectId = UUID.fromString(payload.path("projectId").asText());
-                UUID sectionId = UUID.fromString(payload.path("sectionId").asText());
-                UUID requestedByUserId = UUID.fromString(
-                        payload.path("requestedByUserId").asText());
-                if (!job.getProjectId().equals(projectId)) {
-                    throw new IllegalArgumentException(
-                            "Section audit payload project does not match its job");
-                }
-                yield objectMapper.valueToTree(sectionAuditService.run(
-                        projectId,
-                        sectionId,
-                        payload.path("contentFingerprint").asText(),
-                        requestedByUserId));
-            }
             default -> throw new IllegalStateException("Unknown AI evaluation job kind: " + job.getKind());
         };
-    }
-
-    private boolean sameSectionAudit(AiEvaluationJob job, UUID sectionId, String contentFingerprint) {
-        try {
-            JsonNode payload = objectMapper.readTree(job.getPayloadJson());
-            return sectionId.toString().equals(payload.path("sectionId").asText())
-                    && contentFingerprint.equals(payload.path("contentFingerprint").asText());
-        } catch (Exception exception) {
-            log.warn("Section audit job {} has an invalid payload; not reusing it", job.getId());
-            return false;
-        }
     }
 
     private boolean sameSectionCitationReview(
