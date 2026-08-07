@@ -87,9 +87,8 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     }
 
     private List<PaperSection> parseSections(String text, Document document) {
-        // single-line heading regex — a greedy [A-Za-z\s]+ class swallowed
-        // the following paragraph into the title; space-only keeps headings one line.
-        Pattern pattern = Pattern.compile("(?m)^(?:#{1,6}\\s+)?([A-Z][A-Za-z ]+)\\s*\\n");
+        Pattern pattern = Pattern.compile(
+                "(?m)^(?:\\\\section\\*?\\{([^{}\\r\\n]+)}|(?:#{1,6}\\h+)?([A-Z][A-Za-z ]+))\\h*(?:\\R|$)");
         Matcher matcher = pattern.matcher(text);
 
         List<PaperSection> sections = new ArrayList<>();
@@ -97,7 +96,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         int lastEnd = 0;
 
         while (matcher.find()) {
-            String sectionName = matcher.group(1).trim();
+            String sectionName = (matcher.group(1) != null ? matcher.group(1) : matcher.group(2)).trim();
             int start = matcher.start();
 
             if (index > 0) {

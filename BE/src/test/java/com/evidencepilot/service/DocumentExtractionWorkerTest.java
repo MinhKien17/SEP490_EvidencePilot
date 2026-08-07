@@ -310,6 +310,30 @@ class DocumentExtractionWorkerTest {
     }
 
     @Test
+    void processLatexPaperPersistsSectionsWithoutAiExtraction() {
+        UUID documentId = UUID.randomUUID();
+        Document document = document(documentId);
+        document.setDocType(DocumentType.PAPER);
+        document.setOriginalFilename("paper.tex");
+        document.setFileUrl("sources/raw/" + documentId + ".tex");
+        String latex = "\\section{Introduction}\nPaper content.";
+
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(documentObjectStorage.readText(document.getFileUrl())).thenReturn(latex);
+
+        worker().process(documentId);
+
+        InOrder completion = inOrder(persistence, paperProcessingService);
+        completion.verify(persistence).saveExtraction(documentId, "latex", latex, List.of());
+        completion.verify(paperProcessingService).detectAndPersistSections(documentId);
+        completion.verify(persistence).markReady(documentId, 0);
+        verify(aiModelClient, never()).extractDocument(any(), any());
+        verify(aiModelClient, never()).generateEmbeddings(any());
+        verify(qdrantService, never()).upsertVectors(any());
+        verify(sparseVectorGenerator, never()).generate(any());
+    }
+
+    @Test
     void processDoesNotDetectSectionsForNonPaperDocuments() {
         UUID documentId = UUID.randomUUID();
         Document document = document(documentId);

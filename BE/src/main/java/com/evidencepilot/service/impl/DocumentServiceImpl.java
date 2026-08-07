@@ -281,7 +281,7 @@ public class DocumentServiceImpl implements DocumentService {
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File is empty");
         }
-        validateFile(file);
+        validateFile(file, docType);
         var currentUser = currentUserService.requireCurrentUser();
 
         Project project = null;
@@ -507,10 +507,10 @@ public class DocumentServiceImpl implements DocumentService {
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File is empty");
         }
-        validateFile(file);
         var currentUser = currentUserService.requireCurrentUser();
         Document doc = findDocument(documentId);
         requireDocumentWriteAccess(currentUser, doc);
+        validateFile(file, doc.getDocType());
 
         if (doc.getProcessingStatus() != ProcessingStatus.METADATA_FETCHED) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -709,7 +709,7 @@ public class DocumentServiceImpl implements DocumentService {
         return extension;
     }
 
-    static void validateFile(MultipartFile file) {
+    static void validateFile(MultipartFile file, DocumentType docType) {
         String extension = fileExtension(file.getOriginalFilename());
         String contentType = file.getContentType() == null
                 ? ""
@@ -722,12 +722,20 @@ public class DocumentServiceImpl implements DocumentService {
             case ".md", ".markdown" -> genericType
                     || contentType.startsWith("text/markdown")
                     || contentType.startsWith("text/plain");
+            case ".tex" -> docType == DocumentType.PAPER
+                    && (genericType
+                    || contentType.equals("application/x-tex")
+                    || contentType.equals("application/x-latex")
+                    || contentType.equals("text/x-tex")
+                    || contentType.startsWith("text/plain"));
             default -> false;
         };
         if (!supported) {
             throw new ResponseStatusException(
                     HttpStatus.UNSUPPORTED_MEDIA_TYPE,
-                    "Only PDF, DOCX, and Markdown files are supported");
+                    docType == DocumentType.PAPER
+                            ? "Only PDF, DOCX, Markdown, and LaTeX files are supported for papers"
+                            : "Only PDF, DOCX, and Markdown files are supported");
         }
     }
 

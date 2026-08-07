@@ -63,6 +63,11 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
     }
 
     private void processDocument(Document document) {
+        if (isLatexPaper(document)) {
+            processLatexPaper(document);
+            return;
+        }
+
         String checkpointKey = "documents/processed/" + document.getId() + "/extraction.json";
         AiModelClient.ExtractedDocument extracted = readCheckpoint(checkpointKey);
         if (extracted == null) {
@@ -136,6 +141,23 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
         }
         documentPersistenceService.markReady(document.getId(), payloadChunks.size());
         log.info("Completed extraction for document {} with {} chunks", document.getId(), payloadChunks.size());
+    }
+
+    private void processLatexPaper(Document document) {
+        String latex = documentObjectStorage.readText(document.getFileUrl());
+        if (latex.isBlank()) {
+            throw new DocumentExtractionException("LaTeX paper is empty");
+        }
+        documentPersistenceService.saveExtraction(document.getId(), "latex", latex, List.of());
+        paperProcessingService.detectAndPersistSections(document.getId());
+        documentPersistenceService.markReady(document.getId(), 0);
+        log.info("Completed LaTeX paper processing for document {}", document.getId());
+    }
+
+    private static boolean isLatexPaper(Document document) {
+        return document.getDocType() == DocumentType.PAPER
+                && document.getOriginalFilename() != null
+                && document.getOriginalFilename().toLowerCase(Locale.ROOT).endsWith(".tex");
     }
 
     private static String extractionMethod(String filename) {
