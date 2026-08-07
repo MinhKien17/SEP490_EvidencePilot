@@ -8,6 +8,7 @@ import com.evidencepilot.model.ReviewSnapshot;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.PaperStandard;
+import com.evidencepilot.prompt.SectionCitationReviewPrompt;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ReviewSnapshotRepository;
 import com.evidencepilot.repository.UserRepository;
@@ -26,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -77,6 +79,7 @@ class SectionCitationReviewServiceTest {
             assertThat(finding.startOffset()).isZero();
             assertThat(finding.endOffset()).isEqualTo(excerpt.length());
         });
+        verify(aiModelClient).generate(eq(SectionCitationReviewPrompt.SYSTEM), anyString());
         verify(snapshotRepository).save(any(ReviewSnapshot.class));
         verify(auditService).record(
                 "AI_SECTION_CITATION_REVIEW", "PaperSection", sectionId, actor, null, result);

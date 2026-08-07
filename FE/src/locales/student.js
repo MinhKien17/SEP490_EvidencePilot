@@ -19,7 +19,7 @@ export const studentText = {
     feedback: 'Feedback',
     info: 'Info',
     graph: 'Graph',
-    aiReview: 'AI Review',
+    aiReview: 'Citation Review',
     submitReview: 'Submit for Review',
     revise: 'Revise',
     history: 'History',

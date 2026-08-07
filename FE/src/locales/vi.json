@@ -19,7 +19,7 @@
   "feedback": "Nhận xét",
   "info": "Thông tin",
   "graph": "Đồ thị",
-  "aiReview": "AI Review",
+  "aiReview": "Citation Review",
   "submitReview": "Gửi đánh giá",
   "revise": "Chỉnh sửa",
   "history": "Lịch sử",
@@ -127,7 +127,7 @@
     "projectNameDesc": "Bạn đang làm việc trên dự án này.",
     "versionHistory": "Lịch sử phiên bản",
     "versionHistoryDesc": "Xem và khôi phục các phiên bản trước của phần được giao.",
-    "aiReview": "AI Review",
+    "aiReview": "Citation Review",
     "aiReviewDesc": "Tìm các phát biểu trong phần đang chọn có thể cần trích dẫn.",
     "sidebarLeft": "Điều hướng",
     "sidebarLeftDesc": "Chuyển đổi bảng tệp, tổng quan và bảng ngữ cảnh.",
@@ -222,8 +222,8 @@
   "startRevision": "Bắt đầu chỉnh sửa",
   "submissionBlocked": "Không thể gửi: {{count}} luận điểm chưa nằm trong phần sở hữu tương ứng.",
   "submissionWarning": "Cảnh báo khi gửi: {{count}} luận điểm chưa nằm trong phần sở hữu tương ứng. Bạn vẫn có thể gửi, nhưng giảng viên có thể trả lại để chỉnh sửa.",
-  "aiReviewReport": "Báo cáo đánh giá AI",
-  "aiReviewError": "Lỗi đánh giá AI",
+  "aiReviewReport": "Báo cáo Citation Review",
+  "aiReviewError": "Lỗi Citation Review",
   "lastReviewAvailable": "Kết quả đánh giá thành công gần nhất vẫn được hiển thị bên dưới.",
   "aiAnalyzing": "AI đang phân tích...",
   "aiAnalyzingDescription": "Đang quét các phần, luận điểm, mapping nguồn đang hoạt động và phản hồi của giảng viên...",
@@ -342,11 +342,11 @@
   ,"updateSuggestionFailed": "Không thể cập nhật gợi ý."
   ,"selectPaperFirst": "Hãy chọn một bài viết trước."
   ,"formatScanFailed": "Quét định dạng thất bại."
-  ,"aiReviewComplete": "Đánh giá AI hoàn tất."
+  ,"aiReviewComplete": "Citation Review hoàn tất."
   ,"aiProviderRateLimited": "Nhà cung cấp AI đang giới hạn lượt gọi. Vui lòng thử lại sau."
-  ,"aiWorkerUnavailable": "Dịch vụ đánh giá AI không sẵn sàng hoặc đã hết thời gian chờ."
-  ,"aiInvalidResponse": "Đánh giá AI trả về phản hồi không hợp lệ sau khi thử lại."
-  ,"aiReviewFailed": "Đánh giá AI thất bại. Vui lòng thử lại."
+  ,"aiWorkerUnavailable": "Dịch vụ Citation Review không sẵn sàng hoặc đã hết thời gian chờ."
+  ,"aiInvalidResponse": "Citation Review trả về phản hồi không hợp lệ sau khi thử lại."
+  ,"aiReviewFailed": "Citation Review thất bại. Vui lòng thử lại."
   ,"saveSubmissionCancelled": "Lưu thất bại — đã hủy gửi đánh giá."
   ,"submittedForReview": "Đã gửi để đánh giá."
   ,"submitFailed": "Gửi đánh giá thất bại."
@@ -359,7 +359,7 @@
   ,"versionLabel": "Phiên bản {{version}}"
   ,"currentVersionLabel": "Phiên bản {{version}} (hiện tại)"
   ,"updatedAtLabel": "Cập nhật lúc: {{date}}"
-  ,"citationReview": "Kiểm tra trích dẫn"
+  ,"citationReview": "Citation Review"
   ,"reviewing": "Đang kiểm tra..."
   ,"runReview": "Kiểm tra"
   ,"citationReviewDescription": "AI chỉ kiểm tra phần đang chọn để tìm nội dung có thể cần nguồn bên ngoài. Nguồn gợi ý chỉ là kết quả liên quan và cần được xác minh trước khi dùng."
@@ -371,10 +371,10 @@
   ,"insertCitation": "Chèn trích dẫn"
   ,"noCitationFindings": "Không phát hiện nội dung cần bổ sung trích dẫn trong phần này."
   ,"retrySourceSearch": "Tìm nguồn lại"
-  ,"sourceSearchFailed": "AI Review đã hoàn tất nhưng bước tìm nguồn liên quan thất bại."
-  ,"reviewSectionChanged": "Phần đã lưu thay đổi trong lúc AI Review chờ xử lý. Hãy lưu và chạy lại."
-  ,"reviewExcerptChanged": "Đoạn văn đã thay đổi hoặc xuất hiện nhiều lần. Hãy chạy AI Review lại."
+  ,"sourceSearchFailed": "Citation Review đã hoàn tất nhưng bước tìm nguồn liên quan thất bại."
+  ,"reviewSectionChanged": "Phần đã lưu thay đổi trong lúc Citation Review chờ xử lý. Hãy lưu và chạy lại."
+  ,"reviewExcerptChanged": "Đoạn văn đã thay đổi hoặc xuất hiện nhiều lần. Hãy chạy Citation Review lại."
   ,"citationAlreadyInserted": "Trích dẫn nguồn này đã nằm cạnh đoạn văn."
-  ,"cachedReviewFailed": "Không thể tải kết quả AI Review đã lưu của phần này."
+  ,"cachedReviewFailed": "Không thể tải kết quả Citation Review đã lưu của phần này."
   ,"unknown": "Không xác định"
 }

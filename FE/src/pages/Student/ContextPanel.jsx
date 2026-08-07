@@ -133,7 +133,7 @@ export default function ContextPanel({
   onSelectClaim,
   // Feedback tab
   feedbacks, setShowSubmitReviewModal, userProjectRole,
-  // AI Review tab
+  // Citation Review tab
   aiReview, aiReviewLoading, aiReviewError, aiReviewStale, aiSourceMatches,
   aiSourcesLoading, aiSourcesError, resolvedFindingIndexes, reviewSectionTitle,
   onRunAiReview, onSelectReviewFinding, onInsertCitation, onRetryReviewSources,

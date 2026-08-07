@@ -19,7 +19,7 @@
   "feedback": "Feedback",
   "info": "Info",
   "graph": "Graph",
-  "aiReview": "AI Review",
+  "aiReview": "Citation Review",
   "submitReview": "Submit for Review",
   "revise": "Revise",
   "history": "History",
@@ -127,7 +127,7 @@
     "projectNameDesc": "You are currently working on this project.",
     "versionHistory": "Version History",
     "versionHistoryDesc": "View and restore previous versions of your assigned section.",
-    "aiReview": "AI Review",
+    "aiReview": "Citation Review",
     "aiReviewDesc": "Find statements in the selected section that may need citations.",
     "sidebarLeft": "Workspace Navigation",
     "sidebarLeftDesc": "Toggle the file sidebar, overview panel, and context panel.",
@@ -222,8 +222,8 @@
   "startRevision": "Start revision",
   "submissionBlocked": "Submission blocked: {{count}} claim(s) are missing from their owning section.",
   "submissionWarning": "Submission warning: {{count}} claim(s) are missing from their owning section. You can still submit, but the instructor may return it.",
-  "aiReviewReport": "AI review report",
-  "aiReviewError": "AI review error",
+  "aiReviewReport": "Citation Review report",
+  "aiReviewError": "Citation Review error",
   "lastReviewAvailable": "The last successful review remains below.",
   "aiAnalyzing": "AI is analyzing...",
   "aiAnalyzingDescription": "Scanning sections, claims, active source mappings, and instructor feedback...",
@@ -342,11 +342,11 @@
   ,"updateSuggestionFailed": "Failed to update suggestion."
   ,"selectPaperFirst": "Select a paper first."
   ,"formatScanFailed": "Format scan failed."
-  ,"aiReviewComplete": "AI review complete."
+  ,"aiReviewComplete": "Citation Review complete."
   ,"aiProviderRateLimited": "The AI provider is rate limiting requests. Please retry later."
-  ,"aiWorkerUnavailable": "The AI review worker is unavailable or timed out."
-  ,"aiInvalidResponse": "AI review returned an invalid response after retrying."
-  ,"aiReviewFailed": "AI review failed. Please retry."
+  ,"aiWorkerUnavailable": "The Citation Review worker is unavailable or timed out."
+  ,"aiInvalidResponse": "Citation Review returned an invalid response after retrying."
+  ,"aiReviewFailed": "Citation Review failed. Please retry."
   ,"saveSubmissionCancelled": "Save failed — submission cancelled."
   ,"submittedForReview": "Submitted for review."
   ,"submitFailed": "Submission failed."
@@ -359,7 +359,7 @@
   ,"versionLabel": "Version {{version}}"
   ,"currentVersionLabel": "Version {{version}} (current)"
   ,"updatedAtLabel": "Updated at: {{date}}"
-  ,"citationReview": "Citation review"
+  ,"citationReview": "Citation Review"
   ,"reviewing": "Reviewing..."
   ,"runReview": "Review"
   ,"citationReviewDescription": "AI checks only the selected section for statements that may need external citations. Suggested sources are related matches and should be verified before use."
@@ -372,8 +372,8 @@
   ,"noCitationFindings": "No statements requiring citations were found in this section."
   ,"retrySourceSearch": "Retry source search"
   ,"sourceSearchFailed": "The citation review succeeded, but related-source search failed."
-  ,"reviewSectionChanged": "The saved section changed while AI Review was queued. Save and run it again."
-  ,"reviewExcerptChanged": "This excerpt changed or is ambiguous. Run AI Review again."
+  ,"reviewSectionChanged": "The saved section changed while Citation Review was queued. Save and run it again."
+  ,"reviewExcerptChanged": "This excerpt changed or is ambiguous. Run Citation Review again."
   ,"citationAlreadyInserted": "This source citation is already next to the excerpt."
   ,"cachedReviewFailed": "Could not load the cached review for this section."
   ,"unknown": "Unknown"
