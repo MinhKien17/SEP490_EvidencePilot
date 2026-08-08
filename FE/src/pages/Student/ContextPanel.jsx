@@ -150,6 +150,33 @@ export default function ContextPanel({
   const [breakdownOpenId, setBreakdownOpenId] = useState(null);
   const [expandedFeedbackId, setExpandedFeedbackId] = useState(null);
   const [feedbackDetail, setFeedbackDetail] = useState({});
+  const [answerDrafts, setAnswerDrafts] = useState({});
+  const [answeringId, setAnsweringId] = useState(null);
+  const [answerErrors, setAnswerErrors] = useState({});
+
+  const submitAnswer = async (item, fb) => {
+    const content = (answerDrafts[item.id] || '').trim();
+    if (!content) {
+      setAnswerErrors(prev => ({ ...prev, [item.id]: t('answerRequired') }));
+      return;
+    }
+    setAnsweringId(item.id);
+    setAnswerErrors(prev => ({ ...prev, [item.id]: null }));
+    try {
+      await api.post(`/api/instructor-feedback/${item.id}/answer`, { content });
+      const key = fb.id || fb.requestId;
+      setFeedbackDetail(prev => ({
+        ...prev,
+        [key]: (prev[key] || []).map(f =>
+          f.id === item.id ? { ...f, answered: true, answerContent: content } : f),
+      }));
+      setAnswerDrafts(prev => ({ ...prev, [item.id]: '' }));
+    } catch (err) {
+      setAnswerErrors(prev => ({ ...prev, [item.id]: err?.response?.data?.message || t('answerFailed') }));
+    } finally {
+      setAnsweringId(null);
+    }
+  };
 
   const toggleFeedbackDetail = async (fb) => {
     const id = fb.id || fb.requestId;
@@ -660,6 +687,28 @@ export default function ContextPanel({
                                   <p className="text-[10px] text-(--text-primary) leading-relaxed">{item.content}</p>
                                   {item.answered && item.answerContent && (
                                     <p className="text-[9px] text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 rounded p-1.5">{t('myAnswer', { answer: item.answerContent })}</p>
+                                  )}
+                                  {!item.answered && fb.status === 'RETURNED' && (
+                                    <div className="mt-2 space-y-1.5">
+                                      <textarea
+                                        value={answerDrafts[item.id] || ''}
+                                        onChange={(e) => setAnswerDrafts(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                        placeholder={t('answerPlaceholder')}
+                                        rows="2"
+                                        className="w-full text-[10px] border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 text-(--text-primary)"
+                                      />
+                                      {answerErrors[item.id] && <p className="text-[9px] text-rose-600">{answerErrors[item.id]}</p>}
+                                      <div className="flex justify-end">
+                                        <button
+                                          type="button"
+                                          onClick={() => submitAnswer(item, fb)}
+                                          disabled={answeringId === item.id}
+                                          className="text-[10px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 px-2.5 py-1 rounded-lg"
+                                        >
+                                          {answeringId === item.id ? t('answering') : t('answerFeedback')}
+                                        </button>
+                                      </div>
+                                    </div>
                                   )}
                                 </div>
                               ))

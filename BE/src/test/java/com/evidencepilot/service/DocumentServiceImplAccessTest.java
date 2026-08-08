@@ -224,7 +224,7 @@ class DocumentServiceImplAccessTest {
     }
 
     @Test
-    void uploadDocumentActivatesDraftProjectWhenPaperAndSourcePresent() throws Exception {
+    void uploadDocumentKeepsProjectStatusAndSyncsSource() throws Exception {
         User user = user();
         Project project = project();
         project.setStatus(ProjectStatus.ASSIGNED);
@@ -245,11 +245,13 @@ class DocumentServiceImplAccessTest {
         when(minioClient.putObject(any(PutObjectArgs.class))).thenReturn(null);
         service().uploadDocument(project.getId(), file, DocumentType.PAPER);
 
-        verify(projectCollectionService).refreshProjectStatus(project);
+        verify(projectCollectionService).syncSource(persisted);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.ASSIGNED);
+        verify(projectRepository, never()).save(project);
     }
 
     @Test
-    void deleteDocumentDowngradesActiveProjectWhenRequiredTypeMissing() {
+    void deleteDocumentKeepsProjectStatus() {
         User user = user();
         Project project = project();
         project.setStatus(ProjectStatus.IN_PROGRESS);
@@ -260,7 +262,10 @@ class DocumentServiceImplAccessTest {
         when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
         service().deleteDocument(source.getId());
 
-        verify(projectCollectionService).refreshProjectStatus(project);
+        verify(projectCollectionService).removeSource(source);
+        assertThat(source.isActive()).isFalse();
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.IN_PROGRESS);
+        verify(projectRepository, never()).save(project);
     }
 
     @Test
@@ -307,6 +312,7 @@ class DocumentServiceImplAccessTest {
         Document source = document(null);
         source.setDocType(DocumentType.SOURCE);
         source.setCollection(collection);
+        source.setProcessingStatus(ProcessingStatus.READY);
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
         when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
@@ -339,6 +345,48 @@ class DocumentServiceImplAccessTest {
                 .isInstanceOf(com.evidencepilot.exception.ResourceNotFoundException.class)
                 .hasMessageContaining("Source in collection");
         verify(projectCollectionService, never()).pinSource(any(), any(), any());
+    }
+
+    @Test
+    void shareToProjectRejectsSourceNotReady() {
+        User user = user();
+        com.evidencepilot.model.Collection collection = collection();
+        Project project = project();
+        Document source = document(null);
+        source.setDocType(DocumentType.SOURCE);
+        source.setCollection(collection);
+        source.setProcessingStatus(ProcessingStatus.PROCESSING);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+
+        assertThatThrownBy(() -> service().shareToProject(
+                collection.getId(), source.getId(), project.getId()))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        e -> assertThat(e.getStatusCode().value()).isEqualTo(409))
+                .hasMessageContaining("not ready to share");
+        verify(projectCollectionService, never()).pinSource(any(), any(), any());
+        verify(projectDocumentRepository, never()).save(any());
+    }
+
+    @Test
+    void shareToProjectReadySourcePinsSource() {
+        User user = user();
+        com.evidencepilot.model.Collection collection = collection();
+        Project project = project();
+        Document source = document(null);
+        source.setDocType(DocumentType.SOURCE);
+        source.setCollection(collection);
+        source.setProcessingStatus(ProcessingStatus.READY);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+
+        service().shareToProject(collection.getId(), source.getId(), project.getId());
+        service().shareToProject(collection.getId(), source.getId(), project.getId());
+
+        verify(projectCollectionService, times(2)).pinSource(project, source, user);
     }
 
     @Test

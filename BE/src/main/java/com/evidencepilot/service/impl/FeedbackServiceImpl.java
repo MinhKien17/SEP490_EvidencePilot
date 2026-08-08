@@ -286,11 +286,8 @@ public class FeedbackServiceImpl implements FeedbackService {
         feedback.setUpdatedBy(currentUser);
         InstructorFeedback saved = instructorFeedbackRepository.save(feedback);
 
-        // BE-02 fix: answering feedback is a communication event, not an approval.
-        // The request stays RETURNED and the project stays writable so the student can
-        // revise sections and resubmit. REVIEWED/APPROVED is only reachable through the
-        // explicit instructor transition (updateStatus -> applyTransition).
-
+        // Answering feedback is not an approval: the request stays RETURNED and the
+        // project remains writable until the instructor explicitly finalizes the review.
         systemNotificationService.createNotification(
                 feedback.getInstructor(),
                 currentUser,

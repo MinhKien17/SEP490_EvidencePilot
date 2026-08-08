@@ -124,21 +124,27 @@ class ProjectCollectionServiceTest {
     }
 
     @Test
-    void refreshProjectStatusCountsMaterializedCollectionSources() {
-        Project project = project(ProjectStatus.ASSIGNED);
-        Document paper = new Document();
-        paper.setId(UUID.randomUUID());
-        paper.setDocType(DocumentType.PAPER);
-        paper.setActive(true);
-        when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
-                project.getId(), DocumentType.PAPER)).thenReturn(List.of(paper));
-        when(projectDocumentRepository.existsByProjectIdAndDocument_DocTypeAndDocument_ActiveTrue(
-                project.getId(), DocumentType.SOURCE)).thenReturn(true);
+    void linkDoesNotChangeProjectStatus() {
+        User instructor = instructor();
+        Project project = project(ProjectStatus.CREATED);
+        Collection collection = collection(instructor);
+        Document source = source(collection);
+        ProjectCollection link = link(project, collection, instructor);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
+        when(projectCollectionRepository.findByProjectIdAndCollectionId(project.getId(), collection.getId()))
+                .thenReturn(Optional.empty());
+        when(projectCollectionRepository.save(any(ProjectCollection.class))).thenReturn(link);
+        when(documentRepository.findByCollectionIdAndDocTypeAndActiveTrue(
+                collection.getId(), DocumentType.SOURCE)).thenReturn(List.of(source));
+        when(projectDocumentRepository.findByProjectIdAndDocumentId(project.getId(), source.getId()))
+                .thenReturn(Optional.empty());
 
-        service().refreshProjectStatus(project);
+        service().link(project.getId(), collection.getId());
 
-        assertThat(project.getStatus()).isEqualTo(ProjectStatus.IN_PROGRESS);
-        verify(projectRepository).save(project);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.CREATED);
+        verify(projectRepository, never()).save(project);
     }
 
     @Test

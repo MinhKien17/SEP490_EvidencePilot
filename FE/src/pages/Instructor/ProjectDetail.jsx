@@ -6,7 +6,7 @@ import { Marker, MarkerIcon, MarkerContent } from '../../components/Marker';
 import { instructorText, commonText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
 import api from '../../api';
-import { getSourceShareChanges } from './sourceShareSelection';
+import { getSourceShareChanges, getBlockedSources, isSourceShareable } from './sourceShareSelection';
 import { legacyClaimsEnabled } from '../../featureFlags';
 
 const STANDARDS = ['IEEE', 'ACM', 'SPRINGER_LNCS', 'APA', 'MLA', 'CUSTOM'];
@@ -38,6 +38,7 @@ export default function ProjectDetail() {
 
   // Setup tab state
   const [doiInput, setDoiInput] = useState('');
+  const [doiError, setDoiError] = useState('');
   const [standard, setStandard] = useState('');
   const [sources, setSources] = useState([]);
   const [showSourceDetail, setShowSourceDetail] = useState(false);
@@ -193,6 +194,7 @@ export default function ProjectDetail() {
   const handleImportDoiUnified = async (asSource) => {
     if (!doiInput.trim()) return;
     setAddSourceLoading(true);
+    setDoiError('');
     try {
       const payload = {
         doi: doiInput.trim(),
@@ -208,7 +210,7 @@ export default function ProjectDetail() {
         setPapers(papersRes.data || []);
       }
       setShowAddSource(false);
-    } catch { alert(t.doiImportFailed); }
+    } catch (err) { setDoiError(err?.response?.data?.message || t.doiImportFailed); }
     finally { setAddSourceLoading(false); }
   };
 
@@ -294,17 +296,25 @@ export default function ProjectDetail() {
     if (!selectedCollectionId) return;
     const { toShare, toUnshare } = getSourceShareChanges(
       collectionSources, id, selectedSourceIds);
+    const blocked = getBlockedSources(collectionSources, toShare);
+    if (blocked.length > 0) {
+      alert(`${t.sourceNotReady}: ${blocked.map(b => `${b.title} (${b.status})`).join(', ')}`);
+      return;
+    }
+    const titles = new Map(collectionSources.map(source => [String(source.id), source.title || source.originalFilename || source.id]));
+    const requests = [
+      ...toShare.map(sourceId => ({ id: sourceId, promise: api.post(
+        `/api/collections/${selectedCollectionId}/sources/${sourceId}/share-to-project/${id}`) })),
+      ...toUnshare.map(sourceId => ({ id: sourceId, promise: api.delete(
+        `/api/sources/projects/${id}/sources/${sourceId}`) })),
+    ];
     setShareLoadingId(selectedCollectionId);
     try {
-      const results = await Promise.allSettled([
-        ...toShare.map(sourceId => api.post(
-          `/api/collections/${selectedCollectionId}/sources/${sourceId}/share-to-project/${id}`)),
-        ...toUnshare.map(sourceId => api.delete(
-          `/api/sources/projects/${id}/sources/${sourceId}`)),
-      ]);
+      const results = await Promise.allSettled(requests.map(request => request.promise));
       await Promise.all([loadSources(), loadCollectionSources(selectedCollectionId)]);
-      if (results.some(result => result.status === 'rejected')) {
-        alert(t.operationFailed);
+      const failed = requests.filter((request, index) => results[index].status === 'rejected');
+      if (failed.length > 0) {
+        alert(`${t.operationFailed}: ${failed.map(request => titles.get(String(request.id)) || request.id).join(', ')}`);
         return;
       }
       setShowShareCollection(false);
@@ -1117,6 +1127,7 @@ export default function ProjectDetail() {
                 {addSourceLoading ? '...' : t.import}
               </button>
             </div>
+            {doiError && <p className="text-xs font-semibold text-rose-600">{doiError}</p>}
             {addSourceDocType === 'SOURCE' && (
               <p className="text-[10px] italic text-[var(--text-tertiary)]">{t.sourcesAutoClassified}</p>
             )}
@@ -1226,12 +1237,16 @@ export default function ProjectDetail() {
             && !linkedCollections.some(c => String(c.id) === String(selectedCollectionId))
             && collectionSources.length > 0 && (
             <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-[var(--border-light)] p-1">
-              {collectionSources.map(source => (
-                <label key={source.id} className="flex cursor-pointer items-center gap-2 rounded-lg bg-[var(--surface-secondary)] px-3 py-2 hover:bg-[var(--surface-tertiary)]">
-                  <input type="checkbox" checked={selectedSourceIds.includes(source.id)} onChange={() => toggleSourceSelection(source.id)} disabled={projectReadOnly || shareLoadingId !== null} className="accent-indigo-600" />
-                  <span className="flex-1 text-xs font-medium">{source.title || source.originalFilename || source.id}</span>
-                </label>
-              ))}
+              {collectionSources.map(source => {
+                const shareable = isSourceShareable(source);
+                return (
+                  <label key={source.id} className={`flex items-center gap-2 rounded-lg bg-[var(--surface-secondary)] px-3 py-2 ${shareable ? 'cursor-pointer hover:bg-[var(--surface-tertiary)]' : 'cursor-not-allowed opacity-60'}`}>
+                    <input type="checkbox" checked={selectedSourceIds.includes(source.id)} onChange={() => toggleSourceSelection(source.id)} disabled={projectReadOnly || shareLoadingId !== null || !shareable} className="accent-indigo-600" />
+                    <span className="flex-1 text-xs font-medium">{source.title || source.originalFilename || source.id}</span>
+                    {!shareable && <span className="text-[10px] font-semibold text-amber-600">{t.sourceNotReady}</span>}
+                  </label>
+                );
+              })}
             </div>
           )}
           {!collectionSourcesLoading

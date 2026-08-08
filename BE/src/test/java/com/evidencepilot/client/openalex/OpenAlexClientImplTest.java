@@ -5,6 +5,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.io.ByteArrayInputStream;
@@ -120,6 +124,48 @@ class OpenAlexClientImplTest {
         OpenAlexWorkResponse result = client.fetchWork("doi:10.1000/xyz");
 
         assertThat(result).isNotNull();
+    }
+
+    @Test
+    void fetchWork_rejectsMalformedDoiWithBadRequestStatus() {
+        OpenAlexClientImpl client = new OpenAlexClientImpl(restClient, BASE, "");
+
+        assertThatThrownBy(() -> client.fetchWork("not-a-doi"))
+                .isInstanceOf(OpenAlexClient.OpenAlexApiException.class)
+                .hasMessageContaining("Invalid DOI")
+                .satisfies(e -> assertThat(((OpenAlexClient.OpenAlexApiException) e).getStatusCode()).isEqualTo(400));
+    }
+
+    @Test
+    void fetchWork_mapsUpstreamNotFoundTo404() {
+        when(restClient.get()).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.uri(BASE + "/works/doi:10.0000/e2e-invalid-doi")).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(OpenAlexWorkResponse.class))
+                .thenThrow(HttpClientErrorException.create(HttpStatus.NOT_FOUND, "Not Found",
+                        HttpHeaders.EMPTY, new byte[0], null));
+
+        OpenAlexClientImpl client = new OpenAlexClientImpl(restClient, BASE, "");
+
+        assertThatThrownBy(() -> client.fetchWork("10.0000/e2e-invalid-doi"))
+                .isInstanceOf(OpenAlexClient.OpenAlexApiException.class)
+                .satisfies(e -> assertThat(((OpenAlexClient.OpenAlexApiException) e).getStatusCode()).isEqualTo(404));
+    }
+
+    @Test
+    void fetchWork_mapsUpstreamServerOrRateLimitErrorTo502() {
+        when(restClient.get()).thenReturn(requestHeadersUriSpec);
+        when(requestHeadersUriSpec.uri(BASE + "/works/doi:10.1000/xyz")).thenReturn(requestHeadersSpec);
+        when(requestHeadersSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(OpenAlexWorkResponse.class))
+                .thenThrow(HttpServerErrorException.create(HttpStatus.BAD_GATEWAY, "Bad Gateway",
+                        HttpHeaders.EMPTY, new byte[0], null));
+
+        OpenAlexClientImpl client = new OpenAlexClientImpl(restClient, BASE, "");
+
+        assertThatThrownBy(() -> client.fetchWork("10.1000/xyz"))
+                .isInstanceOf(OpenAlexClient.OpenAlexApiException.class)
+                .satisfies(e -> assertThat(((OpenAlexClient.OpenAlexApiException) e).getStatusCode()).isEqualTo(502));
     }
 
     @Test

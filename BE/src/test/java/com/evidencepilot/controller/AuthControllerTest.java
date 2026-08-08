@@ -91,7 +91,7 @@ class AuthControllerTest {
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/users/profile").header("Authorization", "Bearer " + token))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content(loginBody))
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)

@@ -322,10 +322,7 @@ public class DocumentServiceImpl implements DocumentService {
         // Step C: Mark document as uploaded (transactional, publishes event after commit)
         document = documentPersistenceService.markDocumentAsUploaded(document.getId(), objectKey);
 
-        if (project != null) {
-            projectCollectionService.refreshProjectStatus(project);
-        }
-        if (collection != null) {
+        if (project != null || collection != null) {
             projectCollectionService.syncSource(document);
         }
 
@@ -346,6 +343,11 @@ public class DocumentServiceImpl implements DocumentService {
         }
         if (doc.getCollection() == null || !collectionId.equals(doc.getCollection().getId())) {
             throw new ResourceNotFoundException(sourceId, "Source in collection");
+        }
+        ProcessingStatus status = doc.getProcessingStatus();
+        if (status != ProcessingStatus.READY && status != ProcessingStatus.COMPLETED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Source is not ready to share (current status: " + status + "); only READY or COMPLETED sources can be shared");
         }
 
         Project project = projectRepository.findById(projectId)
@@ -534,10 +536,6 @@ public class DocumentServiceImpl implements DocumentService {
         doc.setFileSizeBytes(file.getSize());
         doc = documentPersistenceService.markDocumentAsUploaded(doc.getId(), objectKey);
 
-        if (doc.getProject() != null) {
-            projectCollectionService.refreshProjectStatus(doc.getProject());
-        }
-
         return DocumentResponse.from(doc);
     }
 
@@ -550,9 +548,6 @@ public class DocumentServiceImpl implements DocumentService {
         projectCollectionService.removeSource(doc);
         doc.setActive(false);
         documentRepository.save(doc);
-        if (doc.getProject() != null) {
-            projectCollectionService.refreshProjectStatus(doc.getProject());
-        }
     }
 
     private Document findDocument(UUID id) {

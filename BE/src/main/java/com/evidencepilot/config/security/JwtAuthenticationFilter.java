@@ -1,8 +1,10 @@
 package com.evidencepilot.config.security;
 
+import com.evidencepilot.dto.response.ApiErrorResponse;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.repository.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,6 +31,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtUtils jwtUtils;
     private final UserRepository userRepository;
     private final JwtSessionRegistry sessionRegistry;
+    private final ObjectMapper objectMapper;
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -67,9 +70,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 return;
             }
 
-            if (user.getAccountStatus() != AccountStatus.ACTIVE
-                    || !Integer.valueOf(user.getTokenVersion()).equals(jwtUtils.extractTokenVersion(token))) {
-                response.sendError(HttpServletResponse.SC_FORBIDDEN);
+            if (user.getAccountStatus() != AccountStatus.ACTIVE) {
+                writeError(request, response, HttpServletResponse.SC_FORBIDDEN, "Account is not active");
+                return;
+            }
+
+            Integer currentVersion = user.getTokenVersion();
+            Integer tokenVersion = jwtUtils.extractTokenVersion(token);
+            if (tokenVersion == null || !tokenVersion.equals(currentVersion)) {
+                writeError(request, response, HttpServletResponse.SC_UNAUTHORIZED, "Token is stale");
                 return;
             }
 
@@ -87,5 +96,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private void writeError(HttpServletRequest request, HttpServletResponse response,
+                            int status, String message) throws IOException {
+        response.setStatus(status);
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        objectMapper.writeValue(response.getWriter(), ApiErrorResponse.of(
+                status,
+                status == HttpServletResponse.SC_UNAUTHORIZED ? "Unauthorized" : "Forbidden",
+                message,
+                request.getRequestURI()));
     }
 }

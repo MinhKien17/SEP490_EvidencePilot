@@ -153,17 +153,6 @@ export default function CollectionDetail() {
     }
   };
 
-  const handleDoiSubmit = async (doi) => {
-    try {
-      await api.post('/api/documents/ingest/doi', { doi, collectionId: id });
-      setAddDocOption(null);
-      setAddDocModal(false);
-      refetchSources();
-    } catch (err) {
-      alert(err.response?.data?.message || t.uploadFailed);
-    }
-  };
-
   const filteredProjects = projects.filter(p =>
     !projectSearch || p.title?.toLowerCase().includes(projectSearch.toLowerCase())
   );
@@ -172,15 +161,29 @@ export default function CollectionDetail() {
     const [doi, setDoi] = useState('');
     const [file, setFile] = useState(null);
     const [submitting, setSubmitting] = useState(false);
+    const [doiError, setDoiError] = useState('');
+
+    const handleDoiSubmit = async () => {
+      setDoiError('');
+      try {
+        await api.post('/api/documents/ingest/doi', { doi, collectionId: id });
+        setAddDocOption(null);
+        setAddDocModal(false);
+        refetchSources();
+      } catch (err) {
+        setDoiError(err.response?.data?.message || t.uploadFailed);
+      }
+    };
 
     if (!addDocOption) return null;
 
     if (addDocOption === 'doi') {
       return (
-        <form onSubmit={async (e) => { e.preventDefault(); setSubmitting(true); await handleDoiSubmit(doi); setSubmitting(false); }} className="space-y-4">
+        <form onSubmit={async (e) => { e.preventDefault(); setSubmitting(true); await handleDoiSubmit(); setSubmitting(false); }} className="space-y-4">
           <p className="text-xs text-(--text-secondary)">{t.inputDoiDescription}</p>
           <input type="text" value={doi} onChange={e => setDoi(e.target.value)} placeholder={t.doiPlaceholder} required
             className="w-full px-4 py-3 bg-(--surface-secondary) border border-(--border) rounded-xl text-(--text-primary) font-medium text-sm focus:outline-none focus:ring-2 focus:ring-(--focus) transition-colors" />
+          {doiError && <p className="text-xs font-semibold text-rose-600">{doiError}</p>}
           <button type="submit" disabled={submitting || !doi.trim()}
             className="w-full py-3 bg-(--brand) text-(--on-brand) font-bold text-xs rounded-xl hover:bg-(--brand-hover) transition-colors shadow-md disabled:opacity-50">{submitting ? ct.saving : t.submitDoi}</button>
         </form>
@@ -198,11 +201,12 @@ export default function CollectionDetail() {
 
     if (addDocOption === 'doi+upload') {
       return (
-        <form onSubmit={async (e) => { e.preventDefault(); setSubmitting(true); try { if (doi.trim()) await handleDoiSubmit(doi); if (file) await handleUpload(file); } finally { setSubmitting(false); setAddDocModal(false); } }} className="space-y-4">
+        <form onSubmit={async (e) => { e.preventDefault(); setSubmitting(true); try { if (doi.trim()) await handleDoiSubmit(); if (file) await handleUpload(file); } finally { setSubmitting(false); setAddDocModal(false); } }} className="space-y-4">
           <p className="text-xs text-(--text-secondary)">{t.inputDoiAndUploadDesc}</p>
           <input type="text" value={doi} onChange={e => setDoi(e.target.value)} placeholder={t.doiPlaceholder}
             className="w-full px-4 py-3 bg-(--surface-secondary) border border-(--border) rounded-xl text-(--text-primary) font-medium text-sm focus:outline-none focus:ring-2 focus:ring-(--focus) transition-colors" />
           <UploadZone onUpload={f => setFile(f)} accept=".pdf,.docx,.md,.tex" label={t.dropFiles} />
+          {doiError && <p className="text-xs font-semibold text-rose-600">{doiError}</p>}
           <button type="submit" disabled={submitting || (!doi.trim() && !file)}
             className="w-full py-3 bg-(--brand) text-(--on-brand) font-bold text-xs rounded-xl hover:bg-(--brand-hover) transition-colors shadow-md disabled:opacity-50">{submitting ? ct.saving : ct.submit}</button>
         </form>

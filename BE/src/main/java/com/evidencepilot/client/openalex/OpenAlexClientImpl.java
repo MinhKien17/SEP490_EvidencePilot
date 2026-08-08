@@ -3,8 +3,11 @@ package com.evidencepilot.client.openalex;
 import com.evidencepilot.dto.openalex.OpenAlexWorkResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -47,32 +50,43 @@ public class OpenAlexClientImpl implements OpenAlexClient {
 
     @Override
     public OpenAlexWorkResponse fetchWork(String doi) {
-        String openAlexId = DoiUtils.toOpenAlexId(doi);
-        if (openAlexId == null) {
-            throw new OpenAlexApiException("Invalid DOI: " + doi, 0);
+        String normalized = DoiUtils.normalize(doi);
+        if (normalized == null || !DoiUtils.isValid(normalized)) {
+            throw new OpenAlexApiException("Invalid DOI: " + doi, HttpStatus.BAD_REQUEST.value());
         }
 
-        String uri = baseUrl + "/works/" + openAlexId;
+        String uri = baseUrl + "/works/" + DoiUtils.toOpenAlexId(normalized);
         if (apiKey != null && !apiKey.isBlank()) {
             uri += "?api_key=" + apiKey;
         }
 
-        log.info("Fetching OpenAlex work: {}/works/{}", baseUrl, openAlexId);
-        OpenAlexWorkResponse response = restClient.get()
-                .uri(uri)
-                .retrieve()
-                .body(OpenAlexWorkResponse.class);
+        log.info("Fetching OpenAlex work: {}/works/{}", baseUrl, DoiUtils.toOpenAlexId(normalized));
+        try {
+            OpenAlexWorkResponse response = restClient.get()
+                    .uri(uri)
+                    .retrieve()
+                    .body(OpenAlexWorkResponse.class);
 
-        if (response == null) {
-            throw new OpenAlexApiException("OpenAlex returned null response for DOI: " + doi, 0);
+            if (response == null) {
+                throw new OpenAlexApiException("OpenAlex returned null response for DOI: " + doi,
+                        HttpStatus.BAD_GATEWAY.value());
+            }
+            return response;
+        } catch (RestClientResponseException e) {
+            throw new OpenAlexApiException(
+                    "OpenAlex lookup failed for DOI: " + doi + " (HTTP " + e.getStatusCode().value() + ")",
+                    e.getStatusCode().value() == HttpStatus.NOT_FOUND.value()
+                            ? HttpStatus.NOT_FOUND.value()
+                            : HttpStatus.BAD_GATEWAY.value());
+        } catch (RestClientException e) {
+            throw new OpenAlexApiException("OpenAlex lookup failed for DOI: " + doi, e);
         }
-        return response;
     }
 
     @Override
     public OpenAlexWorkResponse fetchWorkById(String openAlexId) {
         if (openAlexId == null || openAlexId.isBlank()) {
-            throw new OpenAlexApiException("Invalid OpenAlex ID: " + openAlexId, 0);
+            throw new OpenAlexApiException("Invalid OpenAlex ID: " + openAlexId, HttpStatus.BAD_REQUEST.value());
         }
         String id = openAlexId.contains("/works/") ? openAlexId.substring(openAlexId.lastIndexOf("/works/") + 7) : openAlexId;
         String uri = baseUrl + "/works/" + id;
@@ -80,14 +94,25 @@ public class OpenAlexClientImpl implements OpenAlexClient {
             uri += "?api_key=" + apiKey;
         }
         log.info("Fetching OpenAlex work by ID: {}/works/{}", baseUrl, id);
-        OpenAlexWorkResponse response = restClient.get()
-                .uri(uri)
-                .retrieve()
-                .body(OpenAlexWorkResponse.class);
-        if (response == null) {
-            throw new OpenAlexApiException("OpenAlex returned null response for ID: " + openAlexId, 0);
+        try {
+            OpenAlexWorkResponse response = restClient.get()
+                    .uri(uri)
+                    .retrieve()
+                    .body(OpenAlexWorkResponse.class);
+            if (response == null) {
+                throw new OpenAlexApiException("OpenAlex returned null response for ID: " + openAlexId,
+                        HttpStatus.BAD_GATEWAY.value());
+            }
+            return response;
+        } catch (RestClientResponseException e) {
+            throw new OpenAlexApiException(
+                    "OpenAlex lookup failed for ID: " + openAlexId + " (HTTP " + e.getStatusCode().value() + ")",
+                    e.getStatusCode().value() == HttpStatus.NOT_FOUND.value()
+                            ? HttpStatus.NOT_FOUND.value()
+                            : HttpStatus.BAD_GATEWAY.value());
+        } catch (RestClientException e) {
+            throw new OpenAlexApiException("OpenAlex lookup failed for ID: " + openAlexId, e);
         }
-        return response;
     }
 
     @Override

@@ -130,7 +130,7 @@ public class FeedbackController {
     }
 
     @Operation(summary = "Answer a feedback item",
-            description = "Student marks an instructor feedback item as answered, with an optional explanation. "
+            description = "Student marks an instructor feedback item as answered, with an explanation. "
                     + "Answering never changes the request or project status: the request stays RETURNED and the "
                     + "project remains editable so the student can revise and resubmit. Approval requires an "
                     + "explicit instructor status transition to REVIEWED.")

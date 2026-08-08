@@ -11,6 +11,7 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.model.enums.ProcessingStatus;
+import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
@@ -243,7 +244,9 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             section.setVersion(Math.min(next, 2));
         }
         section.setUpdatedAt(LocalDateTime.now());
-        return projectMapper.toPaperSectionResponse(paperSectionRepository.save(section));
+        PaperSection saved = paperSectionRepository.save(section);
+        advanceProjectStatusOnStudentContent(section.getDocument().getProject(), section, currentUser);
+        return projectMapper.toPaperSectionResponse(saved);
     }
 
     @Override
@@ -267,6 +270,12 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         section.setUpdatedAt(LocalDateTime.now());
         PaperSectionResponse response = projectMapper.toPaperSectionResponse(paperSectionRepository.save(section));
         if (assignedUserId != null) {
+            Project project = document.getProject();
+            if (project.getStatus() == ProjectStatus.CREATED) {
+                project.setStatus(ProjectStatus.ASSIGNED);
+                project.setUpdatedAt(LocalDateTime.now());
+                projectRepository.save(project);
+            }
             systemNotificationService.createNotification(
                     section.getAssignedUser(),
                     currentUser,
@@ -473,6 +482,17 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         // 9. Re-create sections from the new standard on a now-clean paper.
         //    createSectionsFromStandard now starts at sectionOrder = 0.
         return createSectionsFromStandard(paper.getId(), standard);
+    }
+
+    private void advanceProjectStatusOnStudentContent(Project project, PaperSection section, User currentUser) {
+        if (project == null || section.getAssignedUser() == null
+                || currentUser.getRole() != com.evidencepilot.model.enums.UserRole.STUDENT
+                || project.getStatus() != ProjectStatus.ASSIGNED) {
+            return;
+        }
+        project.setStatus(ProjectStatus.IN_PROGRESS);
+        project.setUpdatedAt(LocalDateTime.now());
+        projectRepository.save(project);
     }
 
     private PaperSection requireSectionInDocument(UUID sectionId, UUID documentId) {

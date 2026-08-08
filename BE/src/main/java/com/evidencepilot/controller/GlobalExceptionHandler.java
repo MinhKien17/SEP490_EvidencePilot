@@ -1,5 +1,6 @@
 package com.evidencepilot.controller;
 
+import com.evidencepilot.client.openalex.OpenAlexClient;
 import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.dto.response.ApiErrorResponse;
 import com.evidencepilot.exception.AiValidationException;
@@ -77,6 +78,19 @@ public class GlobalExceptionHandler {
             HttpServletRequest request) {
 
         return build(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(OpenAlexClient.OpenAlexApiException.class)
+    public ResponseEntity<ApiErrorResponse> handleOpenAlexApi(
+            OpenAlexClient.OpenAlexApiException exception,
+            HttpServletRequest request) {
+
+        HttpStatus status = switch (exception.getStatusCode()) {
+            case 400 -> HttpStatus.BAD_REQUEST;
+            case 404 -> HttpStatus.NOT_FOUND;
+            default -> HttpStatus.BAD_GATEWAY;
+        };
+        return build(status, exception.getMessage(), request);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

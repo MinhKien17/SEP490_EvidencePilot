@@ -1,3 +1,20 @@
+const SHAREABLE_STATUSES = ['READY', 'COMPLETED'];
+
+export function isSourceShareable(source) {
+  return SHAREABLE_STATUSES.includes(source?.processingStatus);
+}
+
+export function getBlockedSources(collectionSources, selectedSourceIds) {
+  const selected = new Set(selectedSourceIds.map(String));
+  return collectionSources
+    .filter(source => selected.has(String(source.id)) && !isSourceShareable(source))
+    .map(source => ({
+      id: source.id,
+      title: source.title || source.originalFilename || source.id,
+      status: source.processingStatus || 'UNKNOWN',
+    }));
+}
+
 export function getSourceShareChanges(collectionSources, projectId, selectedSourceIds) {
   const targetProjectId = String(projectId);
   const selected = new Set(selectedSourceIds.map(String));

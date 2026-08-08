@@ -23,9 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -76,7 +74,6 @@ public class ProjectCollectionService {
                 });
 
         syncCollection(link);
-        refreshProjectStatus(project);
         return CollectionResponse.from(collection);
     }
 
@@ -93,7 +90,6 @@ public class ProjectCollectionService {
                     projectDocumentRepository.findByProjectCollectionId(link.getId())
                             .forEach(this::detachDerivedShare);
                     projectCollectionRepository.delete(link);
-                    refreshProjectStatus(project);
                 });
     }
 
@@ -109,7 +105,6 @@ public class ProjectCollectionService {
             Project project = link.getProject();
             if (project.isActive() && !isSyncPaused(project)) {
                 materialize(link, document);
-                refreshProjectStatus(project);
             }
         }
     }
@@ -153,12 +148,10 @@ public class ProjectCollectionService {
             return document;
         }
 
-        Map<UUID, Project> affectedProjects = new LinkedHashMap<>();
         for (ProjectDocument projectDocument : projectDocumentRepository.findByDocumentId(document.getId())) {
             ProjectCollection link = projectDocument.getProjectCollection();
             if (link != null && !link.getCollection().getId().equals(targetCollection.getId())) {
                 requireCorpusMutable(link.getProject());
-                affectedProjects.put(link.getProject().getId(), link.getProject());
                 detachDerivedShare(projectDocument);
             }
         }
@@ -166,19 +159,15 @@ public class ProjectCollectionService {
         document.setCollection(targetCollection);
         Document saved = documentRepository.save(document);
         syncSource(saved);
-        affectedProjects.values().forEach(this::refreshProjectStatus);
         return saved;
     }
 
     @Transactional
     public void removeSource(Document document) {
-        Map<UUID, Project> affectedProjects = new LinkedHashMap<>();
         for (ProjectDocument projectDocument : projectDocumentRepository.findByDocumentId(document.getId())) {
             requireCorpusMutable(projectDocument.getProject());
-            affectedProjects.put(projectDocument.getProject().getId(), projectDocument.getProject());
             projectDocumentRepository.delete(projectDocument);
         }
-        affectedProjects.values().forEach(this::refreshProjectStatus);
     }
 
     @Transactional
@@ -203,7 +192,6 @@ public class ProjectCollectionService {
             projectDocument.setProjectCollection(link);
         }
         projectDocumentRepository.save(projectDocument);
-        refreshProjectStatus(project);
     }
 
     @Transactional
@@ -216,31 +204,6 @@ public class ProjectCollectionService {
             return;
         }
         projectDocumentRepository.delete(projectDocument);
-        refreshProjectStatus(project);
-    }
-
-    @Transactional
-    public void refreshProjectStatus(Project project) {
-        if (project.getStatus() != ProjectStatus.CREATED
-                && project.getStatus() != ProjectStatus.ASSIGNED
-                && project.getStatus() != ProjectStatus.IN_PROGRESS) {
-            return;
-        }
-        boolean hasPaper = !documentRepository
-                .findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.PAPER)
-                .isEmpty();
-        boolean hasSource = !documentRepository
-                .findByProjectIdAndDocTypeAndActiveTrue(project.getId(), DocumentType.SOURCE)
-                .isEmpty()
-                || projectDocumentRepository
-                        .existsByProjectIdAndDocument_DocTypeAndDocument_ActiveTrue(
-                                project.getId(), DocumentType.SOURCE);
-        ProjectStatus status = hasPaper && hasSource ? ProjectStatus.IN_PROGRESS
-                : hasPaper || hasSource ? ProjectStatus.ASSIGNED : ProjectStatus.CREATED;
-        if (project.getStatus() != status) {
-            project.setStatus(status);
-            projectRepository.save(project);
-        }
     }
 
     private void syncCollection(ProjectCollection link) {

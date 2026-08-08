@@ -56,6 +56,7 @@ export default function WorkspaceLayout() {
   const [feedbacks, setFeedbacks] = useState([]);
   const [exports, setExports] = useState([]);
   const [loadingProject, setLoadingProject] = useState(false);
+  const [projectLoadError, setProjectLoadError] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [viewerFile, setViewerFile] = useState(null);
 const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
@@ -356,6 +357,12 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     }
     claimEvaluationRequestRef.current += 1;
     setEvaluatingClaim(false);
+    setProjectLoadError(null);
+    setProject(null);
+    setSources([]);
+    setPapers([]);
+    setMediaAssets([]);
+    setFeedbacks([]);
     setSections([]);
     setSelectedPaper(null);
     selectSection('');
@@ -408,7 +415,16 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         const all = r.data || [];
         setFeedbacks(all.filter(fb => String(fb.projectId) === String(projId)));
       } catch { if (!stale()) setLoadErrors(errs => [...errs, 'feedback']); }
-    } catch (err) { if (!stale()) console.error('loadProjectData error:', err); }
+    } catch (err) {
+      if (!stale()) {
+        const status = err?.response?.status;
+        if (status === 403) setProjectLoadError('forbidden');
+        else if (status === 400 || status === 404) setProjectLoadError('notFound');
+        else setProjectLoadError('generic');
+        setProject(null);
+        console.error('loadProjectData error:', err);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -1350,6 +1366,35 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     if (!open && isCompactWorkspace) setIsFileTreeOpen(false);
     return !open;
   });
+
+  if (projectLoadError) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-(--surface-secondary)">
+        <div className="max-w-md text-center px-6">
+          <h1 className="text-xl font-bold text-(--text-primary)">
+            {projectLoadError === 'forbidden' ? t('projectForbiddenTitle')
+              : projectLoadError === 'notFound' ? t('projectNotFoundTitle')
+              : t('projectLoadErrorTitle')}
+          </h1>
+          <p className="mt-2 text-sm text-(--text-secondary)">
+            {projectLoadError === 'forbidden' ? t('projectForbiddenMessage')
+              : projectLoadError === 'notFound' ? t('projectNotFoundMessage')
+              : t('projectLoadErrorMessage')}
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <button onClick={() => navigate('/student/projects')} className="rounded-lg bg-(--brand) px-4 py-2 text-xs font-bold text-white hover:bg-(--brand-hover)">
+              {t('backToProjects')}
+            </button>
+            {projectLoadError === 'generic' && (
+              <button onClick={() => loadProjectData(projectId)} className="rounded-lg bg-(--surface-tertiary) px-4 py-2 text-xs font-semibold text-(--text-secondary) hover:opacity-80">
+                {t('retry')}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen w-full flex flex-col bg-(--surface-secondary) overflow-hidden font-sans antialiased text-(--text-primary)">

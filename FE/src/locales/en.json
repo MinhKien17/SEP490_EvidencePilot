@@ -206,6 +206,11 @@
   "noSectionFeedback": "No per-section feedback items.",
   "sectionChanged": "section changed",
   "answered": "answered",
+  "answerFeedback": "Answer",
+  "answerPlaceholder": "Explain how you addressed this feedback...",
+  "answering": "Saving...",
+  "answerRequired": "Answer cannot be empty.",
+  "answerFailed": "Could not save your answer. Try again.",
   "sectionCoverage": "Section coverage",
   "showTeammateClaims": "Show teammate claims",
   "someAreasFailed": "Some areas failed to load: {{areas}}. Retry them from the file or context panel.",
@@ -349,6 +354,8 @@
   ,"submitFailed": "Submission failed."
   ,"replacedAll": "Replaced all."
   ,"notFound": "Not found."
+  ,"notFoundMessage": "The page you are looking for does not exist or has been moved."
+  ,"backToHome": "Back to Home"
   ,"submitReviewDescription": "This will lock your paper while the instructor reviews it. You can edit again if the instructor returns it. Continue?"
   ,"sectionAssigned": "Section assigned."
   ,"sectionUnassigned": "Section unassigned."
@@ -374,4 +381,12 @@
   ,"citationAlreadyInserted": "This source citation is already next to the excerpt."
   ,"cachedReviewFailed": "Could not load the cached review for this section."
   ,"unknown": "Unknown"
+  ,"projectForbiddenTitle": "Access denied"
+  ,"projectForbiddenMessage": "You do not have permission to open this project."
+  ,"projectNotFoundTitle": "Project not found"
+  ,"projectNotFoundMessage": "This project does not exist or its identifier is invalid."
+  ,"projectLoadErrorTitle": "Could not load this project"
+  ,"projectLoadErrorMessage": "Something went wrong while loading the project. Please try again."
+  ,"backToProjects": "Back to projects"
+  ,"retry": "Retry"
 }

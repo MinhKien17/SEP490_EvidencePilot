@@ -1,6 +1,10 @@
 package com.evidencepilot.client.openalex;
 
+import java.util.regex.Pattern;
+
 public final class DoiUtils {
+
+    private static final Pattern DOI_PATTERN = Pattern.compile("^10\\.\\d{4,9}/[-._;()/:A-Za-z0-9]+$");
 
     private DoiUtils() {}
 
@@ -29,5 +33,10 @@ public final class DoiUtils {
         String normalized = normalize(doi);
         if (normalized == null) return null;
         return "doi:" + normalized;
+    }
+
+    public static boolean isValid(String doi) {
+        String normalized = normalize(doi);
+        return normalized != null && DOI_PATTERN.matcher(normalized).matches();
     }
 }

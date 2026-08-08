@@ -39,6 +39,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class FeedbackServiceImplTest {
@@ -542,7 +543,7 @@ class FeedbackServiceImplTest {
     }
 
     @Test
-    void answeringLastItemKeepsRequestReturnedAndProjectWritable() {
+    void answerFeedbackKeepsRequestAndProjectReturned() {
         User instructor = user(UserRole.INSTRUCTOR);
         User student = user(UserRole.STUDENT);
         Project project = project(instructor, student);
@@ -558,12 +559,14 @@ class FeedbackServiceImplTest {
 
         service().answerFeedback(feedback.getId(), "Fixed.");
 
-        // BE-02: answering must never approve. The request stays RETURNED and the
-        // project stays writable so the student can revise and resubmit.
+        // Answering must never approve; the student can still revise and resubmit.
         assertThat(feedback.isAnswered()).isTrue();
+        assertThat(feedback.getAnswerContent()).isEqualTo("Fixed.");
         assertThat(request.getStatus()).isEqualTo(FeedbackStatus.RETURNED);
         assertThat(project.getStatus()).isEqualTo(ProjectStatus.RETURNED);
         assertThat(project.getStatus().isReadOnly()).isFalse();
+        verify(feedbackRequestRepository, never()).save(any());
+        verify(projectRepository, never()).save(any());
         verify(checkpointService, never()).capture(any(), any());
         verify(systemNotificationService).createNotification(
                 instructor, student, "FEEDBACK_ANSWERED", request.getId(),
