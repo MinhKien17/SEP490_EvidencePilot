@@ -268,6 +268,9 @@ public class FeedbackServiceImpl implements FeedbackService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Feedback can only be answered when the request is RETURNED.");
         }
+        if (request.getProject().getStatus().isReadOnly()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
+        }
         PaperSection section = feedback.getSection();
         if (section != null && section.getAssignedUser() != null
                 && !currentUser.getId().equals(section.getAssignedUser().getId())) {
@@ -283,12 +286,10 @@ public class FeedbackServiceImpl implements FeedbackService {
         feedback.setUpdatedBy(currentUser);
         InstructorFeedback saved = instructorFeedbackRepository.save(feedback);
 
-        long unanswered = instructorFeedbackRepository.countByRequestIdAndAnsweredFalse(request.getId());
-        if (unanswered == 0) {
-            // Single chokepoint: auto-REVIEWED goes through the same legal-transition
-            // + project-status sync as the explicit instructor transition.
-            applyTransition(request, FeedbackStatus.REVIEWED, ProjectStatus.APPROVED, currentUser);
-        }
+        // BE-02 fix: answering feedback is a communication event, not an approval.
+        // The request stays RETURNED and the project stays writable so the student can
+        // revise sections and resubmit. REVIEWED/APPROVED is only reachable through the
+        // explicit instructor transition (updateStatus -> applyTransition).
 
         systemNotificationService.createNotification(
                 feedback.getInstructor(),
@@ -356,6 +357,11 @@ public class FeedbackServiceImpl implements FeedbackService {
         }
         if (feedbackRequest.getProject().getStatus().isReadOnly()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
+        }
+        ProjectStatus currentProjectStatus = feedbackRequest.getProject().getStatus();
+        if (currentProjectStatus != projectStatus && !currentProjectStatus.canTransitionTo(projectStatus)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Illegal project transition from " + currentProjectStatus + " to " + projectStatus + ".");
         }
         feedbackRequest.setStatus(status);
         feedbackRequest.setUpdatedAt(LocalDateTime.now());

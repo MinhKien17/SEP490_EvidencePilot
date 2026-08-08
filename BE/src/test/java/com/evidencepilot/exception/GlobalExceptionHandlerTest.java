@@ -124,9 +124,9 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void securityConfig_deniesAnonymousProtectedRouteAndStudentAdminRoute() throws Exception {
+    void securityConfig_rejectsAnonymousProtectedRouteAndDeniesStudentAdminRoute() throws Exception {
         mockMvc.perform(get("/api/projects"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/users/{id}", UUID.randomUUID())
                         .header("Authorization", bearerToken))
                 .andExpect(status().isForbidden());

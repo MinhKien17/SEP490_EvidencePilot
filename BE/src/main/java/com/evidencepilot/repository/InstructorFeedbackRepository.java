@@ -15,8 +15,6 @@ public interface InstructorFeedbackRepository extends JpaRepository<InstructorFe
 
     List<InstructorFeedback> findByInstructorId(UUID instructorId);
 
-    long countByRequestIdAndAnsweredFalse(UUID requestId);
-
     @EntityGraph(attributePaths = "section")
     List<InstructorFeedback> findByRequestProjectId(UUID projectId);
 }
