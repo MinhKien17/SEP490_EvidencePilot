@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { StatusBadge, LoadingSkeleton, AppHeader, Modal, FunctionalTypeRadar } from '../../components';
+import { StatusBadge, LoadingSkeleton, AppHeader } from '../../components';
 import DiffMatchPatch from 'diff-match-patch';
 import api from '../../api.js';
 import { renderLatexToHtml } from '../../components/latexHtml.js';
@@ -95,74 +95,6 @@ const ACTION_LABELS = {
   RETURNED: { key: 'returnForRevision', cls: 'bg-amber-500 hover:bg-amber-600' },
 };
 
-const BREAKDOWN_LABELS = [
-  ['semantic_alignment', 'semanticAlignment'],
-  ['contextual_sufficiency', 'contextualSufficiency'],
-  ['logical_restraint', 'logicalRestraint'],
-];
-
-function parseBreakdown(s) {
-  if (!s) return null;
-  try { return JSON.parse(s); } catch { return null; }
-}
-
-function EvidenceItem({ item, t }) {
-  const [breakdownOpen, setBreakdownOpen] = useState(false);
-  const breakdown = parseBreakdown(item.scoreBreakdown);
-  const statusClass = item.status === 'ACCEPTED'
-    ? 'bg-emerald-100 text-emerald-700'
-    : item.status === 'REJECTED'
-      ? 'bg-rose-100 text-rose-700'
-      : 'bg-amber-100 text-amber-700';
-  return (
-    <div className="bg-(--surface-secondary) border border-(--border-light) rounded-lg p-2 text-[10px] space-y-1">
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate font-bold text-(--text-primary)">{item.sourceFilename}</span>
-        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${statusClass}`}>{item.status}</span>
-      </div>
-      <div className="flex gap-2 text-[9px] font-bold">
-        <span className="text-indigo-600">{item.relation || 'UNKNOWN'}</span>
-        {item.strengthScore != null && (
-          <span className="text-(--text-secondary)">{t.strength}: {item.strengthScore}/100 · {item.strengthBand}</span>
-        )}
-      </div>
-      {item.excerpt && <p className="text-(--text-secondary) italic line-clamp-3 leading-relaxed">"{item.excerpt}"</p>}
-      {breakdown && (
-        <>
-          <button type="button" onClick={() => setBreakdownOpen(o => !o)} className="text-xs font-bold text-(--text-tertiary) hover:text-(--brand) flex items-center gap-1">
-            <svg className={`w-2.5 h-2.5 transition-transform ${breakdownOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-            {t.evidenceStrengthBreakdown}
-          </button>
-          {breakdownOpen && (
-            <div className="space-y-1">
-              {BREAKDOWN_LABELS.map(([key, labelKey]) => {
-                const item_ = breakdown[key];
-                if (!item_ || item_.max == null) return null;
-                const pct = item_.max > 0 ? Math.round((item_.earned / item_.max) * 100) : 0;
-                return (
-                  <div key={key} className="flex items-center gap-2">
-                    <span className="w-28 text-[9px] text-(--text-secondary) shrink-0">{t[labelKey]}</span>
-                    <div className="flex-1 h-1 bg-(--surface-tertiary) rounded-full overflow-hidden">
-                      <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${pct}%` }} />
-                    </div>
-                    <span className="text-[9px] font-bold text-(--text-primary) shrink-0 w-12 text-right">{item_.earned}/{item_.max}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-const CLAIM_STATUS_CLASS = {
-  PRESENT: 'bg-emerald-100 text-emerald-700',
-  MISSING: 'bg-amber-100 text-amber-700',
-  ORPHANED: 'bg-rose-100 text-rose-700',
-};
-
 export default function ReviewSpace() {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -189,12 +121,6 @@ export default function ReviewSpace() {
   const [savingFeedback, setSavingFeedback] = useState(false);
   const [mediaUrlMap, setMediaUrlMap] = useState({});
   const [transitioningRequestId, setTransitioningRequestId] = useState(null);
-  const [graphData, setGraphData] = useState(null);
-  const [expandedClaimId, setExpandedClaimId] = useState(null);
-  const [claimEvidence, setClaimEvidence] = useState({});
-  const [loadingEvidenceClaimId, setLoadingEvidenceClaimId] = useState(null);
-  const [coverageOpen, setCoverageOpen] = useState(false);
-  const [claimStats, setClaimStats] = useState(null);
   const [hoveredLine, setHoveredLine] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
@@ -204,19 +130,17 @@ export default function ReviewSpace() {
       setLoading(true);
       setErrorMessage('');
       try {
-        const [proj, papersRes, reqs, srcs, graphRes] = await Promise.all([
+        const [proj, papersRes, reqs, srcs] = await Promise.all([
           api.get(`/api/projects/${projectId}`),
           api.get(`/api/projects/${projectId}/papers`),
           api.get('/api/feedback-requests'),
           loadAllProjectSources(projectId).catch(() => []),
-          legacyClaimsEnabled ? api.get(`/api/projects/${projectId}/graph`).catch(() => null) : null,
         ]);
         if (cancelled) return;
         setProject(proj.data);
         setPapers(papersRes.data || []);
         setRequests((reqs.data || []).filter(r => String(r.projectId) === String(projectId)));
         setSources(srcs);
-        setGraphData(graphRes?.data || null);
         if ((papersRes.data || []).length > 0) setSelectedPaperId(papersRes.data[0].id);
       } catch {
         if (!cancelled) setErrorMessage(t.loadReviewSpaceFailed);
@@ -290,22 +214,6 @@ export default function ReviewSpace() {
 
   const selectedSection = sections.find(s => String(s.id) === String(selectedSectionId)) || null;
 
-  const claimsBySection = useMemo(() => {
-    const map = new Map();
-    for (const claim of (graphData?.claims || [])) {
-      const key = String(claim.sectionId || '');
-      if (!key) continue;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(claim);
-    }
-    return map;
-  }, [graphData]);
-
-  const sourcesById = useMemo(() => new Map(
-    (graphData?.sources || []).map(source => [String(source.id), source])), [graphData]);
-
-  const sectionClaims = claimsBySection.get(String(selectedSectionId || '')) || [];
-
   const lineRefContent = useMemo(() => {
     const map = new Map();
     for (const fb of feedbackItems) {
@@ -316,34 +224,6 @@ export default function ReviewSpace() {
   }, [feedbackItems, selectedSectionId]);
 
   const sectionLineRefs = Array.from(lineRefContent.keys());
-
-  const evidenceFor = (claim) => (claim.graphData?.matched_source_ids || [])
-    .map(id => sourcesById.get(String(id)))
-    .filter(Boolean)
-    .map(source => source.filename || source.topic || source.id);
-
-  const handleToggleEvidence = async (claimId) => {
-    if (expandedClaimId === claimId) { setExpandedClaimId(null); return; }
-    setExpandedClaimId(claimId);
-    if (claimEvidence[claimId]) return;
-    setLoadingEvidenceClaimId(claimId);
-    try {
-      const r = await api.get(`/api/claims/${claimId}/suggestions`);
-      setClaimEvidence(prev => ({ ...prev, [claimId]: r.data || [] }));
-    } catch {
-      setClaimEvidence(prev => ({ ...prev, [claimId]: [] }));
-    } finally { setLoadingEvidenceClaimId(null); }
-  };
-
-  const handleOpenCoverage = async () => {
-    setCoverageOpen(true);
-    if (!claimStats) {
-      try {
-        const r = await api.get(`/api/projects/${projectId}/graph/claim-stats`);
-        setClaimStats(r.data);
-      } catch { setClaimStats(null); }
-    }
-  };
 
   const diffOps = useMemo(() => {
     if (!diffEnabled || !baseline || !selectedSection) return null;
@@ -562,64 +442,9 @@ export default function ReviewSpace() {
 
           {/* Right column: claims + feedback + sources */}
           <div className="space-y-6">
-            {legacyClaimsEnabled && <div className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm p-4 sm:p-6">
-              <h2 className="text-sm font-bold text-(--brand-foreground) mb-4">{t.claimsInSection}</h2>
-              {!selectedSectionId ? (
-                <p className="text-xs text-(--text-tertiary) italic">{t.selectSectionClaims}</p>
-              ) : sectionClaims.length === 0 ? (
-                <p className="text-xs text-(--text-tertiary) italic">{t.noSectionClaims}</p>
-              ) : (
-                <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1 hide-scrollbar">
-                  {sectionClaims.map(claim => {
-                    const statusClass = CLAIM_STATUS_CLASS[claim.contentStatus] || 'bg-slate-100 text-slate-600';
-                    const expanded = expandedClaimId === claim.id;
-                    const evidence = claimEvidence[claim.id];
-                    const evidenceNames = evidenceFor(claim);
-                    return (
-                      <div key={claim.id} className="bg-(--surface-secondary) rounded-xl p-3 text-xs space-y-1.5">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-(--text-primary) leading-relaxed">{claim.content}</p>
-                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${statusClass}`}>
-                            {claim.contentStatus || 'UNKNOWN'}
-                          </span>
-                        </div>
-                        {evidenceNames.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {evidenceNames.map((filename, i) => (
-                              <span key={i} className="bg-(--brand-soft) text-(--brand-foreground) px-1.5 py-0.5 rounded text-[9px] font-bold max-w-full truncate" title={filename}>
-                                {filename}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        <button type="button" onClick={() => handleToggleEvidence(claim.id)}
-                          className="text-xs font-bold text-(--text-tertiary) hover:text-(--brand) flex items-center gap-1">
-                          <svg className={`w-2.5 h-2.5 transition-transform ${expanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-                          {loadingEvidenceClaimId === claim.id ? ct.loading : expanded ? t.hideEvidenceBreakdown : t.showEvidenceBreakdown}
-                        </button>
-                        {expanded && (
-                          <div className="space-y-2">
-                            {evidence === undefined ? (
-                              <p className="text-[10px] italic text-(--text-tertiary)">{ct.loading}</p>
-                            ) : evidence.length === 0 ? (
-                              <p className="text-[10px] italic text-(--text-tertiary)">{t.noEvidenceSuggestions}</p>
-                            ) : evidence.map(item => <EvidenceItem key={item.id} item={item} t={t} />)}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>}
-
             <div className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm p-4 sm:p-6">
               <div className="flex items-center justify-between gap-3 mb-4">
                 <h2 className="text-sm font-bold text-(--brand-foreground)">{t.sectionFeedback}</h2>
-                {legacyClaimsEnabled && <button type="button" onClick={handleOpenCoverage}
-                  className="text-xs font-bold text-(--brand-foreground) bg-(--brand-soft) hover:bg-(--surface-tertiary) rounded-lg px-2 py-1 transition-colors">
-                  {t.coverageGraph}
-                </button>}
               </div>
               {!selectedSectionId ? (
                 <p className="text-xs text-(--text-tertiary) italic">{t.selectSectionFeedback}</p>
@@ -698,29 +523,6 @@ export default function ReviewSpace() {
         </div>
       </main>
 
-      {legacyClaimsEnabled && <Modal open={coverageOpen} onClose={() => setCoverageOpen(false)} title={t.coverageGraph} closeLabel={ct.close} wide
-        className="hide-scrollbar">
-        {claimStats ? (
-          <FunctionalTypeRadar stats={claimStats} />
-        ) : (
-          <p className="text-xs text-(--text-tertiary) italic">{t.coverageUnavailable}</p>
-        )}
-        <h3 className="text-xs font-bold text-(--brand-foreground) mt-5 mb-2">{t.sectionCoverage}</h3>
-        <div className="space-y-2 max-h-64 overflow-y-auto hide-scrollbar">
-          {(graphData?.sectionSummaries || []).length === 0 ? (
-            <p className="text-xs text-(--text-tertiary) italic">{t.noSectionSummaries}</p>
-          ) : (graphData?.sectionSummaries || []).map(s => (
-            <div key={s.sectionId} className="flex items-center justify-between gap-2 bg-(--surface-secondary) rounded-lg px-3 py-2 text-xs">
-              <span className="font-bold text-(--text-primary) truncate">{s.sectionTitle}</span>
-              <div className="flex gap-1.5 shrink-0">
-                <span className="text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded text-[9px] font-bold">{s.presentCount} {t.present}</span>
-                <span className="text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded text-[9px] font-bold">{s.missingCount} {t.missing}</span>
-                <span className="text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded text-[9px] font-bold">{s.orphanedCount} {t.orphaned}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Modal>}
       {hoveredLine && (
         <div 
           className="fixed z-50 bg-[#1e3a8a] text-white text-[10px] font-bold px-2 py-1 rounded shadow-md pointer-events-none transition-all duration-75"

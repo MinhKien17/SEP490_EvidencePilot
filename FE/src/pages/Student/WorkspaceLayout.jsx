@@ -37,8 +37,8 @@ export default function WorkspaceLayout() {
   const { t, i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState(() => {
     const stored = localStorage.getItem('student_workspace_active_tab') || 'Source';
-    return !legacyClaimsEnabled && (stored === 'Claims' || stored === 'Graph')
-      ? 'AI Review' : stored;
+    if (stored === 'Graph') return 'AI Review';
+    return !legacyClaimsEnabled && stored === 'Claims' ? 'AI Review' : stored;
   });
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showOverview, setShowOverview] = useState(false);
@@ -54,8 +54,6 @@ export default function WorkspaceLayout() {
   const [selectedPaper, setSelectedPaper] = useState(null);
   const [claims, setClaims] = useState([]);
   const [feedbacks, setFeedbacks] = useState([]);
-  const [graphData, setGraphData] = useState(null);
-  const [graphScope, setGraphScope] = useState('all');
   const [exports, setExports] = useState([]);
   const [loadingProject, setLoadingProject] = useState(false);
   const [projectLoadError, setProjectLoadError] = useState(null);
@@ -107,7 +105,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const [editingClaim, setEditingClaim] = useState(null);
   const [editClaimContent, setEditClaimContent] = useState('');
   const [editClaimFunctionalType, setEditClaimFunctionalType] = useState('EMPIRICAL');
-  const [claimStats, setClaimStats] = useState(null);
   const [selectedClaim, setSelectedClaim] = useState(null);
   const [claimMatches, setClaimMatches] = useState([]);
   const [claimMappings, setClaimMappings] = useState([]);
@@ -134,7 +131,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const projectRef = useRef(null);
   const selectedSectionIdRef = useRef('');
   const codeContentRef = useRef('');
-  const graphScopeRef = useRef('all');
   const dirtySectionsRef = useRef(new Set());
   const saveInFlightRef = useRef(new Map());
   const creatingClaimRef = useRef(false);
@@ -388,7 +384,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     setEvaluatedClaimContent('');
     setEvaluatedClaimSectionId('');
     setClaimEvaluationError('');
-    setGraphData(null);
     setLoadErrors([]);
     const stale = () => loadRequestRef.current !== requestId;
     try {
@@ -420,11 +415,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         const all = r.data || [];
         setFeedbacks(all.filter(fb => String(fb.projectId) === String(projId)));
       } catch { if (!stale()) setLoadErrors(errs => [...errs, 'feedback']); }
-      if (legacyClaimsEnabled) try {
-        const r = await api.get(`/api/projects/${projId}/graph?scope=${graphScopeRef.current}`);
-        if (stale()) return;
-        setGraphData(r.data);
-      } catch { if (!stale()) setLoadErrors(errs => [...errs, 'graph']); }
     } catch (err) {
       if (!stale()) {
         const status = err?.response?.status;
@@ -436,10 +426,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       }
     }
   }, []);
-
-  useEffect(() => {
-    graphScopeRef.current = graphScope;
-  }, [graphScope]);
 
   useEffect(() => {
     const warn = (e) => {
@@ -682,10 +668,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       await api.post('/api/sources', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       showToast(t('sourceUploaded'));
       setSources(await loadAllProjectSources(project.id));
-      if (legacyClaimsEnabled) {
-        const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
-        setGraphData(g.data);
-      }
     } catch { showToast(t('uploadFailed')); }
   };
 
@@ -695,10 +677,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       await api.delete(`/api/documents/${sourceId}`);
       showToast(t('sourceDeleted'));
       setSources(await loadAllProjectSources(project.id));
-      if (legacyClaimsEnabled) {
-        const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
-        setGraphData(g.data);
-      }
     } catch (err) {
       showToast(err?.response?.data?.message || t('deleteFailed'));
     }
@@ -822,15 +800,11 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       setEvaluatedClaimContent('');
       setEvaluatedClaimSectionId('');
       setClaimEvaluationError('');
-      const [, sectionResponse, graphResponse, statsResponse] = await Promise.all([
+      const [, sectionResponse] = await Promise.all([
         fetchClaims(),
         api.get(`/api/papers/${selectedPaper.id}/sections`),
-        api.get(`/api/projects/${project.id}/graph?scope=${graphScopeRef.current}`),
-        api.get(`/api/projects/${project.id}/graph/claim-stats`),
       ]);
       setSections(sectionResponse.data || []);
-      setGraphData(graphResponse.data);
-      setClaimStats(statsResponse.data);
     } catch { showToast(t('addClaimFailed')); }
     finally { creatingClaimRef.current = false; setCreatingClaim(false); }
   };
@@ -849,10 +823,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         setClaimMappings([]);
       }
       await fetchClaims();
-      const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
-      setGraphData(g.data);
-      const s = await api.get(`/api/projects/${project.id}/graph/claim-stats`);
-      setClaimStats(s.data);
     } catch { showToast(t('updateFailed')); }
   };
 
@@ -862,10 +832,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       await api.delete(`/api/claims/${claimId}`);
       showToast(t('claimDeleted'));
       await fetchClaims();
-      const g = await api.get(`/api/projects/${project.id}/graph?scope=${graphScope}`);
-      setGraphData(g.data);
-      const s = await api.get(`/api/projects/${project.id}/graph/claim-stats`);
-      setClaimStats(s.data);
       if (selectedClaim && selectedClaim.id === claimId) {
         setSelectedClaim(null);
         setClaimMatches([]);
@@ -924,9 +890,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       setSections((sectionResponse.data || []).map(s =>
         String(s.id) === String(sectionId) ? { ...s, contentTex: content } : s));
       if (legacyClaimsEnabled) {
-        const graphResponse = await api.get(`/api/projects/${project.id}/graph?scope=${graphScopeRef.current}`);
         await fetchClaims();
-        setGraphData(graphResponse.data);
       }
       setTimeout(() => setSaveStatus(''), 3000);
       return true;
@@ -958,45 +922,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       showToast(t('traceabilityCsvDownloaded'));
     } catch { showToast(t('exportFailed')); }
   };
-
-  const handleExportCsv = () => {
-    if (!graphData) return;
-    const esc = (s) => `"${(s || '').replace(/"/g, '""')}"`;
-    const rows = [['Claim ID', 'Claim Content', 'Verdict', 'Confidence', 'Section', 'Matched Sources']];
-    const srcMap = {}; (graphData.sources || []).forEach(s => { srcMap[s.id] = s.filename; });
-    (graphData.claims || []).forEach(c => {
-      const g = c.graphData || {}; const verdict = g.verdict || ''; const conf = g.confidence ?? '';
-      const sourceNames = (g.matched_source_ids || []).map(sid => srcMap[sid] || sid).join('; ');
-      rows.push([esc(c.id), esc(c.content), esc(verdict), conf, esc(c.sectionTitle || ''), esc(sourceNames)]);
-    });
-    const csv = rows.map(r => r.join(',')).join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `graph-${project?.title || 'export'}.csv`;
-    a.click(); URL.revokeObjectURL(url);
-  };
-
-  const fetchGraphData = useCallback(async (projId, scope = graphScope) => {
-    try { const r = await api.get(`/api/projects/${projId}/graph?scope=${scope}`); setGraphData(r.data); } catch { console.warn('Failed to load graph'); }
-  }, [graphScope]);
-
-  const fetchClaimStats = useCallback(async (projId) => {
-    try { const r = await api.get(`/api/projects/${projId}/graph/claim-stats`); setClaimStats(r.data); } catch { console.warn('Failed to load claim stats'); }
-  }, []);
-
-  const handleGraphScopeToggle = () => {
-    const next = graphScope === 'own' ? 'all' : 'own';
-    setGraphScope(next);
-    if (project) fetchGraphData(project.id, next);
-  };
-
-  useEffect(() => {
-    if (legacyClaimsEnabled && activeTab === 'Graph' && project?.id && !graphData) fetchGraphData(project.id);
-  }, [activeTab, project?.id, graphData, fetchGraphData]);
-
-  useEffect(() => {
-    if (legacyClaimsEnabled && activeTab === 'Graph' && project?.id && !claimStats) fetchClaimStats(project.id);
-  }, [activeTab, project?.id, claimStats, fetchClaimStats]);
 
   const handleSearchClaimMatches = async (claim) => {
     const requestId = ++candidateSearchRequestRef.current;
@@ -1059,10 +984,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       await api.patch(`/api/claims/suggestions/${suggestionId}/status`, null, { params: { status } });
       showToast(status === 'ACCEPTED' ? t('evidenceAccepted') : t('suggestionRejected'));
       await handleFetchMatches(selectedClaim.id);
-      if (status === 'ACCEPTED') {
-        const graph = await api.get(`/api/projects/${project.id}/graph?scope=${graphScopeRef.current}`);
-        setGraphData(graph.data);
-      }
     } catch { showToast(t('updateSuggestionFailed')); }
     finally { setUpdatingSuggestionId(null); }
   };
@@ -1417,7 +1338,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     { element: '[data-tour="context-ai-review-tab"]', popover: { title: t('tour.aiReview'), description: t('tour.aiReviewDesc'), side: 'left' } },
     ...(legacyClaimsEnabled ? [
       { element: '[data-tour="context-claims-tab"]', popover: { title: t('tour.claims'), description: t('tour.claimsDesc'), side: 'left' } },
-      { element: '[data-tour="context-graph-tab"]', popover: { title: t('tour.graph'), description: t('tour.graphDesc'), side: 'left' } },
     ] : []),
     { element: '[data-tour="context-feedback-tab"]', popover: { title: t('tour.feedback'), description: t('tour.feedbackDesc'), side: 'left' } },
     { element: '[data-tour="header-dark-mode"]', popover: { title: t('tour.darkMode'), description: t('tour.darkModeDesc'), side: 'bottom' } },
@@ -1480,7 +1400,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     <div className="h-screen w-full flex flex-col bg-(--surface-secondary) overflow-hidden font-sans antialiased text-(--text-primary)">
       <WorkspaceHeader project={project} navigate={navigate} selectedPaper={selectedPaper} handleRunAiReview={handleRunAiReview} loadingAiReview={loadingAiReview} isLocked={isLocked} onShowHistory={() => setShowHistoryModal(true)} historyDisabled={assignedSections.length === 0}
         notifications={notifications} unreadCount={unreadCount} showNotifications={showNotifications} setShowNotifications={setShowNotifications} onMarkNotificationRead={handleMarkNotificationRead}
-        showExportMenu={showExportMenu} setShowExportMenu={setShowExportMenu} handleExportTexArchive={handleExportTexArchive} handleExportTraceabilityJson={handleExportTraceabilityJson} handleExportTraceabilityCsv={handleExportTraceabilityCsv} handleExportGraphCsv={handleExportCsv} legacyClaimsEnabled={legacyClaimsEnabled} />
+        showExportMenu={showExportMenu} setShowExportMenu={setShowExportMenu} handleExportTexArchive={handleExportTexArchive} handleExportTraceabilityJson={handleExportTraceabilityJson} handleExportTraceabilityCsv={handleExportTraceabilityCsv} legacyClaimsEnabled={legacyClaimsEnabled} />
 
       {loadErrors.length > 0 && (
         <div className="flex items-center justify-between gap-4 px-4 py-2 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900 text-[11px] text-amber-900 dark:text-amber-200">
@@ -1523,8 +1443,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
           resolvedFindingIndexes={resolvedFindingIndexes} reviewSectionTitle={currentSection?.sectionTitle}
           onRunAiReview={handleRunAiReview} onSelectReviewFinding={handleSelectReviewFinding}
           onInsertCitation={handleInsertReviewCitation} onRetryReviewSources={() => fetchAiReviewSources(aiReviewResult)}
-          canReviewSection={canEditCurrentSection} legacyClaimsEnabled={legacyClaimsEnabled}
-          graphData={graphData} graphScope={graphScope} onGraphScopeToggle={handleGraphScopeToggle} claimStats={claimStats} />
+          canReviewSection={canEditCurrentSection} legacyClaimsEnabled={legacyClaimsEnabled} />
       </div>
 
       {/* Version History Modal */}

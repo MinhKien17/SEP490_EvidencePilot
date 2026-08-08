@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../../api.js';
-import FunctionalTypeRadar from '../../components/FunctionalTypeRadar.jsx';
 
 const CLAIM_STATUS_CLASSES = {
   PRESENT: 'border-emerald-200 bg-emerald-50 text-emerald-700',
@@ -138,8 +137,6 @@ export default function ContextPanel({
   aiSourcesLoading, aiSourcesError, resolvedFindingIndexes, reviewSectionTitle,
   onRunAiReview, onSelectReviewFinding, onInsertCitation, onRetryReviewSources,
   canReviewSection,
-  // Coverage tab
-  graphData, graphScope, onGraphScopeToggle, claimStats,
   legacyClaimsEnabled,
   isLocked,
 }) {
@@ -229,11 +226,6 @@ export default function ContextPanel({
             {t('feedback')}
             {activeTab === 'Feedback' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 shadow-[0_-2px_8px_rgba(79,70,229,0.5)]"></div>}
           </button>
-          {legacyClaimsEnabled && <button data-tour="context-graph-tab" onClick={() => setActiveTab('Graph')} className={activeClass('Graph')}>
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" /></svg>
-            {t('coverage')}
-            {activeTab === 'Graph' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 shadow-[0_-2px_8px_rgba(79,70,229,0.5)]"></div>}
-          </button>}
         </div>
 
         <div className="flex-1 overflow-y-auto bg-(--surface-secondary)/50 p-4">
@@ -576,15 +568,27 @@ export default function ContextPanel({
                     const candidates = aiSourceMatches?.[index] || [];
                     const resolved = resolvedFindingIndexes?.includes(index);
                     return (
-                      <div key={`${finding.ruleCode}-${finding.startOffset}-${finding.endOffset}`} className={`rounded-xl border bg-(--surface) p-4 shadow-sm ${resolved ? 'border-emerald-300 opacity-70' : 'border-(--border)'}`}>
+                      <div key={`${finding.type}-${finding.startOffset}-${finding.endOffset}`} className={`rounded-xl border bg-(--surface) p-4 shadow-sm ${resolved ? 'border-emerald-300 opacity-70' : 'border-(--border)'}`}>
                         <button type="button" onClick={() => onSelectReviewFinding(finding)} className="w-full text-left">
                           <div className="flex items-start justify-between gap-2">
-                            <h4 className="text-[11px] font-black text-indigo-700">{finding.ruleCode.replaceAll('_', ' ')}</h4>
-                            {resolved && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">{t('citationInserted')}</span>}
+                            <h4 className={`text-[11px] font-black ${finding.type === 'SOURCE_DISCREPANCY' ? 'text-rose-700' : 'text-indigo-700'}`}>{finding.type.replaceAll('_', ' ')}</h4>
+                            <span className="flex items-center gap-1">
+                              {finding.confidence && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">{finding.confidence}</span>}
+                              {resolved && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">{t('citationInserted')}</span>}
+                            </span>
                           </div>
                           <blockquote className="mt-2 border-l-2 border-amber-400 pl-2 text-[11px] italic leading-relaxed text-(--text-secondary)">“{finding.excerpt}”</blockquote>
-                          <p className="mt-2 text-[11px] leading-relaxed text-(--text-secondary)">{finding.reason}</p>
-                          <p className="mt-1 text-[10px] font-semibold text-(--brand-foreground)">{finding.recommendedAction}</p>
+                          <p className="mt-2 text-[11px] leading-relaxed text-(--text-secondary)">{finding.rationale}</p>
+                          {(finding.evidence || []).length > 0 && (
+                            <span className="mt-2 block space-y-1">
+                              {finding.evidence.map((item, evidenceIndex) => (
+                                <span key={evidenceIndex} className="block rounded-lg border border-(--border-light) bg-(--surface-secondary) p-2">
+                                  <span className={`text-[9px] font-bold ${item.relation === 'CONTRADICTS' ? 'text-rose-600' : item.relation === 'SUPPORTS' ? 'text-emerald-600' : 'text-slate-500'}`}>{item.relation.replaceAll('_', ' ')}</span>
+                                  {item.quote && <span className="mt-0.5 block text-[10px] italic leading-relaxed text-(--text-secondary)">“{item.quote}”</span>}
+                                </span>
+                              ))}
+                            </span>
+                          )}
                         </button>
                         <div className="mt-3 border-t border-(--border-light) pt-3">
                           <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('relatedSources')}</p>
@@ -719,48 +723,6 @@ export default function ContextPanel({
             </div>
           )}
 
-          {legacyClaimsEnabled && activeTab === 'Graph' && (
-            <div className="flex flex-col gap-4 animate-in fade-in duration-200">
-              <FunctionalTypeRadar stats={claimStats} compact />
-              {graphData && graphData.sectionSummaries && graphData.sectionSummaries.length > 0 && (
-                <div className="bg-(--surface) border border-(--border) rounded-xl p-4 shadow-sm">
-                  <h4 className="font-bold text-xs text-(--text-primary) mb-3">{t('sectionCoverage')}</h4>
-                  <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                    {graphData.sectionSummaries.map(summary => {
-                      const coverage = summary.claimCount > 0 ? Math.round((summary.presentCount / summary.claimCount) * 100) : 0;
-                      const status = summary.orphanedCount > 0 || summary.unsupportedCount > 0 ? 'bg-rose-50 text-rose-700 border-rose-200'
-                        : summary.missingCount > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                      return (
-                        <div key={summary.sectionId} className="p-2 bg-(--surface-secondary) border border-(--border-light) rounded-lg">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="text-[11px] font-bold text-(--text-primary) truncate">{summary.sectionTitle || summary.sectionId}</span>
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${status}`}>{coverage}%</span>
-                          </div>
-                          <div className="h-1.5 bg-(--border)/50 rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full ${summary.orphanedCount > 0 || summary.unsupportedCount > 0 ? 'bg-rose-400' : summary.missingCount > 0 ? 'bg-amber-400' : 'bg-emerald-400'}`} style={{ width: `${coverage}%` }} />
-                          </div>
-                          <p className="mt-1 text-[9px] text-(--text-tertiary)">
-                            {t('supportedCount', { supported: summary.presentCount, missing: summary.missingCount, orphaned: summary.orphanedCount, unsupported: summary.unsupportedCount })}{summary.assignedUserName ? ` · ${summary.assignedUserName}` : ''}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              <label className="flex items-center gap-2 mb-3 px-1 text-xs text-(--text-tertiary) cursor-pointer select-none">
-                <input type="checkbox" checked={graphScope === 'all'} onChange={onGraphScopeToggle}
-                  className="w-3.5 h-3.5 rounded border-(--border) text-indigo-600 focus:ring-indigo-500" />
-                <span>{t('showTeammateClaims')}</span>
-              </label>
-              {(!graphData?.sectionSummaries || graphData.sectionSummaries.length === 0) && (
-                <div className="text-xs text-(--text-tertiary) text-center py-8">
-                  {t('noCoverageData')}
-                </div>
-              )}
-
-            </div>
-          )}
         </div>
       </aside>
     </>

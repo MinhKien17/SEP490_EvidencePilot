@@ -34,6 +34,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -327,6 +328,24 @@ class FeedbackServiceImplTest {
     }
 
     @Test
+    void studentCannotApproveViaStatusTransition() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        FeedbackRequest request = feedbackRequest(project, instructor, student);
+        request.setStatus(FeedbackStatus.PENDING);
+        when(currentUserService.requireCurrentUser()).thenReturn(student);
+        when(feedbackRequestRepository.findById(request.getId())).thenReturn(Optional.of(request));
+
+        assertThatThrownBy(() -> service().updateStatus(request.getId(), "REVIEWED"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Feedback access denied");
+
+        assertThat(request.getStatus()).isEqualTo(FeedbackStatus.PENDING);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.IN_PROGRESS);
+    }
+
+    @Test
     void updateStatusRejectsIllegalTransitions() {
         User instructor = user(UserRole.INSTRUCTOR);
         User student = user(UserRole.STUDENT);
@@ -540,13 +559,38 @@ class FeedbackServiceImplTest {
 
         service().answerFeedback(feedback.getId(), "Fixed.");
 
+        // Answering must never approve; the student can still revise and resubmit.
         assertThat(feedback.isAnswered()).isTrue();
         assertThat(feedback.getAnswerContent()).isEqualTo("Fixed.");
         assertThat(request.getStatus()).isEqualTo(FeedbackStatus.RETURNED);
         assertThat(project.getStatus()).isEqualTo(ProjectStatus.RETURNED);
+        assertThat(project.getStatus().isReadOnly()).isFalse();
         verify(feedbackRequestRepository, never()).save(any());
         verify(projectRepository, never()).save(any());
         verify(checkpointService, never()).capture(any(), any());
+        verify(systemNotificationService).createNotification(
+                instructor, student, "FEEDBACK_ANSWERED", request.getId(),
+                student.getEmail() + " answered feedback on project \"Capstone\".");
+    }
+
+    @Test
+    void answeredReturnedProjectCanBeResubmittedForReview() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student);
+        project.setStatus(ProjectStatus.RETURNED);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(student);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(feedbackRequestRepository.save(any(FeedbackRequest.class))).thenAnswer(invocation -> {
+            FeedbackRequest saved = invocation.getArgument(0);
+            saved.setId(UUID.randomUUID());
+            return saved;
+        });
+
+        service().submitForReview(project.getId(), null);
+
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.SUBMITTED_FOR_REVIEW);
     }
 
     private InstructorFeedback feedback(User instructor, FeedbackRequest request, PaperSection section) {

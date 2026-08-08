@@ -131,7 +131,9 @@ public class FeedbackController {
 
     @Operation(summary = "Answer a feedback item",
             description = "Student marks an instructor feedback item as answered, with an explanation. "
-                    + "The request and project stay RETURNED; only the instructor can finalize the review.")
+                    + "Answering never changes the request or project status: the request stays RETURNED and the "
+                    + "project remains editable so the student can revise and resubmit. Approval requires an "
+                    + "explicit instructor status transition to REVIEWED.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Feedback answered"),
             @ApiResponse(responseCode = "400", description = "Invalid request"),

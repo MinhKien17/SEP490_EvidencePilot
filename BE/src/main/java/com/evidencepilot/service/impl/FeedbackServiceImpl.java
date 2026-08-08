@@ -268,6 +268,9 @@ public class FeedbackServiceImpl implements FeedbackService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Feedback can only be answered when the request is RETURNED.");
         }
+        if (request.getProject().getStatus().isReadOnly()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
+        }
         PaperSection section = feedback.getSection();
         if (section != null && section.getAssignedUser() != null
                 && !currentUser.getId().equals(section.getAssignedUser().getId())) {
@@ -283,8 +286,8 @@ public class FeedbackServiceImpl implements FeedbackService {
         feedback.setUpdatedBy(currentUser);
         InstructorFeedback saved = instructorFeedbackRepository.save(feedback);
 
-        // Answering feedback is not an approval: the request and project stay RETURNED
-        // until the instructor explicitly finalizes the review round.
+        // Answering feedback is not an approval: the request stays RETURNED and the
+        // project remains writable until the instructor explicitly finalizes the review.
         systemNotificationService.createNotification(
                 feedback.getInstructor(),
                 currentUser,
@@ -351,6 +354,11 @@ public class FeedbackServiceImpl implements FeedbackService {
         }
         if (feedbackRequest.getProject().getStatus().isReadOnly()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
+        }
+        ProjectStatus currentProjectStatus = feedbackRequest.getProject().getStatus();
+        if (currentProjectStatus != projectStatus && !currentProjectStatus.canTransitionTo(projectStatus)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Illegal project transition from " + currentProjectStatus + " to " + projectStatus + ".");
         }
         feedbackRequest.setStatus(status);
         feedbackRequest.setUpdatedAt(LocalDateTime.now());
