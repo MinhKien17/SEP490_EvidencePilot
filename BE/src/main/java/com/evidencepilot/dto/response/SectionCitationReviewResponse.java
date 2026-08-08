@@ -25,22 +25,44 @@ public record SectionCitationReviewResponse(
         limitations = limitations == null ? List.of() : List.copyOf(limitations);
     }
 
-    public enum RuleCode {
-        EXTERNAL_FACT_OR_DEFINITION,
-        QUANTITATIVE_OR_STATISTICAL_CLAIM,
-        PRIOR_WORK_OR_COMPARISON,
-        ATTRIBUTED_METHOD_DATASET_OR_STANDARD,
-        CAUSAL_OR_GENERALIZABLE_CLAIM
+    public enum FindingType {
+        UNSUBSTANTIATED_CLAIM,
+        SOURCE_DISCREPANCY
+    }
+
+    public enum Confidence {
+        HIGH,
+        MEDIUM,
+        LOW
+    }
+
+    public enum EvidenceRelation {
+        SUPPORTS,
+        CONTRADICTS,
+        NOT_FOUND
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Finding(
-            RuleCode ruleCode,
+            FindingType type,
             String excerpt,
             int startOffset,
             int endOffset,
-            String reason,
-            String recommendedAction
+            String rationale,
+            Confidence confidence,
+            List<Evidence> evidence
+    ) {
+        public Finding {
+            evidence = evidence == null ? List.of() : List.copyOf(evidence);
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Evidence(
+            UUID sourceId,
+            UUID chunkId,
+            String quote,
+            EvidenceRelation relation
     ) {
     }
 }
