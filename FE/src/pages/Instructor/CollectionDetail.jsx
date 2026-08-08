@@ -167,11 +167,11 @@ export default function CollectionDetail() {
       setDoiError('');
       try {
         await api.post('/api/documents/ingest/doi', { doi, collectionId: id });
-        setAddDocOption(null);
-        setAddDocModal(false);
         refetchSources();
+        return true;
       } catch (err) {
         setDoiError(err.response?.data?.message || t.uploadFailed);
+        return false;
       }
     };
 
@@ -179,7 +179,18 @@ export default function CollectionDetail() {
 
     if (addDocOption === 'doi') {
       return (
-        <form onSubmit={async (e) => { e.preventDefault(); setSubmitting(true); await handleDoiSubmit(); setSubmitting(false); }} className="space-y-4">
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          setSubmitting(true);
+          try {
+            if (await handleDoiSubmit()) {
+              setAddDocOption(null);
+              setAddDocModal(false);
+            }
+          } finally {
+            setSubmitting(false);
+          }
+        }} className="space-y-4">
           <p className="text-xs text-(--text-secondary)">{t.inputDoiDescription}</p>
           <input type="text" value={doi} onChange={e => setDoi(e.target.value)} placeholder={t.doiPlaceholder} required
             className="w-full px-4 py-3 bg-(--surface-secondary) border border-(--border) rounded-xl text-(--text-primary) font-medium text-sm focus:outline-none focus:ring-2 focus:ring-(--focus) transition-colors" />
@@ -201,7 +212,20 @@ export default function CollectionDetail() {
 
     if (addDocOption === 'doi+upload') {
       return (
-        <form onSubmit={async (e) => { e.preventDefault(); setSubmitting(true); try { if (doi.trim()) await handleDoiSubmit(); if (file) await handleUpload(file); } finally { setSubmitting(false); setAddDocModal(false); } }} className="space-y-4">
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          setSubmitting(true);
+          try {
+            const doiSucceeded = !doi.trim() || await handleDoiSubmit();
+            if (doiSucceeded) {
+              if (file) await handleUpload(file);
+              setAddDocOption(null);
+              setAddDocModal(false);
+            }
+          } finally {
+            setSubmitting(false);
+          }
+        }} className="space-y-4">
           <p className="text-xs text-(--text-secondary)">{t.inputDoiAndUploadDesc}</p>
           <input type="text" value={doi} onChange={e => setDoi(e.target.value)} placeholder={t.doiPlaceholder}
             className="w-full px-4 py-3 bg-(--surface-secondary) border border-(--border) rounded-xl text-(--text-primary) font-medium text-sm focus:outline-none focus:ring-2 focus:ring-(--focus) transition-colors" />
