@@ -196,7 +196,7 @@ public class ProjectServiceImpl implements ProjectService {
     public ProjectResponse unarchiveProject(UUID id) {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(id);
-        currentUserService.requireRole(currentUser, UserRole.ADMIN);
+        currentUserService.requireProjectManageAccess(currentUser, project);
         if (project.getStatus() != ProjectStatus.ARCHIVED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only ARCHIVED projects can be unarchived.");
         }

@@ -128,8 +128,9 @@ class ProjectServiceImplLifecycleTest {
     }
 
     @Test
-    void unarchiveArchivedProjectMarksApprovedAndAudits() {
+    void unarchiveArchivedProjectAllowsAdminAndAudits() {
         User user = user();
+        user.setRole(UserRole.ADMIN);
         Project project = project(ProjectStatus.ARCHIVED);
 
         when(currentUserService.requireCurrentUser()).thenReturn(user);
@@ -138,12 +139,53 @@ class ProjectServiceImplLifecycleTest {
 
         var response = service().unarchiveProject(project.getId());
 
-        verify(currentUserService).requireRole(user, UserRole.ADMIN);
+        verify(currentUserService).requireProjectManageAccess(user, project);
         assertThat(response.status()).isEqualTo(ProjectStatus.APPROVED);
         assertThat(project.isActive()).isTrue();
         verify(auditService).record(
                 "PROJECT_UNARCHIVED", "PROJECT", project.getId(), user,
                 ProjectStatus.ARCHIVED, ProjectStatus.APPROVED);
+    }
+
+    @Test
+    void unarchiveArchivedProjectAllowsProjectManager() {
+        User user = user();
+        user.setRole(UserRole.INSTRUCTOR);
+        Project project = project(ProjectStatus.ARCHIVED);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(projectRepository.save(project)).thenReturn(project);
+
+        var response = service().unarchiveProject(project.getId());
+
+        verify(currentUserService).requireProjectManageAccess(user, project);
+        assertThat(response.status()).isEqualTo(ProjectStatus.APPROVED);
+    }
+
+    @Test
+    void unarchiveRejectsOutsiderWithoutSaveOrAudit() {
+        User user = user();
+        Project project = project(ProjectStatus.ARCHIVED);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        doThrow(new ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN,
+                "Project management access denied"))
+                .when(currentUserService).requireProjectManageAccess(user, project);
+
+        assertThatThrownBy(() -> service().unarchiveProject(project.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(org.springframework.http.HttpStatus.FORBIDDEN));
+        verify(projectRepository, never()).save(project);
+        verify(auditService, never()).record(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -159,6 +201,7 @@ class ProjectServiceImplLifecycleTest {
                 .hasMessageContaining("Only ARCHIVED projects can be unarchived.")
                 .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
                         .isEqualTo(org.springframework.http.HttpStatus.CONFLICT));
+        verify(currentUserService).requireProjectManageAccess(user, project);
         verify(projectRepository, never()).save(project);
         verify(auditService, never()).record(
                 org.mockito.ArgumentMatchers.anyString(),
