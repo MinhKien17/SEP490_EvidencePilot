@@ -79,7 +79,7 @@ function UsersSection({ lang, api }) {
       await api.post(`/api/admin/users/${u.id}/password-reset`);
       setPwMsg(p => ({ ...p, [u.id]: { ok: true, msg: lang.resetSent } }));
     }
-    catch (e) { setPwMsg(p => ({ ...p, [u.id]: { ok: false, msg: lang.resetFailed } })); }
+    catch (e) { setPwMsg(p => ({ ...p, [u.id]: { ok: false, msg: e.response?.data?.message || lang.resetFailed } })); }
     finally {
       setLoadingAction(p => ({ ...p, ['pw_' + u.id]: false }));
       setTimeout(() => setPwMsg(p => { const n = { ...p }; delete n[u.id]; return n; }), 3000);
