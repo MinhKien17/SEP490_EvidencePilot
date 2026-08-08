@@ -38,6 +38,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class FeedbackServiceImplTest {
@@ -523,7 +524,7 @@ class FeedbackServiceImplTest {
     }
 
     @Test
-    void lastAnswerAutoTransitionsRequestAndProjectToApproved() {
+    void answerFeedbackKeepsRequestAndProjectReturned() {
         User instructor = user(UserRole.INSTRUCTOR);
         User student = user(UserRole.STUDENT);
         Project project = project(instructor, student);
@@ -536,14 +537,16 @@ class FeedbackServiceImplTest {
         when(currentUserService.requireCurrentUser()).thenReturn(student);
         when(instructorFeedbackRepository.findById(feedback.getId())).thenReturn(Optional.of(feedback));
         when(instructorFeedbackRepository.save(any(InstructorFeedback.class))).thenReturn(feedback);
-        when(instructorFeedbackRepository.countByRequestIdAndAnsweredFalse(request.getId())).thenReturn(0L);
 
         service().answerFeedback(feedback.getId(), "Fixed.");
 
         assertThat(feedback.isAnswered()).isTrue();
-        assertThat(request.getStatus()).isEqualTo(FeedbackStatus.REVIEWED);
-        assertThat(project.getStatus()).isEqualTo(ProjectStatus.APPROVED);
-        verify(checkpointService).capture(project.getId(), "REVIEW_STATUS:REVIEWED");
+        assertThat(feedback.getAnswerContent()).isEqualTo("Fixed.");
+        assertThat(request.getStatus()).isEqualTo(FeedbackStatus.RETURNED);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.RETURNED);
+        verify(feedbackRequestRepository, never()).save(any());
+        verify(projectRepository, never()).save(any());
+        verify(checkpointService, never()).capture(any(), any());
     }
 
     private InstructorFeedback feedback(User instructor, FeedbackRequest request, PaperSection section) {

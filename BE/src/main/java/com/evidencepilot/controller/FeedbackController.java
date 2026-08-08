@@ -130,8 +130,8 @@ public class FeedbackController {
     }
 
     @Operation(summary = "Answer a feedback item",
-            description = "Student marks an instructor feedback item as answered, with an optional explanation. "
-                    + "When all feedback items on a request are answered, the request auto-transitions to REVIEWED.")
+            description = "Student marks an instructor feedback item as answered, with an explanation. "
+                    + "The request and project stay RETURNED; only the instructor can finalize the review.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Feedback answered"),
             @ApiResponse(responseCode = "400", description = "Invalid request"),

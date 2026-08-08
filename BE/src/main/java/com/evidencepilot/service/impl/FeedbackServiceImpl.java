@@ -283,13 +283,8 @@ public class FeedbackServiceImpl implements FeedbackService {
         feedback.setUpdatedBy(currentUser);
         InstructorFeedback saved = instructorFeedbackRepository.save(feedback);
 
-        long unanswered = instructorFeedbackRepository.countByRequestIdAndAnsweredFalse(request.getId());
-        if (unanswered == 0) {
-            // Single chokepoint: auto-REVIEWED goes through the same legal-transition
-            // + project-status sync as the explicit instructor transition.
-            applyTransition(request, FeedbackStatus.REVIEWED, ProjectStatus.APPROVED, currentUser);
-        }
-
+        // Answering feedback is not an approval: the request and project stay RETURNED
+        // until the instructor explicitly finalizes the review round.
         systemNotificationService.createNotification(
                 feedback.getInstructor(),
                 currentUser,
