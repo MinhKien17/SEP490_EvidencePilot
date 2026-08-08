@@ -245,7 +245,9 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         }
         section.setUpdatedAt(LocalDateTime.now());
         PaperSection saved = paperSectionRepository.save(section);
-        advanceProjectStatusOnStudentContent(section.getDocument().getProject(), section, currentUser);
+        if (content != null) {
+            advanceProjectStatusOnStudentContent(section.getDocument().getProject(), section, currentUser);
+        }
         return projectMapper.toPaperSectionResponse(saved);
     }
 

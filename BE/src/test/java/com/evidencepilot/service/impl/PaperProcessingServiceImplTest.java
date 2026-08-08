@@ -147,6 +147,24 @@ class PaperProcessingServiceImplTest {
     }
 
     @Test
+    void emptyUpdateDoesNotMoveAssignedProjectToInProgress() {
+        User student = user(UserRole.STUDENT);
+        Project project = project(ProjectStatus.ASSIGNED);
+        Document paper = paper(project);
+        PaperSection section = section(paper);
+        section.setAssignedUser(student);
+        when(currentUserService.requireCurrentUser()).thenReturn(student);
+        when(documentRepository.findById(paper.getId())).thenReturn(Optional.of(paper));
+        when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
+        when(paperSectionRepository.save(section)).thenReturn(section);
+
+        service().updateSection(paper.getId(), section.getId(), null, null, null, null);
+
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.ASSIGNED);
+        verify(projectRepository, never()).save(project);
+    }
+
+    @Test
     void instructorSavingContentDoesNotMoveAssignedProject() {
         User instructor = user(UserRole.INSTRUCTOR);
         Project project = project(ProjectStatus.ASSIGNED);
