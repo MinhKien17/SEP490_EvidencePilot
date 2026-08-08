@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../api.js';
+import { getPostLoginDestination } from './loginOrigin.js';
 
 let googleCredentialHandler;
 let googleIdentityInitialized = false;
@@ -28,18 +29,8 @@ export default function Login() {
 
   function redirectAfterLogin(role) {
     const origin = sessionStorage.getItem('login_origin');
-    if (origin) {
-      sessionStorage.removeItem('login_origin');
-      navigate(origin);
-      return;
-    }
-    if (role === 'ADMIN') {
-      navigate('/admin/dashboard');
-    } else if (role === 'INSTRUCTOR') {
-      navigate('/instructor/dashboard');
-    } else {
-      navigate('/student/projects');
-    }
+    sessionStorage.removeItem('login_origin');
+    navigate(getPostLoginDestination(origin, role, window.location.origin));
   }
 
   async function handleSubmit(e) {
