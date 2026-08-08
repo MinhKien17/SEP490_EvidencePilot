@@ -1,9 +1,12 @@
 package com.evidencepilot.config.infrastructure;
 
+import com.evidencepilot.model.ReviewGuide;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.UserRole;
+import com.evidencepilot.repository.ReviewGuideRepository;
 import com.evidencepilot.repository.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
@@ -11,6 +14,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Locale;
 
 @Slf4j
@@ -19,6 +23,8 @@ public class DatabaseSeeder implements CommandLineRunner {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ReviewGuideRepository reviewGuideRepository;
+    private final ObjectMapper objectMapper;
     private final String adminEmail;
     private final String adminPassword;
     private final String adminFirstName;
@@ -36,6 +42,8 @@ public class DatabaseSeeder implements CommandLineRunner {
     public DatabaseSeeder(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
+            ReviewGuideRepository reviewGuideRepository,
+            ObjectMapper objectMapper,
             @Value("${app.admin.email:}") String adminEmail,
             @Value("${app.admin.password:}") String adminPassword,
             @Value("${app.admin.first-name:Admin}") String adminFirstName,
@@ -51,6 +59,8 @@ public class DatabaseSeeder implements CommandLineRunner {
             @Value("${app.instructor.last-name:Instructor}") String instructorLastName) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.reviewGuideRepository = reviewGuideRepository;
+        this.objectMapper = objectMapper;
         this.adminEmail = adminEmail;
         this.adminPassword = adminPassword;
         this.adminFirstName = adminFirstName;
@@ -71,6 +81,7 @@ public class DatabaseSeeder implements CommandLineRunner {
         seedUser(adminEmail, adminPassword, adminFirstName, adminLastName, UserRole.ADMIN, null);
         seedUser(studentEmail, studentPassword, studentFirstName, studentLastName, UserRole.STUDENT, studentCode);
         seedUser(instructorEmail, instructorPassword, instructorFirstName, instructorLastName, UserRole.INSTRUCTOR, null);
+        seedReviewGuides();
     }
 
     private void seedUser(
@@ -118,5 +129,101 @@ public class DatabaseSeeder implements CommandLineRunner {
         userRepository.save(user);
 
         log.info("Ensured {} user: {}", role, email);
+    }
+
+    private static final List<ReviewGuideSeed> REVIEW_GUIDES = List.of(
+            new ReviewGuideSeed("Abstract",
+                    "A strong abstract is self-contained: it states the research question, method, key result, and implication, and stands alone without references.",
+                    List.of(
+                            "Is the research question stated?",
+                            "Is the method summarized in 1-2 sentences?",
+                            "Is the main result reported with a direction or numbers?",
+                            "Does it mention the implication or contribution?",
+                            "Can it be read without the rest of the paper?")),
+            new ReviewGuideSeed("Introduction",
+                    "A strong introduction establishes the problem, situates it in prior work, states the research question or hypothesis, and previews the approach. Move from broad context to a specific gap, then state the aim.",
+                    List.of(
+                            "Does it establish the problem and its importance?",
+                            "Is the gap or research question explicit?",
+                            "Does it review relevant prior work?",
+                            "Does it state the aim or hypothesis?",
+                            "Does it preview the paper's structure?")),
+            new ReviewGuideSeed("Methods",
+                    "A strong methods section is reproducible: it describes the design, participants or data, procedures, and analysis in enough detail that another researcher could repeat the study.",
+                    List.of(
+                            "Is the study design stated?",
+                            "Are participants or data described?",
+                            "Are procedures step-by-step and reproducible?",
+                            "Are analysis techniques specified?",
+                            "Is sample size or data volume justified?")),
+            new ReviewGuideSeed("Methodology",
+                    "A strong methodology section explains and justifies the overall approach and design choices, then describes procedures in reproducible detail.",
+                    List.of(
+                            "Is the approach justified relative to the research question?",
+                            "Are design choices explained?",
+                            "Are data collection and analysis procedures reproducible?",
+                            "Are limitations of the chosen approach acknowledged?")),
+            new ReviewGuideSeed("Results",
+                    "A strong results section reports findings objectively, uses the most effective presentation (text, tables, figures), and reports effect sizes or precision where relevant. Interpretation belongs in the Discussion.",
+                    List.of(
+                            "Are findings reported objectively?",
+                            "Are tables/figures appropriate and referenced in the text?",
+                            "Are key numbers and effect sizes reported?",
+                            "Is the analysis faithful to the methods?",
+                            "Is interpretation left to the Discussion?")),
+            new ReviewGuideSeed("Discussion",
+                    "A strong discussion interprets the results, answers the research question, compares with prior work, acknowledges limitations, and states conclusions or implications.",
+                    List.of(
+                            "Does it interpret the results?",
+                            "Does it answer the research question?",
+                            "Does it compare with prior work?",
+                            "Are limitations acknowledged?",
+                            "Are conclusions or implications stated?")),
+            new ReviewGuideSeed("Conclusion",
+                    "A strong conclusion restates the main findings, summarizes the contribution, and closes with implications or future work without introducing new evidence.",
+                    List.of(
+                            "Does it restate the main findings?",
+                            "Does it summarize the contribution?",
+                            "Are implications or future work mentioned?",
+                            "Is no new evidence introduced?")),
+            new ReviewGuideSeed("References",
+                    "A strong reference list is complete, consistent, and correctly formatted, with every in-text citation matching an entry.",
+                    List.of(
+                            "Do all in-text citations appear in the list?",
+                            "Is the citation style consistent?",
+                            "Are entries complete and accurate?")),
+            new ReviewGuideSeed("DEFAULT",
+                    "General guidance: check whether the section fulfills its purpose, is clear and specific, uses evidence appropriately, and connects to the paper's overall argument.",
+                    List.of(
+                            "Does the section fulfill its stated purpose?",
+                            "Is the writing clear and specific?",
+                            "Is evidence used and cited appropriately?",
+                            "Does it connect to the paper's overall argument?")));
+
+    private void seedReviewGuides() {
+        for (ReviewGuideSeed seed : REVIEW_GUIDES) {
+            reviewGuideRepository.findById(seed.type()).ifPresentOrElse(
+                    existing -> { /* never overwrite manually tuned content */ },
+                    () -> {
+                        ReviewGuide guide = new ReviewGuide();
+                        guide.setSectionType(seed.type());
+                        guide.setGuidance(seed.guidance());
+                        guide.setChecklistJson(toChecklistJson(seed.checklist()));
+                        guide.setActive(true);
+                        reviewGuideRepository.save(guide);
+                        log.info("Seeded review guide: {}", seed.type());
+                    });
+        }
+    }
+
+    private String toChecklistJson(List<String> checklist) {
+        try {
+            return objectMapper.writeValueAsString(checklist);
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    private record ReviewGuideSeed(String type, String guidance, List<String> checklist) {
     }
 }

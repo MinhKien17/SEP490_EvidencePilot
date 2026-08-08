@@ -7,6 +7,7 @@ public record PaperSectionResponse(
         UUID id,
         UUID documentId,
         UUID assignedUserId,
+        String assignedUserName,
         Integer sectionOrder,
         String sectionTitle,
         String contentTex,

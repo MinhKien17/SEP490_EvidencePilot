@@ -25,6 +25,7 @@ public class AiEvaluationJob {
     public static final String STATUS_FAILED = "FAILED";
 
     public static final String KIND_SECTION_CITATION_REVIEW = "SECTION_CITATION_REVIEW";
+    public static final String KIND_SECTION_SUGGESTION = "SECTION_SUGGESTION";
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

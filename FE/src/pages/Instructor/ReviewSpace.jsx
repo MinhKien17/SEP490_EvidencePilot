@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { StatusBadge, LoadingSkeleton, AppHeader } from '../../components';
 import DiffMatchPatch from 'diff-match-patch';
@@ -123,6 +123,29 @@ export default function ReviewSpace() {
   const [transitioningRequestId, setTransitioningRequestId] = useState(null);
   const [hoveredLine, setHoveredLine] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const [guides, setGuides] = useState([]);
+  const [checkedItems, setCheckedItems] = useState({});
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
+  const [suggestionError, setSuggestionError] = useState('');
+  const [suggestionRan, setSuggestionRan] = useState(false);
+  const suggestionRequestRef = useRef(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get('/api/review-guides')
+      .then(r => { if (!cancelled) setGuides(r.data || []); })
+      .catch(() => { if (!cancelled) setGuides([]); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    suggestionRequestRef.current += 1;
+    setSuggestions([]);
+    setSuggestionError('');
+    setSuggestionLoading(false);
+    setSuggestionRan(false);
+  }, [selectedSectionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -213,6 +236,21 @@ export default function ReviewSpace() {
   }, [diffEnabled, projectId, selectedSectionId, activeRequest?.requestedAt]);
 
   const selectedSection = sections.find(s => String(s.id) === String(selectedSectionId)) || null;
+
+  const normalizeKey = (value = '') => value.toLowerCase().replace(/[^a-z]/g, '');
+
+  const activeGuide = useMemo(() => {
+    if (!selectedSection || guides.length === 0) return null;
+    const title = normalizeKey(selectedSection.sectionTitle);
+    if (!title) return null;
+    const exact = guides.find(g => normalizeKey(g.sectionType) === title);
+    if (exact) return exact;
+    const contained = guides.find(g => {
+      const key = normalizeKey(g.sectionType);
+      return key.length >= 5 && title.includes(key);
+    });
+    return contained || guides.find(g => normalizeKey(g.sectionType) === 'default') || null;
+  }, [guides, selectedSection]);
 
   const lineRefContent = useMemo(() => {
     const map = new Map();
@@ -312,6 +350,51 @@ export default function ReviewSpace() {
 
   const handleMouseLeave = () => {
     setHoveredLine(null);
+  };
+
+  const pollAiJob = async (jobId, shouldAbort) => {
+    for (;;) {
+      if (shouldAbort?.()) return null;
+      const { data: job } = await api.get(`/api/jobs/${jobId}`);
+      if (job.status === 'SUCCESS') return job;
+      if (job.status === 'FAILED') throw new Error(job.errorMessage || t.suggestionFailed);
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+  };
+
+  const handleGenerateSuggestions = async () => {
+    if (!selectedPaperId || !selectedSection || !activeGuide || suggestionLoading) return;
+    const requestId = ++suggestionRequestRef.current;
+    setSuggestionLoading(true);
+    setSuggestionError('');
+    setSuggestionRan(false);
+    try {
+      const { data: submit } = await api.post(
+        `/api/papers/${selectedPaperId}/sections/${selectedSectionId}/suggestions`,
+        { sectionType: activeGuide.sectionType });
+      if (suggestionRequestRef.current !== requestId) return;
+      const job = await pollAiJob(submit.jobId, () => suggestionRequestRef.current !== requestId);
+      if (suggestionRequestRef.current !== requestId || !job) return;
+      setSuggestions(job.result || []);
+      setSuggestionRan(true);
+    } catch (err) {
+      if (suggestionRequestRef.current === requestId) {
+        setSuggestionError(err?.response?.data?.message || err?.message || t.suggestionFailed);
+      }
+    } finally {
+      if (suggestionRequestRef.current === requestId) setSuggestionLoading(false);
+    }
+  };
+
+  const injectIntoFeedback = (lineRef, content) => {
+    setFeedbackDraft(prev => {
+      const existing = prev.trim();
+      const incoming = (content || '').trim();
+      if (!incoming) return prev;
+      return existing ? `${existing}\n\n${incoming}` : incoming;
+    });
+    if (lineRef) setFeedbackLineRef(lineRef);
+    setEditingFeedbackId(null);
   };
 
   if (loading) {
@@ -440,8 +523,68 @@ export default function ReviewSpace() {
             )}
           </div>
 
-          {/* Right column: claims + feedback + sources */}
+          {/* Right column: review guide + feedback + sources */}
           <div className="space-y-6">
+            <div className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm p-4 sm:p-6">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h2 className="text-sm font-bold text-(--brand-foreground)">{t.reviewGuide}</h2>
+                <button onClick={handleGenerateSuggestions} disabled={!activeGuide || suggestionLoading}
+                  className="px-3 py-1.5 rounded-lg text-[10px] font-black bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50">
+                  {suggestionLoading ? t.generatingSuggestions : t.generateSuggestions}
+                </button>
+              </div>
+              {!selectedSection || !activeGuide ? (
+                <p className="text-xs text-(--text-tertiary) italic">{t.selectSectionGuide}</p>
+              ) : (
+                <>
+                  <span className="inline-block text-[9px] font-black text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded mb-3">{activeGuide.sectionType}</span>
+                  <p className="text-xs text-(--text-secondary) leading-relaxed mb-4">{activeGuide.guidance}</p>
+                  <ul className="space-y-1.5">
+                    {activeGuide.checklist.map((item, i) => {
+                      const key = `${selectedSectionId}-${i}`;
+                      const checked = !!checkedItems[key];
+                      return (
+                        <li key={key}>
+                          <label className="flex items-start gap-2 cursor-pointer text-xs text-(--text-secondary)">
+                            <input type="checkbox" checked={checked} onChange={() => setCheckedItems(prev => ({ ...prev, [key]: !checked }))}
+                              className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a8a] focus:ring-[#1e3a8a]" />
+                            <span className={checked ? 'line-through opacity-60' : ''}>{item}</span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {suggestionError && (
+                    <p className="text-[10px] font-bold text-rose-600 mt-3">{suggestionError}</p>
+                  )}
+                  {suggestionLoading && (
+                    <div className="mt-3 space-y-2" aria-busy="true">
+                      <div className="h-14 bg-(--surface-secondary) animate-pulse rounded-xl" />
+                      <div className="h-14 bg-(--surface-secondary) animate-pulse rounded-xl" />
+                    </div>
+                  )}
+                  {suggestionRan && !suggestionLoading && suggestions.length === 0 && (
+                    <p className="text-[10px] text-(--text-secondary) italic mt-3">{t.noSuggestionIssues}</p>
+                  )}
+                  {suggestions.length > 0 && (
+                    <ul className="mt-3 space-y-2">
+                      {suggestions.map((suggestion, i) => (
+                        <li key={i} className="border border-(--border-light) rounded-xl p-3 text-xs space-y-1">
+                          <p className="font-bold text-(--text-primary) leading-relaxed">{suggestion.issue}</p>
+                          {suggestion.quote && (
+                            <p className="text-[10px] text-gray-400 italic leading-relaxed">"{suggestion.quote}"</p>
+                          )}
+                          <button onClick={() => injectIntoFeedback(null, suggestion.actionableFix)}
+                            className="text-[10px] font-black text-indigo-600 hover:underline">
+                            {t.insertAsDraft}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
             <div className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm p-4 sm:p-6">
               <div className="flex items-center justify-between gap-3 mb-4">
                 <h2 className="text-sm font-bold text-(--brand-foreground)">{t.sectionFeedback}</h2>

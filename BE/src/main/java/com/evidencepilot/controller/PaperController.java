@@ -8,6 +8,7 @@ import com.evidencepilot.dto.response.PaperValidationResponse;
 import com.evidencepilot.dto.response.JobSubmitResponse;
 import com.evidencepilot.dto.request.SectionContentUpdateRequest;
 import com.evidencepilot.dto.request.SectionReviewSourceMatchRequest;
+import com.evidencepilot.dto.request.SectionSuggestionRequest;
 import com.evidencepilot.dto.response.SectionCitationReviewResponse;
 import com.evidencepilot.dto.response.SectionReviewSourceMatchesResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
@@ -349,6 +350,30 @@ public class PaperController {
         PaperSection section = requireReviewSection(documentId, sectionId);
         currentUserService.requireProjectAccess(currentUser, section.getDocument().getProject());
         return sectionCitationReviewService.sourceMatches(documentId, sectionId, request);
+    }
+
+    @Operation(summary = "Queue AI section suggestions for a saved section",
+            description = "Queues a SECTION_SUGGESTION job against the review guide for this section and returns a jobId. "
+                    + "Poll GET /api/jobs/{jobId} for the result.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "202", description = "Suggestions queued"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Paper not found")
+    })
+    @PostMapping("/papers/{documentId}/sections/{sectionId}/suggestions")
+    public ResponseEntity<JobSubmitResponse> suggestSection(
+            @Parameter(description = "Paper document UUID") @PathVariable UUID documentId,
+            @Parameter(description = "Section UUID") @PathVariable UUID sectionId,
+            @Valid @RequestBody SectionSuggestionRequest request) {
+        User currentUser = currentUserService.requireCurrentUser();
+        PaperSection section = requireReviewSection(documentId, sectionId);
+        currentUserService.requireProjectAccess(currentUser, section.getDocument().getProject());
+        return ResponseEntity.accepted().body(aiEvaluationService.submitSectionSuggestion(
+                section.getDocument().getProject().getId(),
+                documentId,
+                sectionId,
+                request.sectionType()));
     }
 
     @Operation(summary = "Soft-delete a paper",

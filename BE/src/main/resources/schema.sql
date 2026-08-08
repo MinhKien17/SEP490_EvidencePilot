@@ -345,3 +345,13 @@ CREATE TABLE ai_evaluation_jobs (
     INDEX idx_ai_eval_status (status),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
+
+-- ==========================================
+-- 15. REVIEW GUIDES (read-only per-section-type reference)
+-- ==========================================
+CREATE TABLE section_review_guides (
+    section_type VARCHAR(100) NOT NULL PRIMARY KEY,
+    guidance TEXT NOT NULL,
+    checklist_json JSON,
+    active BOOLEAN NOT NULL DEFAULT TRUE
+);

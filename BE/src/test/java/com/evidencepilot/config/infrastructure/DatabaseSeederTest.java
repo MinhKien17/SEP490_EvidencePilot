@@ -3,7 +3,9 @@ package com.evidencepilot.config.infrastructure;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.UserRole;
+import com.evidencepilot.repository.ReviewGuideRepository;
 import com.evidencepilot.repository.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -28,14 +30,20 @@ class DatabaseSeederTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private ReviewGuideRepository reviewGuideRepository;
+
     @Test
     void seedsThreeActiveAccountsFromConfiguration() {
         when(userRepository.findByEmail(anyString())).thenReturn(Optional.empty());
         when(passwordEncoder.encode(anyString())).thenAnswer(invocation -> "encoded:" + invocation.getArgument(0));
+        when(reviewGuideRepository.findById(anyString())).thenReturn(Optional.empty());
 
         new DatabaseSeeder(
                 userRepository,
                 passwordEncoder,
+                reviewGuideRepository,
+                new ObjectMapper(),
                 "configured-admin@example.com",
                 "admin-password",
                 "Configured",
@@ -73,13 +81,19 @@ class DatabaseSeederTest {
                         org.assertj.core.groups.Tuple.tuple(
                                 "configured-instructor@example.com", "Configured", "Instructor", null, UserRole.INSTRUCTOR,
                                 "encoded:instructor-password", AccountStatus.ACTIVE));
+
+        verify(reviewGuideRepository, org.mockito.Mockito.atLeastOnce()).save(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
     void skipsSeedingWhenCredentialsAreMissing() {
+        when(reviewGuideRepository.findById(anyString())).thenReturn(Optional.empty());
+
         new DatabaseSeeder(
                 userRepository,
                 passwordEncoder,
+                reviewGuideRepository,
+                new ObjectMapper(),
                 "",
                 "",
                 "",
@@ -100,9 +114,13 @@ class DatabaseSeederTest {
 
     @Test
     void skipsStudentSeedWhenStudentCodeIsMissing() {
+        when(reviewGuideRepository.findById(anyString())).thenReturn(Optional.empty());
+
         new DatabaseSeeder(
                 userRepository,
                 passwordEncoder,
+                reviewGuideRepository,
+                new ObjectMapper(),
                 "",
                 "",
                 "",
@@ -127,10 +145,13 @@ class DatabaseSeederTest {
         existing.setAccountStatus(AccountStatus.BANNED);
         when(userRepository.findByEmail("student@example.com")).thenReturn(Optional.of(existing));
         when(passwordEncoder.encode("password")).thenReturn("encoded");
+        when(reviewGuideRepository.findById(anyString())).thenReturn(Optional.empty());
 
         new DatabaseSeeder(
                 userRepository,
                 passwordEncoder,
+                reviewGuideRepository,
+                new ObjectMapper(),
                 "",
                 "",
                 "",

@@ -2,8 +2,14 @@ package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.response.SectionCitationReviewResponse;
 import com.evidencepilot.model.AiEvaluationJob;
+import com.evidencepilot.model.Document;
+import com.evidencepilot.model.PaperSection;
+import com.evidencepilot.model.Project;
+import com.evidencepilot.model.ReviewGuide;
 import com.evidencepilot.repository.AiEvaluationJobRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
+import com.evidencepilot.repository.ReviewGuideRepository;
+import com.evidencepilot.service.AiModelClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -16,6 +22,7 @@ import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -26,12 +33,15 @@ class AiEvaluationServiceImplTest {
     private final AiEvaluationJobRepository jobRepository = mock(AiEvaluationJobRepository.class);
     private final PaperSectionRepository paperSectionRepository = mock(PaperSectionRepository.class);
     private final SectionCitationReviewService sectionCitationReviewService = mock(SectionCitationReviewService.class);
+    private final ReviewGuideRepository reviewGuideRepository = mock(ReviewGuideRepository.class);
+    private final AiModelClient aiModelClient = mock(AiModelClient.class);
     private final RabbitTemplate rabbitTemplate = mock(RabbitTemplate.class);
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     private AiEvaluationServiceImpl service() {
         return new AiEvaluationServiceImpl(
                 jobRepository, paperSectionRepository, sectionCitationReviewService,
+                reviewGuideRepository, aiModelClient,
                 rabbitTemplate, objectMapper);
     }
 
@@ -139,6 +149,84 @@ class AiEvaluationServiceImplTest {
         assertThat(job.getResultJson()).contains("section-citation-v1");
         verify(sectionCitationReviewService).run(
                 documentId, projectId, sectionId, "fingerprint", requesterId);
+    }
+
+    @Test
+    void process_sectionSuggestion_extractsArrayAndStoresSuccess() throws Exception {
+        UUID jobId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        AiEvaluationJob job = job(sectionId, projectId, objectMapper.writeValueAsString(Map.of(
+                "projectId", projectId,
+                "documentId", documentId,
+                "sectionId", sectionId,
+                "sectionType", "Introduction")));
+        job.setKind(AiEvaluationJob.KIND_SECTION_SUGGESTION);
+        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
+        PaperSection section = new PaperSection();
+        section.setId(sectionId);
+        section.setSectionTitle("Introduction");
+        section.setContentTex("The research question is stated.");
+        Document document = new Document();
+        document.setId(documentId);
+        Project project = new Project();
+        project.setId(projectId);
+        document.setProject(project);
+        section.setDocument(document);
+        when(paperSectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
+        ReviewGuide guide = new ReviewGuide();
+        guide.setSectionType("Introduction");
+        guide.setChecklistJson("[\"Is the research question stated?\"]");
+        when(reviewGuideRepository.findById("Introduction")).thenReturn(Optional.of(guide));
+        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+                new AiModelClient.GenerationResult("provider", "model",
+                        "```json\n[{\"issue\":\"Gap\",\"quote\":\"research question is stated\",\"actionable_fix\":\"Restate it clearly.\"}]\n```\n trailing"));
+
+        service().process(jobId);
+
+        assertThat(job.getStatus()).isEqualTo(AiEvaluationJob.STATUS_SUCCESS);
+        assertThat(job.getResultJson()).contains("actionable_fix");
+        verify(aiModelClient).generate(anyString(), anyString());
+        verify(reviewGuideRepository).findById("Introduction");
+    }
+
+    @Test
+    void process_sectionSuggestion_refusalText_marksFailed() throws Exception {
+        UUID jobId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        AiEvaluationJob job = job(sectionId, projectId, objectMapper.writeValueAsString(Map.of(
+                "projectId", projectId,
+                "documentId", documentId,
+                "sectionId", sectionId,
+                "sectionType", "Introduction")));
+        job.setKind(AiEvaluationJob.KIND_SECTION_SUGGESTION);
+        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
+        PaperSection section = new PaperSection();
+        section.setId(sectionId);
+        section.setSectionTitle("Introduction");
+        section.setContentTex("Some content");
+        Document document = new Document();
+        document.setId(documentId);
+        Project project = new Project();
+        project.setId(projectId);
+        document.setProject(project);
+        section.setDocument(document);
+        when(paperSectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
+        ReviewGuide guide = new ReviewGuide();
+        guide.setSectionType("Introduction");
+        guide.setChecklistJson("[\"Is the research question stated?\"]");
+        when(reviewGuideRepository.findById("Introduction")).thenReturn(Optional.of(guide));
+        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+                new AiModelClient.GenerationResult("provider", "model", "I cannot fulfill this request."));
+
+        service().process(jobId);
+
+        assertThat(job.getStatus()).isEqualTo(AiEvaluationJob.STATUS_FAILED);
+        assertThat(job.getErrorMessage()).isNotBlank();
+        assertThat(job.getCompletedAt()).isNotNull();
     }
 
     @Test

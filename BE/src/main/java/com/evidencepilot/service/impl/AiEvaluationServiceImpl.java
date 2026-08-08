@@ -3,12 +3,18 @@ package com.evidencepilot.service.impl;
 import com.evidencepilot.config.infrastructure.RabbitMQConfig;
 import com.evidencepilot.dto.response.JobResponse;
 import com.evidencepilot.dto.response.JobSubmitResponse;
+import com.evidencepilot.dto.response.SectionSuggestionDto;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.AiEvaluationJob;
 import com.evidencepilot.model.PaperSection;
+import com.evidencepilot.model.ReviewGuide;
+import com.evidencepilot.prompt.SectionSuggestionPrompt;
 import com.evidencepilot.repository.AiEvaluationJobRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
+import com.evidencepilot.repository.ReviewGuideRepository;
 import com.evidencepilot.service.AiEvaluationService;
+import com.evidencepilot.service.AiModelClient;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +22,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -31,6 +39,8 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
     private final AiEvaluationJobRepository jobRepository;
     private final PaperSectionRepository paperSectionRepository;
     private final SectionCitationReviewService sectionCitationReviewService;
+    private final ReviewGuideRepository reviewGuideRepository;
+    private final AiModelClient aiModelClient;
     private final RabbitTemplate rabbitTemplate;
     private final ObjectMapper objectMapper;
 
@@ -73,6 +83,24 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
             return submit(projectId, AiEvaluationJob.KIND_SECTION_CITATION_REVIEW, payload);
         } catch (Exception exception) {
             throw new IllegalStateException("Could not serialize section citation review job", exception);
+        }
+    }
+
+    @Override
+    public JobSubmitResponse submitSectionSuggestion(
+            UUID projectId,
+            UUID documentId,
+            UUID sectionId,
+            String sectionType) {
+        try {
+            String payload = objectMapper.writeValueAsString(Map.of(
+                    "projectId", projectId,
+                    "documentId", documentId,
+                    "sectionId", sectionId,
+                    "sectionType", sectionType));
+            return submit(projectId, AiEvaluationJob.KIND_SECTION_SUGGESTION, payload);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Could not serialize section suggestion job", exception);
         }
     }
 
@@ -148,8 +176,89 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
                         payload.path("contentFingerprint").asText(),
                         requestedByUserId));
             }
+            case AiEvaluationJob.KIND_SECTION_SUGGESTION -> {
+                UUID documentId = UUID.fromString(payload.path("documentId").asText());
+                UUID projectId = UUID.fromString(payload.path("projectId").asText());
+                UUID sectionId = UUID.fromString(payload.path("sectionId").asText());
+                String sectionType = payload.path("sectionType").asText();
+                if (!job.getProjectId().equals(projectId)) {
+                    throw new IllegalArgumentException(
+                            "Section suggestion payload project does not match its job");
+                }
+                PaperSection section = paperSectionRepository.findByIdWithDocument(sectionId)
+                        .filter(found -> found.getDocument() != null)
+                        .filter(found -> documentId.equals(found.getDocument().getId()))
+                        .orElseThrow(() -> new ResourceNotFoundException(sectionId, "PaperSection"));
+                if (section.getContentTex() == null || section.getContentTex().isBlank()) {
+                    throw new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST, "Section Suggestions require a non-empty saved section");
+                }
+                yield sectionSuggestionResult(section, job.getProjectId(), sectionType);
+            }
             default -> throw new IllegalStateException("Unknown AI evaluation job kind: " + job.getKind());
         };
+    }
+
+    private JsonNode sectionSuggestionResult(PaperSection section, UUID projectId, String sectionType)
+            throws Exception {
+        ReviewGuide guide = reviewGuideRepository.findById(sectionType)
+                .or(() -> reviewGuideRepository.findById("DEFAULT"))
+                .orElseThrow(() -> new IllegalStateException(
+                        "No review guide exists for section type: " + sectionType));
+        List<String> checklist = parseChecklist(guide.getChecklistJson());
+        log.info("Section suggestion job for section {} (type '{}') matched guide '{}' with {} checklist items",
+                section.getId(), sectionType, guide.getSectionType(), checklist.size());
+        AiModelClient.GenerationResult generation = null;
+        try {
+            generation = aiModelClient.generate(
+                    SectionSuggestionPrompt.SYSTEM,
+                    SectionSuggestionPrompt.build(
+                            guide.getSectionType(), checklist, section.getContentTex()));
+            List<SectionSuggestionDto> suggestions = objectMapper.readValue(
+                    extractJsonArray(generation.response()),
+                    new TypeReference<>() {
+                    });
+            log.info("Section suggestion LLM output for section {}: {}",
+                    section.getId(), truncate(generation.response()));
+            return objectMapper.valueToTree(suggestions);
+        } catch (Exception exception) {
+            log.warn("Section suggestion job for {} produced invalid AI output: {}",
+                    projectId, generation != null ? generation.response() : "no response");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY, "AI returned invalid section suggestions", exception);
+        }
+    }
+
+    private static String truncate(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.length() > 2_000 ? value.substring(0, 2_000) + "..." : value;
+    }
+
+    private List<String> parseChecklist(String checklistJson) {
+        if (checklistJson == null || checklistJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(checklistJson, new TypeReference<>() {
+            });
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    private static String extractJsonArray(String response) {
+        if (response == null) {
+            throw new IllegalArgumentException("Empty AI response");
+        }
+        String stripped = response.replaceAll("(?s)```(?:json)?|```", "");
+        int start = stripped.indexOf('[');
+        int end = stripped.lastIndexOf(']');
+        if (start < 0 || end < start) {
+            throw new IllegalArgumentException("AI response did not contain a JSON array");
+        }
+        return stripped.substring(start, end + 1);
     }
 
     private boolean sameSectionCitationReview(
