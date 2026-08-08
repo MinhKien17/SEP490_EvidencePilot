@@ -224,7 +224,7 @@ class DocumentServiceImplAccessTest {
     }
 
     @Test
-    void uploadDocumentActivatesDraftProjectWhenPaperAndSourcePresent() throws Exception {
+    void uploadDocumentKeepsProjectStatusAndSyncsSource() throws Exception {
         User user = user();
         Project project = project();
         project.setStatus(ProjectStatus.ASSIGNED);
@@ -245,11 +245,13 @@ class DocumentServiceImplAccessTest {
         when(minioClient.putObject(any(PutObjectArgs.class))).thenReturn(null);
         service().uploadDocument(project.getId(), file, DocumentType.PAPER);
 
-        verify(projectCollectionService).refreshProjectStatus(project);
+        verify(projectCollectionService).syncSource(persisted);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.ASSIGNED);
+        verify(projectRepository, never()).save(project);
     }
 
     @Test
-    void deleteDocumentDowngradesActiveProjectWhenRequiredTypeMissing() {
+    void deleteDocumentKeepsProjectStatus() {
         User user = user();
         Project project = project();
         project.setStatus(ProjectStatus.IN_PROGRESS);
@@ -260,7 +262,10 @@ class DocumentServiceImplAccessTest {
         when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
         service().deleteDocument(source.getId());
 
-        verify(projectCollectionService).refreshProjectStatus(project);
+        verify(projectCollectionService).removeSource(source);
+        assertThat(source.isActive()).isFalse();
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.IN_PROGRESS);
+        verify(projectRepository, never()).save(project);
     }
 
     @Test

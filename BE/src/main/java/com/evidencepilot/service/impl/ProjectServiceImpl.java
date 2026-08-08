@@ -264,12 +264,6 @@ public class ProjectServiceImpl implements ProjectService {
         member.setJoinedAt(LocalDateTime.now());
         projectMemberRepository.save(member);
 
-        if (project.getStatus() == ProjectStatus.CREATED) {
-            project.setStatus(ProjectStatus.ASSIGNED);
-            project.setUpdatedAt(LocalDateTime.now());
-            projectRepository.save(project);
-        }
-
         systemNotificationService.createNotification(
                 user,
                 currentUser,

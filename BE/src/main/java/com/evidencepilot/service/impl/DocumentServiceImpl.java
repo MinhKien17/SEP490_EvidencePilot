@@ -322,10 +322,7 @@ public class DocumentServiceImpl implements DocumentService {
         // Step C: Mark document as uploaded (transactional, publishes event after commit)
         document = documentPersistenceService.markDocumentAsUploaded(document.getId(), objectKey);
 
-        if (project != null) {
-            projectCollectionService.refreshProjectStatus(project);
-        }
-        if (collection != null) {
+        if (project != null || collection != null) {
             projectCollectionService.syncSource(document);
         }
 
@@ -539,10 +536,6 @@ public class DocumentServiceImpl implements DocumentService {
         doc.setFileSizeBytes(file.getSize());
         doc = documentPersistenceService.markDocumentAsUploaded(doc.getId(), objectKey);
 
-        if (doc.getProject() != null) {
-            projectCollectionService.refreshProjectStatus(doc.getProject());
-        }
-
         return DocumentResponse.from(doc);
     }
 
@@ -555,9 +548,6 @@ public class DocumentServiceImpl implements DocumentService {
         projectCollectionService.removeSource(doc);
         doc.setActive(false);
         documentRepository.save(doc);
-        if (doc.getProject() != null) {
-            projectCollectionService.refreshProjectStatus(doc.getProject());
-        }
     }
 
     private Document findDocument(UUID id) {
