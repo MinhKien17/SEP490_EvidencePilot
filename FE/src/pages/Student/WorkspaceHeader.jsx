@@ -22,7 +22,7 @@ export default function WorkspaceHeader({ project, notifications, unreadCount, s
     <div className="py-1">
       <button onClick={() => { handleExportTexArchive(); setShowExportMenu(false); setShowMoreMenu(false); }} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-(--text-primary) hover:bg-(--surface-secondary) transition-colors">{t('exportTex')}</button>
       {legacyClaimsEnabled && <button onClick={() => { handleExportTraceabilityJson(); setShowExportMenu(false); setShowMoreMenu(false); }} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-(--text-primary) hover:bg-(--surface-secondary) transition-colors">{t('exportTraceability')}</button>}
-      {legacyClaimsEnabled && <button onClick={() => { handleExportTraceabilityCsv(); setShowExportMenu(false); setShowMoreMenu(false); }} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-(--text-primary) hover:bg-(--surface-secondary) transition-colors">{t('exportGraphCsv')}</button>}
+      {legacyClaimsEnabled && <button onClick={() => { handleExportTraceabilityCsv(); setShowExportMenu(false); setShowMoreMenu(false); }} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-(--text-primary) hover:bg-(--surface-secondary) transition-colors">{t('exportTraceabilityCsv')}</button>}
     </div>
   );
 

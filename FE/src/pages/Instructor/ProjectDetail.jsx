@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { AppHeader, LoadingSkeleton, StatusBadge, Modal, TourLauncher, EvidenceGraph, Spinner, FunctionalTypeRadar } from '../../components';
+import { AppHeader, LoadingSkeleton, StatusBadge, Modal, TourLauncher, EvidenceGraph, Spinner } from '../../components';
 import { Marker, MarkerIcon, MarkerContent } from '../../components/Marker';
 import { instructorText, commonText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
@@ -27,13 +27,10 @@ export default function ProjectDetail() {
   const [selectedPaper, setSelectedPaper] = useState(null);
   const [feedbackRequests, setFeedbackRequests] = useState([]);
   const [traceability, setTraceability] = useState(null);
-  const [graphData, setGraphData] = useState(null);
-  const [claimStats, setClaimStats] = useState(null);
   const [progressReport, setProgressReport] = useState(null);
   const [checkpointDiff, setCheckpointDiff] = useState(null);
   const [reportSectionId, setReportSectionId] = useState(null);
   const [reportPane, setReportPane] = useState('matrix');
-  const [reviewPane, setReviewPane] = useState('distribution');
   const [users, setUsers] = useState([]);
   const [showAddMember, setShowAddMember] = useState(false);
   const [newMemberId, setNewMemberId] = useState('');
@@ -99,17 +96,13 @@ export default function ProjectDetail() {
 
   const loadFeedbackAndTraceability = useCallback(async () => {
     try {
-      const [fbRes, traceRes, graphRes, statsRes] = await Promise.all([
+      const [fbRes, traceRes] = await Promise.all([
         api.get('/api/feedback-requests'),
         legacyClaimsEnabled ? api.get(`/api/projects/${id}/traceability`).catch(() => null) : null,
-        legacyClaimsEnabled ? api.get(`/api/projects/${id}/graph?scope=all`).catch(() => null) : null,
-        legacyClaimsEnabled ? api.get(`/api/projects/${id}/graph/claim-stats`).catch(() => null) : null,
       ]);
       const projectFbs = (fbRes.data || []).filter(fb => fb.projectId === id);
       setFeedbackRequests(projectFbs);
       setTraceability(traceRes?.data || null);
-      setGraphData(graphRes?.data || null);
-      setClaimStats(statsRes?.data || null);
     } catch { }
   }, [id]);
 
@@ -816,21 +809,9 @@ export default function ProjectDetail() {
             </div>
             {legacyClaimsEnabled && <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-bold text-[var(--brand-foreground)]">
-                  {reviewPane === 'distribution' ? t.claimTypeDistribution : t.evidenceMap}
-                </h2>
-                <div className="flex overflow-hidden rounded-lg border border-[var(--border)]">
-                  {['distribution', 'map'].map(mode => (
-                    <button key={mode} onClick={() => setReviewPane(mode)}
-                      className={`px-3 py-2 text-xs font-bold transition ${reviewPane === mode ? 'bg-[var(--brand)] text-white' : 'bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--brand-foreground)]'}`}>
-                      {mode === 'distribution' ? t.distribution : t.evidenceMap}
-                    </button>
-                  ))}
-                </div>
+                <h2 className="text-sm font-bold text-[var(--brand-foreground)]">{t.evidenceMap}</h2>
               </div>
-              {reviewPane === 'distribution'
-                ? <FunctionalTypeRadar stats={claimStats} />
-                : <EvidenceGraph traceabilityData={traceability} height={500} />}
+              <EvidenceGraph traceabilityData={traceability} height={500} />
             </div>}
           </div>
         )}
