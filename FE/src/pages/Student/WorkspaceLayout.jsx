@@ -1437,7 +1437,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
           handleSearchClaimMatches={handleSearchClaimMatches} handleEvaluateMatch={handleEvaluateMatch} handleSuggestionStatus={handleSuggestionStatus} canEditClaim={canEditClaim}
           editingClaim={editingClaim} setEditingClaim={setEditingClaim} editClaimContent={editClaimContent} setEditClaimContent={setEditClaimContent} editClaimFunctionalType={editClaimFunctionalType} setEditClaimFunctionalType={setEditClaimFunctionalType} handleDeleteClaim={handleDeleteClaim} handleUpdateClaim={handleUpdateClaim}
           onSelectClaim={handleSelectClaim}
-          feedbacks={feedbacks} setShowSubmitReviewModal={setShowSubmitReviewModal} userProjectRole={project?.currentUserRole}
+          feedbacks={feedbacks} assignedSections={assignedSections} setShowSubmitReviewModal={setShowSubmitReviewModal} userProjectRole={project?.currentUserRole}
           aiReview={aiReviewResult} aiReviewLoading={loadingAiReview} aiReviewError={aiReviewError} aiReviewStale={aiReviewStale}
           aiSourceMatches={aiSourceMatches} aiSourcesLoading={loadingAiSources} aiSourcesError={aiSourcesError}
           resolvedFindingIndexes={resolvedFindingIndexes} reviewSectionTitle={currentSection?.sectionTitle}

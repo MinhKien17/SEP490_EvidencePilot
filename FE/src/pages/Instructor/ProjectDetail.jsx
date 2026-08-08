@@ -6,7 +6,12 @@ import { Marker, MarkerIcon, MarkerContent } from '../../components/Marker';
 import { instructorText, commonText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
 import api from '../../api';
-import { getSourceShareChanges, getBlockedSources, isSourceShareable } from './sourceShareSelection';
+import {
+  getSourceShareChanges,
+  getBlockedSources,
+  isSourceShareable,
+  isSourceSharedWithProject,
+} from './sourceShareSelection';
 import { legacyClaimsEnabled } from '../../featureFlags';
 
 const STANDARDS = ['IEEE', 'ACM', 'SPRINGER_LNCS', 'APA', 'MLA', 'CUSTOM'];
@@ -1239,9 +1244,10 @@ export default function ProjectDetail() {
             <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-[var(--border-light)] p-1">
               {collectionSources.map(source => {
                 const shareable = isSourceShareable(source);
+                const canToggle = shareable || isSourceSharedWithProject(source, id);
                 return (
-                  <label key={source.id} className={`flex items-center gap-2 rounded-lg bg-[var(--surface-secondary)] px-3 py-2 ${shareable ? 'cursor-pointer hover:bg-[var(--surface-tertiary)]' : 'cursor-not-allowed opacity-60'}`}>
-                    <input type="checkbox" checked={selectedSourceIds.includes(source.id)} onChange={() => toggleSourceSelection(source.id)} disabled={projectReadOnly || shareLoadingId !== null || !shareable} className="accent-indigo-600" />
+                  <label key={source.id} className={`flex items-center gap-2 rounded-lg bg-[var(--surface-secondary)] px-3 py-2 ${canToggle ? 'cursor-pointer hover:bg-[var(--surface-tertiary)]' : 'cursor-not-allowed opacity-60'}`}>
+                    <input type="checkbox" checked={selectedSourceIds.includes(source.id)} onChange={() => toggleSourceSelection(source.id)} disabled={projectReadOnly || shareLoadingId !== null || !canToggle} className="accent-indigo-600" />
                     <span className="flex-1 text-xs font-medium">{source.title || source.originalFilename || source.id}</span>
                     {!shareable && <span className="text-[10px] font-semibold text-amber-600">{t.sourceNotReady}</span>}
                   </label>

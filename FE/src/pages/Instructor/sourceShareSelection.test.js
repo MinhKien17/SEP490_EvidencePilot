@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { getSourceShareChanges, getBlockedSources, isSourceShareable } from './sourceShareSelection.js';
+import {
+  getSourceShareChanges,
+  getBlockedSources,
+  isSourceShareable,
+  isSourceSharedWithProject,
+} from './sourceShareSelection.js';
 
 test('changes only sources from the selected collection for the target project', () => {
   const sources = [
@@ -23,6 +28,14 @@ test('isSourceShareable accepts only READY or COMPLETED', () => {
   assert.equal(isSourceShareable({ processingStatus: 'PROCESSING' }), false);
   assert.equal(isSourceShareable({ processingStatus: 'METADATA_FETCHED' }), false);
   assert.equal(isSourceShareable({ processingStatus: undefined }), false);
+});
+
+test('a legacy linked source remains selectable only to unshare', () => {
+  const source = { id: 'legacy', projectIds: ['project-a'], processingStatus: 'PROCESSING' };
+
+  assert.equal(isSourceSharedWithProject(source, 'project-a'), true);
+  assert.equal(isSourceShareable(source), false);
+  assert.equal(isSourceSharedWithProject(source, 'project-b'), false);
 });
 
 test('getBlockedSources lists selected non-shareable sources with title and status', () => {

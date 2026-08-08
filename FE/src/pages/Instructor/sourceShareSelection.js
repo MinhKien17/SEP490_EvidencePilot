@@ -4,6 +4,10 @@ export function isSourceShareable(source) {
   return SHAREABLE_STATUSES.includes(source?.processingStatus);
 }
 
+export function isSourceSharedWithProject(source, projectId) {
+  return (source?.projectIds || []).some(id => String(id) === String(projectId));
+}
+
 export function getBlockedSources(collectionSources, selectedSourceIds) {
   const selected = new Set(selectedSourceIds.map(String));
   return collectionSources
@@ -16,10 +20,9 @@ export function getBlockedSources(collectionSources, selectedSourceIds) {
 }
 
 export function getSourceShareChanges(collectionSources, projectId, selectedSourceIds) {
-  const targetProjectId = String(projectId);
   const selected = new Set(selectedSourceIds.map(String));
   const shared = new Set(collectionSources
-    .filter(source => (source.projectIds || []).some(id => String(id) === targetProjectId))
+    .filter(source => isSourceSharedWithProject(source, projectId))
     .map(source => String(source.id)));
 
   return {

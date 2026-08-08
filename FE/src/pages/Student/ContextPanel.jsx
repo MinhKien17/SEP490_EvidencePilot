@@ -131,7 +131,7 @@ export default function ContextPanel({
   editingClaim, setEditingClaim, editClaimContent, setEditClaimContent, editClaimFunctionalType, setEditClaimFunctionalType, handleDeleteClaim, handleUpdateClaim,
   onSelectClaim,
   // Feedback tab
-  feedbacks, setShowSubmitReviewModal, userProjectRole,
+  feedbacks, assignedSections, setShowSubmitReviewModal, userProjectRole,
   // Citation Review tab
   aiReview, aiReviewLoading, aiReviewError, aiReviewStale, aiSourceMatches,
   aiSourcesLoading, aiSourcesError, resolvedFindingIndexes, reviewSectionTitle,
@@ -688,12 +688,14 @@ export default function ContextPanel({
                                   {item.answered && item.answerContent && (
                                     <p className="text-[9px] text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 rounded p-1.5">{t('myAnswer', { answer: item.answerContent })}</p>
                                   )}
-                                  {!item.answered && fb.status === 'RETURNED' && (
+                                  {!item.answered && fb.status === 'RETURNED'
+                                    && assignedSections.some(section => String(section.id) === String(item.sectionId)) && (
                                     <div className="mt-2 space-y-1.5">
                                       <textarea
                                         value={answerDrafts[item.id] || ''}
                                         onChange={(e) => setAnswerDrafts(prev => ({ ...prev, [item.id]: e.target.value }))}
                                         placeholder={t('answerPlaceholder')}
+                                        aria-label={t('answerFeedback')}
                                         rows="2"
                                         className="w-full text-[10px] border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 text-(--text-primary)"
                                       />
