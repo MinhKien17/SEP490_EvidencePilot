@@ -447,7 +447,7 @@ export default function ProjectDetail() {
     setPendingAssign(null);
     try {
       await api.put(`/api/papers/${selectedPaper.id}/sections/${sectionId}/assign`, null, { params: { assignedUserId: userId || undefined } });
-      await loadSections(selectedPaper.id);
+      await Promise.all([loadProject(), loadSections(selectedPaper.id)]);
     } catch { alert(t.assignmentFailed); }
   };
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { StatusBadge, LoadingSkeleton, AppHeader } from '../../components';
+import { StatusBadge, LoadingSkeleton, AppHeader, Modal } from '../../components';
 import DiffMatchPatch from 'diff-match-patch';
 import api from '../../api.js';
 import { renderLatexToHtml } from '../../components/latexHtml.js';
@@ -121,6 +121,7 @@ export default function ReviewSpace() {
   const [savingFeedback, setSavingFeedback] = useState(false);
   const [mediaUrlMap, setMediaUrlMap] = useState({});
   const [transitioningRequestId, setTransitioningRequestId] = useState(null);
+  const [pendingTransition, setPendingTransition] = useState(null);
   const [hoveredLine, setHoveredLine] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [guides, setGuides] = useState([]);
@@ -329,6 +330,7 @@ export default function ReviewSpace() {
     try {
       const res = await api.patch(`/api/feedback-requests/${requestId}/status?status=${targetStatus}`);
       setRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: res.data.status } : r));
+      setPendingTransition(null);
       setSuccessMessage(targetStatus === 'REVIEWED' ? t.reviewApproved : t.reviewReturned);
       if (targetStatus === 'REVIEWED') {
         setTimeout(() => navigate('/instructor/requests'), 1000);
@@ -429,11 +431,11 @@ export default function ReviewSpace() {
           <div className="flex flex-wrap gap-2 shrink-0">
             {activeRequest && (activeRequest.status === 'PENDING' || activeRequest.status === 'RETURNED') && (
               <>
-                <button onClick={() => handleTransitionStatus(activeRequest.id, 'RETURNED')} disabled={transitioningRequestId === activeRequest.id}
+                <button onClick={() => setPendingTransition({ requestId: activeRequest.id, targetStatus: 'RETURNED' })} disabled={transitioningRequestId === activeRequest.id}
                   className={`px-3 py-2 text-xs font-bold text-white rounded-xl transition ${ACTION_LABELS.RETURNED.cls} disabled:opacity-50`}>
                   {t[ACTION_LABELS.RETURNED.key]}
                 </button>
-                <button onClick={() => { if (window.confirm(t.finalizeReviewConfirm)) handleTransitionStatus(activeRequest.id, 'REVIEWED'); }} disabled={transitioningRequestId === activeRequest.id}
+                <button onClick={() => setPendingTransition({ requestId: activeRequest.id, targetStatus: 'REVIEWED' })} disabled={transitioningRequestId === activeRequest.id}
                   className={`px-3 py-2 text-xs font-bold text-white rounded-xl transition ${ACTION_LABELS.REVIEWED.cls} disabled:opacity-50`}>
                   {t[ACTION_LABELS.REVIEWED.key]}
                 </button>
@@ -674,6 +676,23 @@ export default function ReviewSpace() {
           {t.lineNumber.replace('{{line}}', hoveredLine)}
         </div>
       )}
+
+      <Modal open={!!pendingTransition} onClose={() => { if (!transitioningRequestId) setPendingTransition(null); }}
+        title={pendingTransition?.targetStatus === 'REVIEWED' ? t[ACTION_LABELS.REVIEWED.key] : t[ACTION_LABELS.RETURNED.key]}
+        closeLabel={ct.close}>
+        <div className="space-y-4 text-xs">
+          <p className="text-(--text-secondary)">
+            {pendingTransition?.targetStatus === 'REVIEWED' ? t.finalizeReviewConfirm : t.returnForRevision}
+          </p>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={() => setPendingTransition(null)} disabled={!!transitioningRequestId}
+              className="flex-1 py-3 bg-(--surface-secondary) hover:bg-(--surface-tertiary) text-(--text-secondary) rounded-xl transition-colors border border-(--border) disabled:opacity-50">{ct.cancel}</button>
+            <button type="button" onClick={() => handleTransitionStatus(pendingTransition.requestId, pendingTransition.targetStatus)}
+              disabled={!!transitioningRequestId}
+              className="flex-1 py-3 bg-(--brand) text-(--on-brand) rounded-xl hover:bg-(--brand-hover) transition-colors disabled:opacity-50">{transitioningRequestId ? ct.saving : ct.confirm}</button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
