@@ -4,6 +4,8 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.UserRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.AfterEach;
@@ -23,7 +25,8 @@ class JwtAuthenticationFilterTest {
     private final JwtUtils jwtUtils = mock(JwtUtils.class);
     private final UserRepository users = mock(UserRepository.class);
     private final JwtSessionRegistry registry = new JwtSessionRegistry();
-    private final JwtAuthenticationFilter filter = new JwtAuthenticationFilter(jwtUtils, users, registry);
+    private final JwtAuthenticationFilter filter = new JwtAuthenticationFilter(
+            jwtUtils, users, registry, new ObjectMapper().registerModule(new JavaTimeModule()));
     private final FilterChain chain = mock(FilterChain.class);
 
     private void stubRegisteredJti(String token, String jti) {
@@ -129,7 +132,7 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    void inactiveOrStaleToken_returnsForbiddenWithoutAuthentication() throws Exception {
+    void staleToken_returnsUnauthorizedWithoutAuthentication() throws Exception {
         UUID userId = UUID.randomUUID();
         User user = new User();
         user.setId(userId);
@@ -145,13 +148,13 @@ class JwtAuthenticationFilterTest {
 
         filter.doFilter(request("valid"), response, chain);
 
-        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getStatus()).isEqualTo(401);
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
         verifyNoInteractions(chain);
     }
 
     @Test
-    void tokenWithoutVersion_returnsForbidden() throws Exception {
+    void tokenWithoutVersion_returnsUnauthorized() throws Exception {
         UUID userId = UUID.randomUUID();
         User user = new User();
         user.setId(userId);
@@ -166,7 +169,7 @@ class JwtAuthenticationFilterTest {
 
         filter.doFilter(request("legacy"), response, chain);
 
-        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getStatus()).isEqualTo(401);
         verifyNoInteractions(chain);
     }
 
