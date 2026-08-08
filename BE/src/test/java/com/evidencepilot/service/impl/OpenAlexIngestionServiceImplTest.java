@@ -37,6 +37,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -209,6 +210,19 @@ class OpenAlexIngestionServiceImplTest {
 
         verify(projectCollectionService).syncSource(
                 org.mockito.ArgumentMatchers.argThat(document -> document.getCollection() == collection));
+    }
+
+    @Test
+    void ingestByDoi_doesNotSaveDocumentWhenFetchFails() {
+        when(currentUserService.requireCurrentUser()).thenReturn(currentUser);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        doThrow(new OpenAlexClient.OpenAlexApiException("Invalid DOI: nope", 400))
+                .when(openAlexClient).fetchWork("not-a-doi");
+
+        assertThatThrownBy(() -> service.ingestByDoi(project.getId(), null, "not-a-doi"))
+                .isInstanceOf(OpenAlexClient.OpenAlexApiException.class);
+
+        verify(documentRepository, never()).save(any());
     }
 
     @Test

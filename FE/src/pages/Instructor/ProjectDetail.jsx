@@ -41,6 +41,7 @@ export default function ProjectDetail() {
 
   // Setup tab state
   const [doiInput, setDoiInput] = useState('');
+  const [doiError, setDoiError] = useState('');
   const [standard, setStandard] = useState('');
   const [sources, setSources] = useState([]);
   const [showSourceDetail, setShowSourceDetail] = useState(false);
@@ -200,6 +201,7 @@ export default function ProjectDetail() {
   const handleImportDoiUnified = async (asSource) => {
     if (!doiInput.trim()) return;
     setAddSourceLoading(true);
+    setDoiError('');
     try {
       const payload = {
         doi: doiInput.trim(),
@@ -215,7 +217,7 @@ export default function ProjectDetail() {
         setPapers(papersRes.data || []);
       }
       setShowAddSource(false);
-    } catch { alert(t.doiImportFailed); }
+    } catch (err) { setDoiError(err?.response?.data?.message || t.doiImportFailed); }
     finally { setAddSourceLoading(false); }
   };
 
@@ -1136,6 +1138,7 @@ export default function ProjectDetail() {
                 {addSourceLoading ? '...' : t.import}
               </button>
             </div>
+            {doiError && <p className="text-xs font-semibold text-rose-600">{doiError}</p>}
             {addSourceDocType === 'SOURCE' && (
               <p className="text-[10px] italic text-[var(--text-tertiary)]">{t.sourcesAutoClassified}</p>
             )}

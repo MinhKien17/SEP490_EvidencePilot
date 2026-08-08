@@ -1,5 +1,6 @@
 package com.evidencepilot.exception;
 
+import com.evidencepilot.client.openalex.OpenAlexClient;
 import com.evidencepilot.config.security.JwtSessionRegistry;
 import com.evidencepilot.config.security.JwtUtils;
 import com.evidencepilot.controller.GlobalExceptionHandler;
@@ -215,6 +216,23 @@ class GlobalExceptionHandlerTest {
         ResponseEntity<ApiErrorResponse> response = handler().handleAiApi(exception, request("/api/claims/1/suggestions"));
 
         assertError(response, HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage(), "/api/claims/1/suggestions");
+    }
+
+    @Test
+    void handleOpenAlexApi_mapsClientUpstreamAndUnknownStatuses() {
+        var malformed = new OpenAlexClient.OpenAlexApiException("Invalid DOI: nope", 400);
+        var notFound = new OpenAlexClient.OpenAlexApiException("OpenAlex lookup failed for DOI: x (HTTP 404)", 404);
+        var upstream = new OpenAlexClient.OpenAlexApiException("OpenAlex lookup failed for DOI: x (HTTP 429)", 429);
+        var network = new OpenAlexClient.OpenAlexApiException("OpenAlex lookup failed for DOI: x", new RuntimeException("boom"));
+
+        assertError(handler().handleOpenAlexApi(malformed, request("/api/documents/ingest/doi")),
+                HttpStatus.BAD_REQUEST, malformed.getMessage(), "/api/documents/ingest/doi");
+        assertError(handler().handleOpenAlexApi(notFound, request("/api/documents/ingest/doi")),
+                HttpStatus.NOT_FOUND, notFound.getMessage(), "/api/documents/ingest/doi");
+        assertError(handler().handleOpenAlexApi(upstream, request("/api/documents/ingest/doi")),
+                HttpStatus.BAD_GATEWAY, upstream.getMessage(), "/api/documents/ingest/doi");
+        assertError(handler().handleOpenAlexApi(network, request("/api/documents/ingest/doi")),
+                HttpStatus.BAD_GATEWAY, network.getMessage(), "/api/documents/ingest/doi");
     }
 
     @Test
