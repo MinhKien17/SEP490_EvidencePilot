@@ -216,15 +216,16 @@ function AuditLogsSection({ lang, api }) {
                 <th className="px-6 py-3.5 font-bold tracking-wider">Actor</th>
                 <th className="px-6 py-3.5 font-bold tracking-wider">Action</th>
                 <th className="px-6 py-3.5 font-bold tracking-wider">Entity</th>
+                <th className="px-6 py-3.5 font-bold tracking-wider">{lang.details}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-slate-700 font-semibold">
               {loading ? Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i} className="animate-pulse">{Array.from({ length: 4 }).map((_, j) => (
+                <tr key={i} className="animate-pulse">{Array.from({ length: 5 }).map((_, j) => (
                   <td key={j} className="px-6 py-5"><div className="h-4 bg-gray-200 rounded w-full" /></td>
                 ))}</tr>
               )) : filteredLogs.length === 0 ? (
-                <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-400 font-medium">{lang.noLogs}</td></tr>
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 font-medium">{lang.noLogs}</td></tr>
               ) : filteredLogs.map((log, i) => {
                 const dateObj = new Date(log.occurredAt);
                 const formattedDate = dateObj.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' }) + `, ` + dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
@@ -250,6 +251,13 @@ function AuditLogsSection({ lang, api }) {
                     {/* Entity */}
                     <td className="px-6 py-4 text-slate-500 font-mono font-medium">
                       {(log.entityType ?? '—')}#{log.entityId ?? ''}
+                    </td>
+
+                    {/* Previous and next values */}
+                    <td className="px-6 py-4 font-mono font-medium whitespace-nowrap">
+                      <span className="text-slate-500">{log.oldValue ?? '—'}</span>
+                      <span className="mx-2 text-slate-300" aria-hidden="true">→</span>
+                      <span className="text-slate-800">{log.newValue ?? '—'}</span>
                     </td>
                   </tr>
                 );
