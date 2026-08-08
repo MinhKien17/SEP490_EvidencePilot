@@ -347,6 +347,11 @@ public class DocumentServiceImpl implements DocumentService {
         if (doc.getCollection() == null || !collectionId.equals(doc.getCollection().getId())) {
             throw new ResourceNotFoundException(sourceId, "Source in collection");
         }
+        ProcessingStatus status = doc.getProcessingStatus();
+        if (status != ProcessingStatus.READY && status != ProcessingStatus.COMPLETED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Source is not ready to share (current status: " + status + "); only READY or COMPLETED sources can be shared");
+        }
 
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
