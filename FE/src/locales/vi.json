@@ -356,7 +356,7 @@
   ,"submittedForReview": "Đã gửi để đánh giá."
   ,"submitFailed": "Gửi đánh giá thất bại."
   ,"replacedAll": "Đã thay thế tất cả."
-  ,"notFound": "Không tìm thấy."
+  ,"notFound": "Không tìm thấy.", "notFoundMessage": "Trang bạn đang tìm không tồn tại hoặc đã bị di chuyển.", "backToHome": "Về trang chủ"
   ,"submitReviewDescription": "Thao tác này sẽ khóa bài viết trong khi giảng viên đánh giá. Bạn có thể sửa lại nếu giảng viên trả về. Tiếp tục?"
   ,"sectionAssigned": "Đã phân công phần."
   ,"sectionUnassigned": "Đã bỏ phân công phần."

@@ -357,6 +357,8 @@
   ,"submitFailed": "Submission failed."
   ,"replacedAll": "Replaced all."
   ,"notFound": "Not found."
+  ,"notFoundMessage": "The page you are looking for does not exist or has been moved."
+  ,"backToHome": "Back to Home"
   ,"submitReviewDescription": "This will lock your paper while the instructor reviews it. You can edit again if the instructor returns it. Continue?"
   ,"sectionAssigned": "Section assigned."
   ,"sectionUnassigned": "Section unassigned."

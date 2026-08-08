@@ -14,6 +14,7 @@ import About from './pages/About.jsx';
 import Login from './pages/Login.jsx';
 import Profile from './pages/Profile.jsx';
 import AdminDashboard from './pages/Admin/AdminDashboard.jsx';
+import NotFound from './pages/NotFound.jsx';
 
 // INSTRUCTOR SUB-SYSTEM IMPORTS
 import CollectionList from './pages/Instructor/CollectionList.jsx';
@@ -88,6 +89,7 @@ function App() {
             <Route path="/student/projects/:projectId" element={
               <ProtectedRoute allowedRoles={['STUDENT']}><ErrorBoundary><WorkspaceLayout /></ErrorBoundary></ProtectedRoute>
             } />
+            <Route path="*" element={<NotFound />} />
             
           </Routes>
           </ThemeProvider>
