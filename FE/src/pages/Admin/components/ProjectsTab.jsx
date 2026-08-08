@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { driver } from 'driver.js';
+import Modal from '../../../components/Modal.jsx';
 import { ErrorBlock } from './shared.jsx';
 function ProjectsSection({ lang, api }) {
   const [projects, setProjects] = useState({ content: [], page: 0, totalElements: 0, totalPages: 0 });
@@ -15,6 +16,8 @@ function ProjectsSection({ lang, api }) {
   const [activeProject, setActiveProject] = useState(null);
   const [projectErr, setProjectErr] = useState('');
   const [toast, setToast] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Detail modal state
   const [detailProject, setDetailProject] = useState(null);
@@ -71,14 +74,17 @@ function ProjectsSection({ lang, api }) {
     }
   };
 
-  const doDelete = async (id) => {
-    if (!confirm(lang.confirmDelete)) return;
+  const doDelete = async () => {
+    if (!deletingId || deleting) return;
+    setDeleting(true);
     try {
-      await api.delete(`/api/projects/${id}`);
+      await api.delete(`/api/projects/${deletingId}`);
+      setDeletingId(null);
       showToast(lang.projectDeletedSuccess, "success");
-      fetch(page);
+      await fetch(page);
     }
     catch (e) { setError(e.message); }
+    finally { setDeleting(false); }
   };
 
   const openDetail = async (p) => {
@@ -392,7 +398,7 @@ function ProjectsSection({ lang, api }) {
                         )}
 
                         {/* Delete Icon */}
-                        <button onClick={() => doDelete(p.id)} title="Delete Project" className="p-1.5 rounded-lg hover:bg-slate-100 text-rose-600 hover:text-rose-800 transition cursor-pointer">
+                        <button onClick={() => setDeletingId(p.id)} title="Delete Project" className="p-1.5 rounded-lg hover:bg-slate-100 text-rose-600 hover:text-rose-800 transition cursor-pointer">
                           <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
                             <path d="M3 6h18" />
                             <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
@@ -450,6 +456,27 @@ function ProjectsSection({ lang, api }) {
           )}
         </div>
       </div>
+
+      <Modal
+        open={!!deletingId}
+        onClose={() => { if (!deleting) setDeletingId(null); }}
+        title={lang.delete}
+        closeLabel={lang.close}
+      >
+        <div className="space-y-4 text-xs">
+          <p className="text-(--text-secondary)">{lang.confirmDeleteProject}</p>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={() => setDeletingId(null)} disabled={deleting}
+              className="flex-1 py-3 bg-(--surface-secondary) hover:bg-(--surface-tertiary) text-(--text-secondary) rounded-xl transition-colors border border-(--border) disabled:opacity-50">
+              {lang.cancel}
+            </button>
+            <button type="button" onClick={doDelete} disabled={deleting}
+              className="flex-1 py-3 bg-rose-600 text-white rounded-xl hover:bg-rose-700 transition-colors disabled:opacity-50">
+              {deleting ? lang.saving : lang.delete}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Project Detail Modal Overlay */}
       {detailProject && (

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import Modal from '../../../components/Modal.jsx';
 import { PageSkeleton } from './shared.jsx';
 function CollectionsSection({ lang, api }) {
   const [data, setData] = useState([]);
@@ -6,6 +7,8 @@ function CollectionsSection({ lang, api }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [detailCol, setDetailCol] = useState(null);
   const [toast, setToast] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetch = useCallback(async (signal) => {
     setLoading(true);
@@ -29,14 +32,18 @@ function CollectionsSection({ lang, api }) {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm(lang.confirmDeleteCollection)) return;
+  const handleDelete = async () => {
+    if (!deletingId || deleting) return;
+    setDeleting(true);
     try {
-      await api.delete(`/api/collections/${id}`);
+      await api.delete(`/api/collections/${deletingId}`);
+      setDeletingId(null);
       showToast(lang.collectionDeleted, 'success');
-      fetch(new AbortController().signal);
+      await fetch(new AbortController().signal);
     } catch (e) {
       showToast(e.response?.data?.message || lang.collectionDeleteFailed, 'error');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -263,7 +270,7 @@ function CollectionsSection({ lang, api }) {
                           </svg>
                         </button>
                         <button 
-                          onClick={() => handleDelete(c.id)}
+                          onClick={() => setDeletingId(c.id)}
                           title="Delete Collection"
                           className="w-8 h-8 rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 flex items-center justify-center transition shadow-sm cursor-pointer ml-auto"
                         >
@@ -300,6 +307,27 @@ function CollectionsSection({ lang, api }) {
           </div>
         </div>
       </div>
+
+      <Modal
+        open={!!deletingId}
+        onClose={() => { if (!deleting) setDeletingId(null); }}
+        title={lang.delete}
+        closeLabel={lang.close}
+      >
+        <div className="space-y-4 text-xs">
+          <p className="text-(--text-secondary)">{lang.confirmDeleteCollection}</p>
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={() => setDeletingId(null)} disabled={deleting}
+              className="flex-1 py-3 bg-(--surface-secondary) hover:bg-(--surface-tertiary) text-(--text-secondary) rounded-xl transition-colors border border-(--border) disabled:opacity-50">
+              {lang.cancel}
+            </button>
+            <button type="button" onClick={handleDelete} disabled={deleting}
+              className="flex-1 py-3 bg-rose-600 text-white rounded-xl hover:bg-rose-700 transition-colors disabled:opacity-50">
+              {deleting ? lang.saving : lang.delete}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Collection Detail Modal Overlay */}
       {detailCol && (

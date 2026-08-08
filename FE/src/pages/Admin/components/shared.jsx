@@ -138,6 +138,7 @@ const t = {
     // ProjectsTab
     unarchiveSuccess: 'Project workspace unarchived and restored to active state!',
     unarchiveFailed: 'Failed to unarchive project.',
+    confirmDeleteProject: 'Are you sure you want to delete this project?',
     projectDeletedSuccess: 'Project deleted successfully!',
     memberAdded: 'Member added successfully!',
     confirmRemoveMember: 'Are you sure you want to remove this member?',
@@ -320,6 +321,7 @@ const t = {
     // ProjectsTab
     unarchiveSuccess: 'Không gian làm việc đã được khôi phục về trạng thái hoạt động!',
     unarchiveFailed: 'Khôi phục dự án thất bại.',
+    confirmDeleteProject: 'Bạn có chắc muốn xóa dự án này?',
     projectDeletedSuccess: 'Đã xóa dự án thành công!',
     memberAdded: 'Đã thêm thành viên thành công!',
     confirmRemoveMember: 'Bạn có chắc muốn xóa thành viên này?',
