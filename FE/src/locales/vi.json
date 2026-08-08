@@ -382,4 +382,12 @@
   ,"citationAlreadyInserted": "Trích dẫn nguồn này đã nằm cạnh đoạn văn."
   ,"cachedReviewFailed": "Không thể tải kết quả Citation Review đã lưu của phần này."
   ,"unknown": "Không xác định"
+  ,"projectForbiddenTitle": "Từ chối truy cập"
+  ,"projectForbiddenMessage": "Bạn không có quyền mở dự án này."
+  ,"projectNotFoundTitle": "Không tìm thấy dự án"
+  ,"projectNotFoundMessage": "Dự án này không tồn tại hoặc định danh không hợp lệ."
+  ,"projectLoadErrorTitle": "Không thể tải dự án"
+  ,"projectLoadErrorMessage": "Đã xảy ra lỗi khi tải dự án. Vui lòng thử lại."
+  ,"backToProjects": "Quay lại danh sách dự án"
+  ,"retry": "Thử lại"
 }

@@ -382,4 +382,12 @@
   ,"citationAlreadyInserted": "This source citation is already next to the excerpt."
   ,"cachedReviewFailed": "Could not load the cached review for this section."
   ,"unknown": "Unknown"
+  ,"projectForbiddenTitle": "Access denied"
+  ,"projectForbiddenMessage": "You do not have permission to open this project."
+  ,"projectNotFoundTitle": "Project not found"
+  ,"projectNotFoundMessage": "This project does not exist or its identifier is invalid."
+  ,"projectLoadErrorTitle": "Could not load this project"
+  ,"projectLoadErrorMessage": "Something went wrong while loading the project. Please try again."
+  ,"backToProjects": "Back to projects"
+  ,"retry": "Retry"
 }
