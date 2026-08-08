@@ -12,6 +12,7 @@ import Terms from './pages/Terms.jsx';
 import Privacy from './pages/Privacy.jsx';
 import About from './pages/About.jsx';
 import Login from './pages/Login.jsx';
+import ResetPassword from './pages/ResetPassword.jsx';
 import Profile from './pages/Profile.jsx';
 import AdminDashboard from './pages/Admin/AdminDashboard.jsx';
 import NotFound from './pages/NotFound.jsx';
@@ -44,6 +45,7 @@ function App() {
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/about" element={<About />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/register" element={<Navigate to="/login" replace />} />
 
             <Route path="/profile" element={
