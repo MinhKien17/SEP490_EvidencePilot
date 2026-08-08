@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 function SettingsSection({ lang, api }) {
-  const [name, setName] = useState('Evidence Pilot');
-  const [saved, setSaved] = useState(false);
   const [cats, setCats] = useState([]);
   const [catsLoading, setCatsLoading] = useState(true);
   const [showCatForm, setShowCatForm] = useState(false);
@@ -43,13 +41,6 @@ function SettingsSection({ lang, api }) {
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
-  };
-
-  const doSave = (e) => {
-    e.preventDefault();
-    setSaved(true);
-    showToast(lang.settingsSaved, 'success');
-    setTimeout(() => setSaved(false), 2000);
   };
 
   const doCatSave = async (e) => {
@@ -115,43 +106,9 @@ function SettingsSection({ lang, api }) {
         </div>
       </div>
 
-      {/* Grid: Application Name, Collection Categories, Source Categories, System Status, Platform limits */}
+      {/* Grid: Collection Categories, Source Categories, System Status, Platform limits */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Card 1: Application Name */}
-        <form onSubmit={doSave} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col justify-between h-72">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 border-b border-gray-100 pb-3">
-              <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 015 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
-              </svg>
-              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Application Name</h3>
-            </div>
-
-            <div className="border border-gray-255 rounded-xl p-3 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition relative bg-slate-50/30">
-              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Display Identity</span>
-              <input
-                value={name}
-                onChange={e => setName(e.target.value)}
-                className="w-full border-0 p-0 text-xs font-bold text-slate-800 focus:outline-none focus:ring-0 bg-transparent"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5 pt-4 border-t border-gray-100">
-            <button
-              type="submit"
-              className="flex items-center gap-1.5 px-4 py-2 bg-[#0c162e] hover:bg-[#152447] text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z" />
-              </svg>
-              <span>Save Changes</span>
-            </button>
-            {saved && <span className="text-xs text-emerald-600 font-bold">Saved!</span>}
-          </div>
-        </form>
-
-        {/* Card 2: Collection Categories */}
+        {/* Card 1: Collection Categories */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col justify-between h-72">
           <div className="space-y-4">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
