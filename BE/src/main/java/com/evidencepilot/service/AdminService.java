@@ -458,7 +458,7 @@ public class AdminService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getCollections() {
         return collections.findAll().stream()
-                .filter(c -> c.isActive() || c.getInstructor() != null)
+                .filter(c -> c.isActive())
                 .map(c -> {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("id", c.getId());
