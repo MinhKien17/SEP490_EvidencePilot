@@ -156,11 +156,6 @@ export default function Profile() {
                 </label>
               )}
 
-              <div className="rounded-xl bg-[var(--surface-secondary)] p-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">{t.assignedRole}</p>
-                <p className="mt-1 text-xs font-bold text-[var(--text-secondary)]">{roleLabel}</p>
-              </div>
-
               <div className="flex flex-wrap justify-between gap-3 border-t border-[var(--border-light)] pt-5">
                 <button type="button" onClick={() => navigate(-1)} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-5 py-2.5 text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--surface-secondary)]">&larr; {t.back}</button>
                 <button type="submit" disabled={submitting} className="rounded-xl bg-[var(--brand)] px-5 py-2.5 text-xs font-black text-white shadow-sm hover:bg-[var(--brand-hover)] disabled:opacity-50">
