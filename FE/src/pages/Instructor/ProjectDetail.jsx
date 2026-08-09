@@ -12,6 +12,7 @@ import {
   isSourceShareable,
   isSourceSharedWithProject,
 } from './sourceShareSelection';
+import { getStudentSuggestions, studentDisplayName } from './studentSearch';
 import { legacyClaimsEnabled } from '../../featureFlags';
 
 const STANDARDS = ['IEEE', 'ACM', 'SPRINGER_LNCS', 'APA', 'MLA', 'CUSTOM'];
@@ -40,6 +41,10 @@ export default function ProjectDetail() {
   const [showAddMember, setShowAddMember] = useState(false);
   const [newMemberId, setNewMemberId] = useState('');
   const [newMemberRole, setNewMemberRole] = useState('MEMBER');
+  const [memberQuery, setMemberQuery] = useState('');
+  const [memberSuggestionsOpen, setMemberSuggestionsOpen] = useState(false);
+  const [highlightedStudentIndex, setHighlightedStudentIndex] = useState(0);
+  const [updatingMemberId, setUpdatingMemberId] = useState(null);
 
   // Setup tab state
   const [doiInput, setDoiInput] = useState('');
@@ -170,6 +175,11 @@ export default function ProjectDetail() {
         .filter(d => !reportSectionId || String(d.sectionId) === String(reportSectionId)),
     };
   }, [checkpointDiff, reportSectionId]);
+
+  const studentSuggestions = useMemo(
+    () => getStudentSuggestions(users, members, memberQuery),
+    [users, members, memberQuery],
+  );
 
   useEffect(() => {
     if (activeTab === 'review') loadFeedbackAndTraceability();
@@ -451,13 +461,48 @@ export default function ProjectDetail() {
     } catch { alert(t.assignmentFailed); }
   };
 
+  const closeAddMemberModal = () => {
+    setShowAddMember(false);
+    setNewMemberId('');
+    setNewMemberRole('MEMBER');
+    setMemberQuery('');
+    setMemberSuggestionsOpen(false);
+    setHighlightedStudentIndex(0);
+  };
+
+  const selectStudent = (student) => {
+    setNewMemberId(student.id);
+    setMemberQuery(studentDisplayName(student));
+    setMemberSuggestionsOpen(false);
+  };
+
+  const handleStudentSearchKeyDown = (event) => {
+    if (event.key === 'Escape' && memberSuggestionsOpen) {
+      event.preventDefault();
+      event.stopPropagation();
+      setMemberSuggestionsOpen(false);
+      return;
+    }
+    if (!studentSuggestions.length) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setMemberSuggestionsOpen(true);
+      setHighlightedStudentIndex(index => Math.min(index + 1, studentSuggestions.length - 1));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setMemberSuggestionsOpen(true);
+      setHighlightedStudentIndex(index => Math.max(index - 1, 0));
+    } else if (event.key === 'Enter' && memberSuggestionsOpen) {
+      event.preventDefault();
+      selectStudent(studentSuggestions[highlightedStudentIndex]);
+    }
+  };
+
   const handleAddMember = async () => {
     if (!newMemberId) return;
     try {
       await api.post(`/api/projects/${id}/members`, null, { params: { userId: newMemberId, role: newMemberRole } });
-      setShowAddMember(false);
-      setNewMemberId('');
-      setNewMemberRole('MEMBER');
+      closeAddMemberModal();
       loadProject();
     } catch { alert(t.addMemberFailed); }
   };
@@ -467,6 +512,18 @@ export default function ProjectDetail() {
       await api.delete(`/api/projects/${id}/members/${userId}`);
       loadProject();
     } catch { alert(t.removeMemberFailed); }
+  };
+
+  const handleUpdateMemberRole = async (userId, role) => {
+    setUpdatingMemberId(userId);
+    try {
+      await api.patch(`/api/projects/${id}/members/${userId}`, null, { params: { role } });
+      await loadProject();
+    } catch (err) {
+      alert(err.response?.data?.message || err.response?.data?.detail || t.updateMemberRoleFailed);
+    } finally {
+      setUpdatingMemberId(null);
+    }
   };
 
   const handlePatch = async (action) => {
@@ -1048,8 +1105,23 @@ export default function ProjectDetail() {
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">{m.userRole}</span>
-                        <span className="rounded bg-[var(--surface-tertiary)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)]">{m.role}</span>
-                        <button onClick={() => handleRemoveMember(m.userId)} className="font-bold text-rose-600 hover:text-rose-800">{t.remove}</button>
+                        {m.role === 'INSTRUCTOR' ? (
+                          <span className="rounded bg-[var(--surface-tertiary)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)]">{m.role}</span>
+                        ) : (
+                          <select
+                            value={m.role}
+                            onChange={e => handleUpdateMemberRole(m.userId, e.target.value)}
+                            disabled={projectReadOnly || updatingMemberId !== null}
+                            aria-label={`${t.editMemberRole}: ${displayName(m)}`}
+                            className="cursor-pointer rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[10px] font-semibold text-[var(--text-secondary)] outline-none transition focus:ring-2 focus:ring-[var(--brand)] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <option value="MEMBER">{t.memberRole}</option>
+                            <option value="LEADER">{t.leaderRole}</option>
+                          </select>
+                        )}
+                        {m.role !== 'INSTRUCTOR' && (
+                          <button onClick={() => handleRemoveMember(m.userId)} className="font-bold text-rose-600 transition-colors hover:text-rose-800">{t.remove}</button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1060,20 +1132,70 @@ export default function ProjectDetail() {
         )}
       </main>
 
-      <Modal open={showAddMember} onClose={() => setShowAddMember(false)} title={t.addMember}>
+      <Modal open={showAddMember} onClose={closeAddMemberModal} title={t.addMember}>
         <div className="space-y-4">
-           <select value={newMemberId} onChange={e => setNewMemberId(e.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs outline-none">
-            <option value="">{t.selectStudent}</option>
-            {users.filter(u => u.role === 'STUDENT' && !projectMembers.find(m => m.userId === u.id)).map(u => (
-              <option key={u.id} value={u.id}>{u.firstName || u.lastName ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : u.email}</option>
-            ))}
-          </select>
+          <div className="relative">
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 fill-none stroke-[var(--text-tertiary)]" strokeWidth="2">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <input
+              autoFocus
+              type="search"
+              role="combobox"
+              autoComplete="off"
+              value={memberQuery}
+              placeholder={t.searchStudent}
+              aria-label={t.searchStudent}
+              aria-autocomplete="list"
+              aria-expanded={memberSuggestionsOpen}
+              aria-controls="student-suggestions"
+              aria-activedescendant={memberSuggestionsOpen && studentSuggestions[highlightedStudentIndex]
+                ? `student-suggestion-${studentSuggestions[highlightedStudentIndex].id}`
+                : undefined}
+              onFocus={() => setMemberSuggestionsOpen(true)}
+              onBlur={() => setMemberSuggestionsOpen(false)}
+              onChange={event => {
+                setMemberQuery(event.target.value);
+                setNewMemberId('');
+                setHighlightedStudentIndex(0);
+                setMemberSuggestionsOpen(true);
+              }}
+              onKeyDown={handleStudentSearchKeyDown}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] py-2 pl-9 pr-3 text-xs outline-none transition focus:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand-soft)]"
+            />
+            {memberSuggestionsOpen && (
+              <div id="student-suggestions" role="listbox" className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] py-1 shadow-lg">
+                {studentSuggestions.length === 0 ? (
+                  <p className="px-3 py-3 text-xs italic text-[var(--text-tertiary)]">{t.noStudentsFound}</p>
+                ) : studentSuggestions.map((student, index) => (
+                  <button
+                    id={`student-suggestion-${student.id}`}
+                    key={student.id}
+                    type="button"
+                    role="option"
+                    aria-selected={newMemberId === student.id}
+                    onMouseDown={event => event.preventDefault()}
+                    onMouseEnter={() => setHighlightedStudentIndex(index)}
+                    onClick={() => selectStudent(student)}
+                    className={`flex w-full cursor-pointer items-center justify-between gap-3 px-3 py-2 text-left transition-colors ${index === highlightedStudentIndex ? 'bg-[var(--brand-soft)]' : 'hover:bg-[var(--surface-secondary)]'}`}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-xs font-semibold text-[var(--text-primary)]">{studentDisplayName(student)}</span>
+                      <span className="block truncate text-[10px] text-[var(--text-tertiary)]">{student.email}</span>
+                    </span>
+                    {student.studentCode && <span className="shrink-0 rounded bg-[var(--surface-tertiary)] px-2 py-1 font-mono text-[10px] font-semibold text-[var(--text-secondary)]">{student.studentCode}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <select value={newMemberRole} onChange={e => setNewMemberRole(e.target.value)} className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs outline-none">
             <option value="MEMBER">{t.memberRole}</option>
             <option value="LEADER">{t.leaderRole}</option>
           </select>
           <div className="flex justify-end gap-2">
-            <button onClick={() => setShowAddMember(false)} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.cancel}</button>
+            <button onClick={closeAddMemberModal} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.cancel}</button>
             <button onClick={handleAddMember} disabled={!newMemberId} className="rounded-lg bg-[var(--brand)] px-4 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)] disabled:opacity-50">{ct.save}</button>
           </div>
         </div>
