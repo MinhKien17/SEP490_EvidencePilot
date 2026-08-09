@@ -1132,7 +1132,7 @@ export default function ProjectDetail() {
         )}
       </main>
 
-      <Modal open={showAddMember} onClose={closeAddMemberModal} title={t.addMember}>
+      <Modal open={showAddMember} onClose={closeAddMemberModal} title={t.addMember} className="!overflow-visible">
         <div className="space-y-4">
           <div className="relative">
             <svg aria-hidden="true" viewBox="0 0 24 24" className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 fill-none stroke-[var(--text-tertiary)]" strokeWidth="2">
@@ -1165,7 +1165,7 @@ export default function ProjectDetail() {
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] py-2 pl-9 pr-3 text-xs outline-none transition focus:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand-soft)]"
             />
             {memberSuggestionsOpen && (
-              <div id="student-suggestions" role="listbox" className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] py-1 shadow-lg">
+              <div id="student-suggestions" role="listbox" className="absolute z-10 mt-1 max-h-96 w-full overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] py-1 shadow-lg">
                 {studentSuggestions.length === 0 ? (
                   <p className="px-3 py-3 text-xs italic text-[var(--text-tertiary)]">{t.noStudentsFound}</p>
                 ) : studentSuggestions.map((student, index) => (
