@@ -18,6 +18,7 @@ import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.mapper.ProjectMapper;
+import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.PaperStandardService;
@@ -35,6 +36,8 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -43,6 +46,40 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 @Slf4j
 public class PaperProcessingServiceImpl implements PaperProcessingService {
+
+    private static final Pattern MARKDOWN_HEADING = Pattern.compile(
+            "(?m)^(#{1,6})\\h+(.+?)\\h*(?:\\R|$)");
+    private static final Pattern HEADING_NUMBER = Pattern.compile(
+            "^(?:\\d+(?:\\.\\d+)*|[IVXLCDM]+)[.)]?\\h+",
+            Pattern.CASE_INSENSITIVE);
+    private static final List<String> ACADEMIC_TOP_LEVEL_SECTIONS = List.of(
+            "Conclusions and future work",
+            "Conclusion and future work",
+            "Results and discussion",
+            "Discussion and conclusions",
+            "Introduction and background",
+            "Materials and methods",
+            "Material and methods",
+            "Methods and materials",
+            "Supplementary material",
+            "Literature review",
+            "Related work",
+            "Acknowledgements",
+            "Acknowledgments",
+            "Introduction",
+            "Background",
+            "Methodology",
+            "Methods",
+            "Results",
+            "Discussion",
+            "Conclusions",
+            "Conclusion",
+            "Abstract",
+            "References",
+            "Bibliography",
+            "Works Cited",
+            "Appendices",
+            "Appendix");
 
     private final PaperSectionRepository paperSectionRepository;
     private final InstructorFeedbackRepository instructorFeedbackRepository;
@@ -67,6 +104,14 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     @Override
     @Transactional
     public List<PaperSectionResponse> detectAndPersistSections(UUID documentId) {
+        return detectAndPersistSections(documentId, List.of());
+    }
+
+    @Override
+    @Transactional
+    public List<PaperSectionResponse> detectAndPersistSections(
+            UUID documentId,
+            List<AiModelClient.ExtractionBlock> blocks) {
         Document document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException(documentId, "Document"));
         List<PaperSection> existing = paperSectionRepository
@@ -81,13 +126,25 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         if (text == null || text.isBlank()) {
             return List.of();
         }
-        List<PaperSection> sections = parseSections(text, document);
+        List<PaperSection> sections = parseSections(text, document, blocks);
         return paperSectionRepository.saveAll(sections).stream()
                 .map(projectMapper::toPaperSectionResponse)
                 .toList();
     }
 
-    private List<PaperSection> parseSections(String text, Document document) {
+    private List<PaperSection> parseSections(
+            String text,
+            Document document,
+            List<AiModelClient.ExtractionBlock> blocks) {
+        Set<String> topLevelHeadings = structuredTopLevelHeadings(blocks);
+        if (!topLevelHeadings.isEmpty()) {
+            List<PaperSection> structured = parseStructuredMarkdownSections(
+                    text, document, topLevelHeadings);
+            if (!structured.isEmpty()) {
+                return structured;
+            }
+        }
+
         Pattern pattern = Pattern.compile(
                 "(?m)^(?:\\\\section\\*?\\{([^{}\\r\\n]+)}|(?:#{1,6}\\h+)?([A-Z][A-Za-z ]+))\\h*(?:\\R|$)");
         Matcher matcher = pattern.matcher(text);
@@ -128,6 +185,147 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         }
 
         return sections;
+    }
+
+    private Set<String> structuredTopLevelHeadings(List<AiModelClient.ExtractionBlock> blocks) {
+        if (blocks == null || blocks.isEmpty()) {
+            return Set.of();
+        }
+
+        List<AiModelClient.ExtractionBlock> headings = blocks.stream()
+                .filter(block -> "heading".equals(block.type()))
+                .toList();
+        if (headings.isEmpty()) {
+            return Set.of();
+        }
+
+        int minimumLevel = headings.stream()
+                .mapToInt(AiModelClient.ExtractionBlock::level)
+                .min()
+                .orElse(1);
+        long minimumCount = headings.stream()
+                .filter(block -> block.level() == minimumLevel)
+                .count();
+        int sectionLevel = minimumLevel;
+        if (minimumCount == 1) {
+            sectionLevel = headings.stream()
+                    .mapToInt(AiModelClient.ExtractionBlock::level)
+                    .filter(level -> level > minimumLevel)
+                    .min()
+                    .orElse(minimumLevel);
+        }
+
+        LinkedHashSet<String> academicHeadings = new LinkedHashSet<>();
+        for (AiModelClient.ExtractionBlock block : blocks) {
+            if (("heading".equals(block.type()) || "reference".equals(block.type()))
+                    && academicHeading(block.text()) != null) {
+                academicHeadings.add(normalizeHeading(block.text()));
+            }
+        }
+
+        int resolvedSectionLevel = sectionLevel;
+        boolean hasDeeperHeadings = headings.stream()
+                .anyMatch(block -> block.level() > resolvedSectionLevel);
+        if (!hasDeeperHeadings && academicHeadings.size() >= 2) {
+            // ponytail: MinerU can flatten every body heading to one level; use
+            // academic anchors until the extractor emits reliable hierarchy.
+            return academicHeadings;
+        }
+
+        LinkedHashSet<String> selected = new LinkedHashSet<>();
+        for (AiModelClient.ExtractionBlock block : headings) {
+            if (block.level() == resolvedSectionLevel) {
+                selected.add(normalizeHeading(block.text()));
+            }
+        }
+        for (AiModelClient.ExtractionBlock block : blocks) {
+            if ("reference".equals(block.type()) && academicHeading(block.text()) != null) {
+                selected.add(normalizeHeading(block.text()));
+            }
+        }
+        return selected;
+    }
+
+    private List<PaperSection> parseStructuredMarkdownSections(
+            String text,
+            Document document,
+            Set<String> topLevelHeadings) {
+        Matcher matcher = MARKDOWN_HEADING.matcher(text);
+        List<PaperSection> sections = new ArrayList<>();
+        int lastEnd = 0;
+        String contentPrefix = "";
+
+        while (matcher.find()) {
+            String rawHeading = matcher.group(2).trim();
+            if (!topLevelHeadings.contains(normalizeHeading(rawHeading))) {
+                continue;
+            }
+
+            if (!sections.isEmpty()) {
+                setSectionContent(
+                        sections.get(sections.size() - 1),
+                        contentPrefix,
+                        text.substring(lastEnd, matcher.start()));
+            }
+
+            DetectedHeading detected = academicHeading(rawHeading);
+            if (detected == null) {
+                detected = new DetectedHeading(stripHeadingNumber(rawHeading), "");
+            }
+
+            PaperSection section = new PaperSection();
+            section.setDocument(document);
+            section.setSectionOrder(sections.size());
+            section.setSectionTitle(detected.title());
+            sections.add(section);
+
+            contentPrefix = detected.remainder().isBlank()
+                    ? ""
+                    : matcher.group(1) + " " + detected.remainder();
+            lastEnd = matcher.end();
+        }
+
+        if (!sections.isEmpty()) {
+            setSectionContent(
+                    sections.get(sections.size() - 1),
+                    contentPrefix,
+                    text.substring(lastEnd));
+        }
+        return sections;
+    }
+
+    private static void setSectionContent(PaperSection section, String prefix, String body) {
+        String content = body.strip();
+        if (!prefix.isBlank()) {
+            content = content.isBlank() ? prefix : prefix + "\n\n" + content;
+        }
+        section.setContentTex(content);
+    }
+
+    private static DetectedHeading academicHeading(String rawHeading) {
+        String heading = stripHeadingNumber(rawHeading);
+        for (String title : ACADEMIC_TOP_LEVEL_SECTIONS) {
+            if (heading.equalsIgnoreCase(title)) {
+                return new DetectedHeading(title, "");
+            }
+            if (heading.length() > title.length()
+                    && heading.regionMatches(true, 0, title, 0, title.length())
+                    && Character.isWhitespace(heading.charAt(title.length()))) {
+                return new DetectedHeading(title, heading.substring(title.length()).trim());
+            }
+        }
+        return null;
+    }
+
+    private static String stripHeadingNumber(String heading) {
+        return HEADING_NUMBER.matcher(heading.strip()).replaceFirst("");
+    }
+
+    private static String normalizeHeading(String heading) {
+        return heading.strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+    }
+
+    private record DetectedHeading(String title, String remainder) {
     }
 
     @Override

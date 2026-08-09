@@ -137,7 +137,7 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
 
         qdrantService.upsertVectors(new ExtractionResultPayload(document.getId(), payloadChunks));
         if (document.getDocType() == DocumentType.PAPER) {
-            paperProcessingService.detectAndPersistSections(document.getId());
+            paperProcessingService.detectAndPersistSections(document.getId(), extracted.blocks());
         }
         documentPersistenceService.markReady(document.getId(), payloadChunks.size());
         log.info("Completed extraction for document {} with {} chunks", document.getId(), payloadChunks.size());

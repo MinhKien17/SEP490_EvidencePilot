@@ -19,6 +19,14 @@ public interface PaperProcessingService {
      */
     List<PaperSectionResponse> detectAndPersistSections(UUID documentId);
 
+    /**
+     * Detects assignable sections using the extractor's structured blocks while
+     * retaining the persisted Markdown as section content.
+     */
+    List<PaperSectionResponse> detectAndPersistSections(
+            UUID documentId,
+            List<AiModelClient.ExtractionBlock> blocks);
+
     PaperSectionResponse getSectionHistory(UUID documentId, UUID sectionId);
 
     PaperValidationResponse validateSections(UUID documentId);

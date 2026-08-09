@@ -15,6 +15,7 @@ import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.CurrentUserService;
+import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.PaperStandardService;
 import com.evidencepilot.service.SystemNotificationService;
 import com.evidencepilot.service.TexArchiveBuilder;
@@ -84,6 +85,116 @@ class PaperProcessingServiceImplTest {
                 .containsExactly("Introduction", "Methods");
         assertThat(saved).extracting(PaperSection::getContentTex)
                 .containsExactly("First section.", "Second section.\n\\end{document}");
+    }
+
+    @Test
+    void keepsFlattenedMineruSubsectionsInsideTopLevelAcademicSections() {
+        UUID documentId = UUID.randomUUID();
+        Document document = new Document();
+        document.setId(documentId);
+        DocumentText text = new DocumentText();
+        text.setDocument(document);
+        text.setExtractedText("""
+                # Evaluation of adipokines
+                ## Abstract
+                Abstract body.
+                ## Introduction
+                Introduction body.
+                ## Material and methods Study design
+                Study design body.
+                ## Population
+                Population body.
+                ## Laboratory methods
+                Laboratory body.
+                ## Leptin and Vaspin Quantification: Enzymatic Method (Diasource, KAP2281)
+                Assay body.
+                ## Statistical analysis
+                Statistics body.
+                ## Results
+                Results body.
+                ## Adipokine level correlation analysis and principal component scores
+                Correlation body.
+                ## Discussion
+                Discussion body.
+                ## Study limitations
+                Limitations body.
+                ## Conclusions
+                Conclusion body.
+                ## Acknowledgments
+                Thanks.
+                ## References
+                Reference 1.
+                """);
+        document.setDocumentText(text);
+        List<AiModelClient.ExtractionBlock> blocks = List.of(
+                heading("Evaluation of adipokines", 1),
+                heading("Abstract", 2),
+                heading("Introduction", 2),
+                heading("Material and methods Study design", 2),
+                heading("Population", 2),
+                heading("Laboratory methods", 2),
+                heading("Leptin and Vaspin Quantification: Enzymatic Method (Diasource, KAP2281)", 2),
+                heading("Statistical analysis", 2),
+                heading("Results", 2),
+                heading("Adipokine level correlation analysis and principal component scores", 2),
+                heading("Discussion", 2),
+                heading("Study limitations", 2),
+                heading("Conclusions", 2),
+                heading("Acknowledgments", 2),
+                new AiModelClient.ExtractionBlock("reference", "References", null, null));
+
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(documentId)).thenReturn(List.of());
+        List<PaperSection> saved = new ArrayList<>();
+        when(paperSectionRepository.saveAll(anyList())).thenAnswer(invocation -> {
+            Iterable<PaperSection> sections = invocation.getArgument(0);
+            sections.forEach(saved::add);
+            return saved;
+        });
+
+        service().detectAndPersistSections(documentId, blocks);
+
+        assertThat(saved).extracting(PaperSection::getSectionTitle)
+                .containsExactly(
+                        "Abstract",
+                        "Introduction",
+                        "Material and methods",
+                        "Results",
+                        "Discussion",
+                        "Conclusions",
+                        "Acknowledgments",
+                        "References");
+        assertThat(saved.get(2).getContentTex())
+                .startsWith("## Study design\n\nStudy design body.")
+                .contains("## Population")
+                .contains("## Laboratory methods")
+                .contains("## Leptin and Vaspin Quantification: Enzymatic Method (Diasource, KAP2281)")
+                .contains("## Statistical analysis");
+        assertThat(saved.get(3).getContentTex())
+                .contains("## Adipokine level correlation analysis and principal component scores");
+        assertThat(saved.get(4).getContentTex()).contains("## Study limitations");
+    }
+
+    private static AiModelClient.ExtractionBlock heading(String text, int level) {
+        return new AiModelClient.ExtractionBlock("heading", text, level, null);
+    }
+
+    @Test
+    void leavesExistingSectionsUntouchedWhenStructuredBlocksAreProvided() {
+        UUID documentId = UUID.randomUUID();
+        Document document = new Document();
+        document.setId(documentId);
+        PaperSection existing = new PaperSection();
+        existing.setDocument(document);
+        existing.setSectionTitle("Abstract");
+
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(documentId))
+                .thenReturn(List.of(existing));
+
+        service().detectAndPersistSections(documentId, List.of(heading("Abstract", 2)));
+
+        verify(paperSectionRepository, never()).saveAll(anyList());
     }
 
     @Test
