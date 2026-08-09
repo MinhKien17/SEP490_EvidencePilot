@@ -145,6 +145,7 @@ export default function ContextPanel({
   const [doiInput, setDoiInput] = useState('');
   const [doiPreview, setDoiPreview] = useState(null);
   const [sourceBusy, setSourceBusy] = useState(false);
+  const [attachingSourceId, setAttachingSourceId] = useState(null);
   const fileInputRef = useRef(null);
   const { t, i18n } = useTranslation();
   const [breakdownOpenId, setBreakdownOpenId] = useState(null);
@@ -188,6 +189,22 @@ export default function ContextPanel({
         const r = await api.get(`/api/feedback-requests/${id}/feedback`);
         setFeedbackDetail(prev => ({ ...prev, [id]: r.data || [] }));
       } catch { setFeedbackDetail(prev => ({ ...prev, [id]: [] })); }
+    }
+  };
+
+  const handleAttachPdf = async (sourceId, file) => {
+    if (!file || isLocked || attachingSourceId !== null) return;
+    setAttachingSourceId(sourceId);
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      await api.post(`/api/documents/${sourceId}/file`, formData);
+      showToast(t('pdfAttached'));
+      if (fetchSources) await fetchSources();
+    } catch (error) {
+      showToast(error?.response?.data?.message || t('attachPdfFailed'));
+    } finally {
+      setAttachingSourceId(null);
     }
   };
 
@@ -321,6 +338,32 @@ export default function ContextPanel({
                       <div key={src.id} onClick={() => src.fileUrl && src.fileUrl !== 'pending' ? setViewerFile({ fileUrl: `/api/documents/${src.id}/download`, fileName: src.originalFilename }) : showToast(t('fileUrlUnavailable'))} className="bg-(--surface) border border-(--border) rounded-xl p-3.5 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors cursor-pointer">
                         <p className="text-sm font-bold text-(--text-primary) flex items-center gap-2"><svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>{src.originalFilename}</p>
                         <p className="text-xs text-(--text-secondary) mt-1.5 line-clamp-2 leading-relaxed">{t('uploadedSourceDescription')}</p>
+                        {src.processingStatus === 'METADATA_FETCHED' && (
+                          <div className="mt-3">
+                            <input
+                              id={`attach-pdf-${src.id}`}
+                              type="file"
+                              accept=".pdf,application/pdf"
+                              disabled={isLocked || attachingSourceId !== null}
+                              className="peer sr-only"
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                event.target.value = '';
+                                handleAttachPdf(src.id, file);
+                              }}
+                            />
+                            <label
+                              htmlFor={`attach-pdf-${src.id}`}
+                              aria-disabled={isLocked || attachingSourceId !== null}
+                              onClick={(event) => event.stopPropagation()}
+                              className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500 peer-focus-visible:ring-offset-2 ${isLocked || attachingSourceId !== null ? 'cursor-not-allowed border-(--border) bg-(--surface-secondary) text-(--text-tertiary)' : 'cursor-pointer border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50'}`}
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 16V4m0 0L8 8m4-4 4 4M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" /></svg>
+                              {attachingSourceId === src.id ? t('working') : t('attachPdf')}
+                            </label>
+                          </div>
+                        )}
                       </div>
                     ))
                   )}
