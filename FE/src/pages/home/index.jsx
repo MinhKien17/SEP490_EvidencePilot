@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useLanguage } from '../../context/LanguageContext';
 import { homeText } from '../../locales/home';
+import AppHeader from '../../components/AppHeader';
 import LoadingScreen from '../../components/LoadingScreen';
-import Navbar from './Navbar';
 import HeroSection from './HeroSection';
 import StatsSection from './StatsSection';
 import RolesSection from './RolesSection';
@@ -28,7 +28,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-(--page-bg) text-(--text-primary) font-sans">
-      <Navbar t={t} />
+      <AppHeader variant="public" labels={t} />
       <HeroSection t={t} />
       <StatsSection t={t} />
       <RolesSection t={t} />

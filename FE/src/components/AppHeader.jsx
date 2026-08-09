@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
@@ -18,27 +18,35 @@ function ThemeIcon({ theme }) {
   );
 }
 
-export default function AppHeader() {
+export default function AppHeader({ variant = 'app', labels }) {
+  const isPublic = variant === 'public';
   const navigate = useNavigate();
   const location = useLocation();
-  const { role, logout } = useAuth();
+  const { isAuthenticated, role, logout } = useAuth();
   const { language, toggleLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
-  const t = instructorText[language];
+  const it = instructorText[language];
   const st = studentText[language];
   const ct = commonText[language];
 
-  const roleLinks = role === 'INSTRUCTOR'
+  const links = isPublic
     ? [
-        { label: t.dashboard, path: '/instructor/dashboard' },
-        { label: t.requests, path: '/instructor/requests' },
-        { label: t.collections, path: '/instructor/collections' },
-        { label: t.projects, path: '/instructor/projects' },
+        { label: labels.nav.home, path: '/' },
+        { label: labels.nav.about, path: '/about' },
+        { label: labels.nav.terms, path: '/terms' },
+        { label: labels.nav.privacy, path: '/privacy' },
       ]
-    : role === 'ADMIN'
-      ? [{ label: 'Dashboard', path: '/admin/dashboard' }]
-      : [{ label: st.projects, path: '/student/projects' }];
+    : role === 'INSTRUCTOR'
+      ? [
+          { label: it.dashboard, path: '/instructor/dashboard' },
+          { label: it.requests, path: '/instructor/requests' },
+          { label: it.collections, path: '/instructor/collections' },
+          { label: it.projects, path: '/instructor/projects' },
+        ]
+      : role === 'ADMIN'
+        ? [{ label: 'Dashboard', path: '/admin/dashboard' }]
+        : [{ label: st.projects, path: '/student/projects' }];
 
   const isActive = (path) => location.pathname === path
     || (path !== '/instructor/dashboard' && location.pathname.startsWith(`${path}/`));
@@ -57,24 +65,24 @@ export default function AppHeader() {
   const themeLabel = theme === 'light' ? ct.darkMode : ct.lightMode;
 
   return (
-    <header className="sticky top-0 z-50 h-16 shrink-0 border-b border-(--header-border) bg-(--header-bg) text-(--text-primary) shadow-sm backdrop-blur-md">
+    <header className={`${isPublic ? 'fixed left-0 right-0' : 'sticky shrink-0'} top-0 z-50 h-16 border-b border-(--header-border) bg-(--header-bg) text-(--text-primary) shadow-sm backdrop-blur-md`}>
       <div className="h-full max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
-          <button type="button" onClick={() => go('/')} className="flex items-center gap-2.5 shrink-0 rounded-lg">
+          <Link to="/" onClick={() => setMenuOpen(false)} className="flex items-center gap-2.5 shrink-0 rounded-lg">
             <span className="w-8 h-8 bg-(--brand) text-(--on-brand) rounded-lg text-xs flex items-center justify-center font-bold">EP</span>
             <span className="hidden sm:inline font-bold text-sm text-(--text-primary) whitespace-nowrap">Evidence Pilot</span>
-          </button>
+          </Link>
 
           <nav className="hidden md:flex items-center gap-1 ml-2" aria-label={ct.primaryNavigation}>
-            {roleLinks.map(link => (
-              <button
+            {links.map(link => (
+              <Link
                 key={link.path}
-                type="button"
-                onClick={() => go(link.path)}
+                to={link.path}
+                onClick={() => setMenuOpen(false)}
                 className={`text-xs font-semibold px-3 py-2 rounded-lg transition-colors ${isActive(link.path) ? 'bg-(--brand-soft) text-(--brand-foreground)' : 'text-(--text-secondary) hover:bg-(--surface-secondary) hover:text-(--brand-foreground)'}`}
               >
                 {link.label}
-              </button>
+              </Link>
             ))}
           </nav>
         </div>
@@ -88,12 +96,18 @@ export default function AppHeader() {
             <button type="button" onClick={toggleLanguage} className="min-w-9 px-2 py-1.5 text-xs font-bold text-(--text-secondary) border border-(--border) rounded-lg hover:bg-(--surface-secondary) hover:text-(--brand-foreground) transition-colors">
               {language === 'vi' ? 'EN' : 'VI'}
             </button>
-            <button type="button" onClick={() => navigate('/profile')} className="px-3 py-1.5 text-xs font-semibold text-(--text-secondary) hover:text-(--brand-foreground) rounded-lg hover:bg-(--surface-secondary) transition-colors">
-              {ct.profile}
-            </button>
-            <button type="button" onClick={signOut} className="px-3 py-1.5 text-xs font-semibold text-(--text-secondary) hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors">
-              {ct.signOut}
-            </button>
+            {isAuthenticated ? (
+              <>
+                <button type="button" onClick={() => go('/profile')} className="px-3 py-1.5 text-xs font-semibold text-(--text-secondary) hover:text-(--brand-foreground) rounded-lg hover:bg-(--surface-secondary) transition-colors">
+                  {ct.profile}
+                </button>
+                <button type="button" onClick={signOut} className="px-3 py-1.5 text-xs font-semibold text-(--text-secondary) hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors">
+                  {ct.signOut}
+                </button>
+              </>
+            ) : isPublic ? (
+              <Link to="/login" className="px-4 py-2 text-xs font-bold text-(--brand-foreground) bg-(--brand-soft) hover:brightness-95 rounded-lg transition">{labels.nav.login}</Link>
+            ) : null}
           </div>
 
           <button
@@ -116,15 +130,15 @@ export default function AppHeader() {
       {menuOpen && (
         <div id="app-mobile-navigation" className="md:hidden absolute inset-x-0 top-full border-b border-(--border) bg-(--surface) shadow-xl px-4 py-4">
           <nav className="space-y-1" aria-label={ct.mobileNavigation}>
-            {roleLinks.map(link => (
-              <button
+            {links.map(link => (
+              <Link
                 key={link.path}
-                type="button"
-                onClick={() => go(link.path)}
-                className={`w-full text-left text-sm font-semibold px-3 py-2.5 rounded-xl ${isActive(link.path) ? 'bg-(--brand-soft) text-(--brand-foreground)' : 'text-(--text-secondary) hover:bg-(--surface-secondary)'}`}
+                to={link.path}
+                onClick={() => setMenuOpen(false)}
+                className={`block w-full text-left text-sm font-semibold px-3 py-2.5 rounded-xl ${isActive(link.path) ? 'bg-(--brand-soft) text-(--brand-foreground)' : 'text-(--text-secondary) hover:bg-(--surface-secondary)'}`}
               >
                 {link.label}
-              </button>
+              </Link>
             ))}
           </nav>
           <div className="mt-3 pt-3 border-t border-(--border-light) grid grid-cols-2 gap-2">
@@ -134,12 +148,18 @@ export default function AppHeader() {
             <button type="button" onClick={() => { toggleLanguage(); setMenuOpen(false); }} className="px-3 py-2.5 text-xs font-bold text-(--text-secondary) border border-(--border) rounded-xl hover:bg-(--surface-secondary)">
               {language === 'vi' ? 'EN' : 'VI'}
             </button>
-            <button type="button" onClick={() => go('/profile')} className="px-3 py-2.5 text-xs font-semibold text-(--text-secondary) border border-(--border) rounded-xl hover:bg-(--surface-secondary)">
-              {ct.profile}
-            </button>
-            <button type="button" onClick={signOut} className="px-3 py-2.5 text-xs font-semibold text-rose-600 border border-rose-200 dark:border-rose-900 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/30">
-              {ct.signOut}
-            </button>
+            {isAuthenticated ? (
+              <>
+                <button type="button" onClick={() => go('/profile')} className="px-3 py-2.5 text-xs font-semibold text-(--text-secondary) border border-(--border) rounded-xl hover:bg-(--surface-secondary)">
+                  {ct.profile}
+                </button>
+                <button type="button" onClick={signOut} className="px-3 py-2.5 text-xs font-semibold text-rose-600 border border-rose-200 dark:border-rose-900 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/30">
+                  {ct.signOut}
+                </button>
+              </>
+            ) : isPublic ? (
+              <Link to="/login" onClick={() => setMenuOpen(false)} className="col-span-2 text-center px-3 py-2.5 text-xs font-bold text-(--on-brand) bg-(--brand) rounded-xl">{labels.nav.login}</Link>
+            ) : null}
           </div>
         </div>
       )}
