@@ -4,6 +4,7 @@ import com.evidencepilot.dto.response.CitationValidationResponse;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.FormatScanResponse;
 import com.evidencepilot.dto.response.PaperSectionResponse;
+import com.evidencepilot.dto.response.PaperStandardSuggestionResponse;
 import com.evidencepilot.dto.response.PaperValidationResponse;
 import com.evidencepilot.dto.response.JobSubmitResponse;
 import com.evidencepilot.dto.request.SectionContentUpdateRequest;
@@ -18,7 +19,6 @@ import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
-import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
@@ -174,6 +174,15 @@ public class PaperController {
     public PaperValidationResponse validate(
             @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
         return paperProcessingService.validateSections(id);
+    }
+
+    @Operation(summary = "Suggest the uploaded paper's format standard",
+            description = "Uses deterministic markers from the filename and extracted text. "
+                    + "The result is advisory and does not change the project or paper sections.")
+    @GetMapping("/papers/{id}/standard-suggestion")
+    public PaperStandardSuggestionResponse suggestStandard(
+            @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
+        return paperProcessingService.suggestStandard(id);
     }
 
     @Operation(summary = "Deep citation scan",
@@ -514,7 +523,9 @@ public class PaperController {
 
         DocumentResponse response = documentService.uploadDocument(projectId, file, DocumentType.PAPER);
 
-        project.setTargetStandard(PaperStandard.CUSTOM);
+        // The uploaded structure remains authoritative until the instructor confirms
+        // the detected standard or explicitly keeps CUSTOM.
+        project.setTargetStandard(null);
         projectRepository.save(project);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);

@@ -1,5 +1,6 @@
 package com.evidencepilot.service;
 
+import com.evidencepilot.dto.response.PaperStandardSuggestionResponse;
 import com.evidencepilot.model.enums.PaperStandard;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
@@ -7,13 +8,17 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 
 @Service
 public class PaperStandardService {
 
+    private static final int DETECTION_SAMPLE_CHARS = 20_000;
     private static final Pattern COMMENT = Pattern.compile("(?m)(?<!\\\\)%.*$");
+    private static final Pattern WORKS_CITED_HEADING = Pattern.compile(
+            "(?im)^(?:#{1,6}\\h+)?works cited\\h*$");
 
     private static final Map<PaperStandard, List<String>> STANDARD_SECTIONS = Map.of(
         PaperStandard.IEEE, List.of("Abstract", "Introduction", "Methodology", "Results", "Discussion", "Conclusion", "References"),
@@ -68,6 +73,59 @@ public class PaperStandardService {
         return content != null && !COMMENT.matcher(content).replaceAll("").isBlank();
     }
 
+    public PaperStandardSuggestionResponse suggestStandard(String filename, String extractedText) {
+        String sample = detectionSample(extractedText);
+        String firstPages = firstPages(extractedText);
+
+        // ponytail: deterministic format markers only; add a classifier only if audited
+        // uploads show these high-confidence rules miss real templates.
+        if (firstPages.contains("ieeetran")) {
+            return suggestion(PaperStandard.IEEE, 99, "IEEEtran");
+        }
+        if (firstPages.contains("acmart")) {
+            return suggestion(PaperStandard.ACM, 99, "acmart");
+        }
+        if (firstPages.contains("llncs") || firstPages.contains("splncs04")) {
+            return suggestion(PaperStandard.SPRINGER_LNCS, 99, "llncs/splncs04");
+        }
+        if (firstPages.contains("{apa7}") || firstPages.contains("{apa6}")) {
+            return suggestion(PaperStandard.APA, 99, "apa6/apa7");
+        }
+        if (firstPages.contains("\\documentclass{mla}")) {
+            return suggestion(PaperStandard.MLA, 99, "documentclass{mla}");
+        }
+        if (firstPages.contains("acm reference format")) {
+            return suggestion(PaperStandard.ACM, 95, "ACM Reference Format");
+        }
+        if (firstPages.contains("lecture notes in computer science")) {
+            return suggestion(PaperStandard.SPRINGER_LNCS, 95, "Lecture Notes in Computer Science");
+        }
+        if (firstPages.contains("republication/redistribution requires ieee permission")) {
+            return suggestion(PaperStandard.IEEE, 95, "IEEE publication notice");
+        }
+
+        String normalizedFilename = filename == null ? "" : filename.toLowerCase(Locale.ROOT);
+        if (filenameHasToken(normalizedFilename, "ieee")) {
+            return suggestion(PaperStandard.IEEE, 85, "filename: IEEE");
+        }
+        if (filenameHasToken(normalizedFilename, "acm")) {
+            return suggestion(PaperStandard.ACM, 85, "filename: ACM");
+        }
+        if (filenameHasToken(normalizedFilename, "lncs")) {
+            return suggestion(PaperStandard.SPRINGER_LNCS, 85, "filename: LNCS");
+        }
+        if (filenameHasToken(normalizedFilename, "apa")) {
+            return suggestion(PaperStandard.APA, 85, "filename: APA");
+        }
+        if (filenameHasToken(normalizedFilename, "mla")) {
+            return suggestion(PaperStandard.MLA, 85, "filename: MLA");
+        }
+        if (WORKS_CITED_HEADING.matcher(sample).find()) {
+            return suggestion(PaperStandard.MLA, 75, "Works Cited");
+        }
+        return new PaperStandardSuggestionResponse(PaperStandard.CUSTOM, 0, List.of());
+    }
+
     public String renderTemplate(PaperStandard standard, String title, String body) {
         PaperStandard resolved = standard == null ? PaperStandard.CUSTOM : standard;
         String resource = "paper-templates/"
@@ -100,5 +158,38 @@ public class PaperStandardService {
             case "References", "Works Cited" -> "Add references using the selected paper standard.";
             default -> "Write this section and cite external facts, methods, data, and prior work.";
         };
+    }
+
+    private static PaperStandardSuggestionResponse suggestion(
+            PaperStandard standard,
+            int confidencePercent,
+            String evidence) {
+        return new PaperStandardSuggestionResponse(standard, confidencePercent, List.of(evidence));
+    }
+
+    private static String detectionSample(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        if (text.length() <= DETECTION_SAMPLE_CHARS * 2) {
+            return text.toLowerCase(Locale.ROOT);
+        }
+        return (text.substring(0, DETECTION_SAMPLE_CHARS)
+                + '\n'
+                + text.substring(text.length() - DETECTION_SAMPLE_CHARS))
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private static String firstPages(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        return text.substring(0, Math.min(text.length(), DETECTION_SAMPLE_CHARS))
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean filenameHasToken(String filename, String token) {
+        String words = " " + filename.replaceAll("[^a-z0-9]+", " ") + " ";
+        return words.contains(" " + token + " ");
     }
 }

@@ -2,6 +2,7 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.JobSubmitResponse;
+import com.evidencepilot.dto.response.PaperStandardSuggestionResponse;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.FeedbackRequest;
 import com.evidencepilot.model.FeedbackStatus;
@@ -9,6 +10,7 @@ import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
@@ -34,6 +36,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -111,6 +114,22 @@ class PaperControllerTest {
         UUID id = UUID.randomUUID();
         mockMvc.perform(get("/api/papers/{id}/sections", id)).andExpect(status().isOk());
         verify(paperService).getPaperSections(id);
+    }
+
+    @Test
+    void standardSuggestion_returnsAdvisoryResult() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(paperService.suggestStandard(id)).thenReturn(
+                new PaperStandardSuggestionResponse(
+                        PaperStandard.IEEE, 99, List.of("IEEEtran")));
+
+        mockMvc.perform(get("/api/papers/{id}/standard-suggestion", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.suggestedStandard").value("IEEE"))
+                .andExpect(jsonPath("$.confidencePercent").value(99))
+                .andExpect(jsonPath("$.evidence[0]").value("IEEEtran"));
+
+        verify(paperService).suggestStandard(id);
     }
 
     @Test
@@ -259,8 +278,10 @@ class PaperControllerTest {
     @Test
     void upload_returns201WithoutDetectingSectionsSynchronously() throws Exception {
         UUID projectId = UUID.randomUUID();
+        Project project = project(projectId);
+        project.setTargetStandard(PaperStandard.IEEE);
         DocumentResponse response = mock(DocumentResponse.class);
-        when(projectRepository.findById(projectId)).thenReturn(Optional.of(project(projectId)));
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(project));
         when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER)).thenReturn(List.of());
         when(documentService.uploadDocument(eq(projectId), any(), eq(DocumentType.PAPER))).thenReturn(response);
         MockMultipartFile file = new MockMultipartFile("file", "paper.pdf", "application/pdf", "pdf".getBytes());
@@ -269,6 +290,7 @@ class PaperControllerTest {
                 .andExpect(status().isCreated());
 
         verify(documentService).uploadDocument(eq(projectId), any(), eq(DocumentType.PAPER));
+        assertThat(project.getTargetStandard()).isNull();
     }
 
     @Test

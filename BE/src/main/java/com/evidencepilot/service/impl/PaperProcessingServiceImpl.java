@@ -1,6 +1,7 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.response.PaperSectionResponse;
+import com.evidencepilot.dto.response.PaperStandardSuggestionResponse;
 import com.evidencepilot.dto.response.PaperValidationResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Document;
@@ -387,6 +388,19 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
 
         boolean valid = missing.isEmpty() && extra.isEmpty() && outOfOrder.isEmpty();
         return new PaperValidationResponse(valid, missing, extra, outOfOrder, standard);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PaperStandardSuggestionResponse suggestStandard(UUID documentId) {
+        Document document = requireDocumentAccess(documentId);
+        if (document.getDocType() != DocumentType.PAPER || !document.isActive()) {
+            throw new ResourceNotFoundException(documentId, "Paper");
+        }
+        String extractedText = document.getDocumentText() == null
+                ? null : document.getDocumentText().getExtractedText();
+        return paperStandardService.suggestStandard(
+                document.getOriginalFilename(), extractedText);
     }
 
     @Override

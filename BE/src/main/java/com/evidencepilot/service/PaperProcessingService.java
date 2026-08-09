@@ -1,6 +1,7 @@
 package com.evidencepilot.service;
 
 import com.evidencepilot.dto.response.PaperSectionResponse;
+import com.evidencepilot.dto.response.PaperStandardSuggestionResponse;
 import com.evidencepilot.dto.response.PaperValidationResponse;
 
 import java.nio.file.Path;
@@ -30,6 +31,8 @@ public interface PaperProcessingService {
     PaperSectionResponse getSectionHistory(UUID documentId, UUID sectionId);
 
     PaperValidationResponse validateSections(UUID documentId);
+
+    PaperStandardSuggestionResponse suggestStandard(UUID documentId);
 
     PaperSectionResponse updateSection(UUID documentId, UUID sectionId, String title, Integer order, UUID mergeIntoId, String content);
 

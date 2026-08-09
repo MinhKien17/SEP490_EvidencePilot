@@ -70,6 +70,8 @@ export default function ProjectDetail() {
   const [sectionStructureSaving, setSectionStructureSaving] = useState(false);
   const [orderDirty, setOrderDirty] = useState(false);
   const [uploadState, setUploadState] = useState(null);
+  const [standardSuggestion, setStandardSuggestion] = useState(null);
+  const [standardSuggestionLoading, setStandardSuggestionLoading] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [addSourceDocType, setAddSourceDocType] = useState('SOURCE');
   const [addSourceLoading, setAddSourceLoading] = useState(false);
@@ -186,12 +188,22 @@ export default function ProjectDetail() {
     if (legacyClaimsEnabled && activeTab === 'progress') loadProgressReport();
   }, [activeTab, loadFeedbackAndTraceability, loadProgressReport]);
 
-  const handleUpdateStandard = async () => {
-    if (!standard || !project) return;
+  const saveStandard = async (nextStandard) => {
+    if (!nextStandard || !project) return;
     setSaving(true);
     try {
-      await api.post(`/api/projects/${id}/papers/reset-standard?standard=${standard}`);
-      await api.put(`/api/projects/${id}`, { title: project.title, description: project.description, targetStandard: standard });
+      const paper = selectedPaper || papers[0];
+      const usesGeneratedTemplate = !paper || paper.originalFilename?.startsWith('_standard_');
+      if (usesGeneratedTemplate) {
+        await api.post(`/api/projects/${id}/papers/reset-standard?standard=${nextStandard}`);
+      }
+      await api.put(`/api/projects/${id}`, {
+        title: project.title,
+        description: project.description,
+        targetStandard: nextStandard,
+      });
+      setStandard(nextStandard);
+      setStandardSuggestion(null);
       await loadProject();
       const papersRes = await api.get(`/api/projects/${id}/papers`);
       const freshPapers = papersRes.data || [];
@@ -205,6 +217,8 @@ export default function ProjectDetail() {
     } catch { alert(t.updateStandardFailed); }
     finally { setSaving(false); }
   };
+
+  const handleUpdateStandard = () => saveStandard(standard);
 
   const handleImportDoiUnified = async (asSource) => {
     if (!doiInput.trim()) return;
@@ -248,6 +262,7 @@ export default function ProjectDetail() {
     formData.append('file', file);
     formData.append('projectId', id);
     setUploadState('uploading');
+    setStandardSuggestion(null);
     try {
       const { data: doc } = await api.post('/api/papers', formData);
       setSelectedPaper(doc);
@@ -562,16 +577,36 @@ export default function ProjectDetail() {
     const interval = setInterval(async () => {
       try {
         const res = await api.get(`/api/papers/${selectedPaper.id}`);
-        if (res.data.processingStatus === 'READY') {
+        setSelectedPaper(res.data);
+        if (res.data.processingStatus === 'READY' || res.data.processingStatus === 'FAILED') {
           clearInterval(interval);
           setUploadState(null);
-          loadSections(selectedPaper.id);
+          if (res.data.processingStatus === 'READY') loadSections(res.data.id);
           loadPapers();
         }
       } catch { clearInterval(interval); }
     }, 3000);
     return () => clearInterval(interval);
   }, [selectedPaper?.id, selectedPaper?.processingStatus]);
+
+  useEffect(() => {
+    const shouldSuggest = !project?.targetStandard
+      && selectedPaper?.processingStatus === 'READY'
+      && !selectedPaper?.originalFilename?.startsWith('_standard_');
+    if (!shouldSuggest) {
+      setStandardSuggestion(null);
+      setStandardSuggestionLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setStandardSuggestionLoading(true);
+    api.get(`/api/papers/${selectedPaper.id}/standard-suggestion`)
+      .then(({ data }) => { if (!cancelled) setStandardSuggestion(data); })
+      .catch(() => { if (!cancelled) setStandardSuggestion(null); })
+      .finally(() => { if (!cancelled) setStandardSuggestionLoading(false); });
+    return () => { cancelled = true; };
+  }, [project?.targetStandard, selectedPaper?.id, selectedPaper?.processingStatus]);
 
   if (loading) return <div className="min-h-screen bg-[var(--page-bg)]"><AppHeader /><div className="mx-auto max-w-6xl p-4 sm:p-6 lg:p-8"><LoadingSkeleton count={6} /></div></div>;
   if (!project) return null;
@@ -663,6 +698,57 @@ export default function ProjectDetail() {
                       <StatusBadge status={p.processingStatus || 'READY'} />
                     </div>
                   ))}
+                </div>
+              )}
+              {!project?.targetStandard && standardSuggestionLoading && (
+                <p className="mb-3 text-xs italic text-[var(--text-tertiary)]">{t.detectingPaperStandard}</p>
+              )}
+              {!project?.targetStandard && standardSuggestion && !standardSuggestionLoading && (
+                <div className="mb-3 space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-950">
+                  {standardSuggestion.suggestedStandard === 'CUSTOM' ? (
+                    <p>{t.noReliableStandard}</p>
+                  ) : (
+                    <>
+                      <p className="font-bold">
+                        {t.suggestedPaperStandard.replace('{{standard}}', standardSuggestion.suggestedStandard)}
+                      </p>
+                      <p>
+                        {t.standardConfidence.replace('{{confidence}}', standardSuggestion.confidencePercent)}
+                      </p>
+                      {standardSuggestion.evidence?.length > 0 && (
+                        <p>{t.standardEvidence.replace('{{evidence}}', standardSuggestion.evidence.join(', '))}</p>
+                      )}
+                    </>
+                  )}
+                  <p className="text-[10px] text-amber-800">{t.standardSuggestionAdvisory}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {standardSuggestion.suggestedStandard !== 'CUSTOM' && (
+                      <button
+                        onClick={() => saveStandard(standardSuggestion.suggestedStandard)}
+                        disabled={saving}
+                        className="rounded-lg bg-[var(--brand)] px-3 py-2 font-bold text-white hover:bg-[var(--brand-hover)] disabled:opacity-50"
+                      >
+                        {t.confirmSuggestedStandard}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setStandard(standardSuggestion.suggestedStandard === 'CUSTOM' ? '' : standardSuggestion.suggestedStandard);
+                        setSetupMode('standard');
+                        setShowSetUpPaper(true);
+                      }}
+                      className="rounded-lg border border-amber-300 bg-white px-3 py-2 font-bold text-amber-900 hover:bg-amber-100"
+                    >
+                      {t.chooseDifferentStandard}
+                    </button>
+                    <button
+                      onClick={() => saveStandard('CUSTOM')}
+                      disabled={saving}
+                      className="rounded-lg px-3 py-2 font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                    >
+                      {t.keepCustomStandard}
+                    </button>
+                  </div>
                 </div>
               )}
               {!standard && papers.length === 0 && (
