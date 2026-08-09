@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useTheme } from '../../context/ThemeContext';
 import { commonText } from '../../locales';
+import NotificationBell from '../../components/NotificationBell';
 
 function ThemeIcon({ theme }) {
   return theme === 'light' ? (
@@ -36,40 +37,43 @@ export default function Navbar({ t }) {
           <span className="font-bold text-(--text-primary) hidden sm:inline">Evidence Pilot</span>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-4 text-sm" aria-label={ct.primaryNavigation}>
-          <Link to="/" className="text-(--text-secondary) hover:text-(--brand-foreground) font-medium transition-colors">{t.nav.home}</Link>
-          <Link to="/about" className="text-(--text-secondary) hover:text-(--brand-foreground) font-medium transition-colors">{t.nav.about}</Link>
-          <Link to="/terms" className="text-(--text-secondary) hover:text-(--brand-foreground) font-medium transition-colors">{t.nav.terms}</Link>
-          <Link to="/privacy" className="text-(--text-secondary) hover:text-(--brand-foreground) font-medium transition-colors">{t.nav.privacy}</Link>
-          <button type="button" onClick={toggleTheme} className="p-2 text-(--text-secondary) hover:text-(--brand-foreground) hover:bg-(--surface-secondary) transition-colors rounded-lg" title={themeLabel} aria-label={themeLabel}>
-            <ThemeIcon theme={theme} />
-          </button>
-          <button type="button" onClick={toggleLanguage} className="text-xs font-bold text-(--text-secondary) hover:text-(--brand-foreground) transition-colors px-2 py-1.5 border border-(--border) rounded-lg">{t.nav.lang}</button>
-          {isAuthenticated ? (
-            <>
-              <Link to="/profile" className="text-xs font-bold text-(--text-secondary) hover:text-(--brand-foreground) transition-colors px-3 py-1.5 border border-(--border) rounded-lg">{t.nav.profile}</Link>
-              <button type="button" onClick={logout} className="text-xs font-bold text-(--text-secondary) hover:text-rose-600 transition-colors px-3 py-1.5 border border-(--border) rounded-lg">{t.nav.signOut}</button>
-            </>
-          ) : (
-            null
-          )}
-          <Link to={wsLink} className="text-xs font-bold text-(--brand-foreground) bg-(--brand-soft) hover:brightness-95 transition px-4 py-2 rounded-lg">{wsLabel}</Link>
-        </nav>
+        <div className="flex items-center gap-1.5">
+          <nav className="hidden md:flex items-center gap-4 text-sm" aria-label={ct.primaryNavigation}>
+            <Link to="/" className="text-(--text-secondary) hover:text-(--brand-foreground) font-medium transition-colors">{t.nav.home}</Link>
+            <Link to="/about" className="text-(--text-secondary) hover:text-(--brand-foreground) font-medium transition-colors">{t.nav.about}</Link>
+            <Link to="/terms" className="text-(--text-secondary) hover:text-(--brand-foreground) font-medium transition-colors">{t.nav.terms}</Link>
+            <Link to="/privacy" className="text-(--text-secondary) hover:text-(--brand-foreground) font-medium transition-colors">{t.nav.privacy}</Link>
+            <button type="button" onClick={toggleTheme} className="p-2 text-(--text-secondary) hover:text-(--brand-foreground) hover:bg-(--surface-secondary) transition-colors rounded-lg" title={themeLabel} aria-label={themeLabel}>
+              <ThemeIcon theme={theme} />
+            </button>
+            <button type="button" onClick={toggleLanguage} className="text-xs font-bold text-(--text-secondary) hover:text-(--brand-foreground) transition-colors px-2 py-1.5 border border-(--border) rounded-lg">{t.nav.lang}</button>
+            {isAuthenticated ? (
+              <>
+                <Link to="/profile" className="text-xs font-bold text-(--text-secondary) hover:text-(--brand-foreground) transition-colors px-3 py-1.5 border border-(--border) rounded-lg">{t.nav.profile}</Link>
+                <button type="button" onClick={logout} className="text-xs font-bold text-(--text-secondary) hover:text-rose-600 transition-colors px-3 py-1.5 border border-(--border) rounded-lg">{t.nav.signOut}</button>
+              </>
+            ) : (
+              null
+            )}
+            <Link to={wsLink} className="text-xs font-bold text-(--brand-foreground) bg-(--brand-soft) hover:brightness-95 transition px-4 py-2 rounded-lg">{wsLabel}</Link>
+          </nav>
 
-        <button
-          type="button"
-          className="md:hidden p-2 text-(--text-secondary) hover:bg-(--surface-secondary) rounded-lg"
-          onClick={() => setMenuOpen(value => !value)}
-          aria-expanded={menuOpen}
-          aria-controls="home-mobile-navigation"
-          aria-label={menuOpen ? ct.closeMenu : ct.openMenu}
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            {menuOpen
-              ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-              : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />}
-          </svg>
-        </button>
+          <NotificationBell onOpen={closeMenu} />
+          <button
+            type="button"
+            className="md:hidden p-2 text-(--text-secondary) hover:bg-(--surface-secondary) rounded-lg"
+            onClick={() => setMenuOpen(value => !value)}
+            aria-expanded={menuOpen}
+            aria-controls="home-mobile-navigation"
+            aria-label={menuOpen ? ct.closeMenu : ct.openMenu}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              {menuOpen
+                ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />}
+            </svg>
+          </button>
+        </div>
       </div>
 
       {menuOpen && (

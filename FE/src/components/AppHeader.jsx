@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
 import { commonText, instructorText, studentText } from '../locales';
+import NotificationBell from './NotificationBell';
 
 function ThemeIcon({ theme }) {
   return theme === 'light' ? (
@@ -78,35 +79,38 @@ export default function AppHeader() {
           </nav>
         </div>
 
-        <div className="hidden md:flex items-center gap-1.5 shrink-0">
-          <button type="button" onClick={toggleTheme} className="p-2 text-(--text-secondary) hover:text-(--brand-foreground) hover:bg-(--surface-secondary) rounded-lg transition-colors" title={themeLabel} aria-label={themeLabel}>
-            <ThemeIcon theme={theme} />
-          </button>
-          <button type="button" onClick={toggleLanguage} className="min-w-9 px-2 py-1.5 text-xs font-bold text-(--text-secondary) border border-(--border) rounded-lg hover:bg-(--surface-secondary) hover:text-(--brand-foreground) transition-colors">
-            {language === 'vi' ? 'EN' : 'VI'}
-          </button>
-          <button type="button" onClick={() => navigate('/profile')} className="px-3 py-1.5 text-xs font-semibold text-(--text-secondary) hover:text-(--brand-foreground) rounded-lg hover:bg-(--surface-secondary) transition-colors">
-            {ct.profile}
-          </button>
-          <button type="button" onClick={signOut} className="px-3 py-1.5 text-xs font-semibold text-(--text-secondary) hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors">
-            {ct.signOut}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <NotificationBell onOpen={() => setMenuOpen(false)} />
+          <div className="hidden md:flex items-center gap-1.5">
+            <button type="button" onClick={toggleTheme} className="p-2 text-(--text-secondary) hover:text-(--brand-foreground) hover:bg-(--surface-secondary) rounded-lg transition-colors" title={themeLabel} aria-label={themeLabel}>
+              <ThemeIcon theme={theme} />
+            </button>
+            <button type="button" onClick={toggleLanguage} className="min-w-9 px-2 py-1.5 text-xs font-bold text-(--text-secondary) border border-(--border) rounded-lg hover:bg-(--surface-secondary) hover:text-(--brand-foreground) transition-colors">
+              {language === 'vi' ? 'EN' : 'VI'}
+            </button>
+            <button type="button" onClick={() => navigate('/profile')} className="px-3 py-1.5 text-xs font-semibold text-(--text-secondary) hover:text-(--brand-foreground) rounded-lg hover:bg-(--surface-secondary) transition-colors">
+              {ct.profile}
+            </button>
+            <button type="button" onClick={signOut} className="px-3 py-1.5 text-xs font-semibold text-(--text-secondary) hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors">
+              {ct.signOut}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            className="md:hidden p-2 text-(--text-secondary) hover:text-(--brand-foreground) hover:bg-(--surface-secondary) rounded-lg"
+            onClick={() => setMenuOpen(value => !value)}
+            aria-expanded={menuOpen}
+            aria-controls="app-mobile-navigation"
+            aria-label={menuOpen ? ct.closeMenu : ct.openMenu}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              {menuOpen
+                ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />}
+            </svg>
           </button>
         </div>
-
-        <button
-          type="button"
-          className="md:hidden p-2 text-(--text-secondary) hover:text-(--brand-foreground) hover:bg-(--surface-secondary) rounded-lg"
-          onClick={() => setMenuOpen(value => !value)}
-          aria-expanded={menuOpen}
-          aria-controls="app-mobile-navigation"
-          aria-label={menuOpen ? ct.closeMenu : ct.openMenu}
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            {menuOpen
-              ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-              : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />}
-          </svg>
-        </button>
       </div>
 
       {menuOpen && (

@@ -16,6 +16,7 @@ import { QueueSection } from './components/ExtractionQueueTab.jsx';
 import { CollectionsSection } from './components/CollectionsTab.jsx';
 import { NotificationsSection } from './components/NotificationsTab.jsx';
 import { SettingsSection } from './components/SettingsTab.jsx';
+import NotificationBell from '../../components/NotificationBell.jsx';
 const NAV_ITEMS = [
   { key: 'dashboard', labelEn: 'Dashboard', labelVi: 'Bảng điều khiển' },
   { key: 'users', labelEn: 'Users', labelVi: 'Người dùng' },
@@ -287,6 +288,7 @@ export default function AdminDashboard() {
 
           {/* Right side items */}
           <div className="flex items-center gap-4">
+            <NotificationBell />
             <button onClick={startTour} className="flex items-center gap-1.5 text-xs font-bold text-gray-600 bg-white border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-50 transition shadow-sm">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253" />
