@@ -324,7 +324,7 @@ class ProjectServiceImplLifecycleTest {
 
         assertThatThrownBy(() -> service().removeMember(project.getId(), leader.getUser().getId()))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("Cannot remove the last leader");
+                .hasMessageContaining("at least one leader");
         verify(projectMemberRepository, never()).deleteAll(java.util.List.of(leader));
     }
 
@@ -343,6 +343,42 @@ class ProjectServiceImplLifecycleTest {
         service().removeMember(project.getId(), plainMember.getUser().getId());
 
         verify(projectMemberRepository).deleteAll(List.of(plainMember));
+    }
+
+    @Test
+    void updateMemberRolePromotesMember() {
+        User user = user();
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        ProjectMember member = member(project, ProjectRole.MEMBER);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(projectMemberRepository.findByProjectIdAndUserId(project.getId(), member.getUser().getId()))
+                .thenReturn(List.of(member));
+
+        service().updateMemberRole(project.getId(), member.getUser().getId(), ProjectRole.LEADER);
+
+        assertThat(member.getRole()).isEqualTo(ProjectRole.LEADER);
+        verify(projectMemberRepository).save(member);
+    }
+
+    @Test
+    void updateMemberRoleRefusesDemotingLastLeader() {
+        User user = user();
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        ProjectMember leader = member(project, ProjectRole.LEADER);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(projectMemberRepository.findByProjectIdAndUserId(project.getId(), leader.getUser().getId()))
+                .thenReturn(List.of(leader));
+        when(projectMemberRepository.findByProjectId(project.getId())).thenReturn(List.of(leader));
+
+        assertThatThrownBy(() -> service().updateMemberRole(
+                project.getId(), leader.getUser().getId(), ProjectRole.MEMBER))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("at least one leader");
+        verify(projectMemberRepository, never()).save(leader);
     }
 
     private ProjectServiceImpl service() {

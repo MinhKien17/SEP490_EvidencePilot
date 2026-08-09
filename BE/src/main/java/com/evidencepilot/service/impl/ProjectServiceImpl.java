@@ -274,6 +274,43 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional
+    public void updateMemberRole(UUID projectId, UUID userId, ProjectRole role) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = findActiveProject(projectId);
+        currentUserService.requireProjectManageAccess(currentUser, project);
+        currentUserService.requireProjectWriteAccess(currentUser, project);
+
+        ProjectMember member = projectMemberRepository.findByProjectIdAndUserId(projectId, userId).stream()
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Project member not found"));
+        if (member.getRole() == ProjectRole.INSTRUCTOR) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Cannot change the instructor role.");
+        }
+        if (role != ProjectRole.LEADER && role != ProjectRole.MEMBER) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Student must be LEADER or MEMBER.");
+        }
+        if (member.getRole() == role) {
+            return;
+        }
+        if (member.getRole() == ProjectRole.LEADER) {
+            requireAnotherLeader(projectId);
+        }
+
+        member.setRole(role);
+        projectMemberRepository.save(member);
+        systemNotificationService.createNotification(
+                member.getUser(),
+                currentUser,
+                "PROJECT_MEMBER_ROLE_CHANGED",
+                project.getId(),
+                currentUser.getEmail() + " changed your role in project \"" + project.getTitle()
+                        + "\" to " + role + ".");
+    }
+
+    @Override
+    @Transactional
     public void removeMember(UUID projectId, UUID userId) {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(projectId);
@@ -291,13 +328,7 @@ public class ProjectServiceImpl implements ProjectService {
                     "Cannot remove the instructor from the project.");
         }
         if (target.getRole() == ProjectRole.LEADER) {
-            long leaderCount = projectMemberRepository.findByProjectId(projectId).stream()
-                    .filter(member -> member.getRole() == ProjectRole.LEADER)
-                    .count();
-            if (leaderCount <= 1) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Cannot remove the last leader of the project.");
-            }
+            requireAnotherLeader(projectId);
         }
         members.forEach(member -> systemNotificationService.createNotification(
                 member.getUser(),
@@ -306,6 +337,16 @@ public class ProjectServiceImpl implements ProjectService {
                 project.getId(),
                 currentUser.getEmail() + " removed you from project \"" + project.getTitle() + "\"."));
         projectMemberRepository.deleteAll(members);
+    }
+
+    private void requireAnotherLeader(UUID projectId) {
+        long leaderCount = projectMemberRepository.findByProjectId(projectId).stream()
+                .filter(member -> member.getRole() == ProjectRole.LEADER)
+                .count();
+        if (leaderCount <= 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Project must retain at least one leader.");
+        }
     }
 
     private Project findActiveProject(UUID id) {

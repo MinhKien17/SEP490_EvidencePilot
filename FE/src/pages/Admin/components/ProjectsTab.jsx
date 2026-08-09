@@ -31,6 +31,7 @@ function ProjectsSection({ lang, api }) {
   const [allUsers, setAllUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState('');
   const [selectedRole, setSelectedRole] = useState('MEMBER');
+  const [updatingMemberId, setUpdatingMemberId] = useState(null);
   const [memberErr, setMemberErr] = useState('');
 
   const showToast = (message, type = 'success') => {
@@ -160,6 +161,21 @@ function ProjectsSection({ lang, api }) {
       setMembers(resMembers.data || []);
     } catch (err) {
       setMemberErr(err.response?.data?.message || lang.memberRemoveFailed);
+    }
+  };
+
+  const doUpdateMemberRole = async (userId, role) => {
+    setMemberErr('');
+    setUpdatingMemberId(userId);
+    try {
+      await api.patch(`/api/projects/${activeProject.id}/members/${userId}`, null, { params: { role } });
+      const resMembers = await api.get(`/api/projects/${activeProject.id}/members`);
+      setMembers(resMembers.data || []);
+      showToast(lang.memberRoleUpdated, "success");
+    } catch (err) {
+      setMemberErr(err.response?.data?.message || err.response?.data?.detail || lang.memberRoleUpdateFailed);
+    } finally {
+      setUpdatingMemberId(null);
     }
   };
 
@@ -661,7 +677,7 @@ function ProjectsSection({ lang, api }) {
                     >
                       <option value="">{lang.chooseUserAccounts}</option>
                       {allUsers
-                        .filter(u => !members.some(m => m.userId === u.id))
+                        .filter(u => u.role === 'STUDENT' && !members.some(m => m.userId === u.id))
                         .map(u => (
                           <option key={u.id} value={u.id}>
                             {u.firstName} {u.lastName} ({u.email} - {u.role})
@@ -679,7 +695,6 @@ function ProjectsSection({ lang, api }) {
                     >
                       <option value="MEMBER">Member</option>
                       <option value="LEADER">Leader</option>
-                      <option value="INSTRUCTOR">Instructor</option>
                     </select>
                   </div>
 
@@ -716,23 +731,32 @@ function ProjectsSection({ lang, api }) {
                           <p className="text-[10px] text-gray-400 font-mono mt-0.5 truncate">{m.email}</p>
                         </div>
                         <div className="flex items-center gap-3 shrink-0">
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold border ${
-                            m.role === 'INSTRUCTOR' 
-                              ? 'bg-amber-50 text-amber-700 border-amber-100' 
-                              : m.role === 'LEADER'
-                              ? 'bg-blue-50 text-blue-700 border-blue-100'
-                              : 'bg-slate-50 text-slate-650 border-slate-100'
-                          }`}>
-                            {m.role}
-                          </span>
-                          <button 
-                            onClick={() => doRemoveMember(m.userId)} 
-                            className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded transition cursor-pointer"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                          {m.role === 'INSTRUCTOR' ? (
+                            <span className="px-2 py-0.5 rounded text-[9px] font-bold border bg-amber-50 text-amber-700 border-amber-100">
+                              {m.role}
+                            </span>
+                          ) : (
+                            <select
+                              value={m.role}
+                              onChange={e => doUpdateMemberRole(m.userId, e.target.value)}
+                              disabled={updatingMemberId !== null}
+                              aria-label={`${lang.role}: ${m.firstName} ${m.lastName}`}
+                              className="cursor-pointer rounded-lg border border-gray-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-600 outline-none transition focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <option value="MEMBER">Member</option>
+                              <option value="LEADER">Leader</option>
+                            </select>
+                          )}
+                          {m.role !== 'INSTRUCTOR' && (
+                            <button
+                              onClick={() => doRemoveMember(m.userId)}
+                              className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded transition cursor-pointer"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}

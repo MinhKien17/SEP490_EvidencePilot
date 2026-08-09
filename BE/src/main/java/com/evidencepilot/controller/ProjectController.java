@@ -263,6 +263,25 @@ public class ProjectController {
         projectService.addMember(id, userId, role);
     }
 
+    @Operation(summary = "Update a project member role",
+            description = "Changes a student project role between LEADER and MEMBER. Requires project management access.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Member role updated"),
+            @ApiResponse(responseCode = "400", description = "Invalid project role"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Project or member not found"),
+            @ApiResponse(responseCode = "409", description = "Role change would remove the last leader")
+    })
+    @PatchMapping("/{id}/members/{userId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void updateMemberRole(
+            @Parameter(description = "Project UUID") @PathVariable UUID id,
+            @Parameter(description = "Member user UUID") @PathVariable UUID userId,
+            @Parameter(description = "New LEADER or MEMBER role") @RequestParam ProjectRole role) {
+        projectService.updateMemberRole(id, userId, role);
+    }
+
     @Operation(summary = "Remove a member from a project",
             description = "Removes a user from the project. Requires project management access.")
     @ApiResponses({

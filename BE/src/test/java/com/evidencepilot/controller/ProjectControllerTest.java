@@ -211,6 +211,16 @@ class ProjectControllerTest {
     }
 
     @Test
+    void updateMemberRole_returns204AndBindsRole() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        mockMvc.perform(patch("/api/projects/{id}/members/{userId}", projectId, userId)
+                        .param("role", "LEADER"))
+                .andExpect(status().isNoContent());
+        verify(projectService).updateMemberRole(projectId, userId, ProjectRole.LEADER);
+    }
+
+    @Test
     void removeMember_returns204() throws Exception {
         UUID projectId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();

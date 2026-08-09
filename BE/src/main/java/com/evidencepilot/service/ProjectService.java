@@ -30,5 +30,6 @@ public interface ProjectService {
     List<ProjectMember> getProjectMembers(UUID projectId);
     List<ProjectMemberResponse> getProjectMemberResponses(UUID projectId);
     void addMember(UUID projectId, UUID userId, ProjectRole role);
+    void updateMemberRole(UUID projectId, UUID userId, ProjectRole role);
     void removeMember(UUID projectId, UUID userId);
 }
