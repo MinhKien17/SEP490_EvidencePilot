@@ -318,7 +318,7 @@ export default function ContextPanel({
                 <div className="flex flex-col gap-3">
                   {sources.length === 0 ? <div className="text-sm text-(--text-secondary) italic text-center p-4">{t('noUploadedSources')}</div> : (
                     sources.map(src => (
-                      <div key={src.id} onClick={() => src.fileUrl ? setViewerFile({ fileUrl: src.fileUrl, fileName: src.originalFilename }) : showToast(t('fileUrlUnavailable'))} className="bg-(--surface) border border-(--border) rounded-xl p-3.5 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors cursor-pointer">
+                      <div key={src.id} onClick={() => src.fileUrl && src.fileUrl !== 'pending' ? setViewerFile({ fileUrl: `/api/documents/${src.id}/download`, fileName: src.originalFilename }) : showToast(t('fileUrlUnavailable'))} className="bg-(--surface) border border-(--border) rounded-xl p-3.5 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors cursor-pointer">
                         <p className="text-sm font-bold text-(--text-primary) flex items-center gap-2"><svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>{src.originalFilename}</p>
                         <p className="text-xs text-(--text-secondary) mt-1.5 line-clamp-2 leading-relaxed">{t('uploadedSourceDescription')}</p>
                       </div>
