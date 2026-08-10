@@ -293,6 +293,7 @@ class ProjectStatusConcurrencyIntegrationTest {
         doc.setFileUrl("s3://test/paper.pdf");
         doc.setOriginalFilename("paper.pdf");
         doc.setProcessingStatus(ProcessingStatus.READY);
+        doc.setDownloadToken(UUID.randomUUID().toString());
         return documents.saveAndFlush(doc);
     }
 

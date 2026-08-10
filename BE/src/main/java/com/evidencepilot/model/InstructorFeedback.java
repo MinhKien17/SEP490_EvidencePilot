@@ -56,7 +56,7 @@ public class InstructorFeedback {
     @com.fasterxml.jackson.annotation.JsonIgnore
     private User updatedBy;
 
-    @Column(name = "answered")
+    @Column(name = "answered", nullable = false)
     private boolean answered;
 
     @Column(name = "answer_content", columnDefinition = "TEXT")

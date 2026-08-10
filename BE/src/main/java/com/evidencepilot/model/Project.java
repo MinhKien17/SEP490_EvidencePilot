@@ -28,13 +28,15 @@ public class Project {
     @Column(nullable = false)
     private String title;
 
+    @Column(columnDefinition = "TEXT")
     private String description;
 
     @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 50)
     private ProjectStatus status;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "target_standard")
+    @Column(name = "target_standard", length = 50)
     private PaperStandard targetStandard;
 
     @Column(name = "created_at")

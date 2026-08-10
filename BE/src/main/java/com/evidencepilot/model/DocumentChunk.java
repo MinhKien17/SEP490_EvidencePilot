@@ -29,6 +29,7 @@ public class DocumentChunk {
     @Column(name = "text", nullable = false, columnDefinition = "TEXT")
     private String text;
 
+    @Column(nullable = false)
     private boolean active = true;
 
     @Override

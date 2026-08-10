@@ -36,7 +36,7 @@ public class Document {
     private User uploadedBy;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "doc_type")
+    @Column(name = "doc_type", nullable = false, length = 50)
     private DocumentType docType;
 
     @Column(name = "file_url", nullable = false)
@@ -54,7 +54,7 @@ public class Document {
     private String fileHashSha256;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "processing_status")
+    @Column(name = "processing_status", nullable = false, length = 50)
     private ProcessingStatus processingStatus;
 
     @Column(name = "processing_error", columnDefinition = "TEXT")
@@ -69,6 +69,7 @@ public class Document {
     @Column(name = "published_at")
     private LocalDateTime publishedAt;
 
+    @Column(nullable = false)
     private boolean active = true;
 
     @Column(name = "doi")
@@ -99,7 +100,7 @@ public class Document {
     @Column(name = "cited_by_count")
     private Integer citedByCount;
 
-    @Column(name = "download_token", length = 36)
+    @Column(name = "download_token", nullable = false, length = 36)
     private String downloadToken;
 
     @Column(name = "extraction_quality", columnDefinition = "JSON")

@@ -27,6 +27,7 @@ public class DocumentReference {
     @Column(name = "reference_index", nullable = false)
     private Integer referenceIndex;
 
+    @Column(name = "raw_text", nullable = false, columnDefinition = "TEXT")
     private String rawText;
     private String title;
 
@@ -39,7 +40,7 @@ public class DocumentReference {
     private String doi;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "edge_type")
+    @Column(name = "edge_type", nullable = false, length = 50)
     private EdgeType edgeType;
 
     @Override

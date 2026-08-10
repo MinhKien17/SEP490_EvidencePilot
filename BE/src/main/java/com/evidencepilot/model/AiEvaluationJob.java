@@ -37,19 +37,19 @@ public class AiEvaluationJob {
     @JdbcTypeCode(java.sql.Types.BINARY)
     private UUID projectId;
 
-    @Column(name = "kind", nullable = false)
+    @Column(name = "kind", nullable = false, length = 50)
     private String kind;
 
     @Column(name = "payload_json", columnDefinition = "LONGTEXT", nullable = false)
     private String payloadJson;
 
-    @Column(name = "status", nullable = false)
+    @Column(name = "status", nullable = false, length = 20)
     private String status;
 
     @Column(name = "result_json", columnDefinition = "LONGTEXT")
     private String resultJson;
 
-    @Column(name = "error_message")
+    @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
 
     @Column(name = "created_at")

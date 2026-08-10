@@ -30,11 +30,11 @@ public class ExportJob {
     private UUID userId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false)
+    @Column(name = "status", nullable = false, length = 20)
     private ExportStatus status;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "format", nullable = false)
+    @Column(name = "format", nullable = false, length = 20)
     private ExportFormat format;
 
     @Column(name = "download_url", length = 1024)

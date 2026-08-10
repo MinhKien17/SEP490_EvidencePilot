@@ -50,7 +50,7 @@ public class PaperSection {
     @Column(name = "content_md_cache", columnDefinition = "LONGTEXT")
     private String contentMdCache;
 
-    @Column(name = "active")
+    @Column(name = "active", nullable = false)
     private boolean active = true;
 
     @Column(name = "updated_at")

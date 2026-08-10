@@ -24,14 +24,17 @@ public class Collection {
     @JoinColumn(name = "instructor_id", columnDefinition = "BINARY(16)", referencedColumnName = "id", nullable = false)
     private User instructor;
 
+    @Column(nullable = false)
     private String title;
 
+    @Column(columnDefinition = "TEXT")
     private String description;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", columnDefinition = "BINARY(16)", referencedColumnName = "id")
     private CollectionCategory category;
 
+    @Column(nullable = false)
     private boolean active = true;
 
     @Column(name = "created_at")
