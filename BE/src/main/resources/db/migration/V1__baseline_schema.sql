@@ -174,10 +174,6 @@ CREATE TABLE project_media (
     FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
 );
 
-DROP TABLE IF EXISTS claim_evidence_mappings;
-DROP TABLE IF EXISTS ai_suggestions;
-DROP TABLE IF EXISTS claims;
-
 -- ==========================================
 -- 7. SHARED COLLECTIONS & DOCUMENTS
 -- ==========================================

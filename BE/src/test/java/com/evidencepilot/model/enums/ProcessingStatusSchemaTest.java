@@ -11,7 +11,7 @@ class ProcessingStatusSchemaTest {
 
     @Test
     void documentsProcessingStatusCheckAllowsEveryStatus() throws IOException {
-        try (var schema = getClass().getResourceAsStream("/schema.sql")) {
+        try (var schema = getClass().getResourceAsStream("/db/migration/V1__baseline_schema.sql")) {
             String processingStatusConstraint = new String(schema.readAllBytes(), StandardCharsets.UTF_8)
                     .lines()
                     .filter(line -> line.contains("processing_status"))

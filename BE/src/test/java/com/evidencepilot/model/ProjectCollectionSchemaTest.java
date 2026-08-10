@@ -11,7 +11,7 @@ class ProjectCollectionSchemaTest {
 
     @Test
     void schemaDefinesCollectionSubscriptionAndDocumentProvenance() throws IOException {
-        try (var schema = getClass().getResourceAsStream("/schema.sql")) {
+        try (var schema = getClass().getResourceAsStream("/db/migration/V1__baseline_schema.sql")) {
             String sql = new String(schema.readAllBytes(), StandardCharsets.UTF_8);
 
             assertThat(sql)
