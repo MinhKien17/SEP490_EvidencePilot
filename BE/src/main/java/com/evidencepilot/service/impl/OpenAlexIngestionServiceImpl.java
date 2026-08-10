@@ -33,9 +33,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
@@ -192,20 +194,30 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
             resolved.put(r.id(), r);
         }
 
-        int index = 0;
+        List<DocumentReference> existing = documentReferenceRepository
+                .findByDocumentIdAndEdgeTypeOrderByReferenceIndexAsc(documentId, EdgeType.REFERENCES);
+        Set<String> existingIds = new HashSet<>();
+        int nextIndex = 0;
+        for (DocumentReference reference : existing) {
+            if (reference.getRawText() != null) existingIds.add(reference.getRawText());
+            if (reference.getReferenceIndex() != null) {
+                nextIndex = Math.max(nextIndex, reference.getReferenceIndex() + 1);
+            }
+        }
+
+        List<DocumentReference> pending = new ArrayList<>();
         for (String refId : refIds) {
-            boolean exists = documentReferenceRepository.findByDocumentIdAndEdgeTypeOrderByReferenceIndexAsc(documentId, EdgeType.REFERENCES)
-                    .stream().anyMatch(r -> refId.equals(r.getRawText()));
-            if (exists) continue;
+            if (existingIds.contains(refId)) continue;
 
             OpenAlexWorkResponse refWork = resolved.get(refId);
             if (refWork == null) {
                 DocumentReference ref = new DocumentReference();
                 ref.setDocument(document);
-                ref.setReferenceIndex(index++);
+                ref.setReferenceIndex(nextIndex++);
                 ref.setRawText(refId);
                 ref.setEdgeType(EdgeType.REFERENCES);
-                documentReferenceRepository.save(ref);
+                pending.add(ref);
+                existingIds.add(refId);
                 continue;
             }
 
@@ -213,15 +225,17 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
 
             DocumentReference ref = new DocumentReference();
             ref.setDocument(document);
-            ref.setReferenceIndex(index++);
+            ref.setReferenceIndex(nextIndex++);
             ref.setRawText(refId);
             ref.setTitle(refWork.title());
             ref.setPublicationYear(refWork.publicationYear());
             ref.setDoi(refWork.doi() != null ? refWork.doi() : null);
             ref.setCitedByCount(refWork.citedByCount());
             ref.setEdgeType(EdgeType.REFERENCES);
-            documentReferenceRepository.save(ref);
+            pending.add(ref);
+            existingIds.add(refId);
         }
+        if (!pending.isEmpty()) documentReferenceRepository.saveAll(pending);
     }
 
     @Override
@@ -256,25 +270,37 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
             return;
         }
 
-        int index = 0;
+        List<DocumentReference> existing = documentReferenceRepository
+                .findByDocumentIdAndEdgeTypeOrderByReferenceIndexAsc(documentId, EdgeType.CITED_BY);
+        Set<String> existingIds = new HashSet<>();
+        int nextIndex = 0;
+        for (DocumentReference reference : existing) {
+            if (reference.getRawText() != null) existingIds.add(reference.getRawText());
+            if (reference.getReferenceIndex() != null) {
+                nextIndex = Math.max(nextIndex, reference.getReferenceIndex() + 1);
+            }
+        }
+
+        List<DocumentReference> pending = new ArrayList<>();
         for (OpenAlexWorkResponse citing : citingWorks) {
             if (citing.doi() != null && collectionDois.contains(citing.doi())) continue;
 
-            boolean exists = documentReferenceRepository.findByDocumentIdAndEdgeTypeOrderByReferenceIndexAsc(documentId, EdgeType.CITED_BY)
-                    .stream().anyMatch(r -> citing.id() != null && citing.id().equals(r.getRawText()));
-            if (exists) continue;
+            String citingId = citing.id();
+            if (citingId == null || citingId.isBlank() || existingIds.contains(citingId)) continue;
 
             DocumentReference ref = new DocumentReference();
             ref.setDocument(document);
-            ref.setReferenceIndex(index++);
-            ref.setRawText(citing.id());
+            ref.setReferenceIndex(nextIndex++);
+            ref.setRawText(citingId);
             ref.setTitle(citing.title());
             ref.setPublicationYear(citing.publicationYear());
             ref.setDoi(citing.doi());
             ref.setCitedByCount(citing.citedByCount());
             ref.setEdgeType(EdgeType.CITED_BY);
-            documentReferenceRepository.save(ref);
+            pending.add(ref);
+            existingIds.add(citingId);
         }
+        if (!pending.isEmpty()) documentReferenceRepository.saveAll(pending);
     }
 
     @Override

@@ -5,8 +5,10 @@ import com.evidencepilot.dto.openalex.OpenAlexWorkResponse;
 import com.evidencepilot.dto.response.OpenAlexPreview;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Collection;
+import com.evidencepilot.model.DocumentReference;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.EdgeType;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
@@ -20,6 +22,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
@@ -125,16 +128,35 @@ class OpenAlexIngestionServiceImplTest {
     }
 
     @Test
-    void ingestByDoi_savesDocumentAndUploadsPdf() {
+    void ingestByDoi_savesDocumentUploadsPdfAndAppendsReferences() {
         String doi = "10.1000/xyz123";
         UUID projectId = project.getId();
         byte[] pdfBytes = "fake-pdf".getBytes();
+        String existingReferenceId = "https://openalex.org/W-EXISTING";
+        String newReferenceId = "https://openalex.org/W-NEW";
+        var workWithReferences = new OpenAlexWorkResponse(
+                sampleWork.id(), sampleWork.doi(), sampleWork.title(), sampleWork.authorships(),
+                sampleWork.primaryLocation(), sampleWork.bestOaLocation(), sampleWork.openAccess(),
+                sampleWork.contentUrls(), sampleWork.publicationYear(), sampleWork.primaryTopic(),
+                List.of(existingReferenceId, newReferenceId), sampleWork.citedByCount());
+        var resolvedReference = new OpenAlexWorkResponse(
+                newReferenceId, "https://doi.org/10.1000/ref", "Referenced Paper",
+                List.of(), null, null, null, null, 2022, null, List.of(), 7);
+        var existingReference = new DocumentReference();
+        existingReference.setRawText(existingReferenceId);
+        existingReference.setReferenceIndex(4);
+        existingReference.setEdgeType(EdgeType.REFERENCES);
 
         when(currentUserService.requireCurrentUser()).thenReturn(currentUser);
         when(projectRepository.findById(projectId)).thenReturn(Optional.of(project));
-        when(openAlexClient.fetchWork(doi)).thenReturn(sampleWork);
+        when(openAlexClient.fetchWork(doi)).thenReturn(workWithReferences);
         when(openAlexClient.downloadPdf("https://example.com/paper.pdf"))
                 .thenReturn(new ByteArrayInputStream(pdfBytes));
+        when(openAlexClient.fetchWorksByIds(eq(List.of(existingReferenceId, newReferenceId)), anyString()))
+                .thenReturn(List.of(resolvedReference));
+        when(openAlexClient.fetchCitedByWorks(sampleWork.id(), 5)).thenReturn(List.of());
+        when(documentReferenceRepository.findByDocumentIdAndEdgeTypeOrderByReferenceIndexAsc(
+                any(), eq(EdgeType.REFERENCES))).thenReturn(List.of(existingReference));
         when(documentRepository.save(any())).thenAnswer(invocation -> {
             var doc = (com.evidencepilot.model.Document) invocation.getArgument(0);
             if (doc.getId() == null) doc.setId(UUID.randomUUID());
@@ -166,6 +188,15 @@ class OpenAlexIngestionServiceImplTest {
         assertThat(result.processingStatus()).isEqualTo(ProcessingStatus.UPLOADED);
         assertThat(result.originalFilename()).contains("Test Paper");
         verify(documentObjectStorage).write(anyString(), eq(pdfBytes), eq("application/pdf"));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<DocumentReference>> references = ArgumentCaptor.forClass(List.class);
+        verify(documentReferenceRepository).saveAll(references.capture());
+        assertThat(references.getValue()).singleElement().satisfies(reference -> {
+            assertThat(reference.getRawText()).isEqualTo(newReferenceId);
+            assertThat(reference.getReferenceIndex()).isEqualTo(5);
+            assertThat(reference.getEdgeType()).isEqualTo(EdgeType.REFERENCES);
+        });
     }
 
     @Test
