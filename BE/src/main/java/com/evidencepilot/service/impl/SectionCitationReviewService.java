@@ -48,7 +48,7 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class SectionCitationReviewService {
 
-    public static final String REVIEW_VERSION = "section-critique-v2";
+    public static final String REVIEW_VERSION = "section-critique-v3";
     public static final String RULE_CATALOG_VERSION = "critique-rules-v2";
     private static final String SNAPSHOT_STYLE = REVIEW_VERSION;
     private static final int CHUNK_SIZE = 8_000;
@@ -232,8 +232,8 @@ public class SectionCitationReviewService {
                     model = generated.model();
                 }
                 for (ModelFinding finding : generated.review().findings()) {
-                    int start = chunk.startOffset() + finding.startOffset();
-                    int end = chunk.startOffset() + finding.endOffset();
+                    int start = chunk.startOffset() + excerptStart(chunk.content(), finding.excerpt());
+                    int end = start + finding.excerpt().length();
                     if (finding.type() == SectionCitationReviewResponse.FindingType.UNSUBSTANTIATED_CLAIM
                             && alreadyCited(section.getContentTex(), finding.excerpt(), end)) {
                         continue;
@@ -430,14 +430,10 @@ public class SectionCitationReviewService {
                     || finding.excerpt().isBlank()
                     || finding.rationale() == null
                     || finding.rationale().isBlank()
-                    || finding.rationale().length() > MAX_RATIONALE_LENGTH
-                    || finding.startOffset() < 0
-                    || finding.endOffset() <= finding.startOffset()
-                    || finding.endOffset() > chunk.content().length()
-                    || !chunk.content().substring(finding.startOffset(), finding.endOffset())
-                            .equals(finding.excerpt())) {
+                    || finding.rationale().length() > MAX_RATIONALE_LENGTH) {
                 throw new IllegalArgumentException("Finding is not grounded in the supplied chunk");
             }
+            excerptStart(chunk.content(), finding.excerpt());
             validateEvidence(finding, evidenceByChunkId);
         }
     }
@@ -596,6 +592,15 @@ public class SectionCitationReviewService {
         return suffix.stripLeading().startsWith("\\cite");
     }
 
+    private static int excerptStart(String content, String excerpt) {
+        int start = content.indexOf(excerpt);
+        if (start < 0 || content.indexOf(excerpt, start + 1) >= 0) {
+            throw new IllegalArgumentException(
+                    "Finding excerpt is missing or ambiguous in the supplied chunk");
+        }
+        return start;
+    }
+
     private ObjectMapper strictMapper() {
         return objectMapper.copy()
                 .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
@@ -638,8 +643,6 @@ public class SectionCitationReviewService {
     private record ModelFinding(
             SectionCitationReviewResponse.FindingType type,
             String excerpt,
-            @JsonProperty("start_offset") int startOffset,
-            @JsonProperty("end_offset") int endOffset,
             String rationale,
             SectionCitationReviewResponse.Confidence confidence,
             List<ModelEvidence> evidence) {

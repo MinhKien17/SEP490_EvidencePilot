@@ -57,8 +57,10 @@ class SectionCitationReviewServiceTest {
         UUID actorId = UUID.randomUUID();
         UUID sourceId = UUID.randomUUID();
         UUID chunkId = UUID.randomUUID();
+        String prefix = "Prior work provides context. ";
         String excerpt = "Smith et al. report 92 percent accuracy on the benchmark";
-        PaperSection section = section(projectId, documentId, sectionId, "Introduction", excerpt + ".");
+        PaperSection section = section(
+                projectId, documentId, sectionId, "Introduction", prefix + excerpt + ".");
         User actor = new User();
         actor.setId(actorId);
         when(sectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
@@ -73,15 +75,13 @@ class SectionCitationReviewServiceTest {
                         {"section_id":"%s","chunk_index":0,"findings":[{
                           "type":"SOURCE_DISCREPANCY",
                           "excerpt":"%s",
-                          "start_offset":0,
-                          "end_offset":%d,
                           "rationale":"The paper reports 92 percent but the cited source reports 89.2 percent.",
                           "confidence":"HIGH",
                           "evidence":[{"source_id":"%s","chunk_id":"%s",
                             "quote":"achieved 89.2 percent accuracy",
                             "relation":"CONTRADICTS"}]
                         }]}
-                        """, sectionId, excerpt, excerpt.length(), sourceId, chunkId)));
+                        """, sectionId, excerpt, sourceId, chunkId)));
 
         SectionCitationReviewResponse result = service().run(
                 documentId, projectId, sectionId, service().fingerprint(section), actorId);
@@ -92,8 +92,8 @@ class SectionCitationReviewServiceTest {
             assertThat(finding.type())
                     .isEqualTo(SectionCitationReviewResponse.FindingType.SOURCE_DISCREPANCY);
             assertThat(finding.excerpt()).isEqualTo(excerpt);
-            assertThat(finding.startOffset()).isZero();
-            assertThat(finding.endOffset()).isEqualTo(excerpt.length());
+            assertThat(finding.startOffset()).isEqualTo(prefix.length());
+            assertThat(finding.endOffset()).isEqualTo(prefix.length() + excerpt.length());
             assertThat(finding.confidence())
                     .isEqualTo(SectionCitationReviewResponse.Confidence.HIGH);
             assertThat(finding.evidence()).singleElement().satisfies(evidence -> {
@@ -130,15 +130,44 @@ class SectionCitationReviewServiceTest {
                         {"section_id":"%s","chunk_index":0,"findings":[{
                           "type":"UNSUBSTANTIATED_CLAIM",
                           "excerpt":"%s",
-                          "start_offset":0,
-                          "end_offset":%d,
                           "rationale":"Empirical claim without citation.",
                           "confidence":"MEDIUM",
                           "evidence":[{"source_id":"%s","chunk_id":"%s",
                             "quote":"Recall improved by 34 percent",
                             "relation":"SUPPORTS"}]
                         }]}
-                        """, sectionId, excerpt, excerpt.length(), sourceId, chunkId)));
+                        """, sectionId, excerpt, sourceId, chunkId)));
+
+        assertThatThrownBy(() -> service().run(
+                documentId, projectId, sectionId, service().fingerprint(section), UUID.randomUUID()))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(exception -> assertThat(
+                        ((ResponseStatusException) exception).getStatusCode())
+                        .isEqualTo(HttpStatus.BAD_GATEWAY));
+        verify(aiModelClient, times(2)).generate(anyString(), anyString());
+    }
+
+    @Test
+    void runRejectsAmbiguousExcerptInsteadOfGuessingOffset() {
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        String excerpt = "The method improves recall";
+        PaperSection section = section(
+                projectId, documentId, sectionId, "Introduction",
+                excerpt + ". Later, " + excerpt + ".");
+        when(sectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
+        when(sourceMatchingService.search(eq(projectId), any(), eq(5))).thenReturn(List.of());
+        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+                new AiModelClient.GenerationResult("provider", "model", String.format("""
+                        {"section_id":"%s","chunk_index":0,"findings":[{
+                          "type":"UNSUBSTANTIATED_CLAIM",
+                          "excerpt":"%s",
+                          "rationale":"Empirical claim without citation.",
+                          "confidence":"MEDIUM",
+                          "evidence":[]
+                        }]}
+                        """, sectionId, excerpt)));
 
         assertThatThrownBy(() -> service().run(
                 documentId, projectId, sectionId, service().fingerprint(section), UUID.randomUUID()))

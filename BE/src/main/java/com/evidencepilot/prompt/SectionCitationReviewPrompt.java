@@ -35,18 +35,16 @@ public final class SectionCitationReviewPrompt {
             {"section_id":"<echo sectionId>","chunk_index":<echo chunkIndex>,"findings":[{
               "type":"UNSUBSTANTIATED_CLAIM|SOURCE_DISCREPANCY",
               "excerpt":"exact contiguous text copied from contentTex",
-              "start_offset":0,
-              "end_offset":10,
               "rationale":"max 400 chars: why this fails cross-examination",
               "confidence":"HIGH|MEDIUM|LOW",
               "evidence":[{"source_id":"<uuid from evidence list>","chunk_id":"<uuid from evidence list>",
                            "quote":"verbatim text from that chunk, empty only for NOT_FOUND",
                            "relation":"SUPPORTS|CONTRADICTS|NOT_FOUND"}]
             }]}
-            Offsets are zero-based and relative to this chunk; end_offset is exclusive. Every excerpt
-            must equal contentTex.substring(start_offset,end_offset). At most ten findings, at most
-            three evidence entries per finding, ordered by severity. An empty findings array is a
-            valid result. Output JSON only. No prose, no dialogue, no markdown.
+            Do not return offsets; the server derives them by exact string matching. Every excerpt
+            must be exact contiguous text copied from contentTex and occur exactly once in this chunk.
+            At most ten findings, at most three evidence entries per finding, ordered by severity.
+            An empty findings array is a valid result. Output JSON only. No prose, no dialogue, no markdown.
             """;
 
     private SectionCitationReviewPrompt() {
