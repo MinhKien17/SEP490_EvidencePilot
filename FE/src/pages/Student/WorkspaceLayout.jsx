@@ -1074,14 +1074,19 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     if (!selectedPaper) { showToast(t('selectPaperFirst')); return; }
     if (!selectedSectionId || !requireEditableCurrentSection()) return;
     if (aiReviewJobRef.current) return;
+    aiReviewJobRef.current = 'saving';
+    setLoadingAiReview(true);
     const saved = await handleSaveDraft();
-    if (!saved) return;
+    if (!saved) {
+      aiReviewJobRef.current = null;
+      setLoadingAiReview(false);
+      return;
+    }
 
     const reviewedContent = codeContentRef.current;
     const sectionId = selectedSectionId;
     const requestId = ++aiReviewRequestRef.current;
     aiReviewJobRef.current = 'submitting';
-    setLoadingAiReview(true);
     setAiReviewError(null);
     setAiSourceMatches({});
     setAiSourcesError('');
