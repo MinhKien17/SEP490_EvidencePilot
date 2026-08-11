@@ -28,14 +28,21 @@ ENV XDG_CACHE_HOME=/opt/tectonic-cache \
 RUN apk add --no-cache tectonic=0.15.0-r4 \
     && mkdir -p "$XDG_CACHE_HOME" /tmp/tectonic-output
 
-# Fetch every package used by the supported templates and imported-paper shell at image-build time.
+# Fetch every package used by the supported templates at image-build time.
 # Runtime compilation then uses --only-cached and performs no package download.
 COPY --from=builder /build/src/main/resources/paper-templates /tmp/paper-templates
-COPY --from=builder /build/src/main/docker/tectonic-cache-warmup.tex /tmp/paper-templates/
 RUN for template in /tmp/paper-templates/*.tex; do \
         tectonic -X compile --untrusted --outdir /tmp/tectonic-output "$template"; \
     done \
     && rm -rf /tmp/paper-templates /tmp/tectonic-output \
+    && chmod -R a=rX "$XDG_CACHE_HOME"
+
+# Warm every standard 10pt document font size used by imported papers.
+COPY --from=builder /build/src/main/docker/tectonic-cache-warmup.tex /tmp/tectonic-cache-warmup.tex
+RUN chmod -R u+w "$XDG_CACHE_HOME" \
+    && mkdir -p /tmp/tectonic-output \
+    && tectonic -X compile --untrusted --outdir /tmp/tectonic-output /tmp/tectonic-cache-warmup.tex \
+    && rm -rf /tmp/tectonic-cache-warmup.tex /tmp/tectonic-output \
     && chmod -R a=rX "$XDG_CACHE_HOME"
 
 # Create non-root user

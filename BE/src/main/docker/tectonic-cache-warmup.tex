@@ -2,6 +2,21 @@
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 
+\newcommand{\warmfontsize}[1]{%
+  {#1 Regular \textbf{Bold} \textit{Italic} \texttt{Mono} \textbf{\textit{Bold italic}}\par}%
+}
+
 \begin{document}
+\warmfontsize{\tiny}
+\warmfontsize{\scriptsize}
+\warmfontsize{\footnotesize}
+\warmfontsize{\small}
+\warmfontsize{\normalsize}
+\warmfontsize{\large}
+\warmfontsize{\Large}
+\warmfontsize{\LARGE}
+\warmfontsize{\huge}
+\warmfontsize{\Huge}
 \textsuperscript{1}
+\footnotetext{Imported paper footnote}
 \end{document}
