@@ -441,7 +441,10 @@ public class SectionCitationReviewService {
     private void validateEvidence(
             ModelFinding finding,
             Map<UUID, RetrievedEvidence> evidenceByChunkId) {
-        List<ModelEvidence> evidence = finding.evidence() == null ? List.of() : finding.evidence();
+        if (finding.evidence() == null) {
+            throw new IllegalArgumentException("Finding evidence array is required");
+        }
+        List<ModelEvidence> evidence = finding.evidence();
         if (evidence.size() > MAX_EVIDENCE_PER_FINDING) {
             throw new IllegalArgumentException("Finding cites too many evidence entries");
         }

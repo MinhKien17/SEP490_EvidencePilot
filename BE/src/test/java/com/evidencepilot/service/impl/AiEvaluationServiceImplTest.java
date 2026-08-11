@@ -13,6 +13,8 @@ import com.evidencepilot.service.AiModelClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
@@ -25,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -110,6 +113,38 @@ class AiEvaluationServiceImplTest {
     }
 
     @Test
+    void submitSectionCitationReview_reusesMatchingActiveJob() throws Exception {
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        UUID requesterId = UUID.randomUUID();
+        UUID existingJobId = UUID.randomUUID();
+        AiEvaluationJob existing = job(
+                sectionId,
+                projectId,
+                objectMapper.writeValueAsString(Map.of(
+                        "documentId", documentId,
+                        "projectId", projectId,
+                        "sectionId", sectionId,
+                        "contentFingerprint", "fingerprint",
+                        "requestedByUserId", requesterId)));
+        existing.setId(existingJobId);
+        when(jobRepository.findByProjectIdAndKindAndStatusInOrderByCreatedAtDesc(
+                eq(projectId),
+                eq(AiEvaluationJob.KIND_SECTION_CITATION_REVIEW),
+                any())).thenReturn(List.of(existing));
+
+        var response = service().submitSectionCitationReview(
+                projectId, documentId, sectionId, "fingerprint", requesterId);
+
+        assertThat(response.jobId()).isEqualTo(existingJobId);
+        verify(jobRepository, never()).save(any(AiEvaluationJob.class));
+        verify(rabbitTemplate, never()).convertAndSend(
+                eq(com.evidencepilot.config.infrastructure.RabbitMQConfig.AI_EVALUATION_QUEUE),
+                any(Map.class));
+    }
+
+    @Test
     void process_sectionCitationReview_runsSectionReview() throws Exception {
         UUID jobId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
@@ -149,6 +184,36 @@ class AiEvaluationServiceImplTest {
         assertThat(job.getResultJson()).contains("section-citation-v1");
         verify(sectionCitationReviewService).run(
                 documentId, projectId, sectionId, "fingerprint", requesterId);
+    }
+
+    @Test
+    void process_sectionCitationReview_keepsHttpStatusPrefixForFrontendErrorMapping() throws Exception {
+        UUID jobId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        UUID requesterId = UUID.randomUUID();
+        AiEvaluationJob job = job(
+                sectionId,
+                projectId,
+                objectMapper.writeValueAsString(Map.of(
+                        "documentId", documentId,
+                        "projectId", projectId,
+                        "sectionId", sectionId,
+                        "contentFingerprint", "fingerprint",
+                        "requestedByUserId", requesterId)));
+        job.setKind(AiEvaluationJob.KIND_SECTION_CITATION_REVIEW);
+        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
+        when(sectionCitationReviewService.run(
+                documentId, projectId, sectionId, "fingerprint", requesterId))
+                .thenThrow(new ResponseStatusException(
+                        HttpStatus.BAD_GATEWAY, "AI returned an invalid section citation review"));
+
+        service().process(jobId);
+
+        assertThat(job.getStatus()).isEqualTo(AiEvaluationJob.STATUS_FAILED);
+        assertThat(job.getErrorMessage()).startsWith("502");
+        assertThat(job.getCompletedAt()).isNotNull();
     }
 
     @Test
