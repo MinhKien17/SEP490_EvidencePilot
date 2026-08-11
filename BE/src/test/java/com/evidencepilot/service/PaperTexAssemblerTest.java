@@ -63,8 +63,12 @@ class PaperTexAssemblerTest {
     }
 
     @Test
-    void normalizesLegacySuperscriptMarkupInStoredFrontMatter() throws Exception {
-        Fixture fixture = fixture("Saved content");
+    void normalizesLegacyImportedMarkupInWorkspace() throws Exception {
+        Fixture fixture = fixture("kg/m<sup>2</sup>\n"
+                + "\\begin{tabularx}{\\textwidth}{XX}\n"
+                + "A & B \\\\\n"
+                + "[n (\\%)] & 1 \\\\\n"
+                + "\\end{tabularx}");
         fixture.paper.setFrontMatterTex("\\twocolumn[\nA. Author<sup>1</sup> \\& B. Author \\\\[0.35em]\n"
                 + "1 University\n]");
 
@@ -76,6 +80,12 @@ class PaperTexAssemblerTest {
                     .contains("\\\\\n\\vspace{0.35em}\n1 University")
                     .doesNotContain("<sup>")
                     .doesNotContain("\\\\[0.35em]");
+            String body = Files.readString(workspace.root().resolve("paper-body.tex"));
+            String sectionFile = body.replace("\\input{", "").replace("}", "").strip();
+            assertThat(Files.readString(workspace.root().resolve(sectionFile)))
+                    .contains("kg/m\\textsuperscript{2}")
+                    .contains("{[n (\\%)]} & 1")
+                    .doesNotContain("<sup>");
         }
     }
 

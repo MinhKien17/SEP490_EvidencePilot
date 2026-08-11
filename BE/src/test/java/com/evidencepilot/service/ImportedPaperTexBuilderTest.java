@@ -31,7 +31,7 @@ class ImportedPaperTexBuilderTest {
                 block("paragraph", "Page two left.", null, 1, 100, 120, 470, 220),
                 block("paragraph", "Page two right.", null, 1, 530, 120, 900, 220),
                 new AiModelClient.ExtractionBlock(
-                        "table", "| A | B |\n| --- | --- |\n| 1 | 2 |", null, "Table I",
+                        "table", "| A | B |\n| --- | --- |\n| [n (%)] | 2 |", null, "Table I",
                         "table", 1, List.of(100.0, 300.0, 900.0, 600.0), null),
                 new AiModelClient.ExtractionBlock(
                         "figure", "Figure 1", null, "Figure 1", "chart", 1,
@@ -70,6 +70,7 @@ class ImportedPaperTexBuilderTest {
                 .containsExactly("Introduction", "Discussion", "References");
         assertThat(paper.sections().get(0).contentTex())
                 .contains("\\begin{table*}")
+                .contains("{[n (\\%)]} & {2}")
                 .contains("\\begin{figure*}")
                 .contains("images/chart.png");
     }

@@ -29,6 +29,8 @@ public class ImportedPaperTexBuilder {
     private static final Pattern PAGE_NUMBER = Pattern.compile("\\d+");
     private static final Pattern HTML_SUPERSCRIPT = Pattern.compile(
             "<sup>([^<>]*)</sup>", Pattern.CASE_INSENSITIVE);
+    private static final Pattern LEGACY_LEADING_BRACKET_TABLE_CELL = Pattern.compile(
+            "(?m)^([ \\t]*)(\\[[^&\\r\\n]*\\])(?=[ \\t]*&)");
 
     public boolean supports(List<AiModelClient.ExtractionBlock> blocks) {
         return blocks != null && blocks.stream()
@@ -184,7 +186,9 @@ public class ImportedPaperTexBuilder {
                 if (column > 0) {
                     tex.append(" & ");
                 }
-                tex.append(column < row.length ? escapeText(row[column]) : "");
+                tex.append('{')
+                        .append(column < row.length ? escapeText(row[column]) : "")
+                        .append('}');
             }
             tex.append(" \\\\\n");
             if (rowIndex == 0) {
@@ -508,6 +512,9 @@ public class ImportedPaperTexBuilder {
                     "\\textsuperscript{" + escapeText(matcher.group(1)) + "}"));
         }
         String result = matcher.appendTail(normalized).toString();
+        if (result.contains("\\begin{tabular")) {
+            result = LEGACY_LEADING_BRACKET_TABLE_CELL.matcher(result).replaceAll("$1{$2}");
+        }
         return result.contains("\\twocolumn[")
                 ? result.replace("\\\\[0.35em]", "\\\\\n\\vspace{0.35em}")
                 : result;

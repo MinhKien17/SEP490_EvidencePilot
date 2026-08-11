@@ -109,6 +109,7 @@ public class PaperTexAssembler {
                 String content = sectionDraft != null && section.getId().equals(sectionDraft.sectionId())
                         ? sectionDraft.contentTex()
                         : Objects.requireNonNullElse(section.getContentTex(), "");
+                content = ImportedPaperTexBuilder.normalizeLegacyMarkup(content);
                 validateFragment("section " + section.getId(), content);
                 String filename = String.format(
                         "sections/%02d-%s.tex",
