@@ -22,6 +22,7 @@ class ImportedPaperTexBuilderTest {
         List<AiModelClient.ExtractionBlock> blocks = List.of(
                 block("heading", "Evaluation of adipokines", 1, 0, 100, 100, 900, 180),
                 block("paragraph", "A. Author<sup>1</sup> & B. Author", null, 0, 100, 200, 900, 240),
+                block("paragraph", "1 University", null, 0, 100, 250, 900, 280),
                 block("heading", "Abstract", 2, 0, 100, 300, 900, 330),
                 block("paragraph", "This study evaluates biomarkers.", null, 0, 100, 350, 900, 430),
                 block("heading", "Introduction", 2, 0, 100, 470, 470, 500),
@@ -60,7 +61,9 @@ class ImportedPaperTexBuilderTest {
         assertThat(paper.frontMatterTex())
                 .contains("Evaluation of adipokines")
                 .contains("A. Author\\textsuperscript{1} \\& B. Author")
+                .contains("\\\\\n\\vspace{0.35em}\n1 University")
                 .doesNotContain("<sup>")
+                .doesNotContain("\\\\[0.35em]")
                 .contains("\\begin{abstract}")
                 .contains("This study evaluates biomarkers.");
         assertThat(paper.sections()).extracting(ImportedPaperTexBuilder.SectionTex::title)

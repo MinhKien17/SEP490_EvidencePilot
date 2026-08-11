@@ -276,9 +276,12 @@ public class ImportedPaperTexBuilder {
             }
         }
 
+        String authorSeparator = twoColumn
+                ? " \\\\\n\\vspace{0.35em}\n"
+                : " \\\\[0.35em]\n";
         String authorTex = authorLines.stream()
                 .map(ImportedPaperTexBuilder::escapeText)
-                .reduce((left, right) -> left + " \\\\[0.35em]\n" + right)
+                .reduce((left, right) -> left + authorSeparator + right)
                 .orElseGet(() -> escapeText(authors));
         StringBuilder content = new StringBuilder();
         if (twoColumn) {
@@ -504,7 +507,10 @@ public class ImportedPaperTexBuilder {
             matcher.appendReplacement(normalized, Matcher.quoteReplacement(
                     "\\textsuperscript{" + escapeText(matcher.group(1)) + "}"));
         }
-        return matcher.appendTail(normalized).toString();
+        String result = matcher.appendTail(normalized).toString();
+        return result.contains("\\twocolumn[")
+                ? result.replace("\\\\[0.35em]", "\\\\\n\\vspace{0.35em}")
+                : result;
     }
 
     private static void appendEscapedText(

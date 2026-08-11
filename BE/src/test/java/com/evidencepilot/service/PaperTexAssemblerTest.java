@@ -65,14 +65,17 @@ class PaperTexAssemblerTest {
     @Test
     void normalizesLegacySuperscriptMarkupInStoredFrontMatter() throws Exception {
         Fixture fixture = fixture("Saved content");
-        fixture.paper.setFrontMatterTex("A. Author<sup>1</sup> \\& B. Author");
+        fixture.paper.setFrontMatterTex("\\twocolumn[\nA. Author<sup>1</sup> \\& B. Author \\\\[0.35em]\n"
+                + "1 University\n]");
 
         PaperTexAssembler.PaperTexWorkspace workspace = fixture.assembler.assemble(
                 fixture.paper.getId(), new PaperTexAssembler.DraftOverride(null, null));
         try (workspace) {
             assertThat(Files.readString(workspace.root().resolve("frontmatter.tex")))
                     .contains("A. Author\\textsuperscript{1} \\& B. Author")
-                    .doesNotContain("<sup>");
+                    .contains("\\\\\n\\vspace{0.35em}\n1 University")
+                    .doesNotContain("<sup>")
+                    .doesNotContain("\\\\[0.35em]");
         }
     }
 
