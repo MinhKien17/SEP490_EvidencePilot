@@ -50,21 +50,26 @@ class AdminControllerTest {
     }
 
     @Test
-    void userRoutesBindRequestsAndStatuses() throws Exception {
-        UUID id = UUID.randomUUID();
+    void listUsersBindsFiltersAndReturnsOk() throws Exception {
         mockMvc.perform(get("/api/admin/users")
                         .param("page", "2").param("size", "5")
                         .param("sort", "email,asc").param("q", "lin")
                         .param("role", "STUDENT").param("status", "DELETED"))
                 .andExpect(status().isOk());
         verify(service).getUsers(2, 5, "email,asc", "lin", UserRole.STUDENT, AccountStatus.DELETED);
+    }
 
+    @Test
+    void createUserBindsRequestAndReturnsCreated() throws Exception {
         mockMvc.perform(post("/api/admin/users")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"new@example.com\",\"firstName\":\"New\",\"lastName\":\"User\",\"role\":\"INSTRUCTOR\"}"))
                 .andExpect(status().isCreated());
         verify(service).createUser(any(AdminUserCreateRequest.class));
+    }
 
+    @Test
+    void importUsersBindsRequestAndReturnsCreated() throws Exception {
         when(service.importUsers(any(AdminUserImportRequest.class)))
                 .thenReturn(new AdminUserImportResponse(1, 0, List.of()));
         mockMvc.perform(post("/api/admin/users/import")
@@ -73,22 +78,37 @@ class AdminControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.created").value(1));
         verify(service).importUsers(any(AdminUserImportRequest.class));
+    }
 
+    @Test
+    void malformedImportReturnsBadRequest() throws Exception {
         mockMvc.perform(post("/api/admin/users/import")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{not-json"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[0].field").value("body"));
+    }
 
+    @Test
+    void updateStatusBindsRequestAndReturnsOk() throws Exception {
+        UUID id = UUID.randomUUID();
         mockMvc.perform(patch("/api/admin/users/{id}/status", id)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"BANNED\"}"))
                 .andExpect(status().isOk());
         verify(service).updateStatus(eq(id), any(AdminUserStatusRequest.class));
+    }
 
+    @Test
+    void deleteUserReturnsNoContent() throws Exception {
+        UUID id = UUID.randomUUID();
         mockMvc.perform(delete("/api/admin/users/{id}", id)).andExpect(status().isNoContent());
         verify(service).deleteUser(id);
+    }
 
+    @Test
+    void requestPasswordResetReturnsAccepted() throws Exception {
+        UUID id = UUID.randomUUID();
         mockMvc.perform(post("/api/admin/users/{id}/password-reset", id)).andExpect(status().isAccepted());
         verify(service).requestPasswordReset(id);
     }

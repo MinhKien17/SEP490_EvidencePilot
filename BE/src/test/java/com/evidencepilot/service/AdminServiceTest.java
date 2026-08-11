@@ -214,13 +214,6 @@ class AdminServiceTest {
         assertThat(service.importUsers(new AdminUserImportRequest("ADMIN", List.of(valid))).errors())
                 .extracting("field").contains("role");
 
-        List<AdminUserImportRequest.UserItem> tooMany = new ArrayList<>();
-        for (int i = 0; i < 201; i++) {
-            tooMany.add(valid);
-        }
-        assertThat(service.importUsers(new AdminUserImportRequest("STUDENT", tooMany)).errors())
-                .extracting("field").contains("users");
-
         assertThat(service.importUsers(new AdminUserImportRequest("STUDENT", List.of(
                 new AdminUserImportRequest.UserItem("missing@example.com", "M", "S", null)))).errors())
                 .extracting("field").contains("studentCode");
@@ -233,6 +226,20 @@ class AdminServiceTest {
                 new AdminUserImportRequest.UserItem("third@example.com", "Third", "Student", "se1")))).errors())
                 .extracting("field").contains("email", "studentCode");
 
+        verify(users, never()).saveAll(any());
+    }
+
+    @Test
+    void rejectsImportsOverTwoHundredRowsBeforeWriting() {
+        var valid = new AdminUserImportRequest.UserItem(
+                "student@example.com", "Test", "Student", "SE1");
+        List<AdminUserImportRequest.UserItem> tooMany = new ArrayList<>();
+        for (int i = 0; i < 201; i++) {
+            tooMany.add(valid);
+        }
+
+        assertThat(service.importUsers(new AdminUserImportRequest("STUDENT", tooMany)).errors())
+                .extracting("field").contains("users");
         verify(users, never()).saveAll(any());
     }
 
