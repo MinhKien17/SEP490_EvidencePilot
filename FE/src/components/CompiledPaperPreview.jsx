@@ -120,10 +120,13 @@ export default function CompiledPaperPreview({
     setPdfUrl('');
   }, [paperId]);
 
-  useEffect(() => () => {
-    mountedRef.current = false;
-    pendingRef.current = null;
-    if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      pendingRef.current = null;
+      if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current);
+    };
   }, []);
 
   const diagnostic = error?.diagnostics?.[0];

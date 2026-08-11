@@ -27,6 +27,8 @@ public class ImportedPaperTexBuilder {
     private static final Pattern HEADING_NUMBER = Pattern.compile(
             "^(?:\\d+(?:\\.\\d+)*|[IVXLCDM]+)[.)]?\\h+", Pattern.CASE_INSENSITIVE);
     private static final Pattern PAGE_NUMBER = Pattern.compile("\\d+");
+    private static final Pattern HTML_SUPERSCRIPT = Pattern.compile(
+            "<sup>([^<>]*)</sup>", Pattern.CASE_INSENSITIVE);
 
     public boolean supports(List<AiModelClient.ExtractionBlock> blocks) {
         return blocks != null && blocks.stream()
@@ -479,7 +481,38 @@ public class ImportedPaperTexBuilder {
             return "";
         }
         StringBuilder escaped = new StringBuilder();
-        for (int index = 0; index < value.length(); index++) {
+        Matcher matcher = HTML_SUPERSCRIPT.matcher(value);
+        int start = 0;
+        while (matcher.find()) {
+            appendEscapedText(escaped, value, start, matcher.start());
+            escaped.append("\\textsuperscript{");
+            appendEscapedText(escaped, matcher.group(1), 0, matcher.group(1).length());
+            escaped.append('}');
+            start = matcher.end();
+        }
+        appendEscapedText(escaped, value, start, value.length());
+        return escaped.toString();
+    }
+
+    static String normalizeLegacyMarkup(String value) {
+        if (value == null) {
+            return "";
+        }
+        Matcher matcher = HTML_SUPERSCRIPT.matcher(value);
+        StringBuilder normalized = new StringBuilder();
+        while (matcher.find()) {
+            matcher.appendReplacement(normalized, Matcher.quoteReplacement(
+                    "\\textsuperscript{" + escapeText(matcher.group(1)) + "}"));
+        }
+        return matcher.appendTail(normalized).toString();
+    }
+
+    private static void appendEscapedText(
+            StringBuilder escaped,
+            String value,
+            int start,
+            int end) {
+        for (int index = start; index < end; index++) {
             char character = value.charAt(index);
             escaped.append(switch (character) {
                 case '\\' -> "\\textbackslash{}";
@@ -495,7 +528,6 @@ public class ImportedPaperTexBuilder {
                 default -> String.valueOf(character);
             });
         }
-        return escaped.toString();
     }
 
     private static String firstNonBlank(String... values) {

@@ -62,6 +62,20 @@ class PaperTexAssemblerTest {
                 .hasMessageContaining("unsafe image path");
     }
 
+    @Test
+    void normalizesLegacySuperscriptMarkupInStoredFrontMatter() throws Exception {
+        Fixture fixture = fixture("Saved content");
+        fixture.paper.setFrontMatterTex("A. Author<sup>1</sup> \\& B. Author");
+
+        PaperTexAssembler.PaperTexWorkspace workspace = fixture.assembler.assemble(
+                fixture.paper.getId(), new PaperTexAssembler.DraftOverride(null, null));
+        try (workspace) {
+            assertThat(Files.readString(workspace.root().resolve("frontmatter.tex")))
+                    .contains("A. Author\\textsuperscript{1} \\& B. Author")
+                    .doesNotContain("<sup>");
+        }
+    }
+
     private static Fixture fixture(String content) {
         DocumentRepository documents = mock(DocumentRepository.class);
         PaperSectionRepository sections = mock(PaperSectionRepository.class);

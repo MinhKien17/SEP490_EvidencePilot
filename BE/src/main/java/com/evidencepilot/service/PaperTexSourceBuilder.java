@@ -27,10 +27,11 @@ public class PaperTexSourceBuilder {
         }
         String defaultPreamble = template.substring(0, begin).strip();
         String defaultFrontMatter = template.substring(begin + BEGIN_DOCUMENT.length(), body).strip();
+        String resolvedFrontMatter = frontMatterTex == null || frontMatterTex.isBlank()
+                ? defaultFrontMatter : frontMatterTex.strip();
         return new Shell(
                 preambleTex == null || preambleTex.isBlank() ? defaultPreamble : preambleTex.strip(),
-                frontMatterTex == null || frontMatterTex.isBlank()
-                        ? defaultFrontMatter : frontMatterTex.strip());
+                ImportedPaperTexBuilder.normalizeLegacyMarkup(resolvedFrontMatter));
     }
 
     public String renderInline(Shell shell, String body) {
