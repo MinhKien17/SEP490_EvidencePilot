@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.zip.ZipFile;
+import java.util.zip.ZipOutputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -37,7 +38,7 @@ class TexArchiveBuilderTest {
                 projects,
                 documents,
                 sections,
-                new PaperStandardService(),
+                new PaperTexSourceBuilder(new PaperStandardService()),
                 media,
                 sourceMatchingService);
         UUID projectId = UUID.randomUUID();
@@ -77,8 +78,13 @@ class TexArchiveBuilderTest {
             try (ZipFile zip = new ZipFile(archive.toFile(), StandardCharsets.UTF_8)) {
                 String main = text(zip, "main.tex");
                 assertThat(main)
+                        .contains("\\input{preamble.tex}")
+                        .contains("\\input{frontmatter.tex}")
+                        .contains("\\input{paper-body.tex}");
+                assertThat(text(zip, "preamble.tex"))
                         .contains("\\documentclass[conference]{IEEEtran}")
-                        .contains("\\title{AI\\_Project}")
+                        .contains("\\title{AI\\_Project}");
+                assertThat(text(zip, "paper-body.tex"))
                         .contains("\\input{sections/01-introduction.tex}");
                 assertThat(text(zip, "sections/01-introduction.tex"))
                         .contains("\\cite{" + citationKey + "}");
@@ -87,7 +93,7 @@ class TexArchiveBuilderTest {
                         .contains("\\bibitem{" + citationKey + "}")
                         .contains("A. Researcher", "Evidence Source", "2026");
             }
-            verify(media).writeProjectMedia(any(), any());
+            verify(media).writeProjectMedia(any(), any(ZipOutputStream.class));
         } finally {
             Files.deleteIfExists(archive);
         }

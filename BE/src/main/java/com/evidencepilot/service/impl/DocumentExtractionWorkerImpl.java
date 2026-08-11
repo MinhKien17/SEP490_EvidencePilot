@@ -100,7 +100,8 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
                         for (String image : extracted.images()) {
                             md = md.replace("![](" + image + ")", "\\includegraphics{" + image + "}");
                         }
-                        extracted = new AiModelClient.ExtractedDocument(md, extracted.blocks(), extracted.images());
+                        extracted = new AiModelClient.ExtractedDocument(
+                                md, extracted.blocks(), extracted.images(), extracted.pages());
                     }
                 }
                 writeCheckpoint(checkpointKey, extracted);
@@ -137,7 +138,8 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
 
         qdrantService.upsertVectors(new ExtractionResultPayload(document.getId(), payloadChunks));
         if (document.getDocType() == DocumentType.PAPER) {
-            paperProcessingService.detectAndPersistSections(document.getId(), extracted.blocks());
+            paperProcessingService.detectAndPersistSections(
+                    document.getId(), extracted.blocks(), extracted.pages());
         }
         documentPersistenceService.markReady(document.getId(), payloadChunks.size());
         log.info("Completed extraction for document {} with {} chunks", document.getId(), payloadChunks.size());

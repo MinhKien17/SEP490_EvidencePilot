@@ -19,7 +19,23 @@ RUN if [ "$MAVEN_SKIP_TESTS" = "true" ]; then \
 # ────────────────────────────────────────────────────────────────
 # Stage 2: Runtime
 # ────────────────────────────────────────────────────────────────
-FROM eclipse-temurin:21-jre-alpine AS runtime
+FROM eclipse-temurin:21.0.11_10-jre-alpine-3.22 AS runtime
+
+ENV XDG_CACHE_HOME=/opt/tectonic-cache \
+    TECTONIC_UNTRUSTED_MODE=1 \
+    TEX_COMPILE_ONLY_CACHED=true
+
+RUN apk add --no-cache tectonic=0.15.0-r4 \
+    && mkdir -p "$XDG_CACHE_HOME" /tmp/tectonic-output
+
+# Fetch every package used by the supported templates at image-build time.
+# Runtime compilation then uses --only-cached and performs no package download.
+COPY --from=builder /build/src/main/resources/paper-templates /tmp/paper-templates
+RUN for template in /tmp/paper-templates/*.tex; do \
+        tectonic -X compile --untrusted --outdir /tmp/tectonic-output "$template"; \
+    done \
+    && rm -rf /tmp/paper-templates /tmp/tectonic-output \
+    && chmod -R a=rX "$XDG_CACHE_HOME"
 
 # Create non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup

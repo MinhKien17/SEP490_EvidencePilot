@@ -25,7 +25,11 @@ final class DocumentChunker {
         String prefix = "";
 
         for (AiModelClient.ExtractionBlock block : blocks) {
-            if (block == null || "reference".equals(block.type())) {
+            if (block == null || "reference".equals(block.type())
+                    || "header".equals(block.type())
+                    || "footer".equals(block.type())
+                    || "page_number".equals(block.type())
+                    || "page_footnote".equals(block.type())) {
                 continue;
             }
             if ("heading".equals(block.type())) {

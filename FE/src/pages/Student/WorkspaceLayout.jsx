@@ -11,6 +11,7 @@ import FilePanel from './FilePanel.jsx';
 import EditorPanel from './EditorPanel.jsx';
 import ContextPanel from './ContextPanel.jsx';
 import FullPaperPreview from './FullPaperPreview.jsx';
+import PaperTexShellModal from './PaperTexShellModal.jsx';
 import { hasActiveExtraction } from './extractionPolling.js';
 import { legacyClaimsEnabled } from '../../featureFlags.js';
 
@@ -60,6 +61,7 @@ export default function WorkspaceLayout() {
   const [isUploading, setIsUploading] = useState(false);
   const [viewerFile, setViewerFile] = useState(null);
 const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
+  const [showTexShellEditor, setShowTexShellEditor] = useState(false);
 
   const [codeContent, setCodeContent] = useState('');
 
@@ -1432,7 +1434,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
         <FilePanel compact={isCompactWorkspace} isOpen={isFileTreeOpen} width={fileTreeWidth} onResizeStart={handleLeftDividerMouseDown} sections={sections} assignedSections={assignedSections} selectedSectionId={selectedSectionId} onSelectSection={handleSelectSection} selectedPaper={selectedPaper} onSelectPaper={handleSelectPaper} papers={papers} onUploadPaper={isLocked ? undefined : handleUploadPaper} sources={sources} onUploadSource={isLocked ? undefined : handleUploadSource} onDeleteSource={handleDeleteSource} mediaAssets={mediaAssets} onUploadMedia={isLocked ? undefined : handleUploadMedia} onDeleteMedia={handleDeleteMedia} onInsertMedia={canEditCurrentSection ? handleInsertMedia : undefined} showToast={showToast} isLocked={isLocked} onSaveDraft={handleSaveDraft} saveStatus={saveStatus} />
 
-        <EditorPanel compact={isCompactWorkspace} editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSections={assignedSections} canEditCurrentSection={canEditCurrentSection} currentSection={currentSection} displayContent={displayContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} handleScanCitations={handleScanCitations} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} isLocked={isLocked} />
+        <EditorPanel compact={isCompactWorkspace} editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSections={assignedSections} canEditCurrentSection={canEditCurrentSection} currentSection={currentSection} displayContent={displayContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} handleScanCitations={handleScanCitations} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} isLocked={isLocked} onEditTexShell={() => setShowTexShellEditor(true)} />
 
         <ContextPanel compact={isCompactWorkspace} isOpen={isDrawerOpen} width={rightDrawerWidth} onResizeStart={handleRightDividerMouseDown} activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); localStorage.setItem('student_workspace_active_tab', tab); }} showToast={showToast}
           sources={sources} isUploading={isUploading} setIsUploading={setIsUploading} project={project} setViewerFile={setViewerFile} fetchSources={fetchSources} isLocked={isLocked}
@@ -1719,10 +1721,20 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
       {showFullPaperPreview && (
         <FullPaperPreview
-          sections={sections}
+          paperId={selectedPaper?.id}
           paperTitle={selectedPaper?.originalFilename || 'Paper'}
-          mediaAssets={mediaAssets}
+          sectionId={selectedSectionId}
+          contentTex={displayContent}
+          canOverrideSection={canEditCurrentSection && !isLocked}
           onClose={() => setShowFullPaperPreview(false)}
+        />
+      )}
+      {showTexShellEditor && selectedPaper && (
+        <PaperTexShellModal
+          paperId={selectedPaper.id}
+          paperTitle={selectedPaper.originalFilename || selectedPaper.title || 'Paper'}
+          readOnly={isLocked}
+          onClose={() => setShowTexShellEditor(false)}
         />
       )}
     </div>

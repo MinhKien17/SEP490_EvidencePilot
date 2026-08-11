@@ -121,7 +121,8 @@ public final class ExtractionBundle implements AutoCloseable {
                 document = new AiModelClient.ExtractedDocument(
                         new String(readEntry(archive, markdownEntry, MAX_TEXT_ENTRY_BYTES), StandardCharsets.UTF_8),
                         List.copyOf(manifest.blocks()),
-                        List.copyOf(manifest.images()));
+                        List.copyOf(manifest.images()),
+                        manifest.pages() == null ? List.of() : List.copyOf(manifest.pages()));
             } catch (RuntimeException e) {
                 throw new IOException("Extraction bundle manifest is invalid", e);
             }
@@ -246,6 +247,9 @@ public final class ExtractionBundle implements AutoCloseable {
         }
     }
 
-    private record Manifest(List<AiModelClient.ExtractionBlock> blocks, List<String> images) {
+    private record Manifest(
+            List<AiModelClient.ExtractionBlock> blocks,
+            List<String> images,
+            List<AiModelClient.ExtractionPage> pages) {
     }
 }

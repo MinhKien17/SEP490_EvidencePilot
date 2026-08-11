@@ -28,6 +28,11 @@ public interface PaperProcessingService {
             UUID documentId,
             List<AiModelClient.ExtractionBlock> blocks);
 
+    List<PaperSectionResponse> detectAndPersistSections(
+            UUID documentId,
+            List<AiModelClient.ExtractionBlock> blocks,
+            List<AiModelClient.ExtractionPage> pages);
+
     PaperSectionResponse getSectionHistory(UUID documentId, UUID sectionId);
 
     PaperValidationResponse validateSections(UUID documentId);

@@ -5,6 +5,8 @@ import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.dto.response.ApiErrorResponse;
 import com.evidencepilot.exception.AiValidationException;
 import com.evidencepilot.exception.ResourceNotFoundException;
+import com.evidencepilot.exception.TexCompileException;
+import com.evidencepilot.dto.response.TexCompileErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -78,6 +80,12 @@ public class GlobalExceptionHandler {
             HttpServletRequest request) {
 
         return build(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(TexCompileException.class)
+    public ResponseEntity<TexCompileErrorResponse> handleTexCompile(TexCompileException exception) {
+        return ResponseEntity.status(exception.status()).body(new TexCompileErrorResponse(
+                exception.code(), exception.getMessage(), exception.diagnostics()));
     }
 
     @ExceptionHandler(OpenAlexClient.OpenAlexApiException.class)

@@ -21,6 +21,7 @@ import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.mapper.ProjectMapper;
 import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.CurrentUserService;
+import com.evidencepilot.service.ImportedPaperTexBuilder;
 import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.PaperStandardService;
 import com.evidencepilot.service.SystemNotificationService;
@@ -92,6 +93,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     private final ProjectRepository projectRepository;
     private final SystemNotificationService systemNotificationService;
     private final TexArchiveBuilder texArchiveBuilder;
+    private final ImportedPaperTexBuilder importedPaperTexBuilder;
 
     @Override
     public List<PaperSectionResponse> getPaperSections(UUID documentId) {
@@ -113,6 +115,15 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     public List<PaperSectionResponse> detectAndPersistSections(
             UUID documentId,
             List<AiModelClient.ExtractionBlock> blocks) {
+        return detectAndPersistSections(documentId, blocks, List.of());
+    }
+
+    @Override
+    @Transactional
+    public List<PaperSectionResponse> detectAndPersistSections(
+            UUID documentId,
+            List<AiModelClient.ExtractionBlock> blocks,
+            List<AiModelClient.ExtractionPage> pages) {
         Document document = documentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException(documentId, "Document"));
         List<PaperSection> existing = paperSectionRepository
@@ -122,12 +133,36 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
                     .map(projectMapper::toPaperSectionResponse)
                     .toList();
         }
-        String text = document.getDocumentText() != null
-                ? document.getDocumentText().getExtractedText() : null;
-        if (text == null || text.isBlank()) {
-            return List.of();
+        List<PaperSection> sections;
+        if (importedPaperTexBuilder.supports(blocks)) {
+            ImportedPaperTexBuilder.ImportedPaper imported = importedPaperTexBuilder.build(
+                    document, blocks, pages);
+            document.setPreambleTex(imported.preambleTex());
+            document.setFrontMatterTex(imported.frontMatterTex());
+            if (document.getTitle() == null || document.getTitle().isBlank()) {
+                document.setTitle(imported.title());
+            }
+            if (document.getAuthors() == null || document.getAuthors().isBlank()) {
+                document.setAuthors(imported.authors());
+            }
+            documentRepository.save(document);
+            sections = new ArrayList<>();
+            for (ImportedPaperTexBuilder.SectionTex source : imported.sections()) {
+                PaperSection section = new PaperSection();
+                section.setDocument(document);
+                section.setSectionOrder(sections.size());
+                section.setSectionTitle(source.title());
+                section.setContentTex(source.contentTex());
+                sections.add(section);
+            }
+        } else {
+            String text = document.getDocumentText() != null
+                    ? document.getDocumentText().getExtractedText() : null;
+            if (text == null || text.isBlank()) {
+                return List.of();
+            }
+            sections = parseSections(text, document, blocks);
         }
-        List<PaperSection> sections = parseSections(text, document, blocks);
         return paperSectionRepository.saveAll(sections).stream()
                 .map(projectMapper::toPaperSectionResponse)
                 .toList();

@@ -139,6 +139,13 @@ ollama:
   embedding:
     model: ${OLLAMA_EMBEDDING_MODEL:nomic-embed-text}
 
+paper:
+  preview:
+    compiler: ${TEX_COMPILER:tectonic}
+    timeout-seconds: ${TEX_COMPILE_TIMEOUT_SECONDS:15}
+    only-cached: ${TEX_COMPILE_ONLY_CACHED:true}
+    max-concurrent: ${TEX_COMPILE_MAX_CONCURRENT:2}
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

@@ -43,7 +43,7 @@ public class TexArchiveBuilder {
     private final ProjectRepository projectRepository;
     private final DocumentRepository documentRepository;
     private final PaperSectionRepository paperSectionRepository;
-    private final PaperStandardService paperStandardService;
+    private final PaperTexSourceBuilder paperTexSourceBuilder;
     private final TexArchiveMediaWriter mediaWriter;
     private final SourceMatchingService sourceMatchingService;
 
@@ -127,10 +127,16 @@ public class TexArchiveBuilder {
                 writeEntry(zip, "references.tex", bibliography(
                         resolvedKeys, activeSources, !bibliographyInjected));
             }
-            writeEntry(zip, "main.tex", paperStandardService.renderTemplate(
+            Document shellPaper = papers.size() == 1 ? papers.get(0) : null;
+            PaperTexSourceBuilder.Shell shell = paperTexSourceBuilder.resolveShell(
                     project.getTargetStandard(),
-                    escapeLatex(project.getTitle() == null ? "Untitled" : project.getTitle()),
-                    body.toString()));
+                    project.getTitle() == null ? "Untitled" : project.getTitle(),
+                    shellPaper == null ? null : shellPaper.getPreambleTex(),
+                    shellPaper == null ? null : shellPaper.getFrontMatterTex());
+            writeEntry(zip, "preamble.tex", shell.preambleTex() + "\n");
+            writeEntry(zip, "frontmatter.tex", shell.frontMatterTex() + "\n");
+            writeEntry(zip, "paper-body.tex", body.toString());
+            writeEntry(zip, "main.tex", paperTexSourceBuilder.generatedMain());
             if (!citationWarnings.isEmpty()) {
                 writeEntry(zip, "CITATION_WARNINGS.md", citationWarningText(citationWarnings));
             }

@@ -306,7 +306,7 @@ class DocumentExtractionWorkerTest {
         InOrder completion = inOrder(qdrantService, paperProcessingService, persistence);
         completion.verify(qdrantService).upsertVectors(any(ExtractionResultPayload.class));
         completion.verify(paperProcessingService).detectAndPersistSections(
-                documentId, extracted(markdown).blocks());
+                documentId, extracted(markdown).blocks(), extracted(markdown).pages());
         completion.verify(persistence).markReady(documentId, 1);
     }
 

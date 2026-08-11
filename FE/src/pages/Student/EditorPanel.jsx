@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import LatexEditor from '../../components/LatexEditor';
-import PreviewPane from '../../components/PreviewPane';
+import CompiledPaperPreview from '../../components/CompiledPaperPreview.jsx';
 import { useTranslation } from 'react-i18next';
 
 export default function EditorPanel({
@@ -11,12 +10,11 @@ export default function EditorPanel({
   insertLatexTag, insertSymbol, handleFindReplace, handleDownloadTex,
   showSymbolMenu, setShowSymbolMenu, showTextSizeMenu, setShowTextSizeMenu,
   showSearchPanel, setShowSearchPanel, searchQuery, setSearchQuery, replaceQuery, setReplaceQuery,
-  textSize, setTextSize, showToast, editorRef, mediaAssets, isLocked
+  textSize, setTextSize, editorRef, isLocked, onEditTexShell
 }) {
   const { t } = useTranslation();
   const isOwnSection = canEditCurrentSection
     ?? (assignedSections && assignedSections.some(s => String(s.id) === String(selectedSectionId)));
-  const [previewZoom, setPreviewZoom] = useState(100);
   return (
     <div id="editor-preview-container" className="flex-1 min-w-0 flex overflow-hidden bg-(--surface-tertiary)/50 p-2 gap-2">
       <div style={{ width: compact ? '100%' : `${editorWidth}%`, flexGrow: 0, flexShrink: 0 }} className="bg-(--surface) rounded-lg shadow-sm border border-(--border) flex flex-col overflow-hidden min-w-0">
@@ -25,6 +23,11 @@ export default function EditorPanel({
             <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded tracking-wide font-mono">LaTeX</span>
             <span data-tour="editor-section-name" className="text-xs font-bold text-(--text-primary) truncate">{currentSection ? currentSection.sectionTitle : selectedPaper ? selectedPaper.originalFilename : 'document.tex'}</span>
             {currentSection && <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1 py-0.5 rounded shrink-0">v{currentSection.version || 1}</span>}
+            {selectedPaper && (
+              <button onClick={onEditTexShell} className="hidden rounded border border-(--border) px-1.5 py-0.5 font-mono text-[9px] font-semibold text-(--text-secondary) hover:bg-(--surface-secondary) sm:inline-flex" title={t('paperTexLayout')}>
+                preamble.tex / frontmatter.tex
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-3">
             {(isLocked || (currentSection && !isOwnSection)) && (
@@ -141,17 +144,13 @@ export default function EditorPanel({
             <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
             {t('preview')}
           </div>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setPreviewZoom(p => Math.min(200, p + 10))} className="text-xs font-bold text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-secondary) px-1.5 py-0.5 rounded transition-colors">+</button>
-            <span className="text-xs font-mono text-(--text-primary) min-w-[36px] text-center">{previewZoom}%</span>
-            <button onClick={() => setPreviewZoom(p => Math.max(50, p - 10))} className="text-xs font-bold text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-secondary) px-1.5 py-0.5 rounded transition-colors">−</button>
-          </div>
+          <span className="text-[10px] font-medium text-(--text-tertiary)">{t('fixedPdfLayout')}</span>
         </div>
-        <div className="flex-1 min-h-0 overflow-auto flex justify-center">
-          <div style={{ transform: `scale(${previewZoom / 100})`, transformOrigin: 'center top' }}>
-            <PreviewPane latex={displayContent} mediaAssets={mediaAssets} />
-          </div>
-        </div>
+        <CompiledPaperPreview
+          paperId={selectedPaper?.id}
+          sectionId={isOwnSection && !isLocked ? selectedSectionId : null}
+          contentTex={displayContent}
+        />
       </div>
     </div>
   );

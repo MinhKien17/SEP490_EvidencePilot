@@ -1,54 +1,33 @@
-import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import PreviewPane from '../../components/PreviewPane';
+import CompiledPaperPreview from '../../components/CompiledPaperPreview.jsx';
 
-export default function FullPaperPreview({ sections, paperTitle, mediaAssets, onClose }) {
+export default function FullPaperPreview({
+  paperId,
+  paperTitle,
+  sectionId,
+  contentTex,
+  canOverrideSection,
+  onClose,
+}) {
   const { t } = useTranslation();
-  const sectionRefs = useRef({});
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="flex w-full h-full max-w-[90vw] max-h-[90vh] m-auto bg-(--surface) rounded-2xl shadow-2xl border border-(--border) overflow-hidden">
-        {/* Left: Pages */}
-        <div className="hidden md:flex w-56 bg-(--surface-secondary) border-r border-(--border) flex-col shrink-0">
-          <div className="px-4 py-3 border-b border-(--border) flex items-center justify-between shrink-0">
-            <h3 className="text-xs font-bold text-(--text-primary) uppercase tracking-wider">{t('pages')} ({sections.length})</h3>
-            <span className="text-[9px] text-(--text-tertiary) font-mono">{paperTitle}</span>
+    <div className="fixed inset-0 z-50 flex bg-slate-950/65 p-3 backdrop-blur-sm sm:p-6">
+      <div className="m-auto flex h-full max-h-[94vh] w-full max-w-[1500px] flex-col overflow-hidden rounded-2xl border border-(--border) bg-(--surface) shadow-2xl">
+        <div className="flex h-12 shrink-0 items-center justify-between border-b border-(--border) px-4">
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-bold text-(--text-primary)">{t('previewFullPaper')}</h2>
+            <p className="truncate text-[10px] text-(--text-tertiary)">{paperTitle}</p>
           </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {sections.map((sec, i) => (
-              <button key={sec.id}
-                onClick={() => sectionRefs.current[sec.id]?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                className="w-full text-left text-xs p-2 rounded-lg hover:bg-(--surface-tertiary) flex items-center gap-2 transition-colors border border-transparent hover:border-(--border) text-(--text-primary)">
-                <span className="w-5 h-5 rounded bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 flex items-center justify-center text-[9px] font-bold shrink-0">{i + 1}</span>
-                <span className="truncate">{sec.sectionTitle || t('untitled')}</span>
-                <span className="text-[9px] text-(--text-tertiary) font-mono ml-auto shrink-0">v{sec.version || 1}</span>
-              </button>
-            ))}
-          </div>
-          <div className="px-3 py-2 border-t border-(--border) shrink-0">
-            <button onClick={onClose} className="w-full text-xs font-semibold text-(--text-secondary) hover:text-(--text-primary) py-1.5 rounded-lg hover:bg-(--surface-tertiary) transition-colors">
-              {t('close')}
-            </button>
-          </div>
-        </div>
-
-        {/* Right: Full compiled preview */}
-        <div className="flex-1 bg-white overflow-y-auto p-4 sm:p-8 relative">
-          <button onClick={onClose} className="md:hidden sticky top-0 ml-auto mb-2 p-2 rounded-lg bg-white border border-slate-200 text-slate-600 shadow-sm" aria-label={t('close')}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+          <button onClick={onClose} className="rounded-lg border border-(--border) px-3 py-1.5 text-xs font-semibold text-(--text-secondary) hover:bg-(--surface-secondary)">
+            {t('close')}
           </button>
-          {sections.length === 0 ? (
-            <p className="text-sm text-slate-400 italic text-center py-16">{t('noSections')}</p>
-          ) : (
-            sections.map((sec, i) => (
-              <div key={sec.id} ref={el => { sectionRefs.current[sec.id] = el; }}>
-                <PreviewPane latex={sec.contentTex || ''} mediaAssets={mediaAssets} />
-                {i < sections.length - 1 && <hr className="my-8 border-(--border)" />}
-              </div>
-            ))
-          )}
         </div>
+        <CompiledPaperPreview
+          paperId={paperId}
+          sectionId={canOverrideSection ? sectionId : null}
+          contentTex={contentTex}
+        />
       </div>
     </div>
   );

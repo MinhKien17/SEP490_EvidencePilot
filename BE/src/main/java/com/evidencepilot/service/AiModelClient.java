@@ -18,18 +18,45 @@ public interface AiModelClient {
     record GenerationResult(String provider, String model, String response) {
     }
 
-    record ExtractionBlock(String type, String text, Integer level, String caption) {
+    record ExtractionBlock(
+            String type,
+            String text,
+            Integer level,
+            String caption,
+            String sourceType,
+            Integer pageIndex,
+            List<Double> bbox,
+            String assetPath) {
+
+        public ExtractionBlock(String type, String text, Integer level, String caption) {
+            this(type, text, level, caption, null, null, null, null);
+        }
+
+        public ExtractionBlock {
+            bbox = bbox == null ? null : List.copyOf(bbox);
+        }
+
         public boolean valid() {
             if (type == null || text == null || text.isBlank()
-                    || caption != null && caption.isBlank()) {
+                    || caption != null && caption.isBlank()
+                    || sourceType != null && sourceType.isBlank()
+                    || pageIndex != null && pageIndex < 0
+                    || assetPath != null && (!ExtractionBundle.validImagePath(assetPath))) {
                 return false;
             }
             boolean knownType = switch (type) {
-                case "heading", "paragraph", "list", "table", "figure_caption",
-                        "equation", "code", "reference" -> true;
+                case "heading", "paragraph", "list", "table", "figure", "figure_caption",
+                        "equation", "code", "reference", "header", "footer",
+                        "page_number", "page_footnote" -> true;
                 default -> false;
             };
             if (!knownType) {
+                return false;
+            }
+            if (bbox != null && (bbox.size() != 4
+                    || bbox.stream().anyMatch(value -> value == null || !Double.isFinite(value))
+                    || bbox.get(2) <= bbox.get(0)
+                    || bbox.get(3) <= bbox.get(1))) {
                 return false;
             }
             return "heading".equals(type)
@@ -38,10 +65,31 @@ public interface AiModelClient {
         }
     }
 
-    record ExtractedDocument(String markdown, List<ExtractionBlock> blocks, List<String> images) {
+    record ExtractionPage(Integer pageIndex, Double width, Double height) {
+        public boolean valid() {
+            return pageIndex != null && pageIndex >= 0
+                    && width != null && Double.isFinite(width) && width > 0
+                    && height != null && Double.isFinite(height) && height > 0;
+        }
+    }
+
+    record ExtractedDocument(
+            String markdown,
+            List<ExtractionBlock> blocks,
+            List<String> images,
+            List<ExtractionPage> pages) {
+
+        public ExtractedDocument(
+                String markdown,
+                List<ExtractionBlock> blocks,
+                List<String> images) {
+            this(markdown, blocks, images, List.of());
+        }
+
         public ExtractedDocument {
             blocks = blocks == null ? null : List.copyOf(blocks);
             images = images == null ? null : List.copyOf(images);
+            pages = pages == null ? List.of() : List.copyOf(pages);
         }
 
         public boolean valid() {
@@ -50,7 +98,12 @@ public interface AiModelClient {
                     && blocks.stream().allMatch(block -> block != null && block.valid())
                     && images != null
                     && images.stream().allMatch(ExtractionBundle::validImagePath)
-                    && images.stream().distinct().count() == images.size();
+                    && images.stream().distinct().count() == images.size()
+                    && pages.stream().allMatch(page -> page != null && page.valid())
+                    && pages.stream().map(ExtractionPage::pageIndex).distinct().count() == pages.size()
+                    && pages.equals(pages.stream()
+                            .sorted(java.util.Comparator.comparingInt(ExtractionPage::pageIndex))
+                            .toList());
         }
     }
 

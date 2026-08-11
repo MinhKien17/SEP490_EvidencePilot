@@ -80,6 +80,12 @@ public class Document {
     @Column(columnDefinition = "TEXT")
     private String authors;
 
+    @Column(name = "preamble_tex", columnDefinition = "LONGTEXT")
+    private String preambleTex;
+
+    @Column(name = "front_matter_tex", columnDefinition = "LONGTEXT")
+    private String frontMatterTex;
+
     @Column(name = "publication_year")
     private Integer publicationYear;
 
