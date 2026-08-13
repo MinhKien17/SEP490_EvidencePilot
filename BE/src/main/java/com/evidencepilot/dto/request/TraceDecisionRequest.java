@@ -12,6 +12,9 @@ public record TraceDecisionRequest(
         UUID chunkId,
         @Size(max = 1_200) String evidenceQuote,
         String relation,
-        @Size(max = 2_000) String explanation
+        @Size(max = 2_000) String explanation,
+        Boolean accepted,
+        @Size(max = 64) String actualEditHash,
+        Long roundDurationMs
 ) {
 }

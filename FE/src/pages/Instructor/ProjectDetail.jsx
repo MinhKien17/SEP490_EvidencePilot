@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { AppHeader, LoadingSkeleton, StatusBadge, Modal, TourLauncher, EvidenceGraph, Spinner } from '../../components';
+import { AppHeader, LoadingSkeleton, StatusBadge, Modal, TourLauncher, Spinner } from '../../components';
 import { Marker, MarkerIcon, MarkerContent } from '../../components/Marker';
 import { instructorText, commonText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
@@ -13,7 +13,6 @@ import {
   isSourceSharedWithProject,
 } from './sourceShareSelection';
 import { getStudentSuggestions, studentDisplayName } from './studentSearch';
-import { legacyClaimsEnabled } from '../../featureFlags';
 
 const STANDARDS = ['IEEE', 'ACM', 'SPRINGER_LNCS', 'APA', 'MLA', 'CUSTOM'];
 
@@ -32,11 +31,9 @@ export default function ProjectDetail() {
   const [sections, setSections] = useState([]);
   const [selectedPaper, setSelectedPaper] = useState(null);
   const [feedbackRequests, setFeedbackRequests] = useState([]);
-  const [traceability, setTraceability] = useState(null);
   const [progressReport, setProgressReport] = useState(null);
   const [checkpointDiff, setCheckpointDiff] = useState(null);
   const [reportSectionId, setReportSectionId] = useState(null);
-  const [reportPane, setReportPane] = useState('matrix');
   const [users, setUsers] = useState([]);
   const [showAddMember, setShowAddMember] = useState(false);
   const [newMemberId, setNewMemberId] = useState('');
@@ -107,15 +104,11 @@ export default function ProjectDetail() {
     } catch { setSections([]); setOrderDirty(false); }
   }, []);
 
-  const loadFeedbackAndTraceability = useCallback(async () => {
+  const loadFeedback = useCallback(async () => {
     try {
-      const [fbRes, traceRes] = await Promise.all([
-        api.get('/api/feedback-requests'),
-        legacyClaimsEnabled ? api.get(`/api/projects/${id}/traceability`).catch(() => null) : null,
-      ]);
+      const fbRes = await api.get('/api/feedback-requests');
       const projectFbs = (fbRes.data || []).filter(fb => fb.projectId === id);
       setFeedbackRequests(projectFbs);
-      setTraceability(traceRes?.data || null);
     } catch { }
   }, [id]);
 
@@ -159,20 +152,10 @@ export default function ProjectDetail() {
   useEffect(() => { loadProject(); }, [loadProject]);
   useEffect(() => { if (project) { loadPapers(); loadSources(); loadUsers(); } }, [project, loadPapers, loadSources, loadUsers]);
 
-  const sectionMatrix = useMemo(() => {
-    const rows = progressReport?.matrix || [];
-    return reportSectionId ? rows.filter(r => String(r.sectionId) === String(reportSectionId)) : rows;
-  }, [progressReport, reportSectionId]);
-
   const sectionDiff = useMemo(() => {
     if (!checkpointDiff) return null;
-    const bySection = arr => reportSectionId
-      ? arr.filter(c => String(c.sectionId) === String(reportSectionId)) : arr;
     return {
       ...checkpointDiff,
-      claimsAdded: bySection(checkpointDiff.claimsAdded || []),
-      claimsRemoved: bySection(checkpointDiff.claimsRemoved || []),
-      claimsChanged: bySection(checkpointDiff.claimsChanged || []),
       sectionWordDeltas: (checkpointDiff.sectionWordDeltas || [])
         .filter(d => !reportSectionId || String(d.sectionId) === String(reportSectionId)),
     };
@@ -184,9 +167,9 @@ export default function ProjectDetail() {
   );
 
   useEffect(() => {
-    if (activeTab === 'review') loadFeedbackAndTraceability();
-    if (legacyClaimsEnabled && activeTab === 'progress') loadProgressReport();
-  }, [activeTab, loadFeedbackAndTraceability, loadProgressReport]);
+    if (activeTab === 'review') loadFeedback();
+    if (activeTab === 'progress') loadProgressReport();
+  }, [activeTab, loadFeedback, loadProgressReport]);
 
   const saveStandard = async (nextStandard) => {
     if (!nextStandard || !project) return;
@@ -647,7 +630,7 @@ export default function ProjectDetail() {
             { key: 'setup', label: t.projectSetup },
             { key: 'sections', label: t.projectSections },
             { key: 'review', label: t.projectReview },
-            ...(legacyClaimsEnabled ? [{ key: 'progress', label: t.projectProgressReport }] : []),
+            { key: 'progress', label: t.projectProgressReport },
             { key: 'settings', label: t.projectSettings },
           ].map(tab => (
             <button
@@ -950,7 +933,7 @@ export default function ProjectDetail() {
 
         {/* Tab: Review */}
         {activeTab === 'review' && (
-          <div className={`grid grid-cols-1 gap-6 ${legacyClaimsEnabled ? 'lg:grid-cols-2' : ''}`}>
+          <div className="grid grid-cols-1 gap-6">
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
               <h2 className="mb-4 text-sm font-bold text-[var(--brand-foreground)]">{t.feedbackRequests}</h2>
               {feedbackRequests.length === 0 ? (
@@ -969,27 +952,19 @@ export default function ProjectDetail() {
                 </div>
               )}
             </div>
-            {legacyClaimsEnabled && <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-bold text-[var(--brand-foreground)]">{t.evidenceMap}</h2>
-              </div>
-              <EvidenceGraph traceabilityData={traceability} height={500} />
-            </div>}
           </div>
         )}
 
         {/* Tab: Project Process Report */}
-        {legacyClaimsEnabled && activeTab === 'progress' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {activeTab === 'progress' && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
             {progressReport?.readiness && (
               <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6 lg:col-span-3">
                 <h2 className="mb-4 text-sm font-bold text-[var(--brand-foreground)]">{t.readiness}</h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {[
                     { label: t.overallScore, value: `${progressReport.readiness.score} / 100` },
                     { label: t.contentCoverage, value: `${progressReport.readiness.contentCoveragePercent}%` },
-                    { label: t.claimsPresent, value: `${progressReport.readiness.claimsPresentPercent}%` },
-                    { label: t.claimsWithEvidence, value: `${progressReport.readiness.claimsWithEvidencePercent}%` },
                   ].map(stat => (
                     <div key={stat.label} className="rounded-xl bg-[var(--surface-secondary)] p-4 text-center">
                       <p className="text-2xl font-black text-[var(--brand-foreground)]">{stat.value}</p>
@@ -1018,114 +993,51 @@ export default function ProjectDetail() {
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6 lg:col-span-2">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-bold text-[var(--brand-foreground)]">
-                  {reportPane === 'matrix' ? t.claimMatrix : t.changesSinceCheckpoint}
+                  {t.changesSinceCheckpoint}
                   {reportSectionId && <span className="ml-2 rounded bg-[var(--brand-soft)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--brand-foreground)]">{t.filteredBySection}</span>}
                 </h2>
-                <div className="flex overflow-hidden rounded-lg border border-[var(--border)]">
-                  {['matrix', 'diff'].map(mode => (
-                    <button key={mode} onClick={() => setReportPane(mode)}
-                      className={`px-3 py-2 text-xs font-bold transition ${reportPane === mode ? 'bg-[var(--brand)] text-white' : 'bg-[var(--surface)] text-[var(--text-secondary)] hover:text-[var(--brand-foreground)]'}`}>
-                      {mode === 'matrix' ? t.claimMatrix : t.checkpointDiff}
-                    </button>
-                  ))}
-                </div>
               </div>
-              {reportPane === 'matrix' ? (
-                !progressReport ? <p className="text-xs italic text-[var(--text-tertiary)]">{ct.loading}</p> : sectionMatrix.length === 0 ? (
-                  <p className="text-xs italic text-[var(--text-tertiary)]">{reportSectionId ? t.noClaimsInSection : t.noClaimsYet}</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-[var(--border)] text-left text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">
-                          <th className="py-2 pr-3">{t.claim}</th>
-                          <th className="py-2 pr-3">{t.section}</th>
-                          <th className="py-2 pr-3">{ct.status}</th>
-                          <th className="py-2 pr-3">{t.evidence}</th>
-                          <th className="py-2 pr-3">{t.strongestMatch}</th>
-                          <th className="py-2">{t.author}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sectionMatrix.map(row => (
-                          <tr key={row.claimId} className="border-b border-[var(--border-light)]">
-                            <td className="max-w-[220px] py-2 pr-3 text-[var(--text-primary)]"><span className="line-clamp-2">{row.content}</span></td>
-                            <td className="py-2 pr-3 text-[var(--text-secondary)]">{row.sectionTitle}</td>
-                            <td className="py-2 pr-3"><StatusBadge status={row.contentStatus} /></td>
-                            <td className="py-2 pr-3 text-[var(--text-primary)]">{row.activeEvidenceCount}</td>
-                            <td className="py-2 pr-3 text-[var(--text-primary)]">{row.strongestRelation || '-'}{row.strongestScore != null ? ` (${row.strongestScore}%)` : ''}</td>
-                            <td className="py-2 text-[var(--text-secondary)]">{row.createdByName || row.createdById}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )
+              {!sectionDiff ? (
+                <p className="text-xs italic text-[var(--text-tertiary)]">{t.noCheckpointComparison}</p>
               ) : (
-                !sectionDiff ? (
-                  <p className="text-xs italic text-[var(--text-tertiary)]">{t.noCheckpointComparison}</p>
-                ) : (
-                  <div className="space-y-4 text-xs">
-                    <div className="flex flex-wrap gap-4 text-[var(--text-secondary)]">
-                      <span>{t.fromLabel}: {sectionDiff.from ? new Date(sectionDiff.from).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US') : t.startLabel} ({sectionDiff.fromTrigger || t.initialLabel})</span>
-                      <span>{t.toLabel}: {sectionDiff.to ? new Date(sectionDiff.to).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US') : t.nowLabel} ({sectionDiff.toTrigger || t.latestLabel})</span>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {[
-                        { label: t.claimsAdded, value: (sectionDiff.claimsAdded || []).length, color: 'text-emerald-600' },
-                        { label: t.claimsRemoved, value: (sectionDiff.claimsRemoved || []).length, color: 'text-rose-600' },
-                        { label: t.claimsChanged, value: (sectionDiff.claimsChanged || []).length, color: 'text-amber-600' },
-                        { label: t.wordCountDelta, value: (sectionDiff.sectionWordDeltas || []).reduce((sum, d) => sum + (d.toWords - d.fromWords), 0), color: 'text-[var(--brand-foreground)]' },
-                      ].map(stat => (
-                        <div key={stat.label} className="rounded-xl bg-[var(--surface-secondary)] p-4 text-center">
-                          <p className={`text-2xl font-black ${stat.color}`}>{stat.value}</p>
-                          <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">{stat.label}</p>
-                        </div>
-                      ))}
-                    </div>
+                <div className="space-y-4 text-xs">
+                  <div className="flex flex-wrap gap-4 text-[var(--text-secondary)]">
+                    <span>{t.fromLabel}: {sectionDiff.from ? new Date(sectionDiff.from).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US') : t.startLabel} ({sectionDiff.fromTrigger || t.initialLabel})</span>
+                    <span>{t.toLabel}: {sectionDiff.to ? new Date(sectionDiff.to).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US') : t.nowLabel} ({sectionDiff.toTrigger || t.latestLabel})</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {[
-                      { label: t.mappingsAccepted, value: sectionDiff.mappingsAcceptedDelta },
-                      { label: t.mappingsRejected, value: sectionDiff.mappingsRejectedDelta },
+                      { label: t.wordCountDelta, value: (sectionDiff.sectionWordDeltas || []).reduce((sum, delta) => sum + (delta.toWords - delta.fromWords), 0) },
                       { label: t.feedbackAnswered, value: sectionDiff.feedbackAnsweredDelta },
-                    ].map(item => (
-                      <div key={item.label} className="flex items-center justify-between rounded-lg bg-[var(--surface-secondary)] px-3 py-2">
-                        <span className="text-[var(--text-secondary)]">{item.label}</span>
-                        <span className={`font-black ${item.value > 0 ? 'text-emerald-600' : item.value < 0 ? 'text-rose-600' : 'text-[var(--text-tertiary)]'}`}>{item.value > 0 ? `+${item.value}` : item.value}</span>
+                    ].map(stat => (
+                      <div key={stat.label} className="rounded-xl bg-[var(--surface-secondary)] p-4 text-center">
+                        <p className={`text-2xl font-black ${stat.value > 0 ? 'text-emerald-600' : stat.value < 0 ? 'text-rose-600' : 'text-[var(--text-tertiary)]'}`}>{stat.value > 0 ? `+${stat.value}` : stat.value}</p>
+                        <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">{stat.label}</p>
                       </div>
                     ))}
-                    {(sectionDiff.sectionWordDeltas || []).filter(d => d.toWords !== d.fromWords).length > 0 && (
-                      <div>
-                        <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">{t.wordCountBySection}</p>
-                        <div className="space-y-1">
-                          {(sectionDiff.sectionWordDeltas || []).filter(d => d.toWords !== d.fromWords).map(d => (
-                            <div key={d.sectionId} className="flex items-center justify-between rounded-lg bg-[var(--surface-secondary)] px-3 py-1.5 text-[10px]">
-                              <span className="text-[var(--text-secondary)]">{t.section} {String(d.sectionId).slice(0, 8)}</span>
-                              <span className="text-[var(--text-primary)]">{d.fromWords} → {d.toWords}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {(sectionDiff.claimsChanged || []).length > 0 && (
-                      <div>
-                        <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">{t.changedClaims}</p>
-                        <div className="space-y-1">
-                          {(sectionDiff.claimsChanged || []).map(claim => (
-                            <div key={claim.id} className="flex items-center justify-between rounded-lg bg-[var(--surface-secondary)] px-3 py-1.5 text-[10px]">
-                              <span className="font-mono text-[var(--text-secondary)]">#{String(claim.id).slice(0, 8)}</span>
-                              <span className="text-[var(--text-primary)]">{claim.version > 1 ? `v${claim.version - 1}` : t.newLabel} → v{claim.version}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
-                )
+                  {(sectionDiff.sectionWordDeltas || []).filter(delta => delta.toWords !== delta.fromWords).length > 0 && (
+                    <div>
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">{t.wordCountBySection}</p>
+                      <div className="space-y-1">
+                        {(sectionDiff.sectionWordDeltas || []).filter(delta => delta.toWords !== delta.fromWords).map(delta => {
+                          const section = progressReport?.sections?.find(item => String(item.sectionId) === String(delta.sectionId));
+                          return (
+                            <div key={delta.sectionId} className="flex items-center justify-between rounded-lg bg-[var(--surface-secondary)] px-3 py-1.5 text-[10px]">
+                              <span className="text-[var(--text-secondary)]">{section?.sectionTitle || `${t.section} ${String(delta.sectionId).slice(0, 8)}`}</span>
+                              <span className="text-[var(--text-primary)]">{delta.fromWords} → {delta.toWords}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6 lg:col-span-1">
-              <div className="flex items-center justify-between mb-4">
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6">
+              <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-sm font-bold text-[var(--brand-foreground)]">{t.projectSections}</h2>
                 {reportSectionId && (
                   <button onClick={() => setReportSectionId(null)} className="text-xs font-bold text-[var(--brand-foreground)] hover:underline">{t.allSections}</button>
@@ -1134,19 +1046,19 @@ export default function ProjectDetail() {
               {!progressReport ? <p className="text-xs italic text-[var(--text-tertiary)]">{ct.loading}</p> : progressReport.sections?.length === 0 ? (
                 <p className="text-xs italic text-[var(--text-tertiary)]">{t.noSectionsYet}</p>
               ) : (
-                <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                <div className="max-h-96 space-y-3 overflow-y-auto pr-1">
                   {(progressReport.sections || []).map(section => (
                     <button
                       key={section.sectionId}
                       onClick={() => setReportSectionId(String(reportSectionId) === String(section.sectionId) ? null : section.sectionId)}
                       className={`w-full rounded-xl bg-[var(--surface-secondary)] p-3 text-left text-xs transition ${String(reportSectionId) === String(section.sectionId) ? 'bg-[var(--brand-soft)] ring-2 ring-indigo-500/40' : 'hover:bg-[var(--brand-soft)]'}`}
                     >
-                      <div className="flex justify-between items-start gap-2">
+                      <div className="flex items-start justify-between gap-2">
                         <span className="font-bold text-[var(--text-primary)]">{section.sectionTitle}</span>
                         <span className="rounded bg-[var(--brand-soft)] px-1.5 py-0.5 text-[9px] font-black text-[var(--brand-foreground)]">v{section.version}</span>
                       </div>
                       <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">
-                        {t.sectionSummary.replace('{{words}}', section.wordCount).replace('{{claims}}', section.claimCount)}{section.assignedUserName ? ` · ${section.assignedUserName}` : ''}
+                        {t.sectionSummary.replace('{{words}}', section.wordCount)}{section.assignedUserName ? ` · ${section.assignedUserName}` : ''}
                       </p>
                       <p className="mt-0.5 text-[10px] text-[var(--text-tertiary)]">
                         {t.feedbackSummary.replace('{{answered}}', section.feedbackAnswered).replace('{{total}}', section.feedbackAnswered + section.feedbackUnanswered)}
@@ -1488,15 +1400,13 @@ export default function ProjectDetail() {
               const url = URL.createObjectURL(r.data);
               const a = document.createElement('a'); a.href = url; a.download = `papers-${project?.title || 'export'}.zip`;
               a.click(); URL.revokeObjectURL(url);
-              const warningCount = Number(r.headers?.['x-claim-warning-count'] || 0);
-              if (legacyClaimsEnabled && warningCount > 0) alert(t.exportWarning.replace('{{count}}', warningCount));
               setShowExportModal(false);
             } catch { alert(t.exportFailed); }
           }} className="w-full rounded-lg bg-emerald-50 px-4 py-3 text-left font-medium text-emerald-800 transition hover:bg-emerald-100">
             {t.paperArchive}
             <span className="block text-[10px] font-normal text-emerald-900/70">{t.paperArchiveDesc}</span>
           </button>
-          {legacyClaimsEnabled && <button onClick={async () => {
+          <button onClick={async () => {
             try {
               const r = await api.get(`/api/projects/${id}/traceability`);
               const blob = new Blob([JSON.stringify(r.data, null, 2)], { type: 'application/json' });
@@ -1508,8 +1418,8 @@ export default function ProjectDetail() {
           }} className="w-full rounded-lg bg-emerald-50 px-4 py-3 text-left font-medium text-emerald-800 transition hover:bg-emerald-100">
             {t.traceabilityJson}
             <span className="block text-[10px] font-normal text-emerald-900/70">{t.traceabilityJsonDesc}</span>
-          </button>}
-          {legacyClaimsEnabled && <button onClick={async () => {
+          </button>
+          <button onClick={async () => {
             try {
               const r = await api.get(`/api/projects/${id}/traceability/csv`, { responseType: 'blob' });
               const url = URL.createObjectURL(r.data);
@@ -1520,7 +1430,7 @@ export default function ProjectDetail() {
           }} className="w-full rounded-lg bg-emerald-50 px-4 py-3 text-left font-medium text-emerald-800 transition hover:bg-emerald-100">
             {t.traceabilityCsv}
             <span className="block text-[10px] font-normal text-emerald-900/70">{t.traceabilityCsvDesc}</span>
-          </button>}
+          </button>
           <div className="flex justify-end">
             <button onClick={() => setShowExportModal(false)} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.cancel}</button>
           </div>

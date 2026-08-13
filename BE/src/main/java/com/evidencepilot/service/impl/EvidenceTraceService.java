@@ -135,6 +135,9 @@ public class EvidenceTraceService {
                 trace.getExcerptStart(), trace.getExcerptEnd()));
         trace.setAfterFingerprint(currentFingerprint);
         trace.setAfterSectionVersion(section.getVersion());
+        trace.setAccepted(request.accepted());
+        trace.setActualEditHash(request.actualEditHash());
+        trace.setRoundDurationMs(request.roundDurationMs());
         trace.setOutcome(TraceOutcome.UNRESOLVED);
         return toResponse(traceRepository.save(trace));
     }

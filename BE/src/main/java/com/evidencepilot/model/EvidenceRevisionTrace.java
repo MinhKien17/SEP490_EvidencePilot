@@ -96,6 +96,15 @@ public class EvidenceRevisionTrace {
     @Column(name = "after_fingerprint", length = 64)
     private String afterFingerprint;
 
+    @Column(name = "actual_edit_hash", length = 64)
+    private String actualEditHash;
+
+    @Column(name = "accepted")
+    private Boolean accepted;
+
+    @Column(name = "round_duration_ms")
+    private Long roundDurationMs;
+
     @Column(name = "after_section_version")
     private Integer afterSectionVersion;
 

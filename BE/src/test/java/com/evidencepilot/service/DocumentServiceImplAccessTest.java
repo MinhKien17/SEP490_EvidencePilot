@@ -139,7 +139,7 @@ class DocumentServiceImplAccessTest {
     }
 
     @Test
-    void deleteDocumentBlocksWhenSourceHasActiveMappings() {
+    void deleteDocumentPropagatesSourceRemovalConflict() {
         User user = user();
         Project project = project();
         Document source = document(project);
@@ -147,12 +147,12 @@ class DocumentServiceImplAccessTest {
         when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
         doThrow(new ResponseStatusException(
                 org.springframework.http.HttpStatus.CONFLICT,
-                "Source is mapped to 1 active claim evidence mapping(s)."))
+                "Project corpus is locked and cannot be modified."))
                 .when(projectCollectionService).removeSource(source);
 
         assertThatThrownBy(() -> service().deleteDocument(source.getId()))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("mapped to 1 active claim");
+                .hasMessageContaining("corpus is locked");
         verify(documentRepository, never()).save(source);
     }
 

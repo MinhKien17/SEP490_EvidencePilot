@@ -1,5 +1,6 @@
 package com.evidencepilot.service.impl;
 
+import com.evidencepilot.client.ai.gate.AiModelCallGate;
 import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.ExtractionBundle;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -31,27 +32,27 @@ public class AiModelClientImpl implements AiModelClient {
     private static final Set<Integer> RETRYABLE_STATUSES = Set.of(429, 502, 503, 504);
     private static final long BASE_RETRY_DELAY_MS = 2_000;
     private static final long MAX_RETRY_DELAY_MS = 30_000;
+    // Provider throttle windows (e.g. ngrok free tier ~20 req/min) are ~60s wide;
+    // a shorter backoff would retry inside the same window and fail every time.
+    private static final long RATE_LIMIT_FLOOR_MS = 60_000;
 
     private final RestClient restClient;
     private final String baseUrl;
     private final ObjectMapper objectMapper;
     private final int maxRetries;
-
-    public AiModelClientImpl(@Qualifier("aiRestClient") RestClient restClient,
-            @Qualifier("aiModelBaseUrl") String baseUrl,
-            ObjectMapper objectMapper) {
-        this(restClient, baseUrl, objectMapper, 3);
-    }
+    private final AiModelCallGate aiModelCallGate;
 
     @Autowired
     public AiModelClientImpl(@Qualifier("aiRestClient") RestClient restClient,
             @Qualifier("aiModelBaseUrl") String baseUrl,
             ObjectMapper objectMapper,
-            @Value("${ai.model.max-retries:3}") int maxRetries) {
+            @Value("${ai.model.max-retries:3}") int maxRetries,
+            AiModelCallGate aiModelCallGate) {
         this.restClient = restClient;
         this.baseUrl = baseUrl == null || baseUrl.isBlank() ? "" : trimTrailingSlash(baseUrl);
         this.objectMapper = objectMapper;
         this.maxRetries = Math.max(0, maxRetries);
+        this.aiModelCallGate = aiModelCallGate;
     }
 
     @SuppressWarnings("unchecked")
@@ -184,7 +185,7 @@ public class AiModelClientImpl implements AiModelClient {
         int attempt = 0;
         while (true) {
             try {
-                return call.execute();
+                return aiModelCallGate.execute(endpoint, call::execute);
             } catch (AiApiException e) {
                 throw e;
             } catch (RestClientResponseException e) {
@@ -194,9 +195,12 @@ public class AiModelClientImpl implements AiModelClient {
                 }
                 long retryAfterMillis = retryAfterMillis(e);
                 attempt++;
-                long backoffMillis = retryAfterMillis > 0
+                long backoffMillis = retryAfterMillis >= 0
                         ? retryAfterMillis
-                        : Math.min(BASE_RETRY_DELAY_MS * (1L << (attempt - 1)), MAX_RETRY_DELAY_MS);
+                        : status == 429
+                            ? Math.max(RATE_LIMIT_FLOOR_MS,
+                                    Math.min(BASE_RETRY_DELAY_MS * (1L << (attempt - 1)), MAX_RETRY_DELAY_MS))
+                            : Math.min(BASE_RETRY_DELAY_MS * (1L << (attempt - 1)), MAX_RETRY_DELAY_MS);
                 log.warn("AI endpoint {} returned HTTP {} at configured base URL {}; retry {}/{} in {} ms.",
                         endpoint, status, baseUrl, attempt, maxRetries, backoffMillis);
                 sleep(backoffMillis);
@@ -211,12 +215,12 @@ public class AiModelClientImpl implements AiModelClient {
         List<String> values = e.getResponseHeaders() == null ? null
                 : e.getResponseHeaders().get(HttpHeaders.RETRY_AFTER);
         if (values == null || values.isEmpty()) {
-            return 0;
+            return -1;
         }
         try {
             return Long.parseLong(values.get(0).trim()) * 1000;
         } catch (NumberFormatException ignored) {
-            return 0;
+            return -1;
         }
     }
 

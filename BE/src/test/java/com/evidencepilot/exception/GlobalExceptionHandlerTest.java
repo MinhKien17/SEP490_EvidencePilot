@@ -204,18 +204,23 @@ class GlobalExceptionHandlerTest {
     @Test
     void handleAiValidation_returnsBadGateway() {
         ResponseEntity<ApiErrorResponse> response = handler().handleAiValidation(
-                new AiValidationException("invalid verdict"), request("/api/claims/1/suggestions"));
+                new AiValidationException("invalid verdict"), request("/api/papers/1/sections/2/review"));
 
-        assertError(response, HttpStatus.BAD_GATEWAY, "invalid verdict", "/api/claims/1/suggestions");
+        assertError(response, HttpStatus.BAD_GATEWAY, "invalid verdict", "/api/papers/1/sections/2/review");
     }
 
     @Test
-    void handleAiApi_returnsServiceUnavailable() {
-        AiModelClient.AiApiException exception = new AiModelClient.AiApiException("/generate", 503);
+    void handleAiApi_preservesStatusCode() {
+        var rateLimited = new AiModelClient.AiApiException("/generate", 429);
+        var badGateway = new AiModelClient.AiApiException("/generate", 502);
+        var unavailable = new AiModelClient.AiApiException("/generate", 503);
 
-        ResponseEntity<ApiErrorResponse> response = handler().handleAiApi(exception, request("/api/claims/1/suggestions"));
-
-        assertError(response, HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage(), "/api/claims/1/suggestions");
+        assertError(handler().handleAiApi(rateLimited, request("/api/papers/1/sections/2/review")),
+                HttpStatus.TOO_MANY_REQUESTS, rateLimited.getMessage(), "/api/papers/1/sections/2/review");
+        assertError(handler().handleAiApi(badGateway, request("/api/papers/1/sections/2/review")),
+                HttpStatus.BAD_GATEWAY, badGateway.getMessage(), "/api/papers/1/sections/2/review");
+        assertError(handler().handleAiApi(unavailable, request("/api/papers/1/sections/2/review")),
+                HttpStatus.SERVICE_UNAVAILABLE, unavailable.getMessage(), "/api/papers/1/sections/2/review");
     }
 
     @Test

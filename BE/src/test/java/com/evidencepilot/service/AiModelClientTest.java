@@ -1,5 +1,6 @@
 package com.evidencepilot.service;
 
+import com.evidencepilot.client.ai.gate.AiModelCallGate;
 import com.evidencepilot.service.impl.AiModelClientImpl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.concurrent.Semaphore;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -30,6 +32,15 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 class AiModelClientTest {
 
+    private static AiModelClientImpl client(RestClient restClient, String baseUrl) {
+        return client(restClient, baseUrl, 3);
+    }
+
+    private static AiModelClientImpl client(RestClient restClient, String baseUrl, int maxRetries) {
+        return new AiModelClientImpl(restClient, baseUrl, new ObjectMapper(), maxRetries,
+                new AiModelCallGate(new Semaphore(4)));
+    }
+
     @Test
     void healthReturnsWorkerPayload() {
         RestClient.Builder builder = RestClient.builder();
@@ -38,7 +49,7 @@ class AiModelClientTest {
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess("{\"status\":\"ok\"}", MediaType.APPLICATION_JSON));
 
-        assertThat(new AiModelClientImpl(builder.build(), "http://ai.test/", new ObjectMapper()).health())
+        assertThat(client(builder.build(), "http://ai.test/").health())
                 .containsEntry("status", "ok");
         server.verify();
     }
@@ -50,7 +61,7 @@ class AiModelClientTest {
         server.expect(requestTo("http://ai.test/ai/generate"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(content().json("""
-                        {"system":"Judge claim quality","prompt":"Review this"}
+                        {"system":"Review section citations","prompt":"Review this"}
                         """, true))
                 .andRespond(withSuccess(
                         """
@@ -58,10 +69,10 @@ class AiModelClientTest {
                         """,
                         MediaType.APPLICATION_JSON));
 
-        AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper());
+        AiModelClientImpl client = client(builder.build(), "http://ai.test");
 
         AiModelClient.GenerationResult result = client.generate(
-                "Judge claim quality", "Review this");
+                "Review section citations", "Review this");
 
         assertThat(result.provider()).isEqualTo("gemini");
         assertThat(result.model()).isEqualTo("gemini-3.6-flash");
@@ -82,8 +93,7 @@ class AiModelClientTest {
                         "{\"provider\":\"gemini\",\"model\":\"gemini-3.6-flash\",\"response\":\"Retried\",\"done\":true}",
                         MediaType.APPLICATION_JSON));
 
-        AiModelClient.GenerationResult result = new AiModelClientImpl(
-                builder.build(), "http://ai.test", new ObjectMapper(), 1)
+        AiModelClient.GenerationResult result = client(builder.build(), "http://ai.test", 1)
                 .generate("system", "prompt");
 
         assertThat(result.response()).isEqualTo("Retried");
@@ -103,7 +113,7 @@ class AiModelClientTest {
 
         AiModelClient.AiApiException error = assertThrows(
                 AiModelClient.AiApiException.class,
-                () -> new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper(), 1)
+                () -> client(builder.build(), "http://ai.test", 1)
                         .generate("system", "prompt"));
 
         assertThat(error.getStatusCode()).isEqualTo(429);
@@ -119,7 +129,7 @@ class AiModelClientTest {
 
         AiModelClient.AiApiException error = assertThrows(
                 AiModelClient.AiApiException.class,
-                () -> new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper())
+                () -> client(builder.build(), "http://ai.test")
                         .generate("system", "prompt"));
 
         assertThat(error.getStatusCode()).isEqualTo(422);
@@ -143,7 +153,7 @@ class AiModelClientTest {
                         """, true))
                 .andRespond(withSuccess(extractionZip(), MediaType.valueOf("application/zip")));
 
-        AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper());
+        AiModelClientImpl client = client(builder.build(), "http://ai.test");
 
         ExtractionBundle bundle = client.extractDocument("source.pdf", "https://storage.test/source.pdf");
 
@@ -170,7 +180,7 @@ class AiModelClientTest {
                         "{\"filename\":\"source.pdf\",\"method\":\"mineru\",\"markdown\":\"# Extracted\"}",
                         MediaType.APPLICATION_JSON));
 
-        AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper());
+        AiModelClientImpl client = client(builder.build(), "http://ai.test");
 
         assertThatThrownBy(() -> client.extractDocument("source.pdf", "https://storage.test/source.pdf"))
                 .isInstanceOf(AiModelClient.AiApiException.class)
@@ -185,7 +195,7 @@ class AiModelClientTest {
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("{\"embedding\":[0.25,-0.5,1]}", MediaType.APPLICATION_JSON));
 
-        assertThat(new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper()).generateEmbedding("text"))
+        assertThat(client(builder.build(), "http://ai.test").generateEmbedding("text"))
                 .containsExactly(0.25f, -0.5f, 1.0f);
         server.verify();
     }
@@ -200,7 +210,7 @@ class AiModelClientTest {
                         "{\"embeddings\":[[0.25,-0.5],[1,2]]}",
                         MediaType.APPLICATION_JSON));
 
-        assertThat(new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper())
+        assertThat(client(builder.build(), "http://ai.test")
                 .generateEmbeddings(List.of("one", "two")))
                 .containsExactly(List.of(0.25f, -0.5f), List.of(1.0f, 2.0f));
         server.verify();
@@ -208,7 +218,7 @@ class AiModelClientTest {
 
     @Test
     void missingBaseUrlAndEmptyResponsesThrowAiApiException() {
-        assertThatThrownBy(() -> new AiModelClientImpl(RestClient.create(), " ", new ObjectMapper()).health())
+        assertThatThrownBy(() -> client(RestClient.create(), " ").health())
                 .isInstanceOf(AiModelClient.AiApiException.class)
                 .hasMessageContaining("not configured");
 
@@ -216,7 +226,7 @@ class AiModelClientTest {
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         server.expect(requestTo("http://ai.test/ai/generate"))
                 .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
-        assertThatThrownBy(() -> new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper())
+        assertThatThrownBy(() -> client(builder.build(), "http://ai.test")
                 .generate("system", "prompt"))
                 .isInstanceOf(AiModelClient.AiApiException.class)
                 .hasMessageContaining("empty response");

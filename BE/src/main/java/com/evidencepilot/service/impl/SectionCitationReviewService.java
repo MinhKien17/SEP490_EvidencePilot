@@ -301,7 +301,7 @@ public class SectionCitationReviewService {
                 + " unsubstantiated claim(s), " + discrepancies + " source discrepanc(ies).";
     }
 
-    private List<RetrievedEvidence> retrieveEvidence(UUID projectId, String chunkContent) {
+    public List<RetrievedEvidence> retrieveEvidence(UUID projectId, String chunkContent) {
         List<String> candidates = candidateClaims(chunkContent);
         if (candidates.isEmpty()) {
             return List.of();
@@ -369,7 +369,7 @@ public class SectionCitationReviewService {
             } catch (JsonProcessingException | IllegalArgumentException exception) {
                 lastFailure = new ResponseStatusException(
                         HttpStatus.BAD_GATEWAY,
-                        "AI returned an invalid section citation review",
+                        "AI returned an invalid section citation review: " + exception.getMessage(),
                         exception);
             }
         }
@@ -630,7 +630,7 @@ public class SectionCitationReviewService {
     private record Chunk(int startOffset, String content) {
     }
 
-    private record RetrievedEvidence(
+    public record RetrievedEvidence(
             UUID sourceId, UUID chunkId, String citationKey, String title, String text) {
     }
 

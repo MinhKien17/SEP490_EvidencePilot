@@ -38,7 +38,7 @@ class JobControllerTest {
         ObjectNode result = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
         result.put("score", 3);
         JobResponse job = new JobResponse(
-                jobId, projectId, "CLAIM_QUALITY", "SUCCESS", result, null, null);
+                jobId, projectId, "SECTION_SUGGESTION", "SUCCESS", result, null, null);
         User user = new User();
         Project project = new Project();
         when(aiEvaluationService.getJob(jobId)).thenReturn(job);

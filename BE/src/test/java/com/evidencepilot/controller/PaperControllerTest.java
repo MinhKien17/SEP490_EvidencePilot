@@ -152,7 +152,7 @@ class PaperControllerTest {
     void updateSection_bindsContentFromBody() throws Exception {
         UUID paperId = UUID.randomUUID();
         UUID sectionId = UUID.randomUUID();
-        String content = "Section body with epclaim text.";
+        String content = "Section body text.";
 
         mockMvc.perform(put("/api/papers/{paperId}/sections/{sectionId}", paperId, sectionId)
                         .contentType(MediaType.APPLICATION_JSON)

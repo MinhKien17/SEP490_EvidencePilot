@@ -164,6 +164,8 @@ services:
       AI_MODEL_BASE_URL: ${AI_MODEL_BASE_URL}
       AI_MODEL_API_KEY: ${AI_MODEL_API_KEY:-}
       AI_MODEL_READ_TIMEOUT_SECONDS: ${AI_MODEL_READ_TIMEOUT_SECONDS}
+      AI_MODEL_MAX_RETRIES: ${AI_MODEL_MAX_RETRIES:-3}
+      AI_MODEL_MIN_INTERVAL_MS: ${AI_MODEL_MIN_INTERVAL_MS:-4000}
 
       # ── Seed accounts (from .env) ──────────────────────────────────────────
       ADMIN_EMAIL: ${ADMIN_EMAIL}

@@ -11,7 +11,7 @@ import com.evidencepilot.dto.request.SectionContentUpdateRequest;
 import com.evidencepilot.dto.request.SectionReviewSourceMatchRequest;
 import com.evidencepilot.dto.request.SectionSuggestionRequest;
 import com.evidencepilot.dto.response.SectionCitationReviewResponse;
-import com.evidencepilot.dto.response.SectionReviewSourceMatchesResponse;
+
 import com.evidencepilot.dto.response.EvidenceTraceResponse;
 import com.evidencepilot.dto.request.TraceDecisionRequest;
 import com.evidencepilot.dto.request.TraceReviewRequest;
@@ -208,7 +208,7 @@ public class PaperController {
     }
 
     @Operation(summary = "Smart format scan",
-            description = "Scans paper for structure, tone, citation, and claim coverage issues. "
+            description = "Scans paper for structure, tone, citation, and quotation issues. "
                     + "Replaces the old citation-only scan with a comprehensive format check.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Format scan result"),
@@ -356,16 +356,17 @@ public class PaperController {
                 .orElseGet(() -> ResponseEntity.noContent().build());
     }
 
-    @Operation(summary = "Find related project sources for section review findings")
+    @Operation(summary = "Find related project sources for section review findings (async)")
     @PostMapping("/papers/{documentId}/sections/{sectionId}/review/source-matches")
-    public SectionReviewSourceMatchesResponse findReviewSources(
+    public JobSubmitResponse findReviewSources(
             @PathVariable UUID documentId,
             @PathVariable UUID sectionId,
             @Valid @RequestBody SectionReviewSourceMatchRequest request) {
         User currentUser = currentUserService.requireCurrentUser();
         PaperSection section = requireReviewSection(documentId, sectionId);
         currentUserService.requireProjectAccess(currentUser, section.getDocument().getProject());
-        return sectionCitationReviewService.sourceMatches(documentId, sectionId, request);
+        return aiEvaluationService.submitSourceMatches(
+                section.getDocument().getProject().getId(), documentId, sectionId, request.findings());
     }
 
     @Operation(summary = "Record the student's decision on a review finding (evidence revision trace)")

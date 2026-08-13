@@ -1,8 +1,10 @@
 package com.evidencepilot.service;
 
+import com.evidencepilot.dto.request.SectionReviewSourceMatchRequest;
 import com.evidencepilot.dto.response.JobResponse;
 import com.evidencepilot.dto.response.JobSubmitResponse;
 
+import java.util.List;
 import java.util.UUID;
 
 public interface AiEvaluationService {
@@ -21,7 +23,15 @@ public interface AiEvaluationService {
             UUID sectionId,
             String sectionType);
 
+    JobSubmitResponse submitSourceMatches(
+            UUID projectId,
+            UUID documentId,
+            UUID sectionId,
+            List<SectionReviewSourceMatchRequest.Finding> findings);
+
     void process(UUID jobId);
+
+    void markFailed(UUID jobId, String error);
 
     JobResponse getJob(UUID jobId);
 }

@@ -1,6 +1,7 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.config.infrastructure.RabbitMQConfig;
+import com.evidencepilot.dto.request.SectionReviewSourceMatchRequest;
 import com.evidencepilot.dto.response.JobResponse;
 import com.evidencepilot.dto.response.JobSubmitResponse;
 import com.evidencepilot.dto.response.SectionCitationReviewResponse;
@@ -107,6 +108,24 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
     }
 
     @Override
+    public JobSubmitResponse submitSourceMatches(
+            UUID projectId,
+            UUID documentId,
+            UUID sectionId,
+            List<SectionReviewSourceMatchRequest.Finding> findings) {
+        try {
+            String payload = objectMapper.writeValueAsString(Map.of(
+                    "projectId", projectId,
+                    "documentId", documentId,
+                    "sectionId", sectionId,
+                    "findings", findings));
+            return submit(projectId, AiEvaluationJob.KIND_SOURCE_MATCHES, payload);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Could not serialize source matches job", exception);
+        }
+    }
+
+    @Override
     public void process(UUID jobId) {
         AiEvaluationJob job = jobRepository.findById(jobId).orElse(null);
         if (job == null) {
@@ -117,6 +136,7 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
             return;
         }
         job.setStatus(AiEvaluationJob.STATUS_PROCESSING);
+        job.setStartedAt(LocalDateTime.now());
         jobRepository.save(job);
         try {
             job.setResultJson(objectMapper.writeValueAsString(run(job)));
@@ -126,6 +146,19 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
             job.setErrorMessage(e.getMessage());
             job.setStatus(AiEvaluationJob.STATUS_FAILED);
         }
+        job.setCompletedAt(LocalDateTime.now());
+        jobRepository.save(job);
+    }
+
+    @Override
+    public void markFailed(UUID jobId, String error) {
+        AiEvaluationJob job = jobRepository.findById(jobId).orElse(null);
+        if (job == null) {
+            log.warn("AI evaluation job {} not found for DLQ, skipping", jobId);
+            return;
+        }
+        job.setErrorMessage(error);
+        job.setStatus(AiEvaluationJob.STATUS_FAILED);
         job.setCompletedAt(LocalDateTime.now());
         jobRepository.save(job);
     }
@@ -200,8 +233,23 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
                 }
                 yield sectionSuggestionResult(section, job.getProjectId(), sectionType);
             }
+            case AiEvaluationJob.KIND_SOURCE_MATCHES -> runSourceMatches(job, payload);
             default -> throw new IllegalStateException("Unknown AI evaluation job kind: " + job.getKind());
         };
+    }
+
+    private JsonNode runSourceMatches(AiEvaluationJob job, JsonNode payload) throws Exception {
+        UUID documentId = UUID.fromString(payload.path("documentId").asText());
+        UUID projectId = UUID.fromString(payload.path("projectId").asText());
+        UUID sectionId = UUID.fromString(payload.path("sectionId").asText());
+        if (!job.getProjectId().equals(projectId)) {
+            throw new IllegalArgumentException(
+                    "Source matches payload project does not match its job");
+        }
+        SectionReviewSourceMatchRequest request = objectMapper.treeToValue(
+                payload.get("findings"), SectionReviewSourceMatchRequest.class);
+        return objectMapper.valueToTree(
+                sectionCitationReviewService.sourceMatches(documentId, sectionId, request));
     }
 
     private JsonNode sectionSuggestionResult(PaperSection section, UUID projectId, String sectionType)
@@ -211,6 +259,8 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
                 .orElseThrow(() -> new IllegalStateException(
                         "No review guide exists for section type: " + sectionType));
         List<String> checklist = parseChecklist(guide.getChecklistJson());
+        List<SectionCitationReviewService.RetrievedEvidence> evidence =
+                sectionCitationReviewService.retrieveEvidence(projectId, section.getContentTex());
         log.info("Section suggestion job for section {} (type '{}') matched guide '{}' with {} checklist items",
                 section.getId(), sectionType, guide.getSectionType(), checklist.size());
         AiModelClient.GenerationResult generation = null;
@@ -218,10 +268,11 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
             generation = aiModelClient.generate(
                     SectionSuggestionPrompt.SYSTEM,
                     SectionSuggestionPrompt.build(
-                            guide.getSectionType(), checklist, section.getContentTex()));
-            List<SectionSuggestionDto> suggestions = objectMapper.readValue(
-                    extractJsonArray(generation.response()),
-                    new TypeReference<>() {
+                            guide.getSectionType(), checklist, section.getContentTex(), evidence));
+            JsonNode root = objectMapper.readTree(extractJsonArray(generation.response()));
+            validateSuggestionEvidence(root, evidence);
+            List<SectionSuggestionDto> suggestions = objectMapper.convertValue(
+                    root, new TypeReference<>() {
                     });
             log.info("Section suggestion LLM output for section {}: {}",
                     section.getId(), truncate(generation.response()));
@@ -235,6 +286,26 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
                     projectId, generation != null ? generation.response() : "no response");
             throw new ResponseStatusException(
                     HttpStatus.BAD_GATEWAY, "AI returned invalid section suggestions", exception);
+        }
+    }
+
+    private void validateSuggestionEvidence(
+            JsonNode root, List<SectionCitationReviewService.RetrievedEvidence> evidence) {
+        for (JsonNode item : root) {
+            JsonNode evidenceNode = item.path("evidence");
+            if (evidenceNode.isNull() || evidenceNode.isMissingNode()) {
+                continue;
+            }
+            String chunkId = evidenceNode.path("chunk_id").asText("");
+            if (chunkId.isEmpty()) {
+                continue;
+            }
+            boolean known = evidence.stream()
+                    .anyMatch(entry -> entry.chunkId().toString().equals(chunkId));
+            if (!known) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                        "Suggestion referenced unknown chunk_id " + chunkId);
+            }
         }
     }
 

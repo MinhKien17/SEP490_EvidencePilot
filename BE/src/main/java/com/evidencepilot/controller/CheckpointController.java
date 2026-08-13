@@ -31,8 +31,8 @@ public class CheckpointController {
     private final CurrentUserService currentUserService;
 
     @Operation(summary = "Get diff between the two latest project checkpoints",
-            description = "Compares the two most recent checkpoints: claims added/removed/changed, "
-                    + "mapping accept/reject deltas, per-section word count deltas and answered feedback delta.")
+            description = "Compares the two most recent checkpoints using per-section word count "
+                    + "deltas and the answered feedback delta.")
     @GetMapping("/{projectId}/checkpoints/diff")
     public CheckpointDiffResponse getDiff(@PathVariable UUID projectId) {
         currentUserService.requireProjectAccess(

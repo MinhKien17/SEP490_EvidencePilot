@@ -21,14 +21,14 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/projects")
 @RequiredArgsConstructor
-@Tag(name = "Traceability", description = "Project-level traceability matrix export")
+@Tag(name = "Traceability", description = "Project-level traceability export")
 public class TraceabilityExportController {
 
     private final TraceabilityExportService traceabilityExportService;
 
-    @Operation(summary = "Export traceability matrix",
-            description = "Generates a full traceability export for a project, including claims, "
-                    + "evidence sources, AI matches, evidence edges, and feedback history.")
+    @Operation(summary = "Export project traceability",
+            description = "Generates a project traceability export containing sections, sources, "
+                    + "reference counts, and feedback history.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Traceability export returned"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
@@ -41,8 +41,8 @@ public class TraceabilityExportController {
         return traceabilityExportService.exportTraceability(projectId);
     }
 
-    @Operation(summary = "Export traceability matrix as CSV",
-            description = "Generates a CSV download of the traceability matrix for a project.")
+    @Operation(summary = "Export project traceability as CSV",
+            description = "Generates a CSV download of project sections, sources, and feedback history.")
     @GetMapping("/{projectId}/traceability/csv")
     public ResponseEntity<byte[]> exportCsv(
             @Parameter(description = "Project UUID") @PathVariable UUID projectId) {

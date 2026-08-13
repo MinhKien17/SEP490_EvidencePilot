@@ -9,10 +9,11 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitMQConfig {
 
-    // one work queue; add a DLQ only when failed-job replay is required.
+    // one work queue + DLQ for failed-job replay.
     public static final String EXTRACTION_QUEUE = "extraction.queue";
     public static final String EXPORT_QUEUE = "export.queue";
     public static final String AI_EVALUATION_QUEUE = "ai.evaluation.queue";
+    public static final String AI_EVALUATION_DLQ = "ai.evaluation.dlq";
 
     @Bean
     public Queue extractionQueue() {
@@ -26,7 +27,15 @@ public class RabbitMQConfig {
 
     @Bean
     public Queue aiEvaluationQueue() {
-        return QueueBuilder.durable(AI_EVALUATION_QUEUE).build();
+        return QueueBuilder.durable(AI_EVALUATION_QUEUE)
+                .withArgument("x-dead-letter-exchange", "")
+                .withArgument("x-dead-letter-routing-key", AI_EVALUATION_DLQ)
+                .build();
+    }
+
+    @Bean
+    public Queue aiEvaluationDlq() {
+        return QueueBuilder.durable(AI_EVALUATION_DLQ).build();
     }
 
     @Bean

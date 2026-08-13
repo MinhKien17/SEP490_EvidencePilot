@@ -26,6 +26,7 @@ public class AiEvaluationJob {
 
     public static final String KIND_SECTION_CITATION_REVIEW = "SECTION_CITATION_REVIEW";
     public static final String KIND_SECTION_SUGGESTION = "SECTION_SUGGESTION";
+    public static final String KIND_SOURCE_MATCHES = "SOURCE_MATCHES";
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -45,6 +46,9 @@ public class AiEvaluationJob {
 
     @Column(name = "status", nullable = false, length = 20)
     private String status;
+
+    @Column(name = "started_at")
+    private LocalDateTime startedAt;
 
     @Column(name = "result_json", columnDefinition = "LONGTEXT")
     private String resultJson;

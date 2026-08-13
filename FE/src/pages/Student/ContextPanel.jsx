@@ -138,15 +138,6 @@ export default function ContextPanel({
   showToast,
   // Source tab
   sources, isUploading, setIsUploading, project, setViewerFile, fetchSources,
-  // Claims tab
-  newClaimContent, onNewClaimContentChange, newClaimFunctionalType, setNewClaimFunctionalType,
-  claimEvaluation, evaluatingClaim, claimEvaluationError, handleEvaluateClaim, canAddEvaluatedClaim,
-  handleCreateClaim, canCreateClaim, creatingClaim,
-  claims, selectedClaim, claimMatches, claimMappings, loadingMatches,
-  claimCandidates, loadingCandidates, candidateError, evaluatingChunkId, updatingSuggestionId,
-  handleSearchClaimMatches, handleEvaluateMatch, handleSuggestionStatus, canEditClaim,
-  editingClaim, setEditingClaim, editClaimContent, setEditClaimContent, editClaimFunctionalType, setEditClaimFunctionalType, handleDeleteClaim, handleUpdateClaim,
-  onSelectClaim,
   // Feedback tab
   feedbacks, assignedSections, setShowSubmitReviewModal, userProjectRole,
   // Citation Review tab
@@ -155,7 +146,6 @@ export default function ContextPanel({
   onDecideTrace, reviewSectionTitle,
   onRunAiReview, onSelectReviewFinding, onInsertCitation, onRetryReviewSources,
   canReviewSection,
-  legacyClaimsEnabled,
   isLocked,
 }) {
   const [showSourceModal, setShowSourceModal] = useState(false);
@@ -166,7 +156,6 @@ export default function ContextPanel({
   const [attachingSourceId, setAttachingSourceId] = useState(null);
   const fileInputRef = useRef(null);
   const { t, i18n } = useTranslation();
-  const [breakdownOpenId, setBreakdownOpenId] = useState(null);
   const [expandedFeedbackId, setExpandedFeedbackId] = useState(null);
   const [feedbackDetail, setFeedbackDetail] = useState({});
   const [answerDrafts, setAnswerDrafts] = useState({});
@@ -253,11 +242,6 @@ export default function ContextPanel({
             {t('aiReview')}
             {activeTab === 'AI Review' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 shadow-[0_-2px_8px_rgba(79,70,229,0.5)]"></div>}
           </button>
-          {legacyClaimsEnabled && <button data-tour="context-claims-tab" onClick={() => setActiveTab('Claims')} className={activeClass('Claims')}>
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
-            {t('claims')}
-            {activeTab === 'Claims' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 shadow-[0_-2px_8px_rgba(79,70,229,0.5)]"></div>}
-          </button>}
           <button data-tour="context-feedback-tab" onClick={() => setActiveTab('Feedback')} className={activeClass('Feedback')}>
             <div className="relative">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
@@ -392,202 +376,6 @@ export default function ContextPanel({
                   )}
                 </div>
               </div>
-            </div>
-          )}
-
-          {legacyClaimsEnabled && activeTab === 'Claims' && (
-            <div className="space-y-3">
-              {canCreateClaim && (
-                <div className="bg-(--surface) border border-(--border) rounded-xl p-3.5 shadow-sm">
-                  <h4 className="text-[11px] font-bold text-(--text-secondary) mb-2 uppercase tracking-wider">{t('addClaim')}</h4>
-                  <div className="flex flex-col gap-2">
-                    <input value={newClaimContent} onChange={(e) => onNewClaimContentChange(e.target.value)} placeholder={t('claimContentPlaceholder')} className="text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 min-w-[120px] text-(--text-primary)" />
-                    <div className="flex gap-2">
-                      <button onClick={handleCreateClaim} disabled={!newClaimContent.trim() || creatingClaim} className="flex-1 text-xs font-bold text-(--on-brand) bg-(--brand) hover:bg-(--brand-hover) disabled:bg-(--border) disabled:dark:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">
-                        {creatingClaim ? t('adding') : t('addClaim')}
-                      </button>
-                      <button onClick={handleEvaluateClaim} disabled={!newClaimContent.trim() || evaluatingClaim} className="flex-1 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-(--border) disabled:dark:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">
-                        {evaluatingClaim ? t('evaluating') : claimEvaluationError ? t('retryAiEvaluate') : t('aiEvaluate')}
-                      </button>
-                    </div>
-                    {claimEvaluationError && <p className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-[10px] font-medium text-rose-700">{claimEvaluationError}</p>}
-                    {claimEvaluation && (
-                      <div className="space-y-2 rounded-lg border border-indigo-200 bg-indigo-50/60 p-2.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">{t('claimQuality', { score: claimEvaluation.totalScore })}</span>
-                          <span className={`rounded px-1.5 py-0.5 text-[9px] font-black ${claimEvaluation.decision === 'READY' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{claimEvaluation.decision === 'READY' ? t('ready') : t('revise')}</span>
-                        </div>
-                        <div className="space-y-1">
-                          {(claimEvaluation.criteria || []).map(criterion => (
-                            <div key={criterion.code} className="rounded border border-indigo-100 bg-white/80 p-1.5">
-                              <div className="flex justify-between text-[9px] font-bold text-(--text-primary)">
-                                <span>{criterion.code.replaceAll('_', ' ')}</span>
-                                <span>{criterion.score}/2</span>
-                              </div>
-                              <p className="mt-0.5 text-[9px] leading-relaxed text-(--text-secondary)">{criterion.reason}</p>
-                            </div>
-                          ))}
-                        </div>
-                        {claimEvaluation.suggestedRevision && claimEvaluation.suggestedRevision.trim() !== newClaimContent.trim() && (
-                          <div className="rounded border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800">
-                            <p>{claimEvaluation.suggestedRevision}</p>
-                            <button onClick={() => onNewClaimContentChange(claimEvaluation.suggestedRevision)} className="mt-1 text-xs font-bold text-amber-900 underline">{t('useRevision')}</button>
-                          </div>
-                        )}
-                        <div>
-                          <label className="mb-1 block text-[9px] font-bold uppercase tracking-wider text-(--text-secondary)">{t('functionalType')}</label>
-                          <FunctionalTypeDropdown value={newClaimFunctionalType} onChange={setNewClaimFunctionalType} className="w-full" />
-                        </div>
-                        <p className="text-[9px] text-(--text-tertiary)">{t('aiAdvice')}</p>
-                        <button onClick={handleCreateClaim} disabled={!canAddEvaluatedClaim || creatingClaim} className="w-full text-xs font-bold text-(--on-brand) bg-(--brand) hover:bg-(--brand-hover) disabled:bg-(--border) px-3 py-1.5 rounded-lg transition-colors">{creatingClaim ? t('adding') : t('addClaim')}</button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-              {claims.length === 0 ? <div className="text-xs text-(--text-tertiary) italic text-center py-8">{t('noClaims')}</div> : (
-                claims.map((claim, claimIndex) => {
-                  const isSelected = selectedClaim?.id === claim.id;
-                  const activeSuggestionIds = new Set(
-                    (isSelected ? claimMappings : [])
-                      .filter(mapping => mapping.status === 'ACTIVE')
-                      .map(mapping => String(mapping.suggestionId)),
-                  );
-                  const activeEvidence = isSelected
-                    ? claimMatches.filter(match => activeSuggestionIds.has(String(match.id)))
-                    : [];
-                  const aiSuggestions = isSelected
-                    ? claimMatches.filter(match =>
-                      !activeSuggestionIds.has(String(match.id))
-                      && (match.status === 'PENDING' || match.status === 'REJECTED'))
-                    : [];
-                  return (
-                    <div key={claim.id} onClick={() => { if (onSelectClaim) onSelectClaim(claim); }} className={`bg-(--surface) border rounded-xl p-3.5 shadow-sm hover:shadow-md transition-all relative overflow-hidden group cursor-pointer ${isSelected ? 'border-indigo-400 ring-1 ring-indigo-400/20' : 'border-(--border)'}`}>
-                      <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-500"></div>
-                      <div className="flex justify-between items-center mb-1.5 pl-1">
-                        <span className="text-[9px] font-black text-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 uppercase tracking-wide">#{claimIndex + 1}{claim.claimVersion > 1 ? ` v${claim.claimVersion}` : ''}</span>
-                        <div className="flex items-center gap-1.5">
-                          {claim.contentStatus && (
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${CLAIM_STATUS_CLASSES[claim.contentStatus] || 'border-slate-200 bg-slate-50 text-slate-600'}`}>
-                              {claim.contentStatus === 'PRESENT' ? t('claimPresent') : claim.contentStatus === 'MISSING' ? t('claimMissing') : t('claimOrphaned')}
-                            </span>
-                          )}
-                          {isSelected && activeEvidence.length > 0 && (
-                            <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
-                              {t('evidenceCount', { count: activeEvidence.length })}
-                            </span>
-                          )}
-                          {claim.aiConfidenceScore !== null ? (
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${claim.aiConfidenceScore >= 0.7 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 border border-emerald-100 dark:border-emerald-800' : claim.aiConfidenceScore >= 0.4 ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 border-amber-100 dark:border-amber-800' : 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 border border-rose-100 dark:border-rose-800'}`}>
-                              {(claim.aiConfidenceScore * 100).toFixed(0)}%
-                            </span>
-                          ) : <span className="text-[10px] text-(--text-tertiary) italic">—</span>}
-                        </div>
-                      </div>
-                      <p className="text-xs font-semibold text-(--text-primary) pl-1 leading-relaxed">{claim.content}</p>
-                      <div className="flex gap-2 mt-3 pt-2.5 border-t border-(--border-light) pl-1">
-                        {canEditClaim(claim) && <>
-                          <button onClick={(e) => { e.stopPropagation(); handleSearchClaimMatches(claim); }} disabled={isLocked || loadingCandidates} className="text-xs font-bold text-(--brand) hover:text-(--brand-hover) disabled:opacity-40 flex items-center gap-1">
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                            {t('findMatches')}
-                          </button>
-                          <button onClick={(e) => { e.stopPropagation(); setEditingClaim(claim); setEditClaimContent(claim.content); setEditClaimFunctionalType(claim.functionalType || 'EMPIRICAL'); }} className="text-xs text-(--text-secondary) hover:text-(--text-primary) flex items-center gap-0.5 ml-auto">{t('edit')}</button>
-                          <button onClick={(e) => { e.stopPropagation(); handleDeleteClaim(claim.id); }} className="text-xs text-rose-500 hover:text-rose-700 flex items-center gap-0.5">{t('delete')}</button>
-                        </>}
-                      </div>
-                      {editingClaim && editingClaim.id === claim.id && (
-                        <div className="mt-3 pt-3 border-t border-dashed border-(--border)">
-                          <input value={editClaimContent} onChange={(e) => setEditClaimContent(e.target.value)} className="w-full text-xs border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 mb-2 text-(--text-primary)" />
-                          <FunctionalTypeDropdown value={editClaimFunctionalType} onChange={setEditClaimFunctionalType} className="w-full mb-2" />
-                          <div className="flex gap-2 justify-end">
-                            <button onClick={() => setEditingClaim(null)} className="text-xs text-(--text-secondary) hover:text-(--text-primary) font-bold">{t('cancel')}</button>
-                            <button onClick={handleUpdateClaim} className="text-xs font-bold text-(--on-brand) bg-(--brand) hover:bg-(--brand-hover) px-2 py-1 rounded-lg">{t('save')}</button>
-                          </div>
-                        </div>
-                      )}
-                      {isSelected && (
-                        <div className="mt-3 pt-3 border-t border-dashed border-(--border) animate-in fade-in slide-in-from-top-1 duration-200 space-y-4">
-                          <div>
-                            <h4 className="text-[10px] font-bold text-(--text-tertiary) uppercase tracking-widest mb-2">{t('qdrantMatches')}</h4>
-                            {loadingCandidates ? <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">{t('searchingSources')}</div> : candidateError ? (
-                              <div className="text-center py-2 space-y-2">
-                                <div className="text-[10px] text-rose-500 italic">{candidateError}</div>
-                                <button onClick={(e) => { e.stopPropagation(); handleSearchClaimMatches(selectedClaim); }} className="text-xs font-bold text-(--brand) hover:text-(--brand-hover)">{t('retry')}</button>
-                              </div>
-                            ) : claimCandidates.length === 0 ? (
-                              <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">{t('findMatchesHint')}</div>
-                            ) : (
-                              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                                {claimCandidates.map(candidate => {
-                                  const evaluated = claimMatches.some(match => match.documentChunkId === candidate.documentChunkId);
-                                  return (
-                                    <div key={candidate.documentChunkId} className="bg-(--surface-secondary) border border-(--border) rounded p-2 text-[11px]">
-                                      <div className="flex justify-between items-center mb-1 text-[9px] font-medium text-(--text-secondary)">
-                                        <span className="truncate max-w-[150px] font-bold text-(--text-primary)">{candidate.sourceFilename}</span>
-                                        <span className="text-indigo-600 font-bold bg-indigo-50 dark:bg-indigo-900/30 px-1 rounded">{t('matchPercent', { percent: (candidate.similarityScore * 100).toFixed(0) })}</span>
-                                      </div>
-                                      <p className="text-[10px] text-(--text-secondary) line-clamp-4 italic leading-relaxed">"{candidate.excerpt}"</p>
-                                      <div className="flex justify-between items-center mt-2">
-                                        <span className="text-[9px] text-(--text-tertiary)">{t('chunk', { index: candidate.chunkIndex })}</span>
-                                        {canEditClaim(claim) && (
-                                          <button
-                                            onClick={(event) => { event.stopPropagation(); handleEvaluateMatch(claim.id, candidate.documentChunkId); }}
-                                            disabled={isLocked || evaluated || evaluatingChunkId === candidate.documentChunkId}
-                                            className="text-xs font-bold text-(--on-brand) bg-(--brand) hover:bg-(--brand-hover) disabled:bg-(--border) px-2 py-1 rounded transition-colors">
-                                            {evaluated ? t('evaluated') : evaluatingChunkId === candidate.documentChunkId ? t('evaluating') : t('selectEvaluate')}
-                                          </button>
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-
-                          <div>
-                            <h4 className="text-[10px] font-bold text-(--text-tertiary) uppercase tracking-widest mb-2">{t('evidence')}</h4>
-                            {loadingMatches ? <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">{t('loadingEvidence')}</div> : activeEvidence.length === 0 ? (
-                              <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">{t('noEvidence')}</div>
-                            ) : (
-                              <div className="space-y-2">
-                                {activeEvidence.map(match => (
-                                  <EvidenceEvaluationCard key={match.id} match={match} status="ACTIVE" breakdownOpenId={breakdownOpenId} setBreakdownOpenId={setBreakdownOpenId} />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          <div>
-                            <h4 className="text-[10px] font-bold text-(--text-tertiary) uppercase tracking-widest mb-2">{t('aiSuggestions')}</h4>
-                            {!loadingMatches && aiSuggestions.length === 0 ? (
-                              <div className="text-center py-2 text-[10px] text-(--text-tertiary) italic">{t('noSuggestions')}</div>
-                            ) : (
-                              <div className="space-y-2">
-                                {aiSuggestions.map(match => (
-                                  <EvidenceEvaluationCard
-                                    key={match.id}
-                                    match={match}
-                                    status={match.status}
-                                    breakdownOpenId={breakdownOpenId}
-                                    setBreakdownOpenId={setBreakdownOpenId}>
-                                    {match.status === 'PENDING' && canEditClaim(claim) && (
-                                      <div className="flex justify-end gap-2 mt-2">
-                                        <button onClick={(event) => { event.stopPropagation(); handleSuggestionStatus(match.id, 'REJECTED'); }} disabled={isLocked || updatingSuggestionId === match.id} className="text-xs font-bold text-rose-600 hover:text-rose-700 disabled:opacity-40">{t('reject')}</button>
-                                        <button onClick={(event) => { event.stopPropagation(); handleSuggestionStatus(match.id, 'ACCEPTED'); }} disabled={isLocked || updatingSuggestionId === match.id} className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 px-2 py-1 rounded">{t('accept')}</button>
-                                      </div>
-                                    )}
-                                  </EvidenceEvaluationCard>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
             </div>
           )}
 
@@ -855,28 +643,28 @@ export default function ContextPanel({
                                   )}
                                   {!item.answered && fb.status === 'RETURNED'
                                     && assignedSections.some(section => String(section.id) === String(item.sectionId)) && (
-                                    <div className="mt-2 space-y-1.5">
-                                      <textarea
-                                        value={answerDrafts[item.id] || ''}
-                                        onChange={(e) => setAnswerDrafts(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                        placeholder={t('answerPlaceholder')}
-                                        aria-label={t('answerFeedback')}
-                                        rows="2"
-                                        className="w-full text-[10px] border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 text-(--text-primary)"
-                                      />
-                                      {answerErrors[item.id] && <p className="text-[9px] text-rose-600">{answerErrors[item.id]}</p>}
-                                      <div className="flex justify-end">
-                                        <button
-                                          type="button"
-                                          onClick={() => submitAnswer(item, fb)}
-                                          disabled={answeringId === item.id}
-                                          className="text-[10px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 px-2.5 py-1 rounded-lg"
-                                        >
-                                          {answeringId === item.id ? t('answering') : t('answerFeedback')}
-                                        </button>
+                                      <div className="mt-2 space-y-1.5">
+                                        <textarea
+                                          value={answerDrafts[item.id] || ''}
+                                          onChange={(e) => setAnswerDrafts(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                          placeholder={t('answerPlaceholder')}
+                                          aria-label={t('answerFeedback')}
+                                          rows="2"
+                                          className="w-full text-[10px] border border-(--border) rounded-lg px-2 py-1.5 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 text-(--text-primary)"
+                                        />
+                                        {answerErrors[item.id] && <p className="text-[9px] text-rose-600">{answerErrors[item.id]}</p>}
+                                        <div className="flex justify-end">
+                                          <button
+                                            type="button"
+                                            onClick={() => submitAnswer(item, fb)}
+                                            disabled={answeringId === item.id}
+                                            className="text-[10px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 px-2.5 py-1 rounded-lg"
+                                          >
+                                            {answeringId === item.id ? t('answering') : t('answerFeedback')}
+                                          </button>
+                                        </div>
                                       </div>
-                                    </div>
-                                  )}
+                                    )}
                                 </div>
                               ))
                             )}

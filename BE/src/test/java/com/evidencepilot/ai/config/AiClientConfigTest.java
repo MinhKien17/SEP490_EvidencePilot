@@ -65,7 +65,10 @@ class AiClientConfigTest {
                         AiModelClientImpl client = new AiModelClientImpl(
                                 context.getBean("aiRestClient", RestClient.class),
                                 context.getBean("aiModelBaseUrl", String.class),
-                                new com.fasterxml.jackson.databind.ObjectMapper());
+                                new com.fasterxml.jackson.databind.ObjectMapper(),
+                                3,
+                                new com.evidencepilot.client.ai.gate.AiModelCallGate(
+                                        new java.util.concurrent.Semaphore(4)));
 
                         long started = System.nanoTime();
                         assertThatThrownBy(client::health)
