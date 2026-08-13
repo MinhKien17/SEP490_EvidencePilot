@@ -1,7 +1,7 @@
 import AnimateIn from '../../components/AnimateIn';
 
 const featuresList = [
-  'structuredData', 'claimTracking', 'feedback', 'aiExtraction', 'vectorSearch', 'realtime'
+  'structuredData', 'citationReview', 'feedback', 'documentExtraction', 'vectorSearch', 'realtime'
 ];
 
 function FeatureCard({ feature, t, index }) {

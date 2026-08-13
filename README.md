@@ -2,7 +2,7 @@
 
 EvidencePilot is an AI-assisted research evidence-traceability platform for
 students, instructors, and administrators. It brings collaborative paper
-authoring, source management, claim-to-evidence matching, review, and export
+authoring, source management, citation review, instructor feedback, and export
 into one project workspace.
 
 ## Key capabilities
@@ -10,8 +10,8 @@ into one project workspace.
 - Role-based workspaces for Students, Instructors, and Administrators.
 - Paper templates, section assignment, editing history, checkpoints, and review.
 - PDF, DOCX, and Markdown ingestion, plus DOI lookup through OpenAlex.
-- Hybrid evidence search with AI evaluation and explicit human decisions.
-- Instructor feedback, project progress, evidence graphs, traceability, and TeX export.
+- Citation Review for source discrepancies, missing citations, and related-source suggestions.
+- Instructor feedback, project progress, traceability reports, and TeX export.
 - Real-time notifications through authenticated STOMP WebSocket connections.
 
 ## Architecture
@@ -116,8 +116,6 @@ npm run dev
 
 The frontend uses `http://localhost:8080` by default. Set
 `VITE_API_BASE_URL` when the backend is hosted elsewhere.
-Legacy Claim/Graph screens are hidden by default while their data and APIs remain intact.
-Set `VITE_ENABLE_LEGACY_CLAIMS=true` only when those screens need to be restored temporarily.
 
 ## Local endpoints
 

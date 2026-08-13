@@ -201,7 +201,7 @@ public class PaperController {
     }
 
     @Operation(summary = "Smart format scan",
-            description = "Scans paper for structure, tone, citation, and claim coverage issues. "
+            description = "Scans paper for structure, tone, citation, and quotation issues. "
                     + "Replaces the old citation-only scan with a comprehensive format check.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Format scan result"),

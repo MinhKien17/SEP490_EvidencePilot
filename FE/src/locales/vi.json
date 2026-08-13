@@ -15,7 +15,6 @@
   "noData": "Không có dữ liệu",
 
   "sources": "Tài nguyên",
-  "claims": "Luận điểm",
   "feedback": "Nhận xét",
   "info": "Thông tin",
   "aiReview": "Citation Review",
@@ -59,7 +58,7 @@
   "scanCitations": "Quét trích dẫn",
   "scanCitationsTitle": "Quét trích dẫn theo nguồn dự án",
   "scanFormat": "Quét định dạng",
-  "scanFormatTitle": "Quét cấu trúc, văn phong, trích dẫn và phủ luận điểm",
+  "scanFormatTitle": "Quét cấu trúc, văn phong, trích dẫn và đoạn trích",
   "headingFontSize": "Tiêu đề / Cỡ chữ",
   "subsection": "Mục con",
   "subsubsection": "Mục con cấp 2",
@@ -140,9 +139,7 @@
     "editorSectionName": "Phần hiện tại",
     "editorSectionNameDesc": "Phần bạn đang chỉnh sửa, kèm số phiên bản.",
     "contextPanel": "Bảng ngữ cảnh",
-    "contextPanelDesc": "Tải lên nguồn, quản lý luận điểm và xem phản hồi.",
-    "claims": "Luận điểm",
-    "claimsDesc": "Tạo và quản lý luận điểm, ghép bằng chứng với nguồn.",
+    "contextPanelDesc": "Quản lý nguồn, chạy Citation Review và xem phản hồi.",
     "feedback": "Nhận xét",
     "feedbackDesc": "Xem phản hồi của giảng viên về bài làm của bạn.",
     "darkMode": "Chế độ tối",
@@ -160,7 +157,6 @@
   "assignedToYou": "Được giao cho bạn",
   "project": "Dự án",
   "paper": "Bài viết",
-  "claim": "Luận điểm",
   "profile": "Hồ sơ",
   "moreActions": "Thao tác khác",
   "openMenu": "Mở menu",
@@ -183,22 +179,8 @@
   "sourceFile": "Tệp (PDF/DOCX)",
   "noUploadedSources": "Chưa có nguồn nào được tải lên.",
   "uploadedSourceDescription": "Tệp nguồn đã được tải lên dự án này.",
-  "addClaim": "Thêm luận điểm",
-  "useRevision": "Dùng bản sửa và đánh giá lại",
-  "functionalType": "Loại chức năng",
-  "aiAdvice": "AI chỉ đưa ra gợi ý. Hãy xem lại kết quả trước khi thêm luận điểm.",
-  "noClaims": "Chưa có luận điểm.",
-  "qdrantMatches": "Nguồn phù hợp",
   "searchingSources": "Đang tìm nguồn...",
   "retry": "Thử lại",
-  "findMatchesHint": "Chọn Tìm kết quả khớp để tìm trong các nguồn đang hoạt động.",
-  "evidence": "Bằng chứng",
-  "loadingEvidence": "Đang tải bằng chứng...",
-  "noEvidence": "Chưa có mapping bằng chứng đang hoạt động.",
-  "aiSuggestions": "Gợi ý AI",
-  "noSuggestions": "Không có gợi ý đang chờ hoặc đã từ chối.",
-  "reject": "Từ chối",
-  "accept": "Chấp nhận",
   "projectStatus": "Trạng thái dự án",
   "reviewHistory": "Lịch sử đánh giá",
   "noReviews": "Chưa có đánh giá.",
@@ -215,7 +197,6 @@
   "answerRequired": "Câu trả lời không được để trống.",
   "answerFailed": "Không lưu được câu trả lời. Vui lòng thử lại.",
   "sectionCoverage": "Mức độ bao phủ theo phần",
-  "showTeammateClaims": "Hiện luận điểm của thành viên khác",
   "someAreasFailed": "Một số khu vực tải thất bại: {{areas}}. Hãy thử lại từ bảng tệp hoặc bảng ngữ cảnh.",
   "restoreVersion": "Khôi phục phiên bản này",
   "restoring": "Đang khôi phục...",
@@ -225,19 +206,15 @@
   "autoReviseDescription": "Chọn các phần để AI chỉnh sửa theo phản hồi của giảng viên.",
   "noSectionsAvailable": "Không có phần nào.",
   "startRevision": "Bắt đầu chỉnh sửa",
-  "submissionBlocked": "Không thể gửi: {{count}} luận điểm chưa nằm trong phần sở hữu tương ứng.",
-  "submissionWarning": "Cảnh báo khi gửi: {{count}} luận điểm chưa nằm trong phần sở hữu tương ứng. Bạn vẫn có thể gửi, nhưng giảng viên có thể trả lại để chỉnh sửa.",
   "aiReviewReport": "Báo cáo Citation Review",
   "aiReviewError": "Lỗi Citation Review",
   "lastReviewAvailable": "Kết quả đánh giá thành công gần nhất vẫn được hiển thị bên dưới.",
   "aiAnalyzing": "AI đang phân tích...",
-  "aiAnalyzingDescription": "Đang quét các phần, luận điểm, mapping nguồn đang hoạt động và phản hồi của giảng viên...",
   "projectAssessment": "Đánh giá dự án",
   "rubricScore": "Điểm tiêu chí",
   "pass": "Đạt",
   "sectionsScanned": "Phần",
   "chunksScanned": "Đoạn",
-  "claimsChecked": "Luận điểm",
   "nextAction": "Tiếp theo: {{action}}",
   "sourceCount": "{{count}} nguồn",
   "feedbackCount": "{{count}} phản hồi",
@@ -260,38 +237,10 @@
   ,"insertSource": "Thêm nguồn"
   ,"working": "Đang xử lý..."
   ,"fileUrlUnavailable": "Không có URL của tệp."
-  ,"claimContentPlaceholder": "Nội dung luận điểm..."
-  ,"functionalTypeEmpirical": "THỰC NGHIỆM — Dữ liệu, thí nghiệm, kết quả"
-  ,"functionalTypeTheoretical": "LÝ THUYẾT — Tài liệu, nền tảng, khái niệm"
-  ,"functionalTypeMethodological": "PHƯƠNG PHÁP — Công cụ, framework, triển khai"
-  ,"functionalTypeAnalytical": "PHÂN TÍCH — Đánh giá, so sánh, diễn giải"
-  ,"functionalTypeApplied": "ỨNG DỤNG — Ứng dụng thực tế, phản hồi người dùng, tác động"
-  ,"semanticAlignment": "Mức độ phù hợp ngữ nghĩa"
-  ,"contextualSufficiency": "Mức độ đầy đủ ngữ cảnh"
-  ,"logicalRestraint": "Giới hạn suy luận"
-  ,"evidenceStrength": "Độ mạnh bằng chứng"
-  ,"evidenceStrengthBreakdown": "Chi tiết độ mạnh bằng chứng"
-  ,"findMatches": "Tìm kết quả khớp"
-  ,"matchPercent": "Khớp {{percent}}%"
-  ,"chunk": "Đoạn {{index}}"
-  ,"evaluated": "Đã đánh giá"
-  ,"evaluating": "Đang đánh giá..."
-  ,"selectEvaluate": "Chọn và đánh giá"
   ,"unknown": "Không xác định"
   ,"instructor": "Giảng viên"
   ,"sectionLabel": "Phần {{name}}"
   ,"myAnswer": "Câu trả lời của tôi: {{answer}}"
-  ,"supportedCount": "{{supported}} có hỗ trợ · {{missing}} thiếu · {{orphaned}} không thuộc phần · {{unsupported}} chưa có bằng chứng"
-  ,"noCoverageData": "Chưa có dữ liệu độ bao phủ theo phần."
-  ,"adding": "Đang thêm..."
-  ,"aiEvaluate": "AI đánh giá"
-  ,"retryAiEvaluate": "Thử đánh giá AI lại"
-  ,"claimQuality": "Chất lượng luận điểm · {{score}}/10"
-  ,"ready": "Sẵn sàng"
-  ,"evidenceCount": "{{count}} bằng chứng"
-  ,"claimPresent": "Có trong phần"
-  ,"claimMissing": "Bị thiếu"
-  ,"claimOrphaned": "Không thuộc phần"
   ,"status": {
     "DRAFT": "Bản nháp",
     "ASSIGNED": "Đã phân công",
@@ -313,7 +262,6 @@
   ,"exportReady": "Tệp xuất đã sẵn sàng để tải xuống."
   ,"newNotification": "Thông báo mới"
   ,"markNotificationFailed": "Không thể đánh dấu thông báo là đã đọc."
-  ,"downloadWithWarnings": "Đã tải xuống với {{count}} cảnh báo sử dụng luận điểm; xem CLAIM_WARNINGS.md."
   ,"paperArchiveDownloaded": "Đã tải gói bài viết xuống."
   ,"uploadingFile": "Đang tải {{name}} lên..."
   ,"paperUploaded": "Đã tải bài viết lên."
@@ -321,30 +269,13 @@
   ,"paperDeleted": "Đã xóa bài viết."
   ,"projectLocked": "Dự án đang bị khóa."
   ,"sourceDeleted": "Đã xóa nguồn."
-  ,"enterClaimFirst": "Hãy nhập luận điểm trước."
   ,"selectSectionFirst": "Hãy chọn một phần trước."
-  ,"cannotEditClaims": "Bạn không thể sửa luận điểm trong phần này."
-  ,"claimAdded": "Đã thêm luận điểm."
-  ,"addClaimFailed": "Không thể thêm luận điểm."
-  ,"claimUpdated": "Đã cập nhật luận điểm."
-  ,"updateFailed": "Cập nhật thất bại."
-  ,"deleteClaimConfirm": "Xóa luận điểm này?"
-  ,"claimDeleted": "Đã xóa luận điểm."
   ,"restoreConfirm": "Khôi phục phiên bản trước này?"
   ,"versionRestored": "Đã khôi phục phiên bản."
   ,"restoreFailed": "Khôi phục thất bại."
   ,"noSectionSelected": "Chưa chọn phần nào."
   ,"traceabilityDownloaded": "Đã tải báo cáo truy vết xuống."
   ,"traceabilityCsvDownloaded": "Đã tải CSV truy vết xuống."
-  ,"foundMatches": "Tìm thấy {{count}} nguồn phù hợp."
-  ,"noMatches": "Không tìm thấy kết quả. Hãy kiểm tra nguồn đã được trích xuất xong."
-  ,"findMatchesFailedDetail": "Tìm kết quả thất bại. Hãy kiểm tra nguồn đã được trích xuất xong."
-  ,"findMatchesFailed": "Tìm kết quả thất bại."
-  ,"fetchMatchesFailed": "Không thể tải kết quả khớp."
-  ,"aiEvaluationComplete": "AI đã đánh giá xong. Hãy xem lại trước khi chấp nhận."
-  ,"evidenceAccepted": "Đã chấp nhận bằng chứng."
-  ,"suggestionRejected": "Đã từ chối gợi ý."
-  ,"updateSuggestionFailed": "Không thể cập nhật gợi ý."
   ,"selectPaperFirst": "Hãy chọn một bài viết trước."
   ,"formatScanFailed": "Quét định dạng thất bại."
   ,"aiReviewComplete": "Citation Review hoàn tất."

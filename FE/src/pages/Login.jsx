@@ -267,9 +267,9 @@ export default function Login() {
         <div className="absolute inset-0 bg-gradient-to-t from-blue-900/80 via-blue-900/20 to-transparent"></div>
         
         <div className="relative z-10 text-center px-12 max-w-lg flex flex-col items-center">
-          <h2 className="text-4xl font-bold text-white mb-6 leading-tight drop-shadow-md">Manage Your Evidence Graphically</h2>
+          <h2 className="text-4xl font-bold text-white mb-6 leading-tight drop-shadow-md">Manage Research Collaboratively</h2>
           <p className="text-blue-50 text-lg drop-shadow-md">
-            Evidence Pilot provides an intuitive interface to link claims with source evidence securely and collaboratively.
+            Evidence Pilot provides a collaborative workspace for paper authoring, source management, citation review, and instructor feedback.
           </p>
         </div>
       </div>

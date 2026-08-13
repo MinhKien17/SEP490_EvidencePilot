@@ -23,8 +23,8 @@ public class ProgressReportController {
     private final ProgressReportService progressReportService;
 
     @Operation(summary = "Get project progress report",
-            description = "Returns section completeness panels, claim traceability matrix and a "
-                    + "deterministic readiness score. Filter sections by assigned member via memberFilter.")
+            description = "Returns section completeness panels and a deterministic readiness score. "
+                    + "Filter sections by assigned member via memberFilter.")
     @GetMapping("/{projectId}/progress-report")
     public ProgressReportResponse getProgressReport(
             @Parameter(description = "Project UUID") @PathVariable UUID projectId,
