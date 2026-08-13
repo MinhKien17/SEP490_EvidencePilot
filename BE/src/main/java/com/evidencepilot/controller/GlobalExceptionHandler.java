@@ -77,7 +77,9 @@ public class GlobalExceptionHandler {
             AiModelClient.AiApiException exception,
             HttpServletRequest request) {
 
-        return build(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage(), request);
+        HttpStatus status = HttpStatus.resolve(exception.getStatusCode());
+        return build(status == null ? HttpStatus.SERVICE_UNAVAILABLE : status,
+                exception.getMessage(), request);
     }
 
     @ExceptionHandler(OpenAlexClient.OpenAlexApiException.class)

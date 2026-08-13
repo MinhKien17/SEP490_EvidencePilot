@@ -210,12 +210,17 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void handleAiApi_returnsServiceUnavailable() {
-        AiModelClient.AiApiException exception = new AiModelClient.AiApiException("/generate", 503);
+    void handleAiApi_preservesStatusCode() {
+        var rateLimited = new AiModelClient.AiApiException("/generate", 429);
+        var badGateway = new AiModelClient.AiApiException("/generate", 502);
+        var unavailable = new AiModelClient.AiApiException("/generate", 503);
 
-        ResponseEntity<ApiErrorResponse> response = handler().handleAiApi(exception, request("/api/claims/1/suggestions"));
-
-        assertError(response, HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage(), "/api/claims/1/suggestions");
+        assertError(handler().handleAiApi(rateLimited, request("/api/claims/1/suggestions")),
+                HttpStatus.TOO_MANY_REQUESTS, rateLimited.getMessage(), "/api/claims/1/suggestions");
+        assertError(handler().handleAiApi(badGateway, request("/api/claims/1/suggestions")),
+                HttpStatus.BAD_GATEWAY, badGateway.getMessage(), "/api/claims/1/suggestions");
+        assertError(handler().handleAiApi(unavailable, request("/api/claims/1/suggestions")),
+                HttpStatus.SERVICE_UNAVAILABLE, unavailable.getMessage(), "/api/claims/1/suggestions");
     }
 
     @Test
