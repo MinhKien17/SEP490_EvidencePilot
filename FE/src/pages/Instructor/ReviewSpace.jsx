@@ -6,7 +6,6 @@ import api from '../../api.js';
 import { renderLatexToHtml } from '../../components/latexHtml.js';
 import { commonText, instructorText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
-import { legacyClaimsEnabled } from '../../featureFlags.js';
 
 function wrapLatexLines(latex) {
   if (!latex) return '';

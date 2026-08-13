@@ -50,7 +50,7 @@ class AiModelClientTest {
         server.expect(requestTo("http://ai.test/ai/generate"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(content().json("""
-                        {"system":"Judge claim quality","prompt":"Review this"}
+                        {"system":"Review section citations","prompt":"Review this"}
                         """, true))
                 .andRespond(withSuccess(
                         """
@@ -61,7 +61,7 @@ class AiModelClientTest {
         AiModelClientImpl client = new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper());
 
         AiModelClient.GenerationResult result = client.generate(
-                "Judge claim quality", "Review this");
+                "Review section citations", "Review this");
 
         assertThat(result.provider()).isEqualTo("gemini");
         assertThat(result.model()).isEqualTo("gemini-3.6-flash");

@@ -12,7 +12,6 @@ import EditorPanel from './EditorPanel.jsx';
 import ContextPanel from './ContextPanel.jsx';
 import FullPaperPreview from './FullPaperPreview.jsx';
 import { hasActiveExtraction } from './extractionPolling.js';
-import { legacyClaimsEnabled } from '../../featureFlags.js';
 
 async function loadAllProjectSources(projectId) {
   const sources = [];
@@ -37,8 +36,7 @@ export default function WorkspaceLayout() {
   const { t, i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState(() => {
     const stored = localStorage.getItem('student_workspace_active_tab') || 'Source';
-    if (stored === 'Graph') return 'AI Review';
-    return !legacyClaimsEnabled && stored === 'Claims' ? 'AI Review' : stored;
+    return stored === 'Graph' || stored === 'Claims' ? 'AI Review' : stored;
   });
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showOverview, setShowOverview] = useState(false);
@@ -52,7 +50,6 @@ export default function WorkspaceLayout() {
   const [mediaAssets, setMediaAssets] = useState([]);
   const [papers, setPapers] = useState([]);
   const [selectedPaper, setSelectedPaper] = useState(null);
-  const [claims, setClaims] = useState([]);
   const [feedbacks, setFeedbacks] = useState([]);
   const [exports, setExports] = useState([]);
   const [loadingProject, setLoadingProject] = useState(false);
@@ -95,45 +92,21 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const [loadingAiSources, setLoadingAiSources] = useState(false);
   const [aiSourcesError, setAiSourcesError] = useState('');
   const [resolvedFindingIndexes, setResolvedFindingIndexes] = useState([]);
-  const [newClaimContent, setNewClaimContent] = useState('');
-  const [newClaimFunctionalType, setNewClaimFunctionalType] = useState('EMPIRICAL');
-  const [claimEvaluation, setClaimEvaluation] = useState(null);
-  const [evaluatedClaimContent, setEvaluatedClaimContent] = useState('');
-  const [evaluatedClaimSectionId, setEvaluatedClaimSectionId] = useState('');
-  const [evaluatingClaim, setEvaluatingClaim] = useState(false);
-  const [claimEvaluationError, setClaimEvaluationError] = useState('');
-  const [editingClaim, setEditingClaim] = useState(null);
-  const [editClaimContent, setEditClaimContent] = useState('');
-  const [editClaimFunctionalType, setEditClaimFunctionalType] = useState('EMPIRICAL');
-  const [selectedClaim, setSelectedClaim] = useState(null);
-  const [claimMatches, setClaimMatches] = useState([]);
-  const [claimMappings, setClaimMappings] = useState([]);
-  const [loadingMatches, setLoadingMatches] = useState(false);
-  const [claimCandidates, setClaimCandidates] = useState([]);
-  const [loadingCandidates, setLoadingCandidates] = useState(false);
-  const [candidateError, setCandidateError] = useState('');
-  const [evaluatingChunkId, setEvaluatingChunkId] = useState(null);
-  const [updatingSuggestionId, setUpdatingSuggestionId] = useState(null);
   const [sections, setSections] = useState([]);
   const [selectedSectionId, setSelectedSectionId] = useState('');
   const [loadErrors, setLoadErrors] = useState([]);
-  const [creatingClaim, setCreatingClaim] = useState(false);
   const [submittingReview, setSubmittingReview] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const stompRef = useRef(null);
   const editorRef = useRef(null);
-  const claimEvaluationRequestRef = useRef(0);
-  const matchFetchRequestRef = useRef(0);
-  const candidateSearchRequestRef = useRef(0);
   const loadRequestRef = useRef(0);
   const projectRef = useRef(null);
   const selectedSectionIdRef = useRef('');
   const codeContentRef = useRef('');
   const dirtySectionsRef = useRef(new Set());
   const saveInFlightRef = useRef(new Map());
-  const creatingClaimRef = useRef(false);
   const submittingReviewRef = useRef(false);
   const aiReviewJobRef = useRef(null);
   const aiReviewRequestRef = useRef(0);
@@ -276,20 +249,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     return () => window.clearTimeout(timer);
   }, [formatScanInputKey]);
 
-  const fetchClaims = async () => {
-    if (!legacyClaimsEnabled || !project) return;
-    const r = await api.get(`/api/projects/${project.id}/claims`, {
-      params: selectedSectionIdRef.current ? { sectionId: selectedSectionIdRef.current } : {},
-    });
-    setClaims(r.data?.content || []);
-  };
-
-  useEffect(() => {
-    if (!legacyClaimsEnabled || !project) return;
-    fetchClaims().catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, selectedSectionId]);
-
   // Resize handlers
   const handleMouseDown = (e) => {
     e.preventDefault();
@@ -355,8 +314,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         localStorage.setItem(`workspace_draft_${prevProjectId}_${sid}`, codeContentRef.current);
       }
     }
-    claimEvaluationRequestRef.current += 1;
-    setEvaluatingClaim(false);
     setProjectLoadError(null);
     setProject(null);
     setSources([]);
@@ -366,11 +323,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     setSections([]);
     setSelectedPaper(null);
     selectSection('');
-    setSelectedClaim(null);
-    setClaimMatches([]);
-    setClaimMappings([]);
-    setClaimCandidates([]);
-    setCandidateError('');
     setCitationResult(null);
     setShowFormatScanModal(false);
     formatScanRequestRef.current += 1;
@@ -380,10 +332,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     setAiSourceMatches({});
     setAiSourcesError('');
     setResolvedFindingIndexes([]);
-    setClaimEvaluation(null);
-    setEvaluatedClaimContent('');
-    setEvaluatedClaimSectionId('');
-    setClaimEvaluationError('');
     setLoadErrors([]);
     const stale = () => loadRequestRef.current !== requestId;
     try {
@@ -509,11 +457,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     String(section.id) === String(selectedSectionId));
   const canEditCurrentSection = canEditSection(currentSection);
   const aiReviewStale = Boolean(aiReviewResult && aiReviewedContent !== codeContent);
-  const canAddEvaluatedClaim = Boolean(
-    claimEvaluation
-    && evaluatedClaimContent === newClaimContent.trim()
-    && String(evaluatedClaimSectionId) === String(selectedSectionId)
-  );
   const requireEditableCurrentSection = () => {
     if (canEditCurrentSection) return true;
     showToast(t('readOnlySection'));
@@ -529,15 +472,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       : [];
     editorRef.current?.setReviewRanges(ranges);
   }, [aiReviewResult, aiReviewStale]);
-
-  useEffect(() => {
-    claimEvaluationRequestRef.current += 1;
-    setEvaluatingClaim(false);
-    setClaimEvaluation(null);
-    setEvaluatedClaimContent('');
-    setEvaluatedClaimSectionId('');
-    setClaimEvaluationError('');
-  }, [selectedSectionId]);
 
   useEffect(() => {
     if (!selectedPaper) { setSections([]); return; }
@@ -612,8 +546,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       const url = URL.createObjectURL(r.data);
       const a = document.createElement('a'); a.href = url; a.download = `papers-${project?.title || 'export'}.zip`;
       a.click(); URL.revokeObjectURL(url);
-      const warningCount = Number(r.headers?.['x-claim-warning-count'] || 0);
-      showToast(warningCount > 0 ? t('downloadWithWarnings', { count: warningCount }) : t('paperArchiveDownloaded'));
+      showToast(t('paperArchiveDownloaded'));
     } catch { showToast(t('exportFailed')); }
   };
 
@@ -714,134 +647,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     showToast(`${t('mediaInserted')} ${texFilename}`);
   };
 
-  const handleNewClaimContentChange = (content) => {
-    claimEvaluationRequestRef.current += 1;
-    setNewClaimContent(content);
-    setEvaluatingClaim(false);
-    setClaimEvaluation(null);
-    setEvaluatedClaimContent('');
-    setEvaluatedClaimSectionId('');
-    setClaimEvaluationError('');
-  };
-
-  const handleEvaluateClaim = async () => {
-    if (isLocked) { showToast(t('projectLocked')); return; }
-    const content = newClaimContent.trim();
-    if (!content) { showToast(t('enterClaimFirst')); return; }
-    if (!currentSection) { showToast(t('selectSectionFirst')); return; }
-    if (!canEditSection(currentSection)) {
-      showToast(t('cannotEditClaims'));
-      return;
-    }
-    const requestId = claimEvaluationRequestRef.current + 1;
-    claimEvaluationRequestRef.current = requestId;
-    setEvaluatingClaim(true);
-    setClaimEvaluationError('');
-    try {
-      const { data: submit } = await api.post('/api/claims/evaluate', {
-        sectionId: selectedSectionId,
-        content,
-      });
-      const job = await pollAiJob(submit.jobId, () => claimEvaluationRequestRef.current !== requestId);
-      if (claimEvaluationRequestRef.current !== requestId) return;
-      if (!job) return;
-      setClaimEvaluation(job.result);
-      setEvaluatedClaimContent(content);
-      setEvaluatedClaimSectionId(selectedSectionId);
-      setNewClaimFunctionalType(job.result?.suggestedFunctionalType || 'EMPIRICAL');
-    } catch (error) {
-      if (claimEvaluationRequestRef.current !== requestId) return;
-      const status = error.response?.status;
-      const message = status === 400
-        ? (error.response?.data?.message || 'Attach at least one source before evaluating claims.')
-        : status === 503
-          ? 'AI service is unavailable. Retry when it is back online.'
-          : status === 502
-            ? 'AI returned an invalid evaluation. Please retry.'
-            : (error.message || 'AI Evaluate failed. Please retry.');
-      setClaimEvaluation(null);
-      setEvaluatedClaimContent('');
-      setEvaluatedClaimSectionId('');
-      setClaimEvaluationError(message);
-    } finally {
-      if (claimEvaluationRequestRef.current === requestId) setEvaluatingClaim(false);
-    }
-  };
-
-  const handleCreateClaim = async () => {
-    if (isLocked) { showToast(t('projectLocked')); return; }
-    if (creatingClaimRef.current) return;
-    if (!newClaimContent.trim() || !project) return;
-    const section = currentSection;
-    if (!section) { showToast(t('selectSectionFirst')); return; }
-    if (!canEditSection(section)) {
-      showToast(t('cannotEditClaims'));
-      return;
-    }
-    const sectionId = selectedSectionId;
-    creatingClaimRef.current = true;
-    setCreatingClaim(true);
-    try {
-      const rawSelection = editorRef.current?.getSelection() || '';
-      const created = await api.post('/api/claims', { sectionId, content: newClaimContent.trim(), functionalType: newClaimFunctionalType });
-      let nextContent = codeContentRef.current;
-      if (rawSelection.trim() && rawSelection.trim() === newClaimContent.trim()) {
-        nextContent = editorRef.current?.insertAtCursor(
-          `\\epclaim{${created.data.id}}{${rawSelection}}`,
-        ) ?? nextContent;
-      }
-      if (nextContent !== (section.contentTex || '')) {
-        await putSectionContent(sectionId, nextContent);
-        dirtySectionsRef.current.delete(sectionId);
-      }
-      showToast(t('claimAdded'));
-      setNewClaimContent('');
-      setClaimEvaluation(null);
-      setEvaluatedClaimContent('');
-      setEvaluatedClaimSectionId('');
-      setClaimEvaluationError('');
-      const [, sectionResponse] = await Promise.all([
-        fetchClaims(),
-        api.get(`/api/papers/${selectedPaper.id}/sections`),
-      ]);
-      setSections(sectionResponse.data || []);
-    } catch { showToast(t('addClaimFailed')); }
-    finally { creatingClaimRef.current = false; setCreatingClaim(false); }
-  };
-
-  const handleUpdateClaim = async () => {
-    if (!editingClaim || !editClaimContent.trim()) return;
-    try {
-      const updated = await api.put(`/api/claims/${editingClaim.id}`, { id: editingClaim.id, content: editClaimContent, active: true, aiConfidenceScore: editingClaim.aiConfidenceScore, functionalType: editClaimFunctionalType });
-      showToast(t('claimUpdated'));
-      setEditingClaim(null); setEditClaimContent('');
-      if (selectedClaim?.id === editingClaim.id) {
-        setSelectedClaim(updated.data);
-        setClaimCandidates([]);
-        setCandidateError('');
-        setClaimMatches([]);
-        setClaimMappings([]);
-      }
-      await fetchClaims();
-    } catch { showToast(t('updateFailed')); }
-  };
-
-  const handleDeleteClaim = async (claimId) => {
-    if (!window.confirm(t('deleteClaimConfirm'))) return;
-    try {
-      await api.delete(`/api/claims/${claimId}`);
-      showToast(t('claimDeleted'));
-      await fetchClaims();
-      if (selectedClaim && selectedClaim.id === claimId) {
-        setSelectedClaim(null);
-        setClaimMatches([]);
-        setClaimMappings([]);
-        setClaimCandidates([]);
-        setCandidateError('');
-      }
-    } catch { showToast(t('deleteFailed')); }
-  };
-
   const handleAssignSection = async (sectionId, assignedUserId) => {
     if (!selectedPaper) return;
     try {
@@ -869,11 +674,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     } catch { showToast(t('restoreFailed')); setRollingBack(false); }
   };
 
-  const canEditClaim = (claim) => {
-    const section = sections.find(s => String(s.id) === String(claim.sectionId));
-    return canEditSection(section);
-  };
-
   const handleSaveDraft = async () => {
     if (!requireEditableCurrentSection()) return false;
     if (!selectedPaper) { showToast(t('noPaperSelected')); return false; }
@@ -889,9 +689,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       const sectionResponse = await api.get(`/api/papers/${selectedPaper.id}/sections`);
       setSections((sectionResponse.data || []).map(s =>
         String(s.id) === String(sectionId) ? { ...s, contentTex: content } : s));
-      if (legacyClaimsEnabled) {
-        await fetchClaims();
-      }
       setTimeout(() => setSaveStatus(''), 3000);
       return true;
     } catch { setSaveStatus('error'); showToast(t('saveFailed')); return false; }
@@ -921,92 +718,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       a.click(); URL.revokeObjectURL(url);
       showToast(t('traceabilityCsvDownloaded'));
     } catch { showToast(t('exportFailed')); }
-  };
-
-  const handleSearchClaimMatches = async (claim) => {
-    const requestId = ++candidateSearchRequestRef.current;
-    setSelectedClaim(claim);
-    setClaimCandidates([]);
-    setCandidateError('');
-    setLoadingCandidates(true);
-    const fetchPromise = handleFetchMatches(claim.id);
-    try {
-      const response = await api.post(`/api/claims/${claim.id}/matches/search`);
-      if (candidateSearchRequestRef.current !== requestId) return;
-      const candidates = response.data || [];
-      setClaimCandidates(candidates);
-      showToast(candidates.length > 0 ? t('foundMatches', { count: candidates.length }) : t('noMatches'));
-    } catch {
-      if (candidateSearchRequestRef.current === requestId) {
-        setCandidateError(t('findMatchesFailedDetail'));
-        showToast(t('findMatchesFailed'));
-      }
-    }
-    finally { if (candidateSearchRequestRef.current === requestId) setLoadingCandidates(false); }
-    await fetchPromise;
-  };
-
-  const handleFetchMatches = async (claimId) => {
-    const requestId = ++matchFetchRequestRef.current;
-    setLoadingMatches(true);
-    setClaimMatches([]);
-    setClaimMappings([]);
-    try {
-      const [suggestionResponse, mappingResponse] = await Promise.all([
-        api.get(`/api/claims/${claimId}/suggestions`),
-        api.get(`/api/claims/${claimId}/mappings`),
-      ]);
-      if (matchFetchRequestRef.current !== requestId) return;
-      setClaimMatches(suggestionResponse.data || []);
-      setClaimMappings(mappingResponse.data || []);
-    } catch {
-      if (matchFetchRequestRef.current !== requestId) return;
-      showToast(t('fetchMatchesFailed'));
-    }
-    finally { if (matchFetchRequestRef.current === requestId) setLoadingMatches(false); }
-  };
-
-  const handleEvaluateMatch = async (claimId, documentChunkId) => {
-    setEvaluatingChunkId(documentChunkId);
-    try {
-      const { data: submit } = await api.post(`/api/claims/${claimId}/suggestions/evaluate`, { documentChunkId });
-      await pollAiJob(submit.jobId);
-      showToast(t('aiEvaluationComplete'));
-      await handleFetchMatches(claimId);
-    } catch (error) { showToast(error.message || t('aiEvaluationFailed')); }
-    finally { setEvaluatingChunkId(null); }
-  };
-
-  const handleSuggestionStatus = async (suggestionId, status) => {
-    if (!selectedClaim) return;
-    setUpdatingSuggestionId(suggestionId);
-    try {
-      await api.patch(`/api/claims/suggestions/${suggestionId}/status`, null, { params: { status } });
-      showToast(status === 'ACCEPTED' ? t('evidenceAccepted') : t('suggestionRejected'));
-      await handleFetchMatches(selectedClaim.id);
-    } catch { showToast(t('updateSuggestionFailed')); }
-    finally { setUpdatingSuggestionId(null); }
-  };
-
-  const handleSelectClaim = async (claim) => {
-    if (selectedClaim?.id !== claim.id) {
-      setClaimCandidates([]);
-      setCandidateError('');
-    }
-    setSelectedClaim(claim);
-    await handleFetchMatches(claim.id);
-    if (!claim.sectionId) return;
-    const sec = sections.find(s => String(s.id) === String(claim.sectionId));
-    if (!sec) return;
-    const current = selectedSectionIdRef.current;
-    if (current && current !== claim.sectionId && dirtySectionsRef.current.has(current)) {
-      if (!window.confirm(t('unsavedSectionSwitch'))) {
-        return;
-      }
-      dirtySectionsRef.current.delete(current);
-    }
-    selectSection(claim.sectionId);
-    loadCode(sec.contentTex || '');
   };
 
   const handleScanCitations = async () => {
@@ -1206,12 +917,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       const saved = await handleSaveDraft();
       if (!saved) { showToast(t('saveSubmissionCancelled')); return; }
     }
-    if (legacyClaimsEnabled) {
-      try {
-        const claimResponse = await api.get(`/api/projects/${project.id}/claims`);
-        setClaims(claimResponse.data?.content || []);
-      } catch { console.warn('Failed to refresh claims before submission'); }
-    }
     submittingReviewRef.current = true;
     setSubmittingReview(true);
     try {
@@ -1341,17 +1046,10 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     { element: '[data-tour="editor-section-name"]', popover: { title: t('tour.editorSectionName'), description: t('tour.editorSectionNameDesc'), side: 'bottom' } },
     { element: '[data-tour="context-panel"]', popover: { title: t('tour.contextPanel'), description: t('tour.contextPanelDesc'), side: 'left' } },
     { element: '[data-tour="context-ai-review-tab"]', popover: { title: t('tour.aiReview'), description: t('tour.aiReviewDesc'), side: 'left' } },
-    ...(legacyClaimsEnabled ? [
-      { element: '[data-tour="context-claims-tab"]', popover: { title: t('tour.claims'), description: t('tour.claimsDesc'), side: 'left' } },
-    ] : []),
     { element: '[data-tour="context-feedback-tab"]', popover: { title: t('tour.feedback'), description: t('tour.feedbackDesc'), side: 'left' } },
     { element: '[data-tour="header-dark-mode"]', popover: { title: t('tour.darkMode'), description: t('tour.darkModeDesc'), side: 'bottom' } },
     { element: '[data-tour="header-language"]', popover: { title: t('tour.language'), description: t('tour.languageDesc'), side: 'bottom' } },
   ], [t]);
-  const blockingClaimAlerts = (legacyClaimsEnabled ? claims : [])
-    .filter(claim => claim.contentStatus && claim.contentStatus !== 'PRESENT')
-    .map(claim => ({ claimId: claim.id, type: claim.contentStatus }));
-
   useEffect(() => {
     const query = window.matchMedia('(max-width: 1023px)');
     const syncLayout = ({ matches }) => {
@@ -1405,7 +1103,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     <div className="h-screen w-full flex flex-col bg-(--surface-secondary) overflow-hidden font-sans antialiased text-(--text-primary)">
       <WorkspaceHeader project={project} navigate={navigate} selectedPaper={selectedPaper} handleRunAiReview={handleRunAiReview} loadingAiReview={loadingAiReview} isLocked={isLocked} onShowHistory={() => setShowHistoryModal(true)} historyDisabled={assignedSections.length === 0}
         notifications={notifications} unreadCount={unreadCount} showNotifications={showNotifications} setShowNotifications={setShowNotifications} onMarkNotificationRead={handleMarkNotificationRead}
-        showExportMenu={showExportMenu} setShowExportMenu={setShowExportMenu} handleExportTexArchive={handleExportTexArchive} handleExportTraceabilityJson={handleExportTraceabilityJson} handleExportTraceabilityCsv={handleExportTraceabilityCsv} legacyClaimsEnabled={legacyClaimsEnabled} />
+        showExportMenu={showExportMenu} setShowExportMenu={setShowExportMenu} handleExportTexArchive={handleExportTexArchive} handleExportTraceabilityJson={handleExportTraceabilityJson} handleExportTraceabilityCsv={handleExportTraceabilityCsv} />
 
       {loadErrors.length > 0 && (
         <div className="flex items-center justify-between gap-4 px-4 py-2 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900 text-[11px] text-amber-900 dark:text-amber-200">
@@ -1436,19 +1134,13 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
 
         <ContextPanel compact={isCompactWorkspace} isOpen={isDrawerOpen} width={rightDrawerWidth} onResizeStart={handleRightDividerMouseDown} activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); localStorage.setItem('student_workspace_active_tab', tab); }} showToast={showToast}
           sources={sources} isUploading={isUploading} setIsUploading={setIsUploading} project={project} setViewerFile={setViewerFile} fetchSources={fetchSources} isLocked={isLocked}
-          newClaimContent={newClaimContent} onNewClaimContentChange={handleNewClaimContentChange} newClaimFunctionalType={newClaimFunctionalType} setNewClaimFunctionalType={setNewClaimFunctionalType} claimEvaluation={claimEvaluation} evaluatingClaim={evaluatingClaim} claimEvaluationError={claimEvaluationError} handleEvaluateClaim={handleEvaluateClaim} canAddEvaluatedClaim={canAddEvaluatedClaim} handleCreateClaim={handleCreateClaim} canCreateClaim={canEditCurrentSection} creatingClaim={creatingClaim}
-          claims={claims} selectedClaim={selectedClaim} claimMatches={claimMatches} claimMappings={claimMappings} loadingMatches={loadingMatches}
-          claimCandidates={claimCandidates} loadingCandidates={loadingCandidates} evaluatingChunkId={evaluatingChunkId} updatingSuggestionId={updatingSuggestionId}
-          handleSearchClaimMatches={handleSearchClaimMatches} handleEvaluateMatch={handleEvaluateMatch} handleSuggestionStatus={handleSuggestionStatus} canEditClaim={canEditClaim}
-          editingClaim={editingClaim} setEditingClaim={setEditingClaim} editClaimContent={editClaimContent} setEditClaimContent={setEditClaimContent} editClaimFunctionalType={editClaimFunctionalType} setEditClaimFunctionalType={setEditClaimFunctionalType} handleDeleteClaim={handleDeleteClaim} handleUpdateClaim={handleUpdateClaim}
-          onSelectClaim={handleSelectClaim}
           feedbacks={feedbacks} assignedSections={assignedSections} setShowSubmitReviewModal={setShowSubmitReviewModal} userProjectRole={project?.currentUserRole}
           aiReview={aiReviewResult} aiReviewLoading={loadingAiReview} aiReviewError={aiReviewError} aiReviewStale={aiReviewStale}
           aiSourceMatches={aiSourceMatches} aiSourcesLoading={loadingAiSources} aiSourcesError={aiSourcesError}
           resolvedFindingIndexes={resolvedFindingIndexes} reviewSectionTitle={currentSection?.sectionTitle}
           onRunAiReview={handleRunAiReview} onSelectReviewFinding={handleSelectReviewFinding}
           onInsertCitation={handleInsertReviewCitation} onRetryReviewSources={() => fetchAiReviewSources(aiReviewResult)}
-          canReviewSection={canEditCurrentSection} legacyClaimsEnabled={legacyClaimsEnabled} />
+          canReviewSection={canEditCurrentSection} />
       </div>
 
       {/* Version History Modal */}
@@ -1607,14 +1299,6 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
             <p className="text-sm text-(--text-secondary) mb-6 leading-relaxed">
               {t('submitReviewDescription')}
             </p>
-            {blockingClaimAlerts.length > 0 && (
-              <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                <p className="font-bold">{t('submissionWarning', { count: blockingClaimAlerts.length })}</p>
-                <ul className="mt-2 list-disc space-y-1 pl-4">
-                  {blockingClaimAlerts.slice(0, 5).map(alert => <li key={`${alert.claimId}-${alert.type}`}>{alert.claimId}: {alert.type}</li>)}
-                </ul>
-              </div>
-            )}
             <div className="flex justify-end gap-3">
               <button onClick={() => setShowSubmitReviewModal(false)} className="px-4 py-2 text-sm font-semibold text-(--text-secondary) hover:bg-(--surface-tertiary) rounded-lg transition-colors">{t('cancel')}</button>
               <button onClick={handleSubmitReview} className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm shadow-indigo-200 transition-colors cursor-pointer">{t('submitReview')}</button>
