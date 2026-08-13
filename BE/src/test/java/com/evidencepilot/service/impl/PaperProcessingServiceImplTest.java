@@ -303,7 +303,8 @@ class PaperProcessingServiceImplTest {
                 userRepository,
                 projectRepository,
                 mock(SystemNotificationService.class),
-                mock(TexArchiveBuilder.class));
+                mock(TexArchiveBuilder.class),
+                mock(EvidenceTraceService.class));
     }
 
     private User user(UserRole role) {

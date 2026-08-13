@@ -133,6 +133,32 @@ public class CurrentUserServiceImpl implements CurrentUserService {
         }
     }
 
+    /**
+     * Evidence-trace judgments are instructor review actions, not project writes:
+     * they must work while the project is locked (SUBMITTED_FOR_REVIEW), matching
+     * the read access the GET list endpoint already grants for the review phase.
+     */
+    @Override
+    public void requireEvidenceTraceReviewAccess(User currentUser, Project project) {
+        if (isAdmin(currentUser))
+            return;
+        if (!isInstructor(currentUser)) {
+            throw new ResponseStatusException(
+                    org.springframework.http.HttpStatus.FORBIDDEN,
+                    "Only instructors can review evidence traces");
+        }
+        if (isProjectMember(currentUser, project))
+            return;
+        if (project.getStatus() == ProjectStatus.SUBMITTED_FOR_REVIEW && project.getId() != null
+                && feedbackRequestRepository.existsByProjectIdAndInstructorId(
+                        project.getId(), currentUser.getId())) {
+            return;
+        }
+        throw new ResponseStatusException(
+                org.springframework.http.HttpStatus.FORBIDDEN,
+                "Instructor access denied to project");
+    }
+
     private boolean isProjectMember(User currentUser, Project project) {
         if (project.getProjectMembers() == null) {
             return false;

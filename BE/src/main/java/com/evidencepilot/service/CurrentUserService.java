@@ -29,6 +29,8 @@ public interface CurrentUserService {
 
     void requireProjectManageAccess(User currentUser, Project project);
 
+    void requireEvidenceTraceReviewAccess(User currentUser, Project project);
+
     void requireCollectionAccess(User currentUser, com.evidencepilot.model.Collection collection);
 
     void requireSectionAssignment(User currentUser, PaperSection section);

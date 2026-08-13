@@ -359,7 +359,11 @@ export default function ReviewSpace() {
       if (shouldAbort?.()) return null;
       const { data: job } = await api.get(`/api/jobs/${jobId}`);
       if (job.status === 'SUCCESS') return job;
-      if (job.status === 'FAILED') throw new Error(job.errorMessage || t.suggestionFailed);
+      if (job.status === 'FAILED') {
+        const error = new Error(job.errorMessage || t.suggestionFailed);
+        error.status = Number(job.errorMessage?.match(/(\d{3})/)?.[1]) || undefined;
+        throw error;
+      }
       await new Promise(resolve => setTimeout(resolve, 1500));
     }
   };
@@ -381,7 +385,12 @@ export default function ReviewSpace() {
       setSuggestionRan(true);
     } catch (err) {
       if (suggestionRequestRef.current === requestId) {
-        setSuggestionError(err?.response?.data?.message || err?.message || t.suggestionFailed);
+        const status = err?.response?.status || err?.status;
+        setSuggestionError(status === 429
+          ? t.aiSuggestionRateLimited
+          : status === 502 || status === 503 || status === 504
+            ? t.aiSuggestionWorkerUnavailable
+            : err?.response?.data?.message || err?.message || t.suggestionFailed);
       }
     } finally {
       if (suggestionRequestRef.current === requestId) setSuggestionLoading(false);

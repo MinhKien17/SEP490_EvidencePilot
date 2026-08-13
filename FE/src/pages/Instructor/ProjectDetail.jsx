@@ -630,6 +630,10 @@ export default function ProjectDetail() {
               <p className="mt-1 flex flex-wrap items-center gap-1 text-xs text-[var(--text-tertiary)]">ID: {project.id} <span aria-hidden="true">&middot;</span> <StatusBadge status={project.status} /></p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              <Link to={`/instructor/projects/${id}/evidence-traces`} title={t.viewEvidenceTraceTooltip}
+                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 transition hover:bg-amber-100">
+                {t.viewEvidenceTrace}
+              </Link>
               <button onClick={() => setShowExportModal(true)} className="rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white transition hover:bg-[var(--brand-hover)]">{t.export}</button>
               <TourLauncher steps={TOUR_STEPS} tourKey="instructor-project-detail"
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-sm font-bold text-[var(--text-secondary)] shadow-sm transition-all hover:border-indigo-300 hover:bg-[var(--brand-soft)] hover:text-[var(--brand-foreground)]" />
@@ -1368,7 +1372,7 @@ export default function ProjectDetail() {
                 {projectReadOnly ? t.setupLockedReadOnly : t.setupLockedAssigned}
               </span>
             </div>
-            <div className="flex justify-end">
+          <div className="flex justify-end">
               <button onClick={() => setShowSetUpPaper(false)} className="rounded-lg bg-[var(--surface-tertiary)] px-4 py-2 text-xs font-semibold text-[var(--text-secondary)] hover:opacity-80">{ct.close}</button>
             </div>
           </div>

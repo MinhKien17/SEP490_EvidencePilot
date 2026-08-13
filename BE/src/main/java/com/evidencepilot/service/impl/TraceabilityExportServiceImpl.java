@@ -4,6 +4,7 @@ import com.evidencepilot.dto.response.TraceabilityExportResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentReference;
+import com.evidencepilot.model.EvidenceRevisionTrace;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectDocument;
@@ -11,6 +12,7 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.repository.DocumentReferenceRepository;
 import com.evidencepilot.repository.DocumentRepository;
+import com.evidencepilot.repository.EvidenceRevisionTraceRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectDocumentRepository;
@@ -40,6 +42,7 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
     private final FeedbackRequestRepository feedbackRequestRepository;
     private final ProjectDocumentRepository projectDocumentRepository;
     private final PaperSectionRepository paperSectionRepository;
+    private final EvidenceRevisionTraceRepository evidenceRevisionTraceRepository;
     private final CurrentUserService currentUserService;
 
     @Override
@@ -103,6 +106,12 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
                         request.getStatus()))
                 .toList();
 
+        List<TraceabilityExportResponse.TraceabilityTrace> traces = evidenceRevisionTraceRepository
+                .findByProjectIdOrderByCreatedAtDesc(projectId)
+                .stream()
+                .map(this::toTrace)
+                .toList();
+
         return new TraceabilityExportResponse(
                 project.getId(),
                 missingIfBlank(project.getTitle()),
@@ -110,7 +119,24 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
                 Instant.now(),
                 sections,
                 sources,
-                feedback);
+                feedback,
+                traces);
+    }
+
+    private TraceabilityExportResponse.TraceabilityTrace toTrace(EvidenceRevisionTrace trace) {
+        return new TraceabilityExportResponse.TraceabilityTrace(
+                trace.getId(),
+                trace.getSection().getId(),
+                missingIfBlank(trace.getSection().getSectionTitle()),
+                trace.getFindingIndex(),
+                missingIfBlank(trace.getSuggestedAction()),
+                missingIfBlank(trace.getExcerpt()),
+                trace.getSource() == null ? null : trace.getSource().getId(),
+                trace.getEvidenceQuote(),
+                trace.getEvidenceRelation(),
+                trace.getStudentAction() == null ? null : trace.getStudentAction().name(),
+                trace.getOutcome() == null ? null : trace.getOutcome().name(),
+                trace.getJudgment() == null ? null : trace.getJudgment().name());
     }
 
     @Override
@@ -126,6 +152,22 @@ public class TraceabilityExportServiceImpl implements TraceabilityExportService 
                .append(section.version() != null ? section.version() : "").append(',')
                .append(escCsv(section.assignedUserId() == null ? "" : section.assignedUserId().toString())).append(',')
                .append(escCsv(data.feedback().isEmpty() ? "NONE" : "PRESENT"))
+               .append('\n');
+        }
+        csv.append("Trace ID,Section ID,Section Title,Finding,Action,Excerpt,Source ID,Evidence Quote,Relation,Student Action,Outcome,Judgment\n");
+        for (var trace : data.traces()) {
+            csv.append(escCsv(trace.id().toString())).append(',')
+               .append(escCsv(trace.sectionId().toString())).append(',')
+               .append(escCsv(trace.sectionTitle())).append(',')
+               .append(trace.findingIndex() != null ? trace.findingIndex() : "").append(',')
+               .append(escCsv(trace.suggestedAction())).append(',')
+               .append(escCsv(trace.excerpt())).append(',')
+               .append(escCsv(trace.sourceId() == null ? "" : trace.sourceId().toString())).append(',')
+               .append(escCsv(trace.evidenceQuote())).append(',')
+               .append(escCsv(trace.evidenceRelation())).append(',')
+               .append(escCsv(trace.studentAction())).append(',')
+               .append(escCsv(trace.outcome())).append(',')
+               .append(escCsv(trace.judgment()))
                .append('\n');
         }
         return csv.toString().getBytes(StandardCharsets.UTF_8);

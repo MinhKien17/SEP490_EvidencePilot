@@ -11,6 +11,8 @@ into one project workspace.
 - Paper templates, section assignment, editing history, checkpoints, and review.
 - PDF, DOCX, and Markdown ingestion, plus DOI lookup through OpenAlex.
 - Hybrid evidence search with AI evaluation and explicit human decisions.
+- Persistent evidence revision traces: per-finding student decisions, before/after
+  passage snapshots, AI recheck, and instructor judgment.
 - Instructor feedback, project progress, evidence graphs, traceability, and TeX export.
 - Real-time notifications through authenticated STOMP WebSocket connections.
 
@@ -165,3 +167,18 @@ python -m pytest -q
 | System architecture | [`System-Architecture.md`](System-Architecture.md) |
 
 The running OpenAPI document is the source of truth for the complete HTTP API.
+
+## Evidence revision trace API
+
+Citation Review findings are persisted as evidence revision traces. Students
+record a decision per finding, the editor save captures the revised passage, the
+AI verdict is rechecked after edits, and instructors give a final judgment.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `PATCH` | `/api/papers/{documentId}/sections/{sectionId}/traces/{traceId}` | Student records a decision on a finding (`student_action`, optional source/chunk, `explanation`). `409 SECTION_CONTENT_CHANGED` when the section moved on since the review. |
+| `GET` | `/api/projects/{projectId}/evidence-traces` | List traces for a project (instructor matrix), optional `outcome` filter. |
+| `PATCH` | `/api/projects/{projectId}/evidence-traces/{traceId}/review` | Instructor judgment (`judgment`, `instructor_feedback`); resolves the trace. |
+
+Trace rows are also included in the traceability export (see
+`GET /api/projects/{projectId}/traceability`).

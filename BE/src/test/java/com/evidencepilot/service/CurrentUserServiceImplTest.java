@@ -197,6 +197,50 @@ class CurrentUserServiceImplTest {
     }
 
     @Test
+    void evidenceTraceReviewAllowsAssignedInstructorWhileLocked() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        Project project = projectOwnedBy(user(UserRole.STUDENT));
+        project.setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
+        when(feedbackRequestRepository.existsByProjectIdAndInstructorId(
+                project.getId(), instructor.getId())).thenReturn(true);
+
+        assertThatCode(() -> service().requireEvidenceTraceReviewAccess(instructor, project))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void evidenceTraceReviewAllowsInstructorMember() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        Project project = projectWithMembers(member(instructor, ProjectRole.INSTRUCTOR));
+        project.setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
+
+        assertThatCode(() -> service().requireEvidenceTraceReviewAccess(instructor, project))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void evidenceTraceReviewRejectsStudent() {
+        User student = user(UserRole.STUDENT);
+        Project project = projectWithMembers(member(student, ProjectRole.MEMBER));
+
+        assertThatThrownBy(() -> service().requireEvidenceTraceReviewAccess(student, project))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(HttpStatus.FORBIDDEN));
+    }
+
+    @Test
+    void evidenceTraceReviewRejectsUnrelatedInstructor() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        Project project = projectWithMembers(member(user(UserRole.INSTRUCTOR), ProjectRole.INSTRUCTOR));
+
+        assertThatThrownBy(() -> service().requireEvidenceTraceReviewAccess(instructor, project))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(HttpStatus.FORBIDDEN));
+    }
+
+    @Test
     void requireCurrentUserReturnsUserPrincipalOrLoadsByEmail() {
         CurrentUserServiceImpl service = service();
         User principal = user(UserRole.STUDENT);

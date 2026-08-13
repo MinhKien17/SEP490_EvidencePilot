@@ -13,8 +13,13 @@ public record TraceabilityExportResponse(
     Instant generatedAt,
     List<TraceabilitySection> sections,
     List<TraceabilitySource> sources,
-    List<TraceabilityFeedback> feedback
+    List<TraceabilityFeedback> feedback,
+    List<TraceabilityTrace> traces
 ) {
+    public TraceabilityExportResponse {
+        traces = traces == null ? List.of() : List.copyOf(traces);
+    }
+
     public record TraceabilitySection(
         UUID id,
         String title,
@@ -36,5 +41,20 @@ public record TraceabilityExportResponse(
         UUID id,
         UUID instructorId,
         FeedbackStatus status
+    ) {}
+
+    public record TraceabilityTrace(
+        UUID id,
+        UUID sectionId,
+        String sectionTitle,
+        Integer findingIndex,
+        String suggestedAction,
+        String excerpt,
+        UUID sourceId,
+        String evidenceQuote,
+        String evidenceRelation,
+        String studentAction,
+        String outcome,
+        String judgment
     ) {}
 }

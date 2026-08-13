@@ -92,6 +92,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
     private final ProjectRepository projectRepository;
     private final SystemNotificationService systemNotificationService;
     private final TexArchiveBuilder texArchiveBuilder;
+    private final EvidenceTraceService evidenceTraceService;
 
     @Override
     public List<PaperSectionResponse> getPaperSections(UUID documentId) {
@@ -459,6 +460,8 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
         PaperSection saved = paperSectionRepository.save(section);
         if (content != null) {
             advanceProjectStatusOnStudentContent(section.getDocument().getProject(), section, currentUser);
+            evidenceTraceService.stampStaleOnContentChanged(
+                    saved.getId(), saved.getContentTex(), saved.getVersion());
         }
         return projectMapper.toPaperSectionResponse(saved);
     }

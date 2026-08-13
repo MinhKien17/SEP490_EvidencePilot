@@ -94,7 +94,9 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const [aiSourceMatches, setAiSourceMatches] = useState({});
   const [loadingAiSources, setLoadingAiSources] = useState(false);
   const [aiSourcesError, setAiSourcesError] = useState('');
-  const [resolvedFindingIndexes, setResolvedFindingIndexes] = useState([]);
+  const [sectionTraces, setSectionTraces] = useState([]);
+  const [updatingTraceIds, setUpdatingTraceIds] = useState([]);
+  const [traceError, setTraceError] = useState('');
   const [newClaimContent, setNewClaimContent] = useState('');
   const [newClaimFunctionalType, setNewClaimFunctionalType] = useState('EMPIRICAL');
   const [claimEvaluation, setClaimEvaluation] = useState(null);
@@ -138,6 +140,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   const aiReviewJobRef = useRef(null);
   const aiReviewRequestRef = useRef(0);
   const aiSourceRequestRef = useRef(0);
+  const sectionTracesRequestRef = useRef(0);
   const formatScanRequestRef = useRef(0);
 
   const formatScanInputKey = useMemo(() => {
@@ -215,13 +218,20 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
   };
 
   const pollAiJob = async (jobId, shouldAbort) => {
+    let polls = 0;
+    const MAX_POLLS = 240;
     for (;;) {
       if (shouldAbort?.()) return null;
       const { data: job } = await api.get(`/api/jobs/${jobId}`);
       if (job.status === 'SUCCESS') return job;
       if (job.status === 'FAILED') {
         const error = new Error(job.errorMessage || t('aiEvaluationFailed'));
-        error.status = Number(job.errorMessage?.match(/^(\d{3})/)?.[1]) || undefined;
+        error.status = Number(job.errorMessage?.match(/(\d{3})/)?.[1]) || undefined;
+        throw error;
+      }
+      if (++polls >= MAX_POLLS) {
+        const error = new Error(t('aiWorkerUnavailable'));
+        error.status = 503;
         throw error;
       }
       await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -239,7 +249,9 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     setLoadingAiSources(false);
     setAiSourceMatches({});
     setAiSourcesError('');
-    setResolvedFindingIndexes([]);
+    setSectionTraces([]);
+    setUpdatingTraceIds([]);
+    setTraceError('');
     editorRef.current?.setReviewRanges([]);
   }, [selectedPaper?.id, selectedSectionId]);
 
@@ -379,7 +391,9 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     setAiReviewedContent('');
     setAiSourceMatches({});
     setAiSourcesError('');
-    setResolvedFindingIndexes([]);
+    setSectionTraces([]);
+    setUpdatingTraceIds([]);
+    setTraceError('');
     setClaimEvaluation(null);
     setEvaluatedClaimContent('');
     setEvaluatedClaimSectionId('');
@@ -1066,6 +1080,50 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     }
   };
 
+  const fetchSectionTraces = useCallback(async () => {
+    if (!project?.id || !selectedSectionId) return;
+    const requestId = ++sectionTracesRequestRef.current;
+    const sectionId = selectedSectionId;
+    try {
+      const { data } = await api.get(`/api/projects/${project.id}/evidence-traces`);
+      if (sectionTracesRequestRef.current !== requestId) return;
+      setSectionTraces((data || []).filter(trace => String(trace.sectionId) === String(sectionId)));
+    } catch {
+      if (sectionTracesRequestRef.current === requestId) setTraceError(t('tracesLoadFailed'));
+    }
+  }, [project?.id, selectedSectionId, t]);
+
+  const applyTraceResult = (updated) => {
+    setSectionTraces(prev => prev.map(trace =>
+      String(trace.id) === String(updated.id) ? updated : trace));
+  };
+
+  const handleDecideTrace = async (trace, decision) => {
+    if (!selectedPaper || !selectedSectionId) return;
+    setUpdatingTraceIds(prev => [...new Set([...prev, trace.id])]);
+    setTraceError('');
+    try {
+      const { data } = await api.patch(
+        `/api/papers/${selectedPaper.id}/sections/${selectedSectionId}/traces/${trace.id}`,
+        decision,
+      );
+      applyTraceResult(data);
+      showToast(t('traceDecisionSaved'));
+      return data;
+    } catch (error) {
+      if (error.response?.status === 409) {
+        setTraceError(t('traceSectionChanged'));
+        showToast(t('traceSectionChanged'));
+        fetchSectionTraces();
+      } else {
+        showToast(t('traceDecisionFailed'));
+      }
+      throw error;
+    } finally {
+      setUpdatingTraceIds(prev => prev.filter(id => String(id) !== String(trace.id)));
+    }
+  };
+
   const handleRunAiReview = async () => {
     setActiveTab('AI Review');
     localStorage.setItem('student_workspace_active_tab', 'AI Review');
@@ -1076,22 +1134,20 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     if (aiReviewJobRef.current) return;
     aiReviewJobRef.current = 'saving';
     setLoadingAiReview(true);
-    const saved = await handleSaveDraft();
-    if (!saved) {
-      aiReviewJobRef.current = null;
-      setLoadingAiReview(false);
-      return;
-    }
-
-    const reviewedContent = codeContentRef.current;
-    const sectionId = selectedSectionId;
-    const requestId = ++aiReviewRequestRef.current;
-    aiReviewJobRef.current = 'submitting';
-    setAiReviewError(null);
-    setAiSourceMatches({});
-    setAiSourcesError('');
-    setResolvedFindingIndexes([]);
     try {
+      const saved = await handleSaveDraft();
+      if (!saved) return;
+
+      const reviewedContent = codeContentRef.current;
+      const sectionId = selectedSectionId;
+      const requestId = ++aiReviewRequestRef.current;
+      aiReviewJobRef.current = 'submitting';
+      setAiReviewError(null);
+      setAiSourceMatches({});
+      setAiSourcesError('');
+      setSectionTraces([]);
+      setUpdatingTraceIds([]);
+      setTraceError('');
       const { data: submit } = await api.post(
         `/api/papers/${selectedPaper.id}/sections/${sectionId}/review`);
       if (aiReviewRequestRef.current !== requestId) return;
@@ -1102,6 +1158,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       setAiReviewedContent(reviewedContent);
       showToast(t('aiReviewComplete'));
       await fetchAiReviewSources(job.result, requestId);
+      fetchSectionTraces();
     } catch (error) {
       if (aiReviewRequestRef.current !== requestId) return;
       const status = error.response?.status || error.status;
@@ -1117,10 +1174,8 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       setAiReviewError({ status, message });
       showToast(message);
     } finally {
-      if (aiReviewRequestRef.current === requestId) {
-        aiReviewJobRef.current = null;
-        setLoadingAiReview(false);
-      }
+      aiReviewJobRef.current = null;
+      setLoadingAiReview(false);
     }
   };
 
@@ -1140,7 +1195,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     editorRef.current?.selectRange(range.start, range.end);
   };
 
-  const handleInsertReviewCitation = async (finding, findingIndex, candidate) => {
+  const handleInsertReviewCitation = async (finding, findingIndex, candidate, trace) => {
     if (!selectedPaper || !selectedSectionId || !requireEditableCurrentSection()) return;
     const range = locateReviewFinding(finding);
     if (!range) { showToast(t('reviewExcerptChanged')); return; }
@@ -1148,17 +1203,27 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
     const nearby = current.slice(Math.max(0, range.start - 20), Math.min(current.length, range.end + 100));
     const citation = `\\cite{${candidate.citationKey}}`;
     if (nearby.includes(citation)) {
-      setResolvedFindingIndexes(previous => [...new Set([...previous, findingIndex])]);
+      if (trace) {
+        try {
+          await handleDecideTrace(trace, {
+            studentAction: 'ADD_CITATION',
+            sourceId: candidate.sourceId || candidate.documentId,
+            chunkId: candidate.documentChunkId,
+            evidenceQuote: candidate.excerpt,
+            relation: 'SUPPORTS',
+          });
+        } catch { /* toast already shown */ }
+      }
       showToast(t('citationAlreadyInserted'));
       return;
     }
     const punctuation = /[.,;:!?]/.test(current.charAt(range.end - 1));
     const insertionOffset = punctuation ? range.end - 1 : range.end;
-    const next = editorRef.current?.insertAtOffset(insertionOffset, ` ${citation}`);
-    if (next == null) return;
+    const next = current.slice(0, insertionOffset) + ` ${citation}` + current.slice(insertionOffset);
     setSaveStatus('saving');
     try {
       await putSectionContent(selectedSectionId, next);
+      editorRef.current?.insertAtOffset(insertionOffset, ` ${citation}`);
       setSections(previous => previous.map(section =>
         String(section.id) === String(selectedSectionId)
           ? { ...section, contentTex: next }
@@ -1167,7 +1232,17 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
       localStorage.removeItem(`workspace_draft_${projectRef.current?.id}_${selectedSectionId}`);
       setSaveStatus('saved');
       setLastSaved(new Date());
-      setResolvedFindingIndexes(previous => [...new Set([...previous, findingIndex])]);
+      if (trace) {
+        try {
+          await handleDecideTrace(trace, {
+            studentAction: 'ADD_CITATION',
+            sourceId: candidate.sourceId || candidate.documentId,
+            chunkId: candidate.documentChunkId,
+            evidenceQuote: candidate.excerpt,
+            relation: 'SUPPORTS',
+          });
+        } catch { /* toast already shown */ }
+      }
       showToast(t('citationInserted'));
     } catch {
       setSaveStatus('error');
@@ -1188,6 +1263,7 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
         setAiReviewResult(review);
         setAiReviewedContent(codeContentRef.current);
         fetchAiReviewSources(review, requestId);
+        fetchSectionTraces();
       })
       .catch(() => {
         if (aiReviewRequestRef.current === requestId) {
@@ -1445,7 +1521,8 @@ const [showFullPaperPreview, setShowFullPaperPreview] = useState(false);
           feedbacks={feedbacks} assignedSections={assignedSections} setShowSubmitReviewModal={setShowSubmitReviewModal} userProjectRole={project?.currentUserRole}
           aiReview={aiReviewResult} aiReviewLoading={loadingAiReview} aiReviewError={aiReviewError} aiReviewStale={aiReviewStale}
           aiSourceMatches={aiSourceMatches} aiSourcesLoading={loadingAiSources} aiSourcesError={aiSourcesError}
-          resolvedFindingIndexes={resolvedFindingIndexes} reviewSectionTitle={currentSection?.sectionTitle}
+          sectionTraces={sectionTraces} updatingTraceIds={updatingTraceIds} traceError={traceError}
+          onDecideTrace={handleDecideTrace} reviewSectionTitle={currentSection?.sectionTitle}
           onRunAiReview={handleRunAiReview} onSelectReviewFinding={handleSelectReviewFinding}
           onInsertCitation={handleInsertReviewCitation} onRetryReviewSources={() => fetchAiReviewSources(aiReviewResult)}
           canReviewSection={canEditCurrentSection} legacyClaimsEnabled={legacyClaimsEnabled} />

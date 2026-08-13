@@ -163,8 +163,11 @@ class ProjectRouteMappingTest {
                 "PUT /api/papers/{id}",
                 "POST /api/projects/{projectId}/papers/init",
                 "POST /api/projects/{projectId}/papers/reset-standard",
-                "GET /api/jobs/{jobId}"));
-        assertThat(routes).hasSize(115);
+                "GET /api/jobs/{jobId}",
+                "PATCH /api/papers/{documentId}/sections/{sectionId}/traces/{traceId}",
+                "GET /api/projects/{projectId}/evidence-traces",
+                "PATCH /api/projects/{projectId}/evidence-traces/{traceId}/review"));
+        assertThat(routes).hasSize(118);
     }
 
     @Test

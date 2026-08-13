@@ -40,12 +40,13 @@ class AiEvaluationServiceImplTest {
     private final AiModelClient aiModelClient = mock(AiModelClient.class);
     private final RabbitTemplate rabbitTemplate = mock(RabbitTemplate.class);
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+    private final EvidenceTraceService evidenceTraceService = mock(EvidenceTraceService.class);
 
     private AiEvaluationServiceImpl service() {
         return new AiEvaluationServiceImpl(
                 jobRepository, paperSectionRepository, sectionCitationReviewService,
                 reviewGuideRepository, aiModelClient,
-                rabbitTemplate, objectMapper);
+                rabbitTemplate, objectMapper, evidenceTraceService);
     }
 
     @Test
@@ -291,6 +292,45 @@ class AiEvaluationServiceImplTest {
 
         assertThat(job.getStatus()).isEqualTo(AiEvaluationJob.STATUS_FAILED);
         assertThat(job.getErrorMessage()).isNotBlank();
+        assertThat(job.getCompletedAt()).isNotNull();
+    }
+
+    @Test
+    void process_sectionSuggestion_preservesUpstreamAiStatus() throws Exception {
+        UUID jobId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        AiEvaluationJob job = job(sectionId, projectId, objectMapper.writeValueAsString(Map.of(
+                "projectId", projectId,
+                "documentId", documentId,
+                "sectionId", sectionId,
+                "sectionType", "Introduction")));
+        job.setKind(AiEvaluationJob.KIND_SECTION_SUGGESTION);
+        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
+        PaperSection section = new PaperSection();
+        section.setId(sectionId);
+        section.setSectionTitle("Introduction");
+        section.setContentTex("Some content");
+        Document document = new Document();
+        document.setId(documentId);
+        Project project = new Project();
+        project.setId(projectId);
+        document.setProject(project);
+        section.setDocument(document);
+        when(paperSectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
+        ReviewGuide guide = new ReviewGuide();
+        guide.setSectionType("Introduction");
+        guide.setChecklistJson("[\"Is the research question stated?\"]");
+        when(reviewGuideRepository.findById("Introduction")).thenReturn(Optional.of(guide));
+        when(aiModelClient.generate(anyString(), anyString()))
+                .thenThrow(new AiModelClient.AiApiException("/ai/generate", 429));
+
+        service().process(jobId);
+
+        assertThat(job.getStatus()).isEqualTo(AiEvaluationJob.STATUS_FAILED);
+        assertThat(job.getErrorMessage()).contains("429");
+        assertThat(job.getErrorMessage()).doesNotContain("invalid section suggestions");
         assertThat(job.getCompletedAt()).isNotNull();
     }
 

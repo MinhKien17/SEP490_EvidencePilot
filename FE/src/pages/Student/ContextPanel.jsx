@@ -22,6 +22,23 @@ const BREAKDOWN_LABELS = [
   ['logical_restraint', 'logicalRestraint'],
 ];
 
+const STUDENT_ACTIONS = [
+  'ADD_CITATION',
+  'PARAPHRASE',
+  'QUALIFY',
+  'SYNTHESIZE',
+  'QUOTE',
+  'REMOVE',
+  'DISMISS_WITH_REASON',
+];
+
+const OUTCOME_CLASSES = {
+  RESOLVED: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+  PARTIALLY_RESOLVED: 'bg-amber-100 text-amber-700 border border-amber-200',
+  UNRESOLVED: 'bg-slate-100 text-slate-600 border border-slate-200',
+  STALE: 'bg-rose-100 text-rose-700 border border-rose-200',
+};
+
 function parseScoreBreakdown(s) {
   if (!s) return null;
   try { return JSON.parse(s); } catch { return null; }
@@ -134,7 +151,8 @@ export default function ContextPanel({
   feedbacks, assignedSections, setShowSubmitReviewModal, userProjectRole,
   // Citation Review tab
   aiReview, aiReviewLoading, aiReviewError, aiReviewStale, aiSourceMatches,
-  aiSourcesLoading, aiSourcesError, resolvedFindingIndexes, reviewSectionTitle,
+  aiSourcesLoading, aiSourcesError, sectionTraces, updatingTraceIds, traceError,
+  onDecideTrace, reviewSectionTitle,
   onRunAiReview, onSelectReviewFinding, onInsertCitation, onRetryReviewSources,
   canReviewSection,
   legacyClaimsEnabled,
@@ -154,6 +172,11 @@ export default function ContextPanel({
   const [answerDrafts, setAnswerDrafts] = useState({});
   const [answeringId, setAnsweringId] = useState(null);
   const [answerErrors, setAnswerErrors] = useState({});
+  const [decideDraft, setDecideDraft] = useState(null);
+
+  useEffect(() => {
+    setDecideDraft(null);
+  }, [reviewSectionTitle, aiReview?.result?.id]);
 
   const submitAnswer = async (item, fb) => {
     const content = (answerDrafts[item.id] || '').trim();
@@ -607,17 +630,27 @@ export default function ContextPanel({
               {aiReview && !aiReviewLoading && (
                 <>
                   {aiReview.summary && <p className="rounded-xl border border-(--border) bg-(--surface) p-3 text-xs leading-relaxed text-(--text-secondary)">{aiReview.summary}</p>}
+                  {traceError && (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-[11px] text-rose-800">
+                      {traceError}
+                      <button type="button" onClick={onRunAiReview} className="mt-1 font-bold underline">{t('runReviewAgain')}</button>
+                    </div>
+                  )}
                   {(aiReview.findings || []).map((finding, index) => {
                     const candidates = aiSourceMatches?.[index] || [];
-                    const resolved = resolvedFindingIndexes?.includes(index);
+                    const trace = sectionTraces?.find(item => item.findingIndex === index);
+                    const traceUpdating = Boolean(trace && updatingTraceIds?.includes(trace.id));
+                    const outcome = trace?.outcome;
+                    const decided = Boolean(trace?.studentAction);
+                    const draft = decideDraft?.findingIndex === index;
                     return (
-                      <div key={`${finding.type}-${finding.startOffset}-${finding.endOffset}`} className={`rounded-xl border bg-(--surface) p-4 shadow-sm ${resolved ? 'border-emerald-300 opacity-70' : 'border-(--border)'}`}>
+                      <div key={trace?.id || `${finding.type}-${finding.startOffset}-${finding.endOffset}`} className={`rounded-xl border bg-(--surface) p-4 shadow-sm ${outcome === 'RESOLVED' ? 'border-emerald-300' : 'border-(--border)'}`}>
                         <button type="button" onClick={() => onSelectReviewFinding(finding)} className="w-full text-left">
                           <div className="flex items-start justify-between gap-2">
                             <h4 className={`text-[11px] font-black ${finding.type === 'SOURCE_DISCREPANCY' ? 'text-rose-700' : 'text-indigo-700'}`}>{finding.type.replaceAll('_', ' ')}</h4>
                             <span className="flex items-center gap-1">
                               {finding.confidence && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">{finding.confidence}</span>}
-                              {resolved && <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">{t('citationInserted')}</span>}
+                              {outcome && <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${OUTCOME_CLASSES[outcome] || OUTCOME_CLASSES.UNRESOLVED}`}>{outcome.replaceAll('_', ' ')}</span>}
                             </span>
                           </div>
                           <blockquote className="mt-2 border-l-2 border-amber-400 pl-2 text-[11px] italic leading-relaxed text-(--text-secondary)">“{finding.excerpt}”</blockquote>
@@ -648,15 +681,104 @@ export default function ContextPanel({
                                       <p className="truncate text-[11px] font-bold text-(--text-primary)">{candidate.title || candidate.sourceFilename}</p>
                                       <p className="text-[9px] text-(--text-tertiary)">{[candidate.authors, candidate.publicationYear].filter(Boolean).join(' · ')}</p>
                                     </div>
-                                    <span className="text-[9px] font-bold text-indigo-600">{Math.round(candidate.similarityScore * 100)}%</span>
+                                    <span className="text-[9px] font-bold text-indigo-600">{Number.isFinite(candidate.similarityScore) ? `${Math.round(candidate.similarityScore * 100)}%` : '--'}</span>
                                   </div>
                                   <p className="mt-1 line-clamp-3 text-[10px] italic leading-relaxed text-(--text-secondary)">“{candidate.excerpt}”</p>
-                                  <button type="button" onClick={() => onInsertCitation(finding, index, candidate)} disabled={resolved || !canReviewSection}
+                                  <button type="button" onClick={() => onInsertCitation(finding, index, candidate, trace)} disabled={!trace || decided || traceUpdating || !canReviewSection}
                                     className="mt-2 w-full rounded bg-(--brand) px-2 py-1 text-[10px] font-bold text-(--on-brand) hover:bg-(--brand-hover) disabled:opacity-40">
-                                    {t('insertCitation')}
+                                    {traceUpdating ? t('saving') : decided ? t('citationInserted') : t('insertCitation')}
                                   </button>
                                 </div>
                               ))}
+                            </div>
+                          )}
+                          {!draft && (
+                            <button type="button" onClick={() => setDecideDraft({ findingIndex: index, action: decided ? trace.studentAction : '', sourceId: trace?.sourceId || '', evidenceQuote: trace?.evidenceQuote || '', relation: trace?.evidenceRelation || '', explanation: trace?.explanation || '' })}
+                              disabled={!trace || traceUpdating || !canReviewSection}
+                              className="mt-2 w-full rounded-lg border border-(--border) px-2 py-1.5 text-[10px] font-bold text-(--text-secondary) hover:bg-(--surface-secondary) disabled:opacity-40">
+                              {decided ? t('editTraceDecision') : t('recordTraceDecision')}
+                            </button>
+                          )}
+                          {draft && trace && (
+                            <div className="mt-2 space-y-2 rounded-lg border border-(--border-light) bg-(--surface-secondary) p-2.5">
+                              <label className="block">
+                                <span className="mb-1 block text-[9px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('studentAction')}</span>
+                                <select
+                                  value={decideDraft.action}
+                                  onChange={e => setDecideDraft(prev => ({ ...prev, action: e.target.value }))}
+                                  className="w-full rounded-lg border border-(--border) bg-(--surface) px-2 py-1.5 text-[11px] text-(--text-primary) outline-none">
+                                  <option value="">{t('selectAction')}</option>
+                                  {STUDENT_ACTIONS.map(action => (
+                                    <option key={action} value={action}>{action.replaceAll('_', ' ')}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              {['ADD_CITATION', 'QUOTE', 'PARAPHRASE', 'SYNTHESIZE', 'QUALIFY'].includes(decideDraft.action) && candidates.length > 0 && (
+                                <label className="block">
+                                  <span className="mb-1 block text-[9px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('bindSource')}</span>
+                                  <select
+                                    value={decideDraft.sourceId}
+                                    onChange={e => {
+                                      const selected = candidates.find(c => (c.sourceId || c.documentId) === e.target.value);
+                                      setDecideDraft(prev => ({
+                                        ...prev,
+                                        sourceId: e.target.value,
+                                        chunkId: selected?.documentChunkId || '',
+                                        evidenceQuote: selected?.excerpt || prev.evidenceQuote,
+                                      }));
+                                    }}
+                                    className="w-full rounded-lg border border-(--border) bg-(--surface) px-2 py-1.5 text-[11px] text-(--text-primary) outline-none">
+                                    <option value="">{t('selectSource')}</option>
+                                    {candidates.map(candidate => (
+                                      <option key={candidate.documentChunkId} value={candidate.sourceId || candidate.documentId}>
+                                        {candidate.title || candidate.sourceFilename}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              )}
+                              {decideDraft.sourceId && (
+                                <label className="block">
+                                  <span className="mb-1 block text-[9px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('evidenceQuote')}</span>
+                                  <textarea
+                                    value={decideDraft.evidenceQuote}
+                                    onChange={e => setDecideDraft(prev => ({ ...prev, evidenceQuote: e.target.value }))}
+                                    rows={2}
+                                    className="w-full rounded-lg border border-(--border) bg-(--surface) px-2 py-1.5 text-[10px] italic text-(--text-secondary) outline-none resize-y" />
+                                </label>
+                              )}
+                              <label className="block">
+                                <span className="mb-1 block text-[9px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('explanation')}</span>
+                                <textarea
+                                  value={decideDraft.explanation}
+                                  onChange={e => setDecideDraft(prev => ({ ...prev, explanation: e.target.value }))}
+                                  rows={2}
+                                  className="w-full rounded-lg border border-(--border) bg-(--surface) px-2 py-1.5 text-[10px] text-(--text-secondary) outline-none resize-y"
+                                  placeholder={t('explanationPlaceholder')} />
+                              </label>
+                              <div className="flex gap-2">
+                                <button type="button" disabled={!decideDraft.action || traceUpdating}
+                                  onClick={async () => {
+                                    try {
+                                      await onDecideTrace(trace, {
+                                        studentAction: decideDraft.action,
+                                        sourceId: decideDraft.sourceId || null,
+                                        chunkId: decideDraft.chunkId || null,
+                                        evidenceQuote: decideDraft.evidenceQuote || null,
+                                        relation: decideDraft.relation || null,
+                                        explanation: decideDraft.explanation || null,
+                                      });
+                                      setDecideDraft(null);
+                                    } catch { /* toast shown by parent */ }
+                                  }}
+                                  className="flex-1 rounded-lg bg-(--brand) px-2 py-1.5 text-[10px] font-bold text-(--on-brand) hover:bg-(--brand-hover) disabled:opacity-40">
+                                  {traceUpdating ? t('saving') : t('saveDecision')}
+                                </button>
+                                <button type="button" onClick={() => setDecideDraft(null)}
+                                  className="rounded-lg border border-(--border) px-2 py-1.5 text-[10px] font-bold text-(--text-secondary) hover:bg-(--surface-tertiary)">
+                                  {t('cancel')}
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>

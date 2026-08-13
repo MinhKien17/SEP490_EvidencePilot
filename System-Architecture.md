@@ -63,7 +63,7 @@ Deployment constraints:
 | React frontend | Public pages, role-gated workspaces, authoring UI, evidence review, administration, REST calls, and WebSocket notifications. |
 | Spring Boot application | Authentication, authorization, business rules, persistence, object storage, vector search, integrations, API delivery, and background listeners. |
 | FastAPI model service | Document extraction, generation-provider selection, single/batch embeddings, and response normalization. |
-| MySQL | Relational source of truth for users, projects, documents, sections, claims, mappings, feedback, jobs, checkpoints, notifications, and audit data. |
+| MySQL | Relational source of truth for users, projects, documents, sections, claims, mappings, feedback, jobs, checkpoints, notifications, audit data, and evidence revision traces. |
 | MinIO | Raw documents, processed extraction checkpoints, project media, and generated export archives. |
 | RabbitMQ | Durable queues for document extraction, AI evaluation, and export jobs. |
 | Qdrant | Dense and sparse vector index for extracted source chunks. |
@@ -216,14 +216,56 @@ Project lifecycle values currently include `CREATED`, `ASSIGNED`, `IN_PROGRESS`,
 ### 5.4 Traceability and export
 
 - Traceability JSON and CSV aggregate claims, sources, suggestions, mappings,
-  references, feedback, and gap flags.
+  references, feedback, evidence revision traces, and gap flags.
 - Project graph and progress endpoints derive coverage views from persisted data.
 - Async export jobs are queued through `export.queue`, built by the Java worker,
   stored in MinIO, and downloaded through the authenticated API.
 - The current async worker builds TeX/media archives. Traceability data is
   available through its dedicated JSON and CSV endpoints.
 
-### 5.5 Notifications
+### 5.5 Evidence revision trace
+
+```mermaid
+sequenceDiagram
+    participant User as Student
+    participant API as Spring Boot API
+    participant DB as MySQL
+    participant MQ as RabbitMQ
+    participant Worker as AI evaluation listener
+    participant Model as FastAPI model service
+
+    User->>API: Run citation review on a section
+    API->>MQ: Queue citation-review job
+    MQ->>Worker: Deliver job ID
+    Worker->>Model: Generate findings
+    Model-->>Worker: Findings list
+    Worker->>DB: Persist review round + one trace per finding
+    User->>API: PATCH traces/{traceId} (decision, source, explanation)
+    API->>DB: Verify content fingerprint; save after-passage + version
+    alt Fingerprint mismatch
+        API-->>User: 409 SECTION_CONTENT_CHANGED
+    end
+    User->>API: Save the revised section (PUT section)
+    API->>DB: Capture after_passage/version on the section's open traces
+    User->>API: Run citation review again (recheck)
+    API->>MQ: Queue recheck of stale traces
+    Worker->>Model: Re-judge edited passages (EFFECTIVE/PARTIAL/INEFFECTIVE)
+    Model-->>Worker: Judgment
+    Worker->>DB: Update trace outcome
+    Instructor->>API: PATCH evidence-traces/{traceId}/review
+    API->>DB: Set judgment + feedback; resolve trace
+```
+
+- One `citation_review_rounds` row per review run; one `evidence_revision_traces`
+  row per finding (identity anchored on the trace row, not the finding index).
+- Decision PATCH recomputes the section content fingerprint; a mismatch returns
+  `409 SECTION_CONTENT_CHANGED` so the student re-runs review instead of acting
+  on stale findings.
+- Re-running review matches findings verbatim to existing traces and rechecks
+  edited (stale) passages through the existing `ai.evaluation.queue` — no new
+  queue or endpoint.
+
+### 5.6 Notifications
 
 Application events persist a `system_notifications` row before notifying the
 connected user through `/ws`. The frontend also reads the notification inbox

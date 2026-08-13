@@ -24,6 +24,7 @@ import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.FormatScanService;
 import com.evidencepilot.service.PaperProcessingService;
 import com.evidencepilot.service.impl.SectionCitationReviewService;
+import com.evidencepilot.service.impl.EvidenceTraceService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -59,11 +60,12 @@ class PaperControllerTest {
     private final CheckpointService checkpointService = mock(CheckpointService.class);
     private final AiEvaluationService aiEvaluationService = mock(AiEvaluationService.class);
     private final SectionCitationReviewService sectionCitationReviewService = mock(SectionCitationReviewService.class);
+    private final EvidenceTraceService evidenceTraceService = mock(EvidenceTraceService.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = standaloneSetup(new PaperController(documentService, paperService, citationValidationService, formatScanService, projectRepository, documentRepository, paperSectionRepository, instructorFeedbackRepository, feedbackRequestRepository, currentUserService, checkpointService, aiEvaluationService, sectionCitationReviewService))
+        mockMvc = standaloneSetup(new PaperController(documentService, paperService, citationValidationService, formatScanService, projectRepository, documentRepository, paperSectionRepository, instructorFeedbackRepository, feedbackRequestRepository, currentUserService, checkpointService, aiEvaluationService, sectionCitationReviewService, evidenceTraceService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }

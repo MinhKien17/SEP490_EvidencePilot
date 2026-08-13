@@ -4,7 +4,10 @@ import com.evidencepilot.service.AiModelClient;
 import com.evidencepilot.service.ExtractionBundle;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -18,23 +21,37 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Component
 public class AiModelClientImpl implements AiModelClient {
 
     private static final MediaType APPLICATION_ZIP = MediaType.valueOf("application/zip");
+    private static final Set<Integer> RETRYABLE_STATUSES = Set.of(429, 502, 503, 504);
+    private static final long BASE_RETRY_DELAY_MS = 2_000;
+    private static final long MAX_RETRY_DELAY_MS = 30_000;
 
     private final RestClient restClient;
     private final String baseUrl;
     private final ObjectMapper objectMapper;
+    private final int maxRetries;
 
     public AiModelClientImpl(@Qualifier("aiRestClient") RestClient restClient,
             @Qualifier("aiModelBaseUrl") String baseUrl,
             ObjectMapper objectMapper) {
+        this(restClient, baseUrl, objectMapper, 3);
+    }
+
+    @Autowired
+    public AiModelClientImpl(@Qualifier("aiRestClient") RestClient restClient,
+            @Qualifier("aiModelBaseUrl") String baseUrl,
+            ObjectMapper objectMapper,
+            @Value("${ai.model.max-retries:3}") int maxRetries) {
         this.restClient = restClient;
         this.baseUrl = baseUrl == null || baseUrl.isBlank() ? "" : trimTrailingSlash(baseUrl);
         this.objectMapper = objectMapper;
+        this.maxRetries = Math.max(0, maxRetries);
     }
 
     @SuppressWarnings("unchecked")
@@ -164,18 +181,50 @@ public class AiModelClientImpl implements AiModelClient {
         if (baseUrl.isBlank()) {
             throw new AiApiException(endpoint, 503, "AI_MODEL_BASE_URL is not configured", null);
         }
+        int attempt = 0;
+        while (true) {
+            try {
+                return call.execute();
+            } catch (AiApiException e) {
+                throw e;
+            } catch (RestClientResponseException e) {
+                int status = e.getStatusCode().value();
+                if (!RETRYABLE_STATUSES.contains(status) || attempt >= maxRetries) {
+                    throw new AiApiException(endpoint, status);
+                }
+                long retryAfterMillis = retryAfterMillis(e);
+                attempt++;
+                long backoffMillis = retryAfterMillis > 0
+                        ? retryAfterMillis
+                        : Math.min(BASE_RETRY_DELAY_MS * (1L << (attempt - 1)), MAX_RETRY_DELAY_MS);
+                log.warn("AI endpoint {} returned HTTP {} at configured base URL {}; retry {}/{} in {} ms.",
+                        endpoint, status, baseUrl, attempt, maxRetries, backoffMillis);
+                sleep(backoffMillis);
+            } catch (RestClientException e) {
+                log.warn("AI endpoint {} failed at configured base URL {}.", endpoint, baseUrl, e);
+                throw new AiApiException(endpoint, 503, "AI model offline at " + baseUrl, e);
+            }
+        }
+    }
+
+    private static long retryAfterMillis(RestClientResponseException e) {
+        List<String> values = e.getResponseHeaders() == null ? null
+                : e.getResponseHeaders().get(HttpHeaders.RETRY_AFTER);
+        if (values == null || values.isEmpty()) {
+            return 0;
+        }
         try {
-            return call.execute();
-        } catch (AiApiException e) {
-            throw e;
-        } catch (RestClientResponseException e) {
-            int status = e.getStatusCode().value();
-            log.warn("AI endpoint {} returned HTTP {} at configured base URL {}.",
-                    endpoint, status, baseUrl);
-            throw new AiApiException(endpoint, status);
-        } catch (RestClientException e) {
-            log.warn("AI endpoint {} failed at configured base URL {}.", endpoint, baseUrl, e);
-            throw new AiApiException(endpoint, 503, "AI model offline at " + baseUrl, e);
+            return Long.parseLong(values.get(0).trim()) * 1000;
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    private static void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
         }
     }
 

@@ -70,6 +70,47 @@ class AiModelClientTest {
     }
 
     @Test
+    void generateRetriesTransient429ThenSucceeds() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("http://ai.test/ai/generate"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS).header("Retry-After", "0"));
+        server.expect(requestTo("http://ai.test/ai/generate"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(
+                        "{\"provider\":\"gemini\",\"model\":\"gemini-3.6-flash\",\"response\":\"Retried\",\"done\":true}",
+                        MediaType.APPLICATION_JSON));
+
+        AiModelClient.GenerationResult result = new AiModelClientImpl(
+                builder.build(), "http://ai.test", new ObjectMapper(), 1)
+                .generate("system", "prompt");
+
+        assertThat(result.response()).isEqualTo("Retried");
+        server.verify();
+    }
+
+    @Test
+    void generateGivesUpOnTransientStatusAfterMaxRetries() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("http://ai.test/ai/generate"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS).header("Retry-After", "0"));
+        server.expect(requestTo("http://ai.test/ai/generate"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS).header("Retry-After", "0"));
+
+        AiModelClient.AiApiException error = assertThrows(
+                AiModelClient.AiApiException.class,
+                () -> new AiModelClientImpl(builder.build(), "http://ai.test", new ObjectMapper(), 1)
+                        .generate("system", "prompt"));
+
+        assertThat(error.getStatusCode()).isEqualTo(429);
+        server.verify();
+    }
+
+    @Test
     void generatePreservesUpstreamHttpStatus() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();

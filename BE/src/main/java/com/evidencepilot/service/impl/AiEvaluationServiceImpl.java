@@ -3,6 +3,7 @@ package com.evidencepilot.service.impl;
 import com.evidencepilot.config.infrastructure.RabbitMQConfig;
 import com.evidencepilot.dto.response.JobResponse;
 import com.evidencepilot.dto.response.JobSubmitResponse;
+import com.evidencepilot.dto.response.SectionCitationReviewResponse;
 import com.evidencepilot.dto.response.SectionSuggestionDto;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.AiEvaluationJob;
@@ -43,6 +44,7 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
     private final AiModelClient aiModelClient;
     private final RabbitTemplate rabbitTemplate;
     private final ObjectMapper objectMapper;
+    private final EvidenceTraceService evidenceTraceService;
 
     @Override
     public JobSubmitResponse submit(UUID projectId, String kind, String payloadJson) {
@@ -169,12 +171,15 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
                     throw new IllegalArgumentException(
                             "Section review payload project does not match its job");
                 }
-                yield objectMapper.valueToTree(sectionCitationReviewService.run(
+                SectionCitationReviewResponse review = sectionCitationReviewService.run(
                         documentId,
                         projectId,
                         sectionId,
                         payload.path("contentFingerprint").asText(),
-                        requestedByUserId));
+                        requestedByUserId);
+                evidenceTraceService.materialize(documentId, sectionId, requestedByUserId, review);
+                evidenceTraceService.recheck(documentId, sectionId, review);
+                yield objectMapper.valueToTree(review);
             }
             case AiEvaluationJob.KIND_SECTION_SUGGESTION -> {
                 UUID documentId = UUID.fromString(payload.path("documentId").asText());
@@ -221,6 +226,10 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
             log.info("Section suggestion LLM output for section {}: {}",
                     section.getId(), truncate(generation.response()));
             return objectMapper.valueToTree(suggestions);
+        } catch (AiModelClient.AiApiException exception) {
+            // Upstream model service failed (429/502/503/504 after retries): preserve the
+            // real status so the client sees the actual failure instead of a generic 502.
+            throw exception;
         } catch (Exception exception) {
             log.warn("Section suggestion job for {} produced invalid AI output: {}",
                     projectId, generation != null ? generation.response() : "no response");

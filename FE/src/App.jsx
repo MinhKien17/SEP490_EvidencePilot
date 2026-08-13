@@ -25,6 +25,7 @@ import ReviewSpace from './pages/Instructor/ReviewSpace.jsx';
 import InstructorDashboard from './pages/Instructor/Dashboard.jsx';
 import ProjectManagement from './pages/Instructor/ProjectManagement.jsx';
 import ProjectDetail from './pages/Instructor/ProjectDetail.jsx';
+import EvidenceTraceReview from './pages/Instructor/EvidenceTraceReview.jsx';
 
 // STUDENT SUB-SYSTEM IMPORTS
 import StudentProjects from './pages/Student/Projects.jsx';
@@ -69,6 +70,9 @@ function App() {
             } />
             <Route path="/instructor/projects/:id" element={
               <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}><ProjectDetail /></ProtectedRoute>
+            } />
+            <Route path="/instructor/projects/:id/evidence-traces" element={
+              <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}><EvidenceTraceReview /></ProtectedRoute>
             } />
             <Route path="/instructor/requests" element={
               <ProtectedRoute allowedRoles={['INSTRUCTOR', 'ADMIN']}><ReviewRequests /></ProtectedRoute>

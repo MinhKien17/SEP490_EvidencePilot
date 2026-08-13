@@ -121,6 +121,8 @@ ai:
     read-timeout-seconds: ${AI_MODEL_READ_TIMEOUT_SECONDS:660}
     # Cap concurrent AI model calls per JVM.
     max-concurrent-requests: ${AI_MODEL_MAX_CONCURRENT_REQUESTS:4}
+    # Retry transient AI failures (429/502/503/504) with backoff.
+    max-retries: ${AI_MODEL_MAX_RETRIES:3}
 
 # ── Qdrant vector database ────────────────────────────────────────────────
 qdrant:

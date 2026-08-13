@@ -12,6 +12,9 @@ import com.evidencepilot.dto.request.SectionReviewSourceMatchRequest;
 import com.evidencepilot.dto.request.SectionSuggestionRequest;
 import com.evidencepilot.dto.response.SectionCitationReviewResponse;
 import com.evidencepilot.dto.response.SectionReviewSourceMatchesResponse;
+import com.evidencepilot.dto.response.EvidenceTraceResponse;
+import com.evidencepilot.dto.request.TraceDecisionRequest;
+import com.evidencepilot.dto.request.TraceReviewRequest;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.FeedbackStatus;
@@ -20,6 +23,7 @@ import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
+import com.evidencepilot.model.enums.TraceOutcome;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
@@ -32,6 +36,7 @@ import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.FormatScanService;
 import com.evidencepilot.service.AiEvaluationService;
 import com.evidencepilot.service.PaperProcessingService;
+import com.evidencepilot.service.impl.EvidenceTraceService;
 import com.evidencepilot.service.impl.SectionCitationReviewService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -45,6 +50,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -81,6 +87,7 @@ public class PaperController {
     private final CheckpointService checkpointService;
     private final AiEvaluationService aiEvaluationService;
     private final SectionCitationReviewService sectionCitationReviewService;
+    private final EvidenceTraceService evidenceTraceService;
 
     @Operation(summary = "List all papers",
             description = "Returns all active paper documents. "
@@ -359,6 +366,44 @@ public class PaperController {
         PaperSection section = requireReviewSection(documentId, sectionId);
         currentUserService.requireProjectAccess(currentUser, section.getDocument().getProject());
         return sectionCitationReviewService.sourceMatches(documentId, sectionId, request);
+    }
+
+    @Operation(summary = "Record the student's decision on a review finding (evidence revision trace)")
+    @PatchMapping("/papers/{documentId}/sections/{sectionId}/traces/{traceId}")
+    public EvidenceTraceResponse decideOnTrace(
+            @PathVariable UUID documentId,
+            @PathVariable UUID sectionId,
+            @PathVariable UUID traceId,
+            @Valid @RequestBody TraceDecisionRequest request) {
+        User currentUser = currentUserService.requireCurrentUser();
+        PaperSection section = requireReviewSection(documentId, sectionId);
+        currentUserService.requireSectionContentWriteAccess(currentUser, section);
+        return evidenceTraceService.decide(documentId, sectionId, traceId, request);
+    }
+
+    @Operation(summary = "List evidence revision traces for a project (instructor matrix)")
+    @GetMapping("/projects/{projectId}/evidence-traces")
+    public List<EvidenceTraceResponse> listTraces(
+            @PathVariable UUID projectId,
+            @RequestParam(required = false) TraceOutcome outcome) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
+        currentUserService.requireProjectAccess(currentUser, project);
+        return evidenceTraceService.listTraces(projectId, outcome);
+    }
+
+    @Operation(summary = "Instructor judgment on an evidence revision trace")
+    @PatchMapping("/projects/{projectId}/evidence-traces/{traceId}/review")
+    public EvidenceTraceResponse reviewTrace(
+            @PathVariable UUID projectId,
+            @PathVariable UUID traceId,
+            @Valid @RequestBody TraceReviewRequest request) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
+        currentUserService.requireEvidenceTraceReviewAccess(currentUser, project);
+        return evidenceTraceService.review(projectId, traceId, request);
     }
 
     @Operation(summary = "Queue AI section suggestions for a saved section",

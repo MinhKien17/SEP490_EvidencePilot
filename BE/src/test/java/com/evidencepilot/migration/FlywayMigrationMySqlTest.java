@@ -54,7 +54,7 @@ class FlywayMigrationMySqlTest {
         Integer successfulMigrations = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1",
                 Integer.class);
-        assertThat(successfulMigrations).isEqualTo(3);
+        assertThat(successfulMigrations).isEqualTo(4);
 
         assertThat(jdbcTemplate.queryForList("""
                         SELECT constraint_name
@@ -67,7 +67,19 @@ class FlywayMigrationMySqlTest {
                         "uq_project_media_storage",
                         "uq_document_references_order",
                         "chk_document_references_edge_type",
-                        "chk_export_jobs_status");
+                        "chk_export_jobs_status",
+                        "uq_citation_review_rounds_section_fp",
+                        "uq_evidence_revision_traces_round_finding",
+                        "chk_evidence_revision_traces_student_action");
+
+        assertThat(jdbcTemplate.queryForList(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()",
+                String.class))
+                .contains("citation_review_rounds", "evidence_revision_traces");
+
+        assertThat(jdbcTemplate.queryForMap(
+                "SELECT data_type FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'citation_review_rounds' AND column_name = 'generation_meta'"))
+                .containsEntry("data_type", "json");
 
         String userId = UUID.randomUUID().toString();
         String projectId = UUID.randomUUID().toString();
@@ -167,10 +179,10 @@ class FlywayMigrationMySqlTest {
                 .migrate()
                 .migrationsExecuted;
 
-        assertThat(migrationsExecuted).isEqualTo(2);
+        assertThat(migrationsExecuted).isEqualTo(3);
         assertThat(rehearsalJdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1",
-                Integer.class)).isEqualTo(3);
+                Integer.class)).isEqualTo(4);
         assertThat(rehearsalJdbcTemplate.queryForObject(
                 "SELECT type FROM flyway_schema_history WHERE installed_rank = 1",
                 String.class)).isEqualTo("BASELINE");
