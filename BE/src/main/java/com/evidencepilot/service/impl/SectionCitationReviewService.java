@@ -359,7 +359,7 @@ public class SectionCitationReviewService {
         RuntimeException lastFailure = null;
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
-                AiModelClient.GenerationResult generation = aiModelClient.generate(
+                AiModelClient.GenerationResult generation = aiModelClient.generateForReview(
                         SectionCitationReviewPrompt.SYSTEM,
                         attempt == 0 ? prompt : prompt + "\nPrevious output was invalid. Return valid JSON only.");
                 ModelReview review = strictMapper().readValue(

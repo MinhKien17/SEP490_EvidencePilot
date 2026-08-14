@@ -2,7 +2,7 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.repository.ProjectRepository;
-import com.evidencepilot.repository.TraceTelemetryRepository;
+import com.evidencepilot.dto.response.TraceTelemetryResponse;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.TraceTelemetryService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -28,12 +27,12 @@ public class TraceTelemetryController {
 
     @Operation(summary = "Per-round HITL telemetry for a project")
     @GetMapping("/telemetry")
-    public List<TraceTelemetryRepository.TraceRoundAggregateRow> telemetry(
+    public TraceTelemetryResponse telemetry(
             @PathVariable UUID projectId) {
-        currentUserService.requireProjectAccess(
+        currentUserService.requireEvidenceTraceReviewAccess(
                 currentUserService.requireCurrentUser(),
                 projectRepository.findById(projectId)
                         .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project")));
-        return traceTelemetryService.perRoundAggregates(projectId);
+        return traceTelemetryService.telemetry(projectId);
     }
 }

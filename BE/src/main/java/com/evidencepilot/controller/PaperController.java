@@ -382,6 +382,17 @@ public class PaperController {
         return evidenceTraceService.decide(documentId, sectionId, traceId, request);
     }
 
+    @Operation(summary = "List evidence revision traces for the student's current section")
+    @GetMapping("/papers/{documentId}/sections/{sectionId}/traces")
+    public List<EvidenceTraceResponse> listSectionTraces(
+            @PathVariable UUID documentId,
+            @PathVariable UUID sectionId) {
+        User currentUser = currentUserService.requireCurrentUser();
+        PaperSection section = requireReviewSection(documentId, sectionId);
+        currentUserService.requireSectionContentWriteAccess(currentUser, section);
+        return evidenceTraceService.listSectionTraces(documentId, sectionId);
+    }
+
     @Operation(summary = "List evidence revision traces for a project (instructor matrix)")
     @GetMapping("/projects/{projectId}/evidence-traces")
     public List<EvidenceTraceResponse> listTraces(
@@ -390,7 +401,7 @@ public class PaperController {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
-        currentUserService.requireProjectAccess(currentUser, project);
+        currentUserService.requireEvidenceTraceReviewAccess(currentUser, project);
         return evidenceTraceService.listTraces(projectId, outcome);
     }
 

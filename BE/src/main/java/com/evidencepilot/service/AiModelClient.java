@@ -9,6 +9,8 @@ public interface AiModelClient {
 
     GenerationResult generate(String system, String prompt);
 
+    GenerationResult generateForReview(String system, String prompt);
+
     ExtractionBundle extractDocument(String filename, String downloadUrl);
 
     List<Float> generateEmbedding(String text);

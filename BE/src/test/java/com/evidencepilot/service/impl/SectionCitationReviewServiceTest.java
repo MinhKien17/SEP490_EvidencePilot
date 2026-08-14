@@ -79,7 +79,7 @@ class SectionCitationReviewServiceTest {
         when(sourceMatchingService.search(eq(projectId), any(), eq(5)))
                 .thenReturn(List.of(List.of(
                         new SourceMatchingService.SourceMatch(retrievedChunk, 0.91f))));
-        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+        when(aiModelClient.generateForReview(anyString(), anyString())).thenReturn(
                 new AiModelClient.GenerationResult("provider", "model", String.format("""
                         {"section_id":"%s","chunk_index":0,"findings":[{
                           "type":"SOURCE_DISCREPANCY",
@@ -113,7 +113,8 @@ class SectionCitationReviewServiceTest {
                         .isEqualTo(SectionCitationReviewResponse.EvidenceRelation.CONTRADICTS);
             });
         });
-        verify(aiModelClient).generate(eq(SectionCitationReviewPrompt.SYSTEM), anyString());
+        verify(aiModelClient).generateForReview(
+                eq(SectionCitationReviewPrompt.SYSTEM), anyString());
         verify(snapshotRepository).save(any(ReviewSnapshot.class));
         verify(auditService).record(
                 "AI_SECTION_CITATION_REVIEW", "PaperSection", sectionId, actor, null, result);
@@ -134,7 +135,7 @@ class SectionCitationReviewServiceTest {
         when(sectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
         when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
         when(sourceMatchingService.search(eq(projectId), any(), eq(5))).thenReturn(List.of());
-        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+        when(aiModelClient.generateForReview(anyString(), anyString())).thenReturn(
                 new AiModelClient.GenerationResult("provider", "model", String.format("""
                         {"section_id":"%s","chunk_index":0,"findings":[{
                           "type":"UNSUBSTANTIATED_CLAIM",
@@ -183,7 +184,7 @@ class SectionCitationReviewServiceTest {
         when(sourceMatchingService.search(eq(projectId), any(), eq(5)))
                 .thenReturn(List.of(List.of(
                         new SourceMatchingService.SourceMatch(retrievedChunk, 0.42f))));
-        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+        when(aiModelClient.generateForReview(anyString(), anyString())).thenReturn(
                 new AiModelClient.GenerationResult("provider", "model", String.format("""
                         {"section_id":"%s","chunk_index":0,"findings":[{
                           "type":"UNSUBSTANTIATED_CLAIM",
@@ -224,7 +225,7 @@ class SectionCitationReviewServiceTest {
         when(sourceMatchingService.search(eq(projectId), any(), eq(5)))
                 .thenReturn(List.of(List.of(
                         new SourceMatchingService.SourceMatch(supportingChunk, 0.88f))));
-        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+        when(aiModelClient.generateForReview(anyString(), anyString())).thenReturn(
                 new AiModelClient.GenerationResult("provider", "model", String.format("""
                         {"section_id":"%s","chunk_index":0,"findings":[{
                           "type":"UNSUBSTANTIATED_CLAIM",
@@ -243,7 +244,7 @@ class SectionCitationReviewServiceTest {
                 .satisfies(exception -> assertThat(
                         ((ResponseStatusException) exception).getStatusCode())
                         .isEqualTo(HttpStatus.BAD_GATEWAY));
-        verify(aiModelClient, times(2)).generate(anyString(), anyString());
+        verify(aiModelClient, times(2)).generateForReview(anyString(), anyString());
     }
 
     @Test
@@ -256,7 +257,7 @@ class SectionCitationReviewServiceTest {
                 projectId, documentId, sectionId, "Introduction", excerpt + ".");
         when(sectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
         when(sourceMatchingService.search(eq(projectId), any(), eq(5))).thenReturn(List.of());
-        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+        when(aiModelClient.generateForReview(anyString(), anyString())).thenReturn(
                 new AiModelClient.GenerationResult("provider", "model", String.format("""
                         {"section_id":"%s","chunk_index":0,"findings":[{
                           "type":"SOURCE_DISCREPANCY",
@@ -274,7 +275,7 @@ class SectionCitationReviewServiceTest {
                 .satisfies(exception -> assertThat(
                         ((ResponseStatusException) exception).getStatusCode())
                         .isEqualTo(HttpStatus.BAD_GATEWAY));
-        verify(aiModelClient, times(2)).generate(anyString(), anyString());
+        verify(aiModelClient, times(2)).generateForReview(anyString(), anyString());
     }
 
     @Test
@@ -293,7 +294,7 @@ class SectionCitationReviewServiceTest {
         when(sourceMatchingService.search(eq(projectId), any(), eq(5)))
                 .thenReturn(List.of(List.of(
                         new SourceMatchingService.SourceMatch(retrievedChunk, 0.91f))));
-        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+        when(aiModelClient.generateForReview(anyString(), anyString())).thenReturn(
                 new AiModelClient.GenerationResult("provider", "model", String.format("""
                         {"section_id":"%s","chunk_index":0,"findings":[{
                           "type":"SOURCE_DISCREPANCY",
@@ -313,7 +314,7 @@ class SectionCitationReviewServiceTest {
                 .satisfies(exception -> assertThat(
                         ((ResponseStatusException) exception).getStatusCode())
                         .isEqualTo(HttpStatus.BAD_GATEWAY));
-        verify(aiModelClient, times(2)).generate(anyString(), anyString());
+        verify(aiModelClient, times(2)).generateForReview(anyString(), anyString());
     }
 
     @Test
@@ -333,7 +334,7 @@ class SectionCitationReviewServiceTest {
         when(sourceMatchingService.search(eq(projectId), any(), eq(5)))
                 .thenReturn(List.of(List.of(
                         new SourceMatchingService.SourceMatch(retrievedChunk, 0.91f))));
-        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+        when(aiModelClient.generateForReview(anyString(), anyString())).thenReturn(
                 new AiModelClient.GenerationResult("provider", "model", String.format("""
                         {"section_id":"%s","chunk_index":0,"findings":[{
                           "type":"SOURCE_DISCREPANCY",
@@ -352,7 +353,7 @@ class SectionCitationReviewServiceTest {
                 .satisfies(exception -> assertThat(
                         ((ResponseStatusException) exception).getStatusCode())
                         .isEqualTo(HttpStatus.BAD_GATEWAY));
-        verify(aiModelClient, times(2)).generate(anyString(), anyString());
+        verify(aiModelClient, times(2)).generateForReview(anyString(), anyString());
     }
 
     @Test
@@ -365,7 +366,7 @@ class SectionCitationReviewServiceTest {
                 projectId, documentId, sectionId, "Introduction", excerpt + ".");
         when(sectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
         when(sourceMatchingService.search(eq(projectId), any(), eq(5))).thenReturn(List.of());
-        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+        when(aiModelClient.generateForReview(anyString(), anyString())).thenReturn(
                 new AiModelClient.GenerationResult("provider", "model", String.format("""
                         {"section_id":"%s","chunk_index":0,"findings":[{
                           "type":"UNSUBSTANTIATED_CLAIM",
@@ -382,7 +383,7 @@ class SectionCitationReviewServiceTest {
                 .satisfies(exception -> assertThat(
                         ((ResponseStatusException) exception).getStatusCode())
                         .isEqualTo(HttpStatus.BAD_GATEWAY));
-        verify(aiModelClient, times(2)).generate(anyString(), anyString());
+        verify(aiModelClient, times(2)).generateForReview(anyString(), anyString());
     }
 
     @Test
@@ -405,7 +406,7 @@ class SectionCitationReviewServiceTest {
                 .collect(Collectors.joining(","));
         when(sectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
         when(sourceMatchingService.search(eq(projectId), any(), eq(5))).thenReturn(List.of());
-        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+        when(aiModelClient.generateForReview(anyString(), anyString())).thenReturn(
                 new AiModelClient.GenerationResult("provider", "model", String.format(
                         "{\"section_id\":\"%s\",\"chunk_index\":0,\"findings\":[%s]}",
                         sectionId, findingsJson)));
@@ -417,7 +418,7 @@ class SectionCitationReviewServiceTest {
                 .satisfies(exception -> assertThat(
                         ((ResponseStatusException) exception).getStatusCode())
                         .isEqualTo(HttpStatus.BAD_GATEWAY));
-        verify(aiModelClient, times(2)).generate(anyString(), anyString());
+        verify(aiModelClient, times(2)).generateForReview(anyString(), anyString());
     }
 
     @Test
@@ -443,7 +444,7 @@ class SectionCitationReviewServiceTest {
         when(sourceMatchingService.search(eq(projectId), any(), eq(5)))
                 .thenReturn(List.of(List.of(
                         new SourceMatchingService.SourceMatch(retrievedChunk, 0.91f))));
-        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+        when(aiModelClient.generateForReview(anyString(), anyString())).thenReturn(
                 new AiModelClient.GenerationResult("provider", "model", String.format("""
                         {"section_id":"%s","chunk_index":0,"findings":[{
                           "type":"SOURCE_DISCREPANCY",
@@ -461,7 +462,7 @@ class SectionCitationReviewServiceTest {
                 .satisfies(exception -> assertThat(
                         ((ResponseStatusException) exception).getStatusCode())
                         .isEqualTo(HttpStatus.BAD_GATEWAY));
-        verify(aiModelClient, times(2)).generate(anyString(), anyString());
+        verify(aiModelClient, times(2)).generateForReview(anyString(), anyString());
     }
 
     @Test
@@ -478,7 +479,7 @@ class SectionCitationReviewServiceTest {
         when(sectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
         when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
         when(sourceMatchingService.search(eq(projectId), any(), eq(5))).thenReturn(List.of());
-        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+        when(aiModelClient.generateForReview(anyString(), anyString())).thenReturn(
                 new AiModelClient.GenerationResult("first-provider", "first-model", "not-json"),
                 new AiModelClient.GenerationResult("retry-provider", "retry-model", String.format(
                         "{\"section_id\":\"%s\",\"chunk_index\":0,\"findings\":[]}",
@@ -491,10 +492,10 @@ class SectionCitationReviewServiceTest {
         assertThat(result.complete()).isTrue();
         assertThat(result.provider()).isEqualTo("retry-provider");
         assertThat(result.model()).isEqualTo("retry-model");
-        verify(aiModelClient).generate(
+        verify(aiModelClient).generateForReview(
                 eq(SectionCitationReviewPrompt.SYSTEM),
                 argThat(prompt -> !prompt.contains("Previous output was invalid")));
-        verify(aiModelClient).generate(
+        verify(aiModelClient).generateForReview(
                 eq(SectionCitationReviewPrompt.SYSTEM),
                 argThat(prompt -> prompt.contains("Previous output was invalid")));
     }
@@ -510,7 +511,7 @@ class SectionCitationReviewServiceTest {
                 excerpt + ". Later, " + excerpt + ".");
         when(sectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
         when(sourceMatchingService.search(eq(projectId), any(), eq(5))).thenReturn(List.of());
-        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+        when(aiModelClient.generateForReview(anyString(), anyString())).thenReturn(
                 new AiModelClient.GenerationResult("provider", "model", String.format("""
                         {"section_id":"%s","chunk_index":0,"findings":[{
                           "type":"UNSUBSTANTIATED_CLAIM",
@@ -527,7 +528,7 @@ class SectionCitationReviewServiceTest {
                 .satisfies(exception -> assertThat(
                         ((ResponseStatusException) exception).getStatusCode())
                         .isEqualTo(HttpStatus.BAD_GATEWAY));
-        verify(aiModelClient, times(2)).generate(anyString(), anyString());
+        verify(aiModelClient, times(2)).generateForReview(anyString(), anyString());
     }
 
     @Test
@@ -545,7 +546,7 @@ class SectionCitationReviewServiceTest {
         when(sectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
         when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
         when(sourceMatchingService.search(eq(projectId), any(), eq(5))).thenReturn(List.of());
-        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+        when(aiModelClient.generateForReview(anyString(), anyString())).thenReturn(
                 new AiModelClient.GenerationResult("provider", "model", String.format("""
                         {"section_id":"%s","chunk_index":0,"findings":[{
                           "type":"UNSUBSTANTIATED_CLAIM",
@@ -597,7 +598,7 @@ class SectionCitationReviewServiceTest {
                 documentId, projectId, sectionId, fingerprint, UUID.randomUUID());
 
         assertThat(result).isEqualTo(cached);
-        verify(aiModelClient, never()).generate(anyString(), anyString());
+        verify(aiModelClient, never()).generateForReview(anyString(), anyString());
         verify(sourceMatchingService, never()).search(any(), any(), anyInt());
         verify(snapshotRepository, never()).save(any(ReviewSnapshot.class));
         verifyNoInteractions(auditService);
@@ -616,7 +617,7 @@ class SectionCitationReviewServiceTest {
         when(sectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
         when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
         when(sourceMatchingService.search(eq(projectId), any(), eq(5))).thenReturn(List.of());
-        when(aiModelClient.generate(anyString(), anyString()))
+        when(aiModelClient.generateForReview(anyString(), anyString()))
                 .thenReturn(new AiModelClient.GenerationResult(
                         "provider", "model", String.format(
                                 "{\"section_id\":\"%s\",\"chunk_index\":0,\"findings\":[]}",
@@ -631,7 +632,7 @@ class SectionCitationReviewServiceTest {
         assertThat(result.complete()).isFalse();
         assertThat(result.provider()).isEqualTo("provider");
         assertThat(result.limitations()).singleElement().asString().contains("Chunk 2/2");
-        verify(aiModelClient, times(2)).generate(anyString(), anyString());
+        verify(aiModelClient, times(2)).generateForReview(anyString(), anyString());
         verify(snapshotRepository).save(any(ReviewSnapshot.class));
     }
 
@@ -651,7 +652,7 @@ class SectionCitationReviewServiceTest {
         when(sectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
         when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
         when(sourceMatchingService.search(eq(projectId), any(), eq(5))).thenReturn(List.of());
-        when(aiModelClient.generate(anyString(), anyString())).thenReturn(
+        when(aiModelClient.generateForReview(anyString(), anyString())).thenReturn(
                 new AiModelClient.GenerationResult("provider", "model", String.format("""
                         {"section_id":"%s","chunk_index":0,"findings":[{
                           "type":"UNSUBSTANTIATED_CLAIM","excerpt":"%s",
@@ -674,7 +675,7 @@ class SectionCitationReviewServiceTest {
             assertThat(finding.startOffset()).isEqualTo(excerptStart);
             assertThat(finding.endOffset()).isEqualTo(excerptStart + excerpt.length());
         });
-        verify(aiModelClient, times(2)).generate(anyString(), anyString());
+        verify(aiModelClient, times(2)).generateForReview(anyString(), anyString());
     }
 
     @Test
@@ -761,7 +762,7 @@ class SectionCitationReviewServiceTest {
         assertThat(result.complete()).isTrue();
         assertThat(result.findings()).isEmpty();
         assertThat(result.summary()).containsAnyOf("exempt", "not applicable");
-        verify(aiModelClient, never()).generate(anyString(), anyString());
+        verify(aiModelClient, never()).generateForReview(anyString(), anyString());
         verify(sourceMatchingService, never()).search(any(), any(), anyInt());
         verify(snapshotRepository).save(any(ReviewSnapshot.class));
     }
@@ -781,7 +782,7 @@ class SectionCitationReviewServiceTest {
                 .satisfies(exception -> assertThat(
                         ((ResponseStatusException) exception).getStatusCode())
                         .isEqualTo(HttpStatus.CONFLICT));
-        verify(aiModelClient, never()).generate(anyString(), anyString());
+        verify(aiModelClient, never()).generateForReview(anyString(), anyString());
     }
 
     @Test

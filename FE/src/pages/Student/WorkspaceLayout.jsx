@@ -821,17 +821,26 @@ export default function WorkspaceLayout() {
   };
 
   const fetchSectionTraces = useCallback(async () => {
-    if (!project?.id || !selectedSectionId) return;
+    if (!selectedPaper?.id || !selectedSectionId || !canEditCurrentSection) {
+      setSectionTraces([]);
+      return;
+    }
     const requestId = ++sectionTracesRequestRef.current;
-    const sectionId = selectedSectionId;
     try {
-      const { data } = await api.get(`/api/projects/${project.id}/evidence-traces`);
+      const { data } = await api.get(
+        `/api/papers/${selectedPaper.id}/sections/${selectedSectionId}/traces`,
+      );
       if (sectionTracesRequestRef.current !== requestId) return;
-      setSectionTraces((data || []).filter(trace => String(trace.sectionId) === String(sectionId)));
+      setSectionTraces(data || []);
+      setTraceError('');
     } catch {
       if (sectionTracesRequestRef.current === requestId) setTraceError(t('tracesLoadFailed'));
     }
-  }, [project?.id, selectedSectionId, t]);
+  }, [canEditCurrentSection, selectedPaper?.id, selectedSectionId, t]);
+
+  useEffect(() => {
+    fetchSectionTraces();
+  }, [fetchSectionTraces]);
 
   const applyTraceResult = (updated) => {
     setSectionTraces(prev => prev.map(trace =>
@@ -852,8 +861,14 @@ export default function WorkspaceLayout() {
       return data;
     } catch (error) {
       if (error.response?.status === 409) {
-        setTraceError(t('traceSectionChanged'));
-        showToast(t('traceSectionChanged'));
+        const errorCode = error.response?.data?.message || '';
+        const message = errorCode.includes('TRACE_ALREADY_JUDGED')
+          ? t('traceAlreadyJudged')
+          : errorCode.includes('SECTION_NOT_CHANGED')
+            ? t('traceSectionNotChanged')
+            : t('traceDecisionConflict');
+        setTraceError(message);
+        showToast(message);
         fetchSectionTraces();
       } else {
         showToast(t('traceDecisionFailed'));
@@ -874,13 +889,14 @@ export default function WorkspaceLayout() {
     if (aiReviewJobRef.current) return;
     aiReviewJobRef.current = 'saving';
     setLoadingAiReview(true);
+    let requestId = aiReviewRequestRef.current;
     try {
       const saved = await handleSaveDraft();
       if (!saved) return;
 
       const reviewedContent = codeContentRef.current;
       const sectionId = selectedSectionId;
-      const requestId = ++aiReviewRequestRef.current;
+      requestId = ++aiReviewRequestRef.current;
       aiReviewJobRef.current = 'submitting';
       setAiReviewError(null);
       setAiSourceMatches({});
@@ -897,8 +913,9 @@ export default function WorkspaceLayout() {
       setAiReviewResult(job.result);
       setAiReviewedContent(reviewedContent);
       showToast(t('aiReviewComplete'));
-      await fetchAiReviewSources(job.result, requestId);
+      setLoadingAiReview(false);
       fetchSectionTraces();
+      fetchAiReviewSources(job.result, requestId);
     } catch (error) {
       if (aiReviewRequestRef.current !== requestId) return;
       const status = error.response?.status || error.status;
@@ -947,6 +964,9 @@ export default function WorkspaceLayout() {
         try {
           await handleDecideTrace(trace, {
             studentAction: 'ADD_CITATION',
+            explanation: t('citationInsertTraceExplanation', {
+              source: candidate.title || candidate.sourceFilename || candidate.citationKey,
+            }),
             sourceId: candidate.sourceId || candidate.documentId,
             chunkId: candidate.documentChunkId,
             evidenceQuote: candidate.excerpt,
@@ -976,6 +996,9 @@ export default function WorkspaceLayout() {
         try {
           await handleDecideTrace(trace, {
             studentAction: 'ADD_CITATION',
+            explanation: t('citationInsertTraceExplanation', {
+              source: candidate.title || candidate.sourceFilename || candidate.citationKey,
+            }),
             sourceId: candidate.sourceId || candidate.documentId,
             chunkId: candidate.documentChunkId,
             evidenceQuote: candidate.excerpt,

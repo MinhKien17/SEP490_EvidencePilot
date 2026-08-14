@@ -37,6 +37,7 @@ public class AiModelClientImpl implements AiModelClient {
     private static final long RATE_LIMIT_FLOOR_MS = 60_000;
 
     private final RestClient restClient;
+    private final RestClient reviewRestClient;
     private final String baseUrl;
     private final ObjectMapper objectMapper;
     private final int maxRetries;
@@ -44,11 +45,13 @@ public class AiModelClientImpl implements AiModelClient {
 
     @Autowired
     public AiModelClientImpl(@Qualifier("aiRestClient") RestClient restClient,
+            @Qualifier("aiReviewRestClient") RestClient reviewRestClient,
             @Qualifier("aiModelBaseUrl") String baseUrl,
             ObjectMapper objectMapper,
             @Value("${ai.model.max-retries:3}") int maxRetries,
             AiModelCallGate aiModelCallGate) {
         this.restClient = restClient;
+        this.reviewRestClient = reviewRestClient;
         this.baseUrl = baseUrl == null || baseUrl.isBlank() ? "" : trimTrailingSlash(baseUrl);
         this.objectMapper = objectMapper;
         this.maxRetries = Math.max(0, maxRetries);
@@ -66,7 +69,17 @@ public class AiModelClientImpl implements AiModelClient {
 
     @Override
     public GenerationResult generate(String system, String prompt) {
-        Map<String, Object> response = call("/ai/generate", () -> restClient.post()
+        return generate(restClient, maxRetries, system, prompt);
+    }
+
+    @Override
+    public GenerationResult generateForReview(String system, String prompt) {
+        return generate(reviewRestClient, 1, system, prompt);
+    }
+
+    private GenerationResult generate(
+            RestClient client, int retryLimit, String system, String prompt) {
+        Map<String, Object> response = call("/ai/generate", retryLimit, () -> client.post()
                 .uri(baseUrl + "/ai/generate")
                 .body(Map.of(
                         "system", system == null ? "" : system,
@@ -179,6 +192,10 @@ public class AiModelClientImpl implements AiModelClient {
     }
 
     private <T> T call(String endpoint, AiCall<T> call) {
+        return call(endpoint, maxRetries, call);
+    }
+
+    private <T> T call(String endpoint, int retryLimit, AiCall<T> call) {
         if (baseUrl.isBlank()) {
             throw new AiApiException(endpoint, 503, "AI_MODEL_BASE_URL is not configured", null);
         }
@@ -190,7 +207,7 @@ public class AiModelClientImpl implements AiModelClient {
                 throw e;
             } catch (RestClientResponseException e) {
                 int status = e.getStatusCode().value();
-                if (!RETRYABLE_STATUSES.contains(status) || attempt >= maxRetries) {
+                if (!RETRYABLE_STATUSES.contains(status) || attempt >= retryLimit) {
                     throw new AiApiException(endpoint, status);
                 }
                 long retryAfterMillis = retryAfterMillis(e);
@@ -202,7 +219,7 @@ public class AiModelClientImpl implements AiModelClient {
                                     Math.min(BASE_RETRY_DELAY_MS * (1L << (attempt - 1)), MAX_RETRY_DELAY_MS))
                             : Math.min(BASE_RETRY_DELAY_MS * (1L << (attempt - 1)), MAX_RETRY_DELAY_MS);
                 log.warn("AI endpoint {} returned HTTP {} at configured base URL {}; retry {}/{} in {} ms.",
-                        endpoint, status, baseUrl, attempt, maxRetries, backoffMillis);
+                        endpoint, status, baseUrl, attempt, retryLimit, backoffMillis);
                 sleep(backoffMillis);
             } catch (RestClientException e) {
                 log.warn("AI endpoint {} failed at configured base URL {}.", endpoint, baseUrl, e);

@@ -10,9 +10,9 @@ import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.EvidenceRevisionTrace;
 import com.evidencepilot.model.PaperSection;
-import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.InstructorJudgment;
+import com.evidencepilot.model.enums.StudentAction;
 import com.evidencepilot.model.enums.TraceOutcome;
 import com.evidencepilot.prompt.TraceRecheckPrompt;
 import com.evidencepilot.repository.CitationReviewRoundRepository;
@@ -28,13 +28,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -42,14 +42,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class EvidenceTraceService {
 
     private static final int PASSAGE_RADIUS = 120;
     private static final int EVIDENCE_TEXT_LIMIT = 1_200;
-    private static final int MAX_RECHECK_PER_RUN = 10;
 
     private final CitationReviewRoundRepository roundRepository;
     private final EvidenceRevisionTraceRepository traceRepository;
@@ -63,7 +61,7 @@ public class EvidenceTraceService {
     private final ObjectMapper objectMapper;
 
     @Transactional
-    public List<EvidenceTraceResponse> materialize(
+    public RoundMaterialization materialize(
             UUID documentId,
             UUID sectionId,
             UUID requestedByUserId,
@@ -72,10 +70,9 @@ public class EvidenceTraceService {
                 .filter(found -> documentId.equals(found.getDocument().getId()))
                 .filter(PaperSection::isActive)
                 .orElseThrow(() -> new ResourceNotFoundException(sectionId, "PaperSection"));
-        if (roundRepository.existsBySectionIdAndContentFingerprint(
-                sectionId, review.contentFingerprint())) {
-            return tracesFor(sectionId, review);
-        }
+        CitationReviewRound previousRound = roundRepository
+                .findFirstBySectionIdOrderByCreatedAtDesc(sectionId)
+                .orElse(null);
         User requestedBy = userRepository.findById(requestedByUserId)
                 .orElseThrow(() -> new ResourceNotFoundException(requestedByUserId, "User"));
         CitationReviewRound round = new CitationReviewRound();
@@ -97,7 +94,13 @@ public class EvidenceTraceService {
             traces.add(toTrace(round, section, index, finding));
         }
         traceRepository.saveAll(traces);
-        return traces.stream().map(this::toResponse).toList();
+        boolean recheckRequired = previousRound != null
+                && traceRepository.findByRoundIdOrderByFindingIndex(previousRound.getId()).stream()
+                        .anyMatch(trace -> trace.getStudentAction() != null);
+        return new RoundMaterialization(
+                round.getId(),
+                previousRound == null ? null : previousRound.getId(),
+                recheckRequired);
     }
 
     @Transactional
@@ -110,18 +113,25 @@ public class EvidenceTraceService {
                 .filter(found -> sectionId.equals(found.getSection().getId()))
                 .filter(found -> documentId.equals(found.getSection().getDocument().getId()))
                 .orElseThrow(() -> new ResourceNotFoundException(traceId, "EvidenceRevisionTrace"));
-        PaperSection section = trace.getSection();
-        String currentFingerprint = sectionCitationReviewService.fingerprint(section);
-        if (!currentFingerprint.equals(trace.getRound().getContentFingerprint())) {
+        if (trace.getJudgment() != null) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "SECTION_CONTENT_CHANGED: the section changed since this review; run Citation Review again");
+                    "TRACE_ALREADY_JUDGED: the instructor judgment locks this trace");
+        }
+        PaperSection section = trace.getSection();
+        String currentFingerprint = sectionCitationReviewService.fingerprint(section);
+        boolean sectionChanged = !currentFingerprint.equals(trace.getRound().getContentFingerprint());
+        if (request.studentAction() != StudentAction.DISMISS_WITH_REASON
+                && !sectionChanged) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "SECTION_NOT_CHANGED: this action requires a saved section revision");
         }
         // ponytail: blind substring around the frozen excerpt offsets; becomes
         // misaligned garbage after heavy rewrites. Upgrade path: diff against
         // project_checkpoints.snapshot_json instead of offset arithmetic.
         trace.setStudentAction(request.studentAction());
-        trace.setExplanation(request.explanation());
+        trace.setExplanation(request.explanation().trim());
         if (request.sourceId() != null) {
             trace.setSource(documentRepository.findById(request.sourceId()).orElse(null));
             trace.setSourceReplaced(true);
@@ -135,16 +145,17 @@ public class EvidenceTraceService {
                 trace.getExcerptStart(), trace.getExcerptEnd()));
         trace.setAfterFingerprint(currentFingerprint);
         trace.setAfterSectionVersion(section.getVersion());
-        trace.setAccepted(request.accepted());
-        trace.setActualEditHash(request.actualEditHash());
-        trace.setRoundDurationMs(request.roundDurationMs());
-        trace.setOutcome(TraceOutcome.UNRESOLVED);
+        LocalDateTime now = LocalDateTime.now();
+        trace.setRoundDurationMs(Math.max(0,
+                Duration.between(trace.getRound().getCreatedAt(), now).toMillis()));
+        trace.setOutcome(sectionChanged ? TraceOutcome.STALE : TraceOutcome.UNRESOLVED);
         return toResponse(traceRepository.save(trace));
     }
 
     @Transactional
     public void stampStaleOnContentChanged(UUID sectionId, String content, Integer version) {
-        List<EvidenceRevisionTrace> open = traceRepository.findBySectionIdOrderByIdDesc(sectionId).stream()
+        List<EvidenceRevisionTrace> open = traceRepository
+                .findBySectionIdOrderByCreatedAtDesc(sectionId).stream()
                 .filter(trace -> trace.getOutcome() == null || trace.getOutcome() == TraceOutcome.UNRESOLVED)
                 .filter(trace -> trace.getJudgment() == null)
                 .toList();
@@ -157,60 +168,83 @@ public class EvidenceTraceService {
     }
 
     @Transactional
-    public void recheck(UUID documentId, UUID sectionId, SectionCitationReviewResponse review) {
-        PaperSection section = paperSectionRepository.findByIdWithDocument(sectionId)
-                .filter(found -> documentId.equals(found.getDocument().getId()))
-                .orElseThrow(() -> new ResourceNotFoundException(sectionId, "PaperSection"));
-        List<EvidenceRevisionTrace> candidates = traceRepository
-                .findBySectionIdOrderByIdDesc(sectionId).stream()
-                .filter(trace -> trace.getOutcome() == TraceOutcome.STALE)
-                .filter(trace -> trace.getStudentAction() != null)
-                .filter(trace -> trace.getAfterPassage() != null && !trace.getAfterPassage().isBlank())
-                .limit(MAX_RECHECK_PER_RUN)
-                .toList();
-        for (EvidenceRevisionTrace trace : candidates) {
-            try {
-                recheckOne(section, trace);
-            } catch (RuntimeException exception) {
-                log.warn("Trace recheck {} failed: {}", trace.getId(), exception.getMessage());
-            }
+    public int recheck(UUID projectId, UUID previousRoundId, UUID linkedRoundId) {
+        CitationReviewRound previousRound = roundRepository.findById(previousRoundId)
+                .orElseThrow(() -> new ResourceNotFoundException(previousRoundId, "CitationReviewRound"));
+        CitationReviewRound linkedRound = roundRepository.findById(linkedRoundId)
+                .orElseThrow(() -> new ResourceNotFoundException(linkedRoundId, "CitationReviewRound"));
+        if (!projectId.equals(previousRound.getProject().getId())
+                || !projectId.equals(linkedRound.getProject().getId())
+                || !previousRound.getSection().getId().equals(linkedRound.getSection().getId())) {
+            throw new IllegalArgumentException("Trace recheck rounds must belong to the same project section");
         }
-    }
+        List<EvidenceRevisionTrace> candidates = traceRepository
+                .findByRoundIdOrderByFindingIndex(previousRoundId).stream()
+                .filter(trace -> trace.getStudentAction() != null)
+                .toList();
+        if (candidates.isEmpty()) {
+            return 0;
+        }
 
-    private void recheckOne(PaperSection section, EvidenceRevisionTrace trace) {
+        PaperSection section = linkedRound.getSection();
         Map<String, Object> context = new LinkedHashMap<>();
         context.put("sectionTitle", section.getSectionTitle());
-        context.put("excerpt", trace.getExcerpt());
-        context.put("rationale", trace.getRationale());
-        context.put("evidence", trace.getEvidenceQuote() == null ? "" : trace.getEvidenceQuote());
-        context.put("studentAction", trace.getStudentAction() == null ? null : trace.getStudentAction().name());
-        context.put("studentExplanation", trace.getExplanation() == null ? "" : trace.getExplanation());
-        context.put("revisedPassage", trace.getAfterPassage());
+        context.put("traces", candidates.stream().map(trace -> {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("traceId", trace.getId());
+            item.put("excerpt", trace.getExcerpt());
+            item.put("rationale", trace.getRationale());
+            item.put("evidence", trace.getEvidenceQuote() == null ? "" : trace.getEvidenceQuote());
+            item.put("studentAction", trace.getStudentAction().name());
+            item.put("studentExplanation", trace.getExplanation());
+            item.put("revisedPassage", trace.getAfterPassage());
+            return item;
+        }).toList());
         String prompt;
         try {
             prompt = objectMapper.writeValueAsString(context);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Could not serialize trace recheck context", exception);
         }
-        AiModelClient.GenerationResult generation = aiModelClient.generate(
+        AiModelClient.GenerationResult generation = aiModelClient.generateForReview(
                 TraceRecheckPrompt.SYSTEM, prompt);
-        RecheckVerdict verdict;
+        RecheckBatch batch;
         try {
-            verdict = recheckMapper().readValue(
-                    extractJson(generation.response()), RecheckVerdict.class);
+            batch = recheckMapper().readValue(
+                    extractJsonObject(generation.response()), RecheckBatch.class);
         } catch (JsonProcessingException exception) {
             throw new IllegalArgumentException("Recheck verdict is not valid JSON", exception);
         }
-        if (verdict.judgment() == null) {
-            throw new IllegalArgumentException("Recheck verdict missing judgment");
+        List<RecheckVerdict> verdicts = batch.results();
+        if (verdicts == null) {
+            throw new IllegalArgumentException("Recheck verdict did not contain results");
         }
-        trace.setJudgment(verdict.judgment());
-        trace.setOutcome(switch (verdict.judgment()) {
-            case EFFECTIVE -> TraceOutcome.RESOLVED;
-            case PARTIAL -> TraceOutcome.PARTIALLY_RESOLVED;
-            case INEFFECTIVE -> TraceOutcome.UNRESOLVED;
-        });
-        traceRepository.save(trace);
+        if (verdicts.size() != candidates.size()) {
+            throw new IllegalArgumentException("Recheck verdict count does not match the trace batch");
+        }
+        Map<UUID, RecheckVerdict> verdictByTraceId = new LinkedHashMap<>();
+        for (RecheckVerdict verdict : verdicts) {
+            if (verdict.traceId() == null || verdict.judgment() == null
+                    || verdict.reason() == null || verdict.reason().isBlank()
+                    || verdict.reason().length() > 400
+                    || verdictByTraceId.putIfAbsent(verdict.traceId(), verdict) != null) {
+                throw new IllegalArgumentException("Recheck verdict is incomplete or duplicated");
+            }
+        }
+        LocalDateTime recheckedAt = LocalDateTime.now();
+        for (EvidenceRevisionTrace trace : candidates) {
+            RecheckVerdict verdict = verdictByTraceId.get(trace.getId());
+            if (verdict == null) {
+                throw new IllegalArgumentException("Recheck verdict referenced a different trace batch");
+            }
+            trace.setLinkedRound(linkedRound);
+            trace.setLinkedMode(CitationReviewRound.LINK_MODE_REVISION_CHAIN);
+            trace.setAiRecheckJudgment(verdict.judgment());
+            trace.setAiRecheckReason(verdict.reason().trim());
+            trace.setAiRecheckedAt(recheckedAt);
+        }
+        traceRepository.saveAll(candidates);
+        return candidates.size();
     }
 
     @Transactional(readOnly = true)
@@ -222,6 +256,16 @@ public class EvidenceTraceService {
         return traces.stream().map(this::toResponse).toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<EvidenceTraceResponse> listSectionTraces(UUID documentId, UUID sectionId) {
+        PaperSection section = paperSectionRepository.findByIdWithDocument(sectionId)
+                .filter(found -> documentId.equals(found.getDocument().getId()))
+                .orElseThrow(() -> new ResourceNotFoundException(sectionId, "PaperSection"));
+        return traceRepository.findBySectionIdOrderByCreatedAtDesc(section.getId()).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
     @Transactional
     public EvidenceTraceResponse review(UUID projectId, UUID traceId, TraceReviewRequest request) {
         EvidenceRevisionTrace trace = traceRepository.findById(traceId)
@@ -231,16 +275,13 @@ public class EvidenceTraceService {
         trace.setInstructor(instructor);
         trace.setJudgment(request.judgment());
         trace.setInstructorFeedback(request.instructorFeedback());
-        trace.setOutcome(TraceOutcome.RESOLVED);
+        trace.setOutcome(switch (request.judgment()) {
+            case EFFECTIVE -> TraceOutcome.RESOLVED;
+            case PARTIAL -> TraceOutcome.PARTIALLY_RESOLVED;
+            case INEFFECTIVE -> TraceOutcome.UNRESOLVED;
+        });
         trace.setJudgedAt(LocalDateTime.now());
         return toResponse(traceRepository.save(trace));
-    }
-
-    public List<EvidenceTraceResponse> tracesFor(UUID sectionId, SectionCitationReviewResponse review) {
-        return traceRepository.findBySectionIdOrderByIdDesc(sectionId).stream()
-                .filter(trace -> review.contentFingerprint().equals(trace.getRound().getContentFingerprint()))
-                .map(this::toResponse)
-                .toList();
     }
 
     private EvidenceRevisionTrace toTrace(
@@ -336,6 +377,9 @@ public class EvidenceTraceService {
                 trace.getJudgedAt(),
                 trace.getLinkedRound() == null ? null : trace.getLinkedRound().getId(),
                 trace.getLinkedMode(),
+                trace.getAiRecheckJudgment(),
+                trace.getAiRecheckReason(),
+                trace.getAiRecheckedAt(),
                 trace.getCreatedAt());
     }
 
@@ -356,20 +400,32 @@ public class EvidenceTraceService {
                 .disable(DeserializationFeature.ACCEPT_FLOAT_AS_INT);
     }
 
-    private static String extractJson(String response) {
+    private static String extractJsonObject(String response) {
         if (response == null) {
             throw new IllegalArgumentException("Empty AI response");
         }
-        int start = response.indexOf('{');
-        int end = response.lastIndexOf('}');
+        String stripped = response.replaceAll("(?s)```(?:json)?|```", "");
+        int start = stripped.indexOf('{');
+        int end = stripped.lastIndexOf('}');
         if (start < 0 || end < start) {
-            throw new IllegalArgumentException("AI response did not contain JSON");
+            throw new IllegalArgumentException("AI response did not contain a JSON object");
         }
-        return response.substring(start, end + 1);
+        return stripped.substring(start, end + 1);
+    }
+
+    private record RecheckBatch(
+            @JsonProperty("results") List<RecheckVerdict> results) {
     }
 
     private record RecheckVerdict(
+            @JsonProperty("traceId") UUID traceId,
             @JsonProperty("judgment") InstructorJudgment judgment,
             @JsonProperty("reason") String reason) {
+    }
+
+    public record RoundMaterialization(
+            UUID roundId,
+            UUID previousRoundId,
+            boolean recheckRequired) {
     }
 }

@@ -64,6 +64,7 @@ class AiClientConfigTest {
                     .run(context -> {
                         AiModelClientImpl client = new AiModelClientImpl(
                                 context.getBean("aiRestClient", RestClient.class),
+                                context.getBean("aiReviewRestClient", RestClient.class),
                                 context.getBean("aiModelBaseUrl", String.class),
                                 new com.fasterxml.jackson.databind.ObjectMapper(),
                                 3,

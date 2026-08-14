@@ -39,6 +39,9 @@ public record EvidenceTraceResponse(
         LocalDateTime judgedAt,
         UUID linkedRoundId,
         String linkedMode,
+        InstructorJudgment aiRecheckJudgment,
+        String aiRecheckReason,
+        LocalDateTime aiRecheckedAt,
         LocalDateTime createdAt
 ) {
 }

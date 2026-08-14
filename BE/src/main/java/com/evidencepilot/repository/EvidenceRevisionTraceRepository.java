@@ -10,7 +10,9 @@ import java.util.List;
 import java.util.UUID;
 
 public interface EvidenceRevisionTraceRepository extends JpaRepository<EvidenceRevisionTrace, UUID> {
-    List<EvidenceRevisionTrace> findBySectionIdOrderByIdDesc(UUID sectionId);
+    List<EvidenceRevisionTrace> findBySectionIdOrderByCreatedAtDesc(UUID sectionId);
+
+    List<EvidenceRevisionTrace> findByRoundIdOrderByFindingIndex(UUID roundId);
 
     @Query("""
             select t from EvidenceRevisionTrace t

@@ -96,12 +96,6 @@ public class EvidenceRevisionTrace {
     @Column(name = "after_fingerprint", length = 64)
     private String afterFingerprint;
 
-    @Column(name = "actual_edit_hash", length = 64)
-    private String actualEditHash;
-
-    @Column(name = "accepted")
-    private Boolean accepted;
-
     @Column(name = "round_duration_ms")
     private Long roundDurationMs;
 
@@ -135,6 +129,16 @@ public class EvidenceRevisionTrace {
 
     @Column(name = "linked_mode")
     private String linkedMode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "ai_recheck_judgment")
+    private InstructorJudgment aiRecheckJudgment;
+
+    @Column(name = "ai_recheck_reason", columnDefinition = "TEXT")
+    private String aiRecheckReason;
+
+    @Column(name = "ai_rechecked_at")
+    private LocalDateTime aiRecheckedAt;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

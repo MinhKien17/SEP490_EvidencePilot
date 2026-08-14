@@ -27,6 +27,7 @@ public class AiEvaluationJob {
     public static final String KIND_SECTION_CITATION_REVIEW = "SECTION_CITATION_REVIEW";
     public static final String KIND_SECTION_SUGGESTION = "SECTION_SUGGESTION";
     public static final String KIND_SOURCE_MATCHES = "SOURCE_MATCHES";
+    public static final String KIND_TRACE_RECHECK = "TRACE_RECHECK";
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

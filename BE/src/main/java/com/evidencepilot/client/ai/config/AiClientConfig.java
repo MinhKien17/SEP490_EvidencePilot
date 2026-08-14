@@ -63,9 +63,18 @@ public class AiClientConfig {
      */
     @Bean("aiRestClient")
     public RestClient aiRestClient() {
+        return buildRestClient(readTimeoutSeconds);
+    }
+
+    @Bean("aiReviewRestClient")
+    public RestClient aiReviewRestClient() {
+        return buildRestClient(120);
+    }
+
+    private RestClient buildRestClient(long timeoutSeconds) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(5));
-        requestFactory.setReadTimeout(Duration.ofSeconds(Math.max(1, readTimeoutSeconds)));
+        requestFactory.setReadTimeout(Duration.ofSeconds(Math.max(1, timeoutSeconds)));
 
         RestClient.Builder builder = RestClient.builder()
                 .requestFactory(requestFactory)

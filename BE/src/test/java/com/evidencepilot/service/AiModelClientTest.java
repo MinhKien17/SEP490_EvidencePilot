@@ -37,7 +37,7 @@ class AiModelClientTest {
     }
 
     private static AiModelClientImpl client(RestClient restClient, String baseUrl, int maxRetries) {
-        return new AiModelClientImpl(restClient, baseUrl, new ObjectMapper(), maxRetries,
+        return new AiModelClientImpl(restClient, restClient, baseUrl, new ObjectMapper(), maxRetries,
                 new AiModelCallGate(new Semaphore(4)));
     }
 
@@ -115,6 +115,24 @@ class AiModelClientTest {
                 AiModelClient.AiApiException.class,
                 () -> client(builder.build(), "http://ai.test", 1)
                         .generate("system", "prompt"));
+
+        assertThat(error.getStatusCode()).isEqualTo(429);
+        server.verify();
+    }
+
+    @Test
+    void generateForReviewUsesAtMostOneRetry() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("http://ai.test/ai/generate"))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS).header("Retry-After", "0"));
+        server.expect(requestTo("http://ai.test/ai/generate"))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS).header("Retry-After", "0"));
+
+        AiModelClient.AiApiException error = assertThrows(
+                AiModelClient.AiApiException.class,
+                () -> client(builder.build(), "http://ai.test", 5)
+                        .generateForReview("system", "prompt"));
 
         assertThat(error.getStatusCode()).isEqualTo(429);
         server.verify();

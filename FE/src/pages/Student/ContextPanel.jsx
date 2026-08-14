@@ -412,8 +412,49 @@ export default function ContextPanel({
                   {t('aiAnalyzing')}
                 </div>
               )}
-              {!aiReviewLoading && !aiReview && !aiReviewError && (
+              {(aiReview || sectionTraces.length > 0) && !aiReviewLoading && (
+                <div className="grid grid-cols-1 gap-1.5 rounded-xl border border-(--border) bg-(--surface) p-3 text-[10px] sm:grid-cols-3">
+                  <span className="rounded-lg bg-emerald-50 px-2 py-1.5 font-bold text-emerald-700">
+                    {aiReview ? t('reviewCompletedStatus') : t('savedTraceStatus')}
+                  </span>
+                  <span className={`rounded-lg px-2 py-1.5 font-bold ${aiSourcesLoading ? 'bg-amber-50 text-amber-700' : aiSourcesError ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
+                    {aiSourcesLoading
+                      ? t('sourceMatchesLoadingStatus')
+                      : aiSourcesError
+                        ? t('sourceMatchesFailedStatus')
+                        : aiReview
+                          ? t('sourceMatchesReadyStatus')
+                          : t('sourceMatchesUnavailableStatus')}
+                  </span>
+                  <span className={`rounded-lg px-2 py-1.5 font-bold ${sectionTraces.some(trace => trace.aiRecheckedAt) ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
+                    {sectionTraces.some(trace => trace.aiRecheckedAt)
+                      ? t('aiComparisonReadyStatus')
+                      : t('aiComparisonPendingStatus')}
+                  </span>
+                </div>
+              )}
+              {!aiReviewLoading && !aiReview && !aiReviewError && sectionTraces.length === 0 && (
                 <div className="rounded-xl border border-dashed border-(--border) p-6 text-center text-xs text-(--text-tertiary)">{t('sectionNotReviewed')}</div>
+              )}
+              {!aiReviewLoading && !aiReview && sectionTraces.length > 0 && (
+                <div className="space-y-2 rounded-xl border border-(--border) bg-(--surface) p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('savedTraceDecisions')}</p>
+                  {sectionTraces.slice(0, 10).map(trace => (
+                    <div key={trace.id} className="rounded-lg border border-(--border-light) bg-(--surface-secondary) p-2.5 text-[10px]">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-bold text-(--text-primary)">#{trace.findingIndex + 1} {trace.studentAction?.replaceAll('_', ' ') || t('notAddressed')}</span>
+                        {trace.judgment && <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-bold text-emerald-700">{trace.judgment}</span>}
+                      </div>
+                      <p className="mt-1 line-clamp-2 italic text-(--text-secondary)">“{trace.excerpt || ''}”</p>
+                      {trace.explanation && <p className="mt-1 text-(--text-secondary)">{trace.explanation}</p>}
+                      {trace.aiRecheckJudgment && (
+                        <p className="mt-1 rounded bg-indigo-50 p-1.5 text-indigo-700">
+                          {t('aiAdvisory')}: <strong>{trace.aiRecheckJudgment}</strong>{trace.aiRecheckReason ? ` — ${trace.aiRecheckReason}` : ''}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
               {aiReview && !aiReviewLoading && (
                 <>
@@ -430,6 +471,7 @@ export default function ContextPanel({
                     const traceUpdating = Boolean(trace && updatingTraceIds?.includes(trace.id));
                     const outcome = trace?.outcome;
                     const decided = Boolean(trace?.studentAction);
+                    const judged = Boolean(trace?.judgment);
                     const draft = decideDraft?.findingIndex === index;
                     return (
                       <div key={trace?.id || `${finding.type}-${finding.startOffset}-${finding.endOffset}`} className={`rounded-xl border bg-(--surface) p-4 shadow-sm ${outcome === 'RESOLVED' ? 'border-emerald-300' : 'border-(--border)'}`}>
@@ -454,6 +496,18 @@ export default function ContextPanel({
                             </span>
                           )}
                         </button>
+                        {trace?.aiRecheckJudgment && (
+                          <div className="mt-2 rounded-lg border border-indigo-200 bg-indigo-50 p-2 text-[10px] text-indigo-800">
+                            <p className="font-bold">{t('aiAdvisory')}: {trace.aiRecheckJudgment}</p>
+                            {trace.aiRecheckReason && <p className="mt-0.5 leading-relaxed">{trace.aiRecheckReason}</p>}
+                          </div>
+                        )}
+                        {trace?.judgment && (
+                          <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[10px] text-emerald-800">
+                            <p className="font-bold">{t('instructorJudgment')}: {trace.judgment}</p>
+                            {trace.instructorFeedback && <p className="mt-0.5 leading-relaxed">{trace.instructorFeedback}</p>}
+                          </div>
+                        )}
                         <div className="mt-3 border-t border-(--border-light) pt-3">
                           <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('relatedSources')}</p>
                           {aiSourcesLoading ? (
@@ -472,7 +526,7 @@ export default function ContextPanel({
                                     <span className="text-[9px] font-bold text-indigo-600">{Number.isFinite(candidate.similarityScore) ? `${Math.round(candidate.similarityScore * 100)}%` : '--'}</span>
                                   </div>
                                   <p className="mt-1 line-clamp-3 text-[10px] italic leading-relaxed text-(--text-secondary)">“{candidate.excerpt}”</p>
-                                  <button type="button" onClick={() => onInsertCitation(finding, index, candidate, trace)} disabled={!trace || decided || traceUpdating || !canReviewSection}
+                                  <button type="button" onClick={() => onInsertCitation(finding, index, candidate, trace)} disabled={!trace || decided || judged || traceUpdating || !canReviewSection}
                                     className="mt-2 w-full rounded bg-(--brand) px-2 py-1 text-[10px] font-bold text-(--on-brand) hover:bg-(--brand-hover) disabled:opacity-40">
                                     {traceUpdating ? t('saving') : decided ? t('citationInserted') : t('insertCitation')}
                                   </button>
@@ -482,9 +536,9 @@ export default function ContextPanel({
                           )}
                           {!draft && (
                             <button type="button" onClick={() => setDecideDraft({ findingIndex: index, action: decided ? trace.studentAction : '', sourceId: trace?.sourceId || '', evidenceQuote: trace?.evidenceQuote || '', relation: trace?.evidenceRelation || '', explanation: trace?.explanation || '' })}
-                              disabled={!trace || traceUpdating || !canReviewSection}
+                              disabled={!trace || judged || traceUpdating || !canReviewSection}
                               className="mt-2 w-full rounded-lg border border-(--border) px-2 py-1.5 text-[10px] font-bold text-(--text-secondary) hover:bg-(--surface-secondary) disabled:opacity-40">
-                              {decided ? t('editTraceDecision') : t('recordTraceDecision')}
+                              {judged ? t('traceJudgedLocked') : decided ? t('editTraceDecision') : t('recordTraceDecision')}
                             </button>
                           )}
                           {draft && trace && (
@@ -536,16 +590,19 @@ export default function ContextPanel({
                                 </label>
                               )}
                               <label className="block">
-                                <span className="mb-1 block text-[9px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('explanation')}</span>
+                                <span className="mb-1 block text-[9px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('explanation')} *</span>
                                 <textarea
                                   value={decideDraft.explanation}
                                   onChange={e => setDecideDraft(prev => ({ ...prev, explanation: e.target.value }))}
+                                  maxLength={2000}
+                                  required
                                   rows={2}
                                   className="w-full rounded-lg border border-(--border) bg-(--surface) px-2 py-1.5 text-[10px] text-(--text-secondary) outline-none resize-y"
                                   placeholder={t('explanationPlaceholder')} />
+                                <span className="mt-0.5 block text-right text-[9px] text-(--text-tertiary)">{decideDraft.explanation.length}/2000</span>
                               </label>
                               <div className="flex gap-2">
-                                <button type="button" disabled={!decideDraft.action || traceUpdating}
+                                <button type="button" disabled={!decideDraft.action || !decideDraft.explanation.trim() || traceUpdating}
                                   onClick={async () => {
                                     try {
                                       await onDecideTrace(trace, {
@@ -554,7 +611,7 @@ export default function ContextPanel({
                                         chunkId: decideDraft.chunkId || null,
                                         evidenceQuote: decideDraft.evidenceQuote || null,
                                         relation: decideDraft.relation || null,
-                                        explanation: decideDraft.explanation || null,
+                                        explanation: decideDraft.explanation.trim(),
                                       });
                                       setDecideDraft(null);
                                     } catch { /* toast shown by parent */ }

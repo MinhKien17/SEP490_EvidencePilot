@@ -210,8 +210,15 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
                         sectionId,
                         payload.path("contentFingerprint").asText(),
                         requestedByUserId);
-                evidenceTraceService.materialize(documentId, sectionId, requestedByUserId, review);
-                evidenceTraceService.recheck(documentId, sectionId, review);
+                EvidenceTraceService.RoundMaterialization materialization =
+                        evidenceTraceService.materialize(
+                                documentId, sectionId, requestedByUserId, review);
+                if (materialization.recheckRequired()) {
+                    submitTraceRecheck(
+                            projectId,
+                            materialization.previousRoundId(),
+                            materialization.roundId());
+                }
                 yield objectMapper.valueToTree(review);
             }
             case AiEvaluationJob.KIND_SECTION_SUGGESTION -> {
@@ -234,8 +241,39 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
                 yield sectionSuggestionResult(section, job.getProjectId(), sectionType);
             }
             case AiEvaluationJob.KIND_SOURCE_MATCHES -> runSourceMatches(job, payload);
+            case AiEvaluationJob.KIND_TRACE_RECHECK -> {
+                UUID projectId = UUID.fromString(payload.path("projectId").asText());
+                if (!job.getProjectId().equals(projectId)) {
+                    throw new IllegalArgumentException(
+                            "Trace recheck payload project does not match its job");
+                }
+                UUID previousRoundId = UUID.fromString(payload.path("previousRoundId").asText());
+                UUID linkedRoundId = UUID.fromString(payload.path("linkedRoundId").asText());
+                int rechecked = evidenceTraceService.recheck(
+                        projectId, previousRoundId, linkedRoundId);
+                yield objectMapper.valueToTree(Map.of(
+                        "previousRoundId", previousRoundId,
+                        "linkedRoundId", linkedRoundId,
+                        "rechecked", rechecked));
+            }
             default -> throw new IllegalStateException("Unknown AI evaluation job kind: " + job.getKind());
         };
+    }
+
+    private void submitTraceRecheck(
+            UUID projectId, UUID previousRoundId, UUID linkedRoundId) {
+        try {
+            String payload = objectMapper.writeValueAsString(Map.of(
+                    "projectId", projectId,
+                    "previousRoundId", previousRoundId,
+                    "linkedRoundId", linkedRoundId));
+            submit(projectId, AiEvaluationJob.KIND_TRACE_RECHECK, payload);
+        } catch (Exception exception) {
+            log.warn(
+                    "Citation Review round {} succeeded, but TRACE_RECHECK could not be queued: {}",
+                    linkedRoundId,
+                    exception.getMessage());
+        }
     }
 
     private JsonNode runSourceMatches(AiEvaluationJob job, JsonNode payload) throws Exception {

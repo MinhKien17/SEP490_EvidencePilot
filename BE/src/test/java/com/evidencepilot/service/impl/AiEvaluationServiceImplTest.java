@@ -25,6 +25,7 @@ import java.time.LocalDateTime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -178,6 +179,10 @@ class AiEvaluationServiceImplTest {
                         "Done",
                         List.of(),
                         List.of()));
+        when(evidenceTraceService.materialize(
+                eq(documentId), eq(sectionId), eq(requesterId), any(SectionCitationReviewResponse.class)))
+                .thenReturn(new EvidenceTraceService.RoundMaterialization(
+                        UUID.randomUUID(), null, false));
 
         service().process(jobId);
 
@@ -185,6 +190,92 @@ class AiEvaluationServiceImplTest {
         assertThat(job.getResultJson()).contains("section-citation-v1");
         verify(sectionCitationReviewService).run(
                 documentId, projectId, sectionId, "fingerprint", requesterId);
+        verify(evidenceTraceService, never()).recheck(any(), any(), any());
+    }
+
+    @Test
+    void process_sectionCitationReviewQueuesTraceRecheckAsSeparateJob() throws Exception {
+        UUID jobId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        UUID requesterId = UUID.randomUUID();
+        UUID previousRoundId = UUID.randomUUID();
+        UUID linkedRoundId = UUID.randomUUID();
+        AiEvaluationJob job = job(
+                sectionId,
+                projectId,
+                objectMapper.writeValueAsString(Map.of(
+                        "documentId", documentId,
+                        "projectId", projectId,
+                        "sectionId", sectionId,
+                        "contentFingerprint", "fingerprint",
+                        "requestedByUserId", requesterId)));
+        job.setKind(AiEvaluationJob.KIND_SECTION_CITATION_REVIEW);
+        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
+        when(jobRepository.save(any(AiEvaluationJob.class))).thenAnswer(invocation -> {
+            AiEvaluationJob saved = invocation.getArgument(0);
+            if (saved.getId() == null) saved.setId(UUID.randomUUID());
+            return saved;
+        });
+        when(sectionCitationReviewService.run(
+                documentId, projectId, sectionId, "fingerprint", requesterId))
+                .thenReturn(new SectionCitationReviewResponse(
+                        "section-citation-v1",
+                        "citation-rules-v1",
+                        sectionId,
+                        1,
+                        "fingerprint",
+                        LocalDateTime.now(),
+                        "provider",
+                        "model",
+                        true,
+                        "Done",
+                        List.of(),
+                        List.of()));
+        when(evidenceTraceService.materialize(
+                eq(documentId), eq(sectionId), eq(requesterId), any(SectionCitationReviewResponse.class)))
+                .thenReturn(new EvidenceTraceService.RoundMaterialization(
+                        linkedRoundId, previousRoundId, true));
+
+        service().process(jobId);
+
+        assertThat(job.getStatus()).isEqualTo(AiEvaluationJob.STATUS_SUCCESS);
+        verify(jobRepository).save(argThat(saved ->
+                AiEvaluationJob.KIND_TRACE_RECHECK.equals(saved.getKind())
+                        && saved.getPayloadJson().contains(previousRoundId.toString())
+                        && saved.getPayloadJson().contains(linkedRoundId.toString())));
+        verify(rabbitTemplate).convertAndSend(
+                eq(com.evidencepilot.config.infrastructure.RabbitMQConfig.AI_EVALUATION_QUEUE),
+                any(Map.class));
+        verify(evidenceTraceService, never()).recheck(any(), any(), any());
+    }
+
+    @Test
+    void process_traceRecheckFailureMarksOnlyRecheckJobFailed() throws Exception {
+        UUID jobId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID previousRoundId = UUID.randomUUID();
+        UUID linkedRoundId = UUID.randomUUID();
+        AiEvaluationJob job = job(
+                UUID.randomUUID(),
+                projectId,
+                objectMapper.writeValueAsString(Map.of(
+                        "projectId", projectId,
+                        "previousRoundId", previousRoundId,
+                        "linkedRoundId", linkedRoundId)));
+        job.setKind(AiEvaluationJob.KIND_TRACE_RECHECK);
+        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
+        when(evidenceTraceService.recheck(projectId, previousRoundId, linkedRoundId))
+                .thenThrow(new AiModelClient.AiApiException("/ai/generate", 503));
+
+        service().process(jobId);
+
+        assertThat(job.getStatus()).isEqualTo(AiEvaluationJob.STATUS_FAILED);
+        assertThat(job.getErrorMessage()).contains("503");
+        assertThat(job.getCompletedAt()).isNotNull();
+        verify(sectionCitationReviewService, never()).run(
+                any(), any(), any(), anyString(), any());
     }
 
     @Test

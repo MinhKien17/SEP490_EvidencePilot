@@ -21,7 +21,7 @@ public class AiModelCallGate {
 
     private final Semaphore aiRequestLimiter;
     private final long minIntervalNanos;
-    private long nextAllowedNanos = Long.MIN_VALUE;
+    private long nextAllowedNanos;
 
     public AiModelCallGate(Semaphore aiRequestLimiter) {
         this(aiRequestLimiter, 0);

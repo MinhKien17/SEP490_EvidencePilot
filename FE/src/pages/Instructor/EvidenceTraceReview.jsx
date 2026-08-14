@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { AppHeader, LoadingSkeleton, StatusBadge, Modal } from '../../components';
+import { AppHeader, LoadingSkeleton, Modal } from '../../components';
 import { instructorText, commonText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
 import api from '../../api';
 
-const OUTCOMES = ['RESOLVED', 'PARTIALLY_RESOLVED', 'UNRESOLVED', 'STALE'];
 const JUDGMENTS = ['EFFECTIVE', 'PARTIAL', 'INEFFECTIVE'];
 
 const OUTCOME_CLASSES = {
@@ -23,21 +22,27 @@ export default function EvidenceTraceReview() {
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState(null);
   const [traces, setTraces] = useState([]);
-  const [outcomeFilter, setOutcomeFilter] = useState('');
+  const [telemetry, setTelemetry] = useState(null);
+  const [sectionFilter, setSectionFilter] = useState('');
+  const [roundFilter, setRoundFilter] = useState('');
+  const [judgmentFilter, setJudgmentFilter] = useState('');
   const [savingId, setSavingId] = useState(null);
   const [reviewing, setReviewing] = useState(null);
   const [error, setError] = useState('');
 
-  const loadTraces = useCallback(async () => {
+  const loadEvidence = useCallback(async () => {
     try {
-      const params = outcomeFilter ? { outcome: outcomeFilter } : {};
-      const r = await api.get(`/api/projects/${id}/evidence-traces`, { params });
-      setTraces(r.data || []);
+      const [traceResponse, telemetryResponse] = await Promise.all([
+        api.get(`/api/projects/${id}/evidence-traces`),
+        api.get(`/api/projects/${id}/telemetry`),
+      ]);
+      setTraces(traceResponse.data || []);
+      setTelemetry(telemetryResponse.data || null);
       setError('');
     } catch {
       setError(t.loadEvidenceTracesFailed);
     }
-  }, [id, outcomeFilter, t]);
+  }, [id, t]);
 
   useEffect(() => {
     api.get(`/api/projects/${id}`)
@@ -47,8 +52,8 @@ export default function EvidenceTraceReview() {
 
   useEffect(() => {
     setLoading(true);
-    loadTraces().finally(() => setLoading(false));
-  }, [loadTraces]);
+    loadEvidence().finally(() => setLoading(false));
+  }, [loadEvidence]);
 
   const handleReview = async (traceId, judgment, instructorFeedback) => {
     setSavingId(traceId);
@@ -58,6 +63,8 @@ export default function EvidenceTraceReview() {
         instructorFeedback: instructorFeedback || null,
       });
       setTraces(prev => prev.map(item => String(item.id) === String(traceId) ? r.data : item));
+      const telemetryResponse = await api.get(`/api/projects/${id}/telemetry`);
+      setTelemetry(telemetryResponse.data || null);
       setReviewing(null);
     } catch {
       setError(t.saveTraceJudgmentFailed);
@@ -66,11 +73,19 @@ export default function EvidenceTraceReview() {
     }
   };
 
-  const summary = {
-    total: traces.length,
-    RESOLVED: traces.filter(x => x.outcome === 'RESOLVED').length,
-    STALE: traces.filter(x => x.outcome === 'STALE').length,
-    withAction: traces.filter(x => x.studentAction).length,
+  const overview = telemetry?.overview || {};
+  const filteredTraces = traces.filter(trace => {
+    if (sectionFilter && String(trace.sectionId) !== sectionFilter) return false;
+    if (roundFilter && String(trace.roundId) !== roundFilter) return false;
+    if (judgmentFilter === 'PENDING') return Boolean(trace.studentAction && !trace.judgment);
+    return !judgmentFilter || trace.judgment === judgmentFilter;
+  });
+
+  const percentage = value => `${Math.round((value || 0) * 100)}%`;
+  const duration = milliseconds => {
+    if (!milliseconds) return '—';
+    const minutes = Math.round(milliseconds / 60000);
+    return minutes < 60 ? `${minutes}m` : `${(minutes / 60).toFixed(1)}h`;
   };
 
   return (
@@ -84,12 +99,16 @@ export default function EvidenceTraceReview() {
             <p className="mt-1 text-sm text-[var(--text-secondary)]">{project?.title || ''}</p>
             {error && <p className="mt-2 text-xs font-bold text-rose-600">{error}</p>}
           </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2 text-[11px]">
-            <span className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 font-bold text-[var(--text-secondary)]">{t.tracesTotal}: {summary.total}</span>
-            <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 font-bold text-emerald-700">{t.outcomeResolved}: {summary.RESOLVED}</span>
-            <span className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 font-bold text-rose-700">{t.outcomeStale}: {summary.STALE}</span>
-            <span className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5 font-bold text-[var(--text-secondary)]">{t.tracesWithAction}: {summary.withAction}</span>
-          </div>
+        </div>
+
+        <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <MetricCard label={t.reviewRounds} value={overview.reviewRounds || 0} detail={`${overview.findings || 0} ${t.findingsLabel}`} />
+          <MetricCard label={t.studentAddressed} value={overview.addressed || 0} detail={`${percentage(overview.actionRate)} ${t.actionRate}`} tone="indigo" />
+          <MetricCard label={t.pendingInstructor} value={overview.pendingInstructor || 0} detail={`${overview.unaddressed || 0} ${t.unaddressedLabel}`} tone="amber" />
+          <MetricCard label={t.effectiveJudgments} value={overview.effective || 0} detail={`${percentage(overview.effectiveRate)} ${t.effectiveRate}`} tone="emerald" />
+          <MetricCard label={t.partialJudgments} value={overview.partial || 0} detail={t.instructorJudgments} />
+          <MetricCard label={t.ineffectiveJudgments} value={overview.ineffective || 0} detail={t.instructorJudgments} tone="rose" />
+          <MetricCard label={t.averageTimeToAction} value={duration(overview.averageTimeToActionMs)} detail={t.roundToStudentAction} />
         </div>
 
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
@@ -98,23 +117,41 @@ export default function EvidenceTraceReview() {
           <p className="mt-1 text-[10px] opacity-80">{t.traceSteps}</p>
         </div>
 
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold text-[var(--text-tertiary)] uppercase tracking-wider">{t.filterByOutcome}:</span>
-          <button onClick={() => setOutcomeFilter('')}
-            className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${!outcomeFilter ? 'bg-[var(--brand)] text-white' : 'border border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--surface-secondary)]'}`}>
-            {t.allOutcomes}
-          </button>
-          {OUTCOMES.map(outcome => (
-            <button key={outcome} onClick={() => setOutcomeFilter(outcome)}
-              className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${outcomeFilter === outcome ? 'bg-[var(--brand)] text-white' : 'border border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:bg-[var(--surface-secondary)]'}`}>
-              {outcome.replaceAll('_', ' ')}
-            </button>
-          ))}
+        <div className="mb-4 grid gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 sm:grid-cols-3">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">
+            {t.filterBySection}
+            <select value={sectionFilter} onChange={event => { setSectionFilter(event.target.value); setRoundFilter(''); }}
+              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-2 text-xs normal-case tracking-normal text-[var(--text-primary)]">
+              <option value="">{t.allSections}</option>
+              {(telemetry?.sections || []).map(section => <option key={section.sectionId} value={section.sectionId}>{section.sectionTitle}</option>)}
+            </select>
+          </label>
+          <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">
+            {t.filterByRound}
+            <select value={roundFilter} onChange={event => setRoundFilter(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-2 text-xs normal-case tracking-normal text-[var(--text-primary)]">
+              <option value="">{t.allRounds}</option>
+              {(telemetry?.rounds || []).filter(round => !sectionFilter || String(round.sectionId) === sectionFilter).map(round => (
+                <option key={round.roundId} value={round.roundId}>
+                  {round.sectionTitle} · {new Date(round.runAt).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US')} · Δ {round.findingDelta ?? '—'}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">
+            {t.filterByJudgment}
+            <select value={judgmentFilter} onChange={event => setJudgmentFilter(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-2 text-xs normal-case tracking-normal text-[var(--text-primary)]">
+              <option value="">{t.allJudgments}</option>
+              <option value="PENDING">{t.pendingInstructor}</option>
+              {JUDGMENTS.map(judgment => <option key={judgment} value={judgment}>{judgment}</option>)}
+            </select>
+          </label>
         </div>
 
         {loading ? (
           <LoadingSkeleton count={5} />
-        ) : traces.length === 0 ? (
+        ) : filteredTraces.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface)] p-10 text-center text-xs text-[var(--text-tertiary)]">{t.noEvidenceTraces}</div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-sm">
@@ -122,50 +159,58 @@ export default function EvidenceTraceReview() {
               <table className="w-full text-left text-xs">
                 <thead className="border-b border-[var(--border)] bg-[var(--surface-secondary)]">
                   <tr className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">
-                    <th className="px-4 py-3 font-black">{t.section}</th>
-                    <th className="px-4 py-3 font-black">{t.findingIndex}</th>
-                    <th className="px-4 py-3 font-black">{t.excerpt}</th>
-                    <th className="px-4 py-3 font-black">{t.studentAction}</th>
-                    <th className="px-4 py-3 font-black">{t.evidenceQuote}</th>
-                    <th className="px-4 py-3 font-black">{t.afterPassage}</th>
-                    <th className="px-4 py-3 font-black">{t.outcome}</th>
+                    <th className="px-4 py-3 font-black">{t.sectionAndRound}</th>
+                    <th className="px-4 py-3 font-black">{t.originalFinding}</th>
+                    <th className="px-4 py-3 font-black">{t.studentResponse}</th>
+                    <th className="px-4 py-3 font-black">{t.aiAdvisory}</th>
+                    <th className="px-4 py-3 font-black">{t.instructorDecision}</th>
                     <th className="px-4 py-3 font-black">{t.actions}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border)]">
-                  {traces.map(trace => (
+                  {filteredTraces.map(trace => (
                     <tr key={trace.id} className="align-top hover:bg-[var(--surface-secondary)]/40">
-                      <td className="px-4 py-3 font-bold text-[var(--text-primary)]">{trace.sectionTitle || '—'}</td>
-                      <td className="px-4 py-3 text-[var(--text-secondary)] font-mono">#{trace.findingIndex}</td>
-                      <td className="px-4 py-3 max-w-[240px]">
-                        <p className="line-clamp-3 italic leading-relaxed text-[var(--text-secondary)]">“{trace.excerpt || ''}”</p>
+                      <td className="px-4 py-3 min-w-[150px]">
+                        <p className="font-bold text-[var(--text-primary)]">{trace.sectionTitle || '—'}</p>
+                        <p className="mt-1 font-mono text-[9px] text-[var(--text-tertiary)]">{String(trace.roundId).slice(0, 8)}</p>
+                        <p className="mt-0.5 text-[9px] text-[var(--text-tertiary)]">{trace.createdAt ? new Date(trace.createdAt).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US') : ''}</p>
+                      </td>
+                      <td className="px-4 py-3 max-w-[260px]">
+                        <p className="text-[9px] font-bold text-[var(--text-tertiary)]">#{trace.findingIndex + 1}</p>
+                        <p className="mt-1 line-clamp-3 italic leading-relaxed text-[var(--text-secondary)]">“{trace.excerpt || ''}”</p>
                         {trace.suggestedAction && <p className="mt-1 text-[9px] font-bold text-indigo-600">{t.suggested}: {trace.suggestedAction.replaceAll('_', ' ')}</p>}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 max-w-[240px]">
                         {trace.studentAction
-                          ? <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-200">{trace.studentAction.replaceAll('_', ' ')}</span>
-                          : <span className="text-[var(--text-tertiary)] italic">—</span>}
+                          ? <>
+                            <span className="rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">{trace.studentAction.replaceAll('_', ' ')}</span>
+                            <p className="mt-1.5 line-clamp-3 leading-relaxed text-[var(--text-secondary)]">{trace.explanation}</p>
+                          </>
+                          : <span className="text-[var(--text-tertiary)] italic">{t.notAddressed}</span>}
                       </td>
-                      <td className="px-4 py-3 max-w-[200px]">
-                        {trace.evidenceQuote
-                          ? <p className="line-clamp-2 italic leading-relaxed text-[var(--text-secondary)]">“{trace.evidenceQuote}”</p>
-                          : <span className="text-[var(--text-tertiary)] italic">—</span>}
+                      <td className="px-4 py-3 max-w-[230px]">
+                        {trace.aiRecheckJudgment
+                          ? <>
+                            <span className="rounded border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700">{trace.aiRecheckJudgment}</span>
+                            <p className="mt-1.5 line-clamp-3 leading-relaxed text-[var(--text-secondary)]">{trace.aiRecheckReason}</p>
+                          </>
+                          : <span className="text-[var(--text-tertiary)] italic">{t.aiComparisonUnavailable}</span>}
                       </td>
-                      <td className="px-4 py-3 max-w-[200px]">
-                        {trace.afterPassage
-                          ? <p className="line-clamp-2 leading-relaxed text-[var(--text-secondary)]">{trace.afterPassage}</p>
-                          : <span className="text-[var(--text-tertiary)] italic">—</span>}
-                      </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 max-w-[220px]">
                         <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${OUTCOME_CLASSES[trace.outcome] || OUTCOME_CLASSES.UNRESOLVED}`}>
                           {(trace.outcome || '—').replaceAll('_', ' ')}
                         </span>
-                        {trace.judgment && <p className="mt-1 text-[9px] font-bold text-[var(--text-secondary)]">{t.judgmentLabel}: {trace.judgment}</p>}
+                        {trace.judgment
+                          ? <>
+                            <p className="mt-1 text-[9px] font-bold text-[var(--text-secondary)]">{t.judgmentLabel}: {trace.judgment}</p>
+                            {trace.instructorFeedback && <p className="mt-1 line-clamp-2 text-[10px] text-[var(--text-secondary)]">{trace.instructorFeedback}</p>}
+                          </>
+                          : <p className="mt-1 text-[9px] italic text-amber-700">{trace.studentAction ? t.pendingInstructor : t.notAddressed}</p>}
                       </td>
                       <td className="px-4 py-3">
                         <button onClick={() => setReviewing(trace)} disabled={savingId !== null}
                           className="rounded-lg bg-[var(--brand)] px-2.5 py-1.5 text-[10px] font-bold text-white hover:bg-[var(--brand-hover)] disabled:opacity-40">
-                          {t.reviewTrace}
+                          {trace.judgment ? t.viewOrUpdate : t.reviewTrace}
                         </button>
                       </td>
                     </tr>
@@ -180,14 +225,43 @@ export default function EvidenceTraceReview() {
       {reviewing && (
         <Modal open={Boolean(reviewing)} title={t.reviewTrace} onClose={() => setReviewing(null)}>
           <div className="space-y-4">
-            <div>
+            <div className="space-y-3">
               <p className="text-[11px] font-bold text-[var(--text-tertiary)] uppercase tracking-wider">{t.section}</p>
-              <p className="mt-1 text-sm font-bold text-[var(--text-primary)]">{reviewing.sectionTitle || '—'}</p>
-              <blockquote className="mt-2 rounded-lg border-l-2 border-amber-400 bg-[var(--surface-secondary)] p-3 text-[11px] italic leading-relaxed text-[var(--text-secondary)]">“{reviewing.excerpt || ''}”</blockquote>
-              {reviewing.explanation && <p className="mt-2 text-[11px] leading-relaxed text-[var(--text-secondary)]">{t.studentExplanation}: {reviewing.explanation}</p>}
-              {reviewing.evidenceQuote && <p className="mt-1 text-[10px] italic leading-relaxed text-[var(--text-secondary)]">“{reviewing.evidenceQuote}”</p>}
+              <p className="text-sm font-bold text-[var(--text-primary)]">{reviewing.sectionTitle || '—'} · #{reviewing.findingIndex + 1}</p>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">{t.originalFinding}</p>
+                <blockquote className="mt-1 rounded-lg border-l-2 border-amber-400 bg-[var(--surface-secondary)] p-3 text-[11px] italic leading-relaxed text-[var(--text-secondary)]">“{reviewing.excerpt || ''}”</blockquote>
+                {reviewing.rationale && <p className="mt-1 text-[10px] leading-relaxed text-[var(--text-secondary)]">{reviewing.rationale}</p>}
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">{t.afterPassage}</p>
+                <p className="mt-1 whitespace-pre-wrap rounded-lg border border-[var(--border)] bg-[var(--surface-secondary)] p-3 text-[10px] leading-relaxed text-[var(--text-secondary)]">{reviewing.afterPassage || t.noSectionRevision}</p>
+              </div>
+              <div className="rounded-lg border border-[var(--border)] p-3 text-[10px] text-[var(--text-secondary)]">
+                <p><strong>{t.studentAction}:</strong> {reviewing.studentAction?.replaceAll('_', ' ') || t.notAddressed}</p>
+                {reviewing.explanation && <p className="mt-1"><strong>{t.studentExplanation}:</strong> {reviewing.explanation}</p>}
+                {reviewing.sourceTitle && <p className="mt-1"><strong>{t.sourceLabel}:</strong> {reviewing.sourceTitle}</p>}
+                {reviewing.evidenceQuote && <p className="mt-1 italic">“{reviewing.evidenceQuote}”</p>}
+              </div>
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-[10px] text-indigo-800">
+                <p className="font-bold">{t.aiAdvisory}: {reviewing.aiRecheckJudgment || t.aiComparisonUnavailable}</p>
+                {reviewing.aiRecheckReason && <p className="mt-1 leading-relaxed">{reviewing.aiRecheckReason}</p>}
+              </div>
+              {reviewing.instructorFeedback && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-[10px] text-emerald-800">
+                  <p className="font-bold">{t.currentInstructorFeedback}</p>
+                  <p className="mt-1 leading-relaxed">{reviewing.instructorFeedback}</p>
+                </div>
+              )}
             </div>
-            <ReviewForm saving={savingId === reviewing.id} onSave={async (judgment, feedback) => handleReview(reviewing.id, judgment, feedback)} onCancel={() => setReviewing(null)} />
+            <ReviewForm
+              key={reviewing.id}
+              saving={savingId === reviewing.id}
+              initialJudgment={reviewing.judgment || ''}
+              initialFeedback={reviewing.instructorFeedback || ''}
+              onSave={async (judgment, feedback) => handleReview(reviewing.id, judgment, feedback)}
+              onCancel={() => setReviewing(null)}
+            />
           </div>
         </Modal>
       )}
@@ -195,12 +269,29 @@ export default function EvidenceTraceReview() {
   );
 }
 
-function ReviewForm({ saving, onSave, onCancel }) {
+function MetricCard({ label, value, detail, tone = 'slate' }) {
+  const tones = {
+    slate: 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-primary)]',
+    indigo: 'border-indigo-200 bg-indigo-50 text-indigo-800',
+    amber: 'border-amber-200 bg-amber-50 text-amber-800',
+    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    rose: 'border-rose-200 bg-rose-50 text-rose-800',
+  };
+  return (
+    <div className={`rounded-xl border p-3 shadow-sm ${tones[tone]}`}>
+      <p className="text-[10px] font-bold uppercase tracking-wider opacity-70">{label}</p>
+      <p className="mt-1 text-2xl font-black">{value}</p>
+      <p className="mt-0.5 text-[10px] opacity-75">{detail}</p>
+    </div>
+  );
+}
+
+function ReviewForm({ saving, initialJudgment, initialFeedback, onSave, onCancel }) {
   const { language } = useLanguage();
   const t = instructorText[language];
   const ct = commonText[language];
-  const [judgment, setJudgment] = useState('');
-  const [feedback, setFeedback] = useState('');
+  const [judgment, setJudgment] = useState(initialJudgment);
+  const [feedback, setFeedback] = useState(initialFeedback);
   return (
     <div className="space-y-3">
       <label className="block">
