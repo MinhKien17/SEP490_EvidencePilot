@@ -31,12 +31,23 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AiEvaluationServiceImpl implements AiEvaluationService {
+
+    private static final int MAX_SECTION_SUGGESTIONS = 3;
+    private static final int MAX_SUGGESTION_ISSUE_LENGTH = 300;
+    private static final int MAX_SUGGESTION_FIX_LENGTH = 300;
+    private static final Set<String> SECTION_SUGGESTION_TYPES = Set.of(
+            "UNSUBSTANTIATED_CLAIM",
+            "SOURCE_DISCREPANCY",
+            "CLARITY",
+            "STRUCTURE",
+            "CONVENTION");
 
     private final AiEvaluationJobRepository jobRepository;
     private final PaperSectionRepository paperSectionRepository;
@@ -307,8 +318,8 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
                     SectionSuggestionPrompt.SYSTEM,
                     SectionSuggestionPrompt.build(
                             guide.getSectionType(), checklist, section.getContentTex(), evidence));
-            JsonNode root = objectMapper.readTree(extractJsonArray(generation.response()));
-            validateSuggestionEvidence(root, evidence);
+            JsonNode root = parseSuggestionItems(generation.response());
+            validateSuggestions(root, section.getContentTex(), evidence);
             List<SectionSuggestionDto> suggestions = objectMapper.convertValue(
                     root, new TypeReference<>() {
                     });
@@ -320,30 +331,95 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
             // real status so the client sees the actual failure instead of a generic 502.
             throw exception;
         } catch (Exception exception) {
-            log.warn("Section suggestion job for {} produced invalid AI output: {}",
-                    projectId, generation != null ? generation.response() : "no response");
+            log.warn("Section suggestion for section {} in project {} produced invalid AI output ({}): {}",
+                    section.getId(), projectId, exception.getMessage(),
+                    generation != null ? generation.response() : "no response");
             throw new ResponseStatusException(
                     HttpStatus.BAD_GATEWAY, "AI returned invalid section suggestions", exception);
         }
     }
 
-    private void validateSuggestionEvidence(
-            JsonNode root, List<SectionCitationReviewService.RetrievedEvidence> evidence) {
+    private void validateSuggestions(
+            JsonNode root,
+            String studentText,
+            List<SectionCitationReviewService.RetrievedEvidence> evidence) {
+        if (!root.isArray() || root.size() > MAX_SECTION_SUGGESTIONS) {
+            throw new IllegalArgumentException("Invalid section suggestion envelope");
+        }
         for (JsonNode item : root) {
-            JsonNode evidenceNode = item.path("evidence");
-            if (evidenceNode.isNull() || evidenceNode.isMissingNode()) {
-                continue;
+            if (!item.isObject()) {
+                throw new IllegalArgumentException("Section suggestion must be an object");
             }
-            String chunkId = evidenceNode.path("chunk_id").asText("");
-            if (chunkId.isEmpty()) {
-                continue;
+            String type = requiredSuggestionText(item, "type", 50);
+            requiredSuggestionText(item, "issue", MAX_SUGGESTION_ISSUE_LENGTH);
+            String quote = requiredSuggestionText(item, "quote", Integer.MAX_VALUE);
+            requiredSuggestionText(item, "actionable_fix", MAX_SUGGESTION_FIX_LENGTH);
+            if (!SECTION_SUGGESTION_TYPES.contains(type)) {
+                throw new IllegalArgumentException("Unknown section suggestion type");
             }
-            boolean known = evidence.stream()
-                    .anyMatch(entry -> entry.chunkId().toString().equals(chunkId));
-            if (!known) {
-                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
-                        "Suggestion referenced unknown chunk_id " + chunkId);
+            if (!studentText.contains(quote.strip())) {
+                throw new IllegalArgumentException(
+                        "Section suggestion quote is not verbatim from the student text");
             }
+            validateSuggestionEvidence(item, type, evidence);
+        }
+    }
+
+    private static String requiredSuggestionText(JsonNode item, String field, int maxLength) {
+        JsonNode value = item.get(field);
+        if (value == null
+                || !value.isTextual()
+                || value.asText().isBlank()
+                || value.asText().length() > maxLength) {
+            throw new IllegalArgumentException("Invalid section suggestion field: " + field);
+        }
+        return value.asText();
+    }
+
+    private void validateSuggestionEvidence(
+            JsonNode item,
+            String type,
+            List<SectionCitationReviewService.RetrievedEvidence> evidence) {
+        boolean required = "UNSUBSTANTIATED_CLAIM".equals(type)
+                || "SOURCE_DISCREPANCY".equals(type);
+        JsonNode evidenceNode = item.get("evidence");
+        if (evidenceNode == null || evidenceNode.isNull()) {
+            if (required) {
+                throw new IllegalArgumentException("Section suggestion evidence is required");
+            }
+            return;
+        }
+        if (!evidenceNode.isObject()) {
+            throw new IllegalArgumentException("Section suggestion evidence must be an object");
+        }
+        String chunkId = evidenceNode.path("chunk_id").asText("");
+        if (chunkId.isBlank()) {
+            if (required) {
+                throw new IllegalArgumentException("Section suggestion chunk_id is required");
+            }
+            return;
+        }
+        String sourceId = evidenceNode.path("source_id").asText("");
+        String quote = evidenceNode.path("quote").asText("");
+        UUID referencedChunkId;
+        UUID referencedSourceId;
+        try {
+            referencedChunkId = UUID.fromString(chunkId);
+            referencedSourceId = UUID.fromString(sourceId);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Suggestion evidence IDs must be UUIDs", exception);
+        }
+        SectionCitationReviewService.RetrievedEvidence retrieved = evidence.stream()
+                .filter(entry -> entry.chunkId().equals(referencedChunkId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Suggestion referenced unknown chunk_id " + chunkId));
+        if (!retrieved.sourceId().equals(referencedSourceId)) {
+            throw new IllegalArgumentException("Suggestion source_id does not match its chunk");
+        }
+        if (quote.isBlank() || !retrieved.text().contains(quote.strip())) {
+            throw new IllegalArgumentException(
+                    "Suggestion evidence quote is not verbatim from its chunk");
         }
     }
 
@@ -366,17 +442,39 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
         }
     }
 
-    private static String extractJsonArray(String response) {
-        if (response == null) {
+    private JsonNode parseSuggestionItems(String response) throws Exception {
+        if (response == null || response.isBlank()) {
             throw new IllegalArgumentException("Empty AI response");
         }
-        String stripped = response.replaceAll("(?s)```(?:json)?|```", "");
-        int start = stripped.indexOf('[');
-        int end = stripped.lastIndexOf(']');
-        if (start < 0 || end < start) {
-            throw new IllegalArgumentException("AI response did not contain a JSON array");
+        String stripped = response.replaceAll("(?s)```(?:json)?|```", "").strip();
+        int objectStart = stripped.indexOf('{');
+        int arrayStart = stripped.indexOf('[');
+        int start = objectStart < 0
+                ? arrayStart
+                : arrayStart < 0 ? objectStart : Math.min(objectStart, arrayStart);
+        if (start < 0) {
+            throw new IllegalArgumentException("AI response did not contain JSON");
         }
-        return stripped.substring(start, end + 1);
+        char closing = stripped.charAt(start) == '{' ? '}' : ']';
+        int end = stripped.lastIndexOf(closing);
+        if (end < start) {
+            throw new IllegalArgumentException("AI response contained incomplete JSON");
+        }
+        JsonNode root = objectMapper.readTree(stripped.substring(start, end + 1));
+        if (root.isArray()) {
+            return root;
+        }
+        if (!root.isObject()) {
+            throw new IllegalArgumentException("AI response must be an object or array");
+        }
+        JsonNode suggestions = root.get("suggestions");
+        if (suggestions == null) {
+            return objectMapper.createArrayNode().add(root);
+        }
+        if (!suggestions.isArray()) {
+            throw new IllegalArgumentException("AI response suggestions must be an array");
+        }
+        return suggestions;
     }
 
     private boolean sameSectionCitationReview(

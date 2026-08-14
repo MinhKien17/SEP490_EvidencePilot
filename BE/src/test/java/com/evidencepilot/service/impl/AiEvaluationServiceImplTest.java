@@ -12,6 +12,8 @@ import com.evidencepilot.repository.ReviewGuideRepository;
 import com.evidencepilot.service.AiModelClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -308,12 +310,28 @@ class AiEvaluationServiceImplTest {
         assertThat(job.getCompletedAt()).isNotNull();
     }
 
-    @Test
-    void process_sectionSuggestion_extractsArrayAndStoresSuccess() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"array", "object", "wrapper"})
+    void process_sectionSuggestion_acceptsSupportedJsonShapes(String shape) throws Exception {
         UUID jobId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
         UUID documentId = UUID.randomUUID();
         UUID sectionId = UUID.randomUUID();
+        UUID sourceId = UUID.randomUUID();
+        UUID chunkId = UUID.randomUUID();
+        String studentText = "Our proposed retrieval-augmented citation engine improves answer accuracy by 34% "
+                + "and reduces latency by 47% compared to the previous version, while cutting token cost per "
+                + "query by a factor of 3.2. The method also outperforms all baselines on the task by 12.5 points.";
+        String issue = "The student text makes a claim about a retrieval-augmented citation engine improving "
+                + "answer accuracy by 34% and reducing latency by 47%, which is completely unrelated to the "
+                + "biological study described and unsupported by any evidence in the retrieved chunks.";
+        String actionableFix = "Remove the paragraph describing the retrieval-augmented citation engine "
+                + "performance metrics, as it is irrelevant to the Results section of a single-nucleus RNA-seq "
+                + "study of human adipose tissue.";
+        String evidenceQuote = "We perform dimensionality reduction on the correlated HVGs to check if there "
+                + "is any substructure. Cells separate into clear clusters in the t-SNE plot (Figure 23), "
+                + "corresponding to distinct subpopulations. This is consistent with the presence of multiple "
+                + "cell types in the diverse brain population.";
         AiEvaluationJob job = job(sectionId, projectId, objectMapper.writeValueAsString(Map.of(
                 "projectId", projectId,
                 "documentId", documentId,
@@ -324,7 +342,7 @@ class AiEvaluationServiceImplTest {
         PaperSection section = new PaperSection();
         section.setId(sectionId);
         section.setSectionTitle("Introduction");
-        section.setContentTex("The research question is stated.");
+        section.setContentTex(studentText);
         Document document = new Document();
         document.setId(documentId);
         Project project = new Project();
@@ -336,20 +354,48 @@ class AiEvaluationServiceImplTest {
         guide.setSectionType("Introduction");
         guide.setChecklistJson("[\"Is the research question stated?\"]");
         when(reviewGuideRepository.findById("Introduction")).thenReturn(Optional.of(guide));
+        when(sectionCitationReviewService.retrieveEvidence(
+                projectId, section.getContentTex())).thenReturn(List.of(
+                        new SectionCitationReviewService.RetrievedEvidence(
+                                sourceId,
+                                chunkId,
+                                "source-key",
+                                "Source title",
+                                evidenceQuote)));
+        var suggestionNode = objectMapper.createObjectNode();
+        suggestionNode.put("type", "UNSUBSTANTIATED_CLAIM");
+        suggestionNode.put("issue", issue);
+        suggestionNode.put("quote", studentText);
+        suggestionNode.put("actionable_fix", actionableFix);
+        var evidenceNode = suggestionNode.putObject("evidence");
+        evidenceNode.put("chunk_id", chunkId.toString());
+        evidenceNode.put("source_id", sourceId.toString());
+        evidenceNode.put("quote", evidenceQuote);
+        String suggestion = objectMapper.writeValueAsString(suggestionNode);
+        String response = switch (shape) {
+            case "array" -> "```json\n[" + suggestion + "]\n```\n trailing";
+            case "object" -> suggestion;
+            case "wrapper" -> "{\"suggestions\":[" + suggestion + "]}";
+            default -> throw new IllegalArgumentException("Unknown test shape: " + shape);
+        };
         when(aiModelClient.generate(anyString(), anyString())).thenReturn(
-                new AiModelClient.GenerationResult("provider", "model",
-                        "```json\n[{\"issue\":\"Gap\",\"quote\":\"research question is stated\",\"actionable_fix\":\"Restate it clearly.\"}]\n```\n trailing"));
+                new AiModelClient.GenerationResult("provider", "model", response));
 
         service().process(jobId);
 
         assertThat(job.getStatus()).isEqualTo(AiEvaluationJob.STATUS_SUCCESS);
-        assertThat(job.getResultJson()).contains("actionable_fix");
+        assertThat(issue.length()).isGreaterThan(200).isLessThanOrEqualTo(300);
+        var result = objectMapper.readTree(job.getResultJson());
+        assertThat(result.isArray()).isTrue();
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).path("type").asText()).isEqualTo("UNSUBSTANTIATED_CLAIM");
         verify(aiModelClient).generate(anyString(), anyString());
         verify(reviewGuideRepository).findById("Introduction");
     }
 
-    @Test
-    void process_sectionSuggestion_refusalText_marksFailed() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"refusal", "unknown-type", "long-issue"})
+    void process_sectionSuggestion_invalidOutput_marksFailed(String invalidCase) throws Exception {
         UUID jobId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
         UUID documentId = UUID.randomUUID();
@@ -376,13 +422,26 @@ class AiEvaluationServiceImplTest {
         guide.setSectionType("Introduction");
         guide.setChecklistJson("[\"Is the research question stated?\"]");
         when(reviewGuideRepository.findById("Introduction")).thenReturn(Optional.of(guide));
+        String response = switch (invalidCase) {
+            case "refusal" -> "I cannot fulfill this request.";
+            case "unknown-type" -> """
+                    {"type":"NOT_REAL","issue":"Gap","quote":"Some content",
+                     "actionable_fix":"Fix it.","evidence":null}
+                    """;
+            case "long-issue" -> """
+                    {"type":"CLARITY","issue":"%s","quote":"Some content",
+                     "actionable_fix":"Fix it.","evidence":null}
+                    """.formatted("x".repeat(301));
+            default -> throw new IllegalArgumentException("Unknown invalid case: " + invalidCase);
+        };
         when(aiModelClient.generate(anyString(), anyString())).thenReturn(
-                new AiModelClient.GenerationResult("provider", "model", "I cannot fulfill this request."));
+                new AiModelClient.GenerationResult("provider", "model", response));
 
         service().process(jobId);
 
         assertThat(job.getStatus()).isEqualTo(AiEvaluationJob.STATUS_FAILED);
-        assertThat(job.getErrorMessage()).isNotBlank();
+        assertThat(job.getErrorMessage()).startsWith("502");
+        assertThat(job.getResultJson()).isNull();
         assertThat(job.getCompletedAt()).isNotNull();
     }
 
