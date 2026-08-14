@@ -15,7 +15,7 @@ CREATE TABLE citation_review_rounds (
     summary TEXT NULL,
     complete BOOLEAN NOT NULL DEFAULT TRUE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uq_citation_review_rounds_section_fp (section_id, content_fingerprint),
+    INDEX idx_citation_review_rounds_section_fp (section_id, content_fingerprint),
     INDEX idx_citation_review_rounds_section (section_id),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (section_id) REFERENCES paper_sections(id) ON DELETE CASCADE,
@@ -52,6 +52,9 @@ CREATE TABLE evidence_revision_traces (
     judged_at DATETIME NULL,
     linked_round_id BINARY(16) NULL,
     linked_mode VARCHAR(30) NULL,
+    ai_recheck_judgment VARCHAR(20) NULL,
+    ai_recheck_reason TEXT NULL,
+    ai_rechecked_at DATETIME NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_evidence_revision_traces_round_finding (round_id, finding_index),
     INDEX idx_evidence_revision_traces_section (section_id),
@@ -74,5 +77,17 @@ CREATE TABLE evidence_revision_traces (
     CONSTRAINT chk_evidence_revision_traces_linked_mode
         CHECK (linked_mode IS NULL OR linked_mode IN (
             'VERBATIM_CONTINUATION', 'REVISION_CHAIN'
+        )),
+    CONSTRAINT chk_evidence_revision_traces_ai_recheck_judgment
+        CHECK (ai_recheck_judgment IS NULL OR ai_recheck_judgment IN (
+            'EFFECTIVE', 'PARTIAL', 'INEFFECTIVE'
         ))
 );
+
+ALTER TABLE ai_evaluation_jobs
+    DROP CHECK chk_ai_evaluation_jobs_kind,
+    ADD CONSTRAINT chk_ai_evaluation_jobs_kind
+        CHECK (kind IN (
+            'SECTION_CITATION_REVIEW', 'SECTION_SUGGESTION',
+            'SOURCE_MATCHES', 'TRACE_RECHECK'
+        ));

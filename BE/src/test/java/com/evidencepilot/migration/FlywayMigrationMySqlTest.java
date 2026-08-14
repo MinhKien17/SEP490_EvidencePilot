@@ -54,7 +54,7 @@ class FlywayMigrationMySqlTest {
         Integer successfulMigrations = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1",
                 Integer.class);
-        assertThat(successfulMigrations).isEqualTo(4);
+        assertThat(successfulMigrations).isEqualTo(6);
 
         assertThat(jdbcTemplate.queryForList("""
                         SELECT constraint_name
@@ -68,9 +68,9 @@ class FlywayMigrationMySqlTest {
                         "uq_document_references_order",
                         "chk_document_references_edge_type",
                         "chk_export_jobs_status",
-                        "uq_citation_review_rounds_section_fp",
                         "uq_evidence_revision_traces_round_finding",
-                        "chk_evidence_revision_traces_student_action");
+                        "chk_evidence_revision_traces_student_action",
+                        "chk_evidence_revision_traces_ai_recheck_judgment");
 
         assertThat(jdbcTemplate.queryForList(
                 "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()",
@@ -80,6 +80,14 @@ class FlywayMigrationMySqlTest {
         assertThat(jdbcTemplate.queryForMap(
                 "SELECT data_type FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'citation_review_rounds' AND column_name = 'generation_meta'"))
                 .containsEntry("data_type", "json");
+        assertThat(jdbcTemplate.queryForList("""
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_schema = DATABASE()
+                          AND table_name = 'evidence_revision_traces'
+                        """, String.class))
+                .contains("ai_recheck_judgment", "ai_recheck_reason", "ai_rechecked_at", "round_duration_ms")
+                .doesNotContain("accepted", "actual_edit_hash");
 
         String userId = UUID.randomUUID().toString();
         String projectId = UUID.randomUUID().toString();
@@ -93,6 +101,14 @@ class FlywayMigrationMySqlTest {
                 INSERT INTO projects (id, title, status, active)
                 VALUES (UUID_TO_BIN(?), 'Migration Test', 'CREATED', TRUE)
                 """, projectId);
+        jdbcTemplate.update("""
+                INSERT INTO ai_evaluation_jobs (id, project_id, kind, payload_json, status)
+                VALUES (UUID_TO_BIN(?), UUID_TO_BIN(?), 'SOURCE_MATCHES', '{}', 'PENDING')
+                """, UUID.randomUUID().toString(), projectId);
+        jdbcTemplate.update("""
+                INSERT INTO ai_evaluation_jobs (id, project_id, kind, payload_json, status)
+                VALUES (UUID_TO_BIN(?), UUID_TO_BIN(?), 'TRACE_RECHECK', '{}', 'PENDING')
+                """, UUID.randomUUID().toString(), projectId);
         jdbcTemplate.update("""
                 INSERT INTO documents (
                     id, project_id, uploaded_by, doc_type, file_url,
@@ -179,10 +195,10 @@ class FlywayMigrationMySqlTest {
                 .migrate()
                 .migrationsExecuted;
 
-        assertThat(migrationsExecuted).isEqualTo(3);
+        assertThat(migrationsExecuted).isEqualTo(5);
         assertThat(rehearsalJdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1",
-                Integer.class)).isEqualTo(4);
+                Integer.class)).isEqualTo(6);
         assertThat(rehearsalJdbcTemplate.queryForObject(
                 "SELECT type FROM flyway_schema_history WHERE installed_rank = 1",
                 String.class)).isEqualTo("BASELINE");
