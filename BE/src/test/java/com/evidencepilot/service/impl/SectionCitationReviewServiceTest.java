@@ -165,6 +165,85 @@ class SectionCitationReviewServiceTest {
     }
 
     @Test
+    void runAcceptsRationaleWithinBackendToleranceWhilePromptStaysConcise() {
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        String excerpt = "The proposed method improves recall by exactly 34 percent over the Alpha baseline";
+        String rationale = "r".repeat(1_000);
+        PaperSection section = section(
+                projectId, documentId, sectionId, "Introduction", excerpt + ".");
+        User actor = new User();
+        actor.setId(actorId);
+        when(sectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
+        when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
+        when(sourceMatchingService.search(eq(projectId), any(), eq(5))).thenReturn(List.of());
+        when(aiModelClient.generateForReview(anyString(), anyString())).thenReturn(
+                new AiModelClient.GenerationResult("provider", "model", String.format("""
+                        {"section_id":"%s","chunk_index":0,"findings":[{
+                          "type":"UNSUBSTANTIATED_CLAIM",
+                          "excerpt":"%s",
+                          "rationale":"%s",
+                          "confidence":"HIGH",
+                          "evidence":[]
+                        }]}
+                        """, sectionId, excerpt, rationale)));
+
+        SectionCitationReviewService service = service();
+        SectionCitationReviewResponse result = service.run(
+                documentId, projectId, sectionId, service.fingerprint(section), actorId);
+
+        assertThat(result.findings()).singleElement().satisfies(finding ->
+                assertThat(finding.rationale()).hasSize(1_000));
+        assertThat(SectionCitationReviewPrompt.SYSTEM).contains("\"rationale\":\"max 400 chars");
+        verify(aiModelClient).generateForReview(anyString(), anyString());
+    }
+
+    @Test
+    void runKeepsGroundedFindingsWhenAnotherFindingIsInvalid() {
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        String excerpt = "The proposed method improves recall by exactly 34 percent over the Alpha baseline";
+        PaperSection section = section(
+                projectId, documentId, sectionId, "Introduction", excerpt + ".");
+        User actor = new User();
+        actor.setId(actorId);
+        when(sectionRepository.findByIdWithDocument(sectionId)).thenReturn(Optional.of(section));
+        when(userRepository.findById(actorId)).thenReturn(Optional.of(actor));
+        when(sourceMatchingService.search(eq(projectId), any(), eq(5))).thenReturn(List.of());
+        when(aiModelClient.generateForReview(anyString(), anyString())).thenReturn(
+                new AiModelClient.GenerationResult("provider", "model", String.format("""
+                        {"section_id":"%s","chunk_index":0,"findings":[{
+                          "type":"UNSUBSTANTIATED_CLAIM",
+                          "excerpt":"%s",
+                          "rationale":"The precise comparison has no supporting project source.",
+                          "confidence":"HIGH",
+                          "evidence":[]
+                        },{
+                          "type":"UNSUBSTANTIATED_CLAIM",
+                          "excerpt":"Paraphrased text that is absent from the section",
+                          "rationale":"This finding is not grounded in the supplied chunk.",
+                          "confidence":"LOW",
+                          "evidence":[]
+                        }]}
+                        """, sectionId, excerpt)));
+
+        SectionCitationReviewService service = service();
+        SectionCitationReviewResponse result = service.run(
+                documentId, projectId, sectionId, service.fingerprint(section), actorId);
+
+        assertThat(result.complete()).isTrue();
+        assertThat(result.findings()).singleElement().satisfies(finding ->
+                assertThat(finding.excerpt()).isEqualTo(excerpt));
+        assertThat(result.limitations()).singleElement().asString()
+                .contains("omitted 1 invalid AI finding(s)");
+        verify(aiModelClient).generateForReview(anyString(), anyString());
+    }
+
+    @Test
     void runAcceptsNotFoundRelationForRetrievedButNonSupportingEvidence() {
         UUID projectId = UUID.randomUUID();
         UUID documentId = UUID.randomUUID();

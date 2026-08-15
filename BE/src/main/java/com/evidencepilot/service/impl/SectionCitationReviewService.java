@@ -62,7 +62,7 @@ public class SectionCitationReviewService {
     private static final int RETRIEVAL_TOP_K = 5;
     private static final int EVIDENCE_CHUNK_LIMIT = 12;
     private static final int EVIDENCE_TEXT_LIMIT = 1_200;
-    private static final int MAX_RATIONALE_LENGTH = 400;
+    private static final int MAX_RATIONALE_LENGTH = 1_000;
     private static final int MAX_EVIDENCE_PER_FINDING = 3;
     private static final Pattern SENTENCE_BOUNDARY = Pattern.compile("(?<=[.!?])\\s+");
     private final AiModelClient aiModelClient;
@@ -231,6 +231,10 @@ public class SectionCitationReviewService {
                     provider = generated.provider();
                     model = generated.model();
                 }
+                if (generated.discardedFindings() > 0) {
+                    limitations.add("Chunk " + (i + 1) + "/" + chunks.size()
+                            + " omitted " + generated.discardedFindings() + " invalid AI finding(s)");
+                }
                 for (ModelFinding finding : generated.review().findings()) {
                     int start = chunk.startOffset() + excerptStart(chunk.content(), finding.excerpt());
                     int end = start + finding.excerpt().length();
@@ -364,8 +368,11 @@ public class SectionCitationReviewService {
                         attempt == 0 ? prompt : prompt + "\nPrevious output was invalid. Return valid JSON only.");
                 ModelReview review = strictMapper().readValue(
                         extractJson(generation.response()), ModelReview.class);
-                validateReview(review, chunk, section.getId().toString(), chunkIndex, evidenceByChunkId);
-                return new GeneratedReview(generation.provider(), generation.model(), review);
+                ValidatedReview validated = validateReview(
+                        review, chunk, section.getId().toString(), chunkIndex, evidenceByChunkId);
+                return new GeneratedReview(
+                        generation.provider(), generation.model(),
+                        validated.review(), validated.discardedFindings());
             } catch (JsonProcessingException | IllegalArgumentException exception) {
                 lastFailure = new ResponseStatusException(
                         HttpStatus.BAD_GATEWAY,
@@ -409,7 +416,7 @@ public class SectionCitationReviewService {
         }
     }
 
-    private void validateReview(
+    private ValidatedReview validateReview(
             ModelReview review,
             Chunk chunk,
             String sectionId,
@@ -422,20 +429,42 @@ public class SectionCitationReviewService {
                 || review.chunkIndex() != chunkIndex) {
             throw new IllegalArgumentException("Invalid review envelope");
         }
+        List<ModelFinding> validFindings = new ArrayList<>();
+        IllegalArgumentException firstFailure = null;
         for (ModelFinding finding : review.findings()) {
-            if (finding == null
-                    || finding.type() == null
-                    || finding.confidence() == null
-                    || finding.excerpt() == null
-                    || finding.excerpt().isBlank()
-                    || finding.rationale() == null
-                    || finding.rationale().isBlank()
-                    || finding.rationale().length() > MAX_RATIONALE_LENGTH) {
-                throw new IllegalArgumentException("Finding is not grounded in the supplied chunk");
+            try {
+                validateFinding(finding, chunk, evidenceByChunkId);
+                validFindings.add(finding);
+            } catch (IllegalArgumentException exception) {
+                if (firstFailure == null) {
+                    firstFailure = exception;
+                }
             }
-            excerptStart(chunk.content(), finding.excerpt());
-            validateEvidence(finding, evidenceByChunkId);
         }
+        if (!review.findings().isEmpty() && validFindings.isEmpty()) {
+            throw firstFailure;
+        }
+        return new ValidatedReview(
+                new ModelReview(review.sectionId(), review.chunkIndex(), List.copyOf(validFindings)),
+                review.findings().size() - validFindings.size());
+    }
+
+    private void validateFinding(
+            ModelFinding finding,
+            Chunk chunk,
+            Map<UUID, RetrievedEvidence> evidenceByChunkId) {
+        if (finding == null
+                || finding.type() == null
+                || finding.confidence() == null
+                || finding.excerpt() == null
+                || finding.excerpt().isBlank()
+                || finding.rationale() == null
+                || finding.rationale().isBlank()
+                || finding.rationale().length() > MAX_RATIONALE_LENGTH) {
+            throw new IllegalArgumentException("Finding is not grounded in the supplied chunk");
+        }
+        excerptStart(chunk.content(), finding.excerpt());
+        validateEvidence(finding, evidenceByChunkId);
     }
 
     private void validateEvidence(
@@ -634,7 +663,14 @@ public class SectionCitationReviewService {
             UUID sourceId, UUID chunkId, String citationKey, String title, String text) {
     }
 
-    private record GeneratedReview(String provider, String model, ModelReview review) {
+    private record GeneratedReview(
+            String provider,
+            String model,
+            ModelReview review,
+            int discardedFindings) {
+    }
+
+    private record ValidatedReview(ModelReview review, int discardedFindings) {
     }
 
     private record ModelReview(
