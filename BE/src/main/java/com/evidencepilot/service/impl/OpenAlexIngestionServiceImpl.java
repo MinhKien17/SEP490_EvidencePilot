@@ -305,6 +305,11 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
 
     @Override
     public CitationGraphResponse getCitationGraph(UUID collectionId, boolean includeFailed) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Collection collection = collectionRepository.findById(collectionId)
+                .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
+        currentUserService.requireCollectionAccess(currentUser, collection);
+
         List<Document> docs;
         if (includeFailed) {
             docs = documentRepository.findByCollectionId(collectionId);

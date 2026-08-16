@@ -80,4 +80,25 @@ class CollectionControllerTest {
         mockMvc.perform(delete("/api/collections/{id}", id)).andExpect(status().isNoContent());
         verify(collectionService).deleteCollection(id);
     }
+
+    @Test
+    void getCitationGraphUsesIncludeFailedByDefault() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/collections/{id}/citation-graph", id))
+                .andExpect(status().isOk());
+
+        verify(openAlexIngestionService).getCitationGraph(id, true);
+    }
+
+    @Test
+    void getCitationGraphPassesIncludeFailedParameter() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/collections/{id}/citation-graph", id)
+                        .param("includeFailed", "false"))
+                .andExpect(status().isOk());
+
+        verify(openAlexIngestionService).getCitationGraph(id, false);
+    }
 }
