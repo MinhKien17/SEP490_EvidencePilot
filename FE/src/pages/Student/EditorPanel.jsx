@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 export default function EditorPanel({
   compact,
-  selectedPaper, selectedSectionId, assignedSections, canEditCurrentSection, currentSection, displayContent, updateCode,
+  selectedPaper, selectedSectionId, assignedSections, canEditCurrentSection, currentSection, displayContent, previewContent, updateCode,
   editorWidth, onEditorResizeStart,
   saveStatus, lastSaved, handleSaveDraft, handleScanCitations,
   insertLatexTag, insertSymbol, handleFindReplace, handleDownloadTex,
@@ -149,7 +149,7 @@ export default function EditorPanel({
         </div>
         <div className="flex-1 min-h-0 overflow-auto flex justify-center">
           <div style={{ transform: `scale(${previewZoom / 100})`, transformOrigin: 'center top' }}>
-            <PreviewPane latex={displayContent} mediaAssets={mediaAssets} />
+            <PreviewPane latex={previewContent} mediaAssets={mediaAssets} />
           </div>
         </div>
       </div>

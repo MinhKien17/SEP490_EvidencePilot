@@ -72,8 +72,6 @@ export default function WorkspaceLayout() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(!compactAtLoad);
   const [isFileTreeOpen, setIsFileTreeOpen] = useState(!compactAtLoad);
   const [textSize, setTextSize] = useState(14);
-  const [codeHistory, setCodeHistory] = useState(['']);
-  const [historyIndex, setHistoryIndex] = useState(0);
 
   const [selectedPaperDetail, setSelectedPaperDetail] = useState(null);
 
@@ -151,18 +149,12 @@ export default function WorkspaceLayout() {
     codeContentRef.current = newVal;
     setCodeContent(newVal);
     if (selectedSectionIdRef.current) dirtySectionsRef.current.add(selectedSectionIdRef.current);
-    const nextHistory = codeHistory.slice(0, historyIndex + 1);
-    nextHistory.push(newVal);
-    setCodeHistory(nextHistory);
-    setHistoryIndex(nextHistory.length - 1);
   };
 
   const loadCode = (newVal) => {
     const text = newVal || '';
     codeContentRef.current = text;
     setCodeContent(text);
-    setCodeHistory([text]);
-    setHistoryIndex(0);
   };
 
   const selectSection = (id) => {
@@ -203,6 +195,12 @@ export default function WorkspaceLayout() {
   };
 
   const displayContent = selectedPaper ? codeContent : `% ${t('noPaper')}`;
+
+  const [previewContent, setPreviewContent] = useState(displayContent);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setPreviewContent(displayContent), 250);
+    return () => window.clearTimeout(timer);
+  }, [displayContent]);
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -536,31 +534,44 @@ export default function WorkspaceLayout() {
   }, [selectedPaper, user]);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    const client = new Client({
-      brokerURL: baseURL.replace(/^http/, 'ws') + '/ws',
-      connectHeaders: { Authorization: 'Bearer ' + token },
-      onConnect: () => {
-        client.subscribe('/user/queue/notifications', msg => {
-          try {
-            const n = JSON.parse(msg.body);
-            setNotifications(prev => [n, ...prev]);
-            setUnreadCount(c => c + 1);
-            if (n.actionType === 'EXPORT_READY') {
-              showToast(t('exportReady'));
-              if (project) fetchExports();
-            } else {
-              showToast(n.message || t('newNotification'));
-            }
-          } catch (e) { console.warn('Bad notification payload:', e); }
-        });
-      },
-      reconnectDelay: 5000,
-    });
-    client.activate();
-    stompRef.current = client;
-    return () => { client.deactivate(); };
+    let client = null;
+    const connect = () => {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      const c = new Client({
+        brokerURL: baseURL.replace(/^http/, 'ws') + '/ws',
+        connectHeaders: { Authorization: 'Bearer ' + token },
+        onConnect: () => {
+          c.subscribe('/user/queue/notifications', msg => {
+            try {
+              const n = JSON.parse(msg.body);
+              setNotifications(prev => [n, ...prev]);
+              setUnreadCount(c => c + 1);
+              if (n.actionType === 'EXPORT_READY') {
+                showToast(t('exportReady'));
+                if (project) fetchExports();
+              } else {
+                showToast(n.message || t('newNotification'));
+              }
+            } catch (e) { console.warn('Bad notification payload:', e); }
+          });
+        },
+        reconnectDelay: 5000,
+      });
+      c.activate();
+      client = c;
+      stompRef.current = c;
+    };
+    const onRefreshed = () => {
+      if (client) { client.deactivate(); client = null; }
+      connect();
+    };
+    connect();
+    window.addEventListener('auth:refreshed', onRefreshed);
+    return () => {
+      window.removeEventListener('auth:refreshed', onRefreshed);
+      if (client) client.deactivate();
+    };
   }, []);
 
   useEffect(() => {
@@ -728,7 +739,16 @@ export default function WorkspaceLayout() {
         String(s.id) === String(sectionId) ? { ...s, contentTex: content } : s));
       setTimeout(() => setSaveStatus(''), 3000);
       return true;
-    } catch { setSaveStatus('error'); showToast(t('saveFailed')); return false; }
+    } catch (error) {
+      setSaveStatus('error');
+      const status = error?.response?.status;
+      if (status === 409) showToast(t('saveConflict'));
+      else if (status === 403) showToast(t('saveReadOnly'));
+      else if (status === 404) showToast(t('saveSectionRemoved'));
+      else if (status === 400) showToast(t('saveConflict'));
+      else showToast(t('saveFailed'));
+      return false;
+    }
   };
 
   const [saveStatus, setSaveStatus] = useState('');
@@ -791,7 +811,7 @@ export default function WorkspaceLayout() {
       const { data: submit } = await api.post(
         `/api/papers/${selectedPaper.id}/sections/${selectedSectionId}/review/source-matches`,
         {
-          findings: findings.map((finding, findingIndex) => ({
+          findings: findings.slice(0, 10).map((finding, findingIndex) => ({
             findingIndex,
             excerpt: finding.excerpt,
             startOffset: finding.startOffset,
@@ -810,10 +830,13 @@ export default function WorkspaceLayout() {
       const grouped = {};
       (job.result?.findings || []).forEach(item => { grouped[item.findingIndex] = item.candidates || []; });
       setAiSourceMatches(grouped);
-    } catch {
+    } catch (error) {
       if (aiReviewRequestRef.current === reviewRequestId
         && aiSourceRequestRef.current === sourceRequestId) {
-        setAiSourcesError(t('sourceSearchFailed'));
+        const message = error?.response?.status === 409
+          ? t('reviewSectionChanged')
+          : t('sourceSearchFailed');
+        setAiSourcesError(message);
       }
     } finally {
       if (aiSourceRequestRef.current === sourceRequestId) setLoadingAiSources(false);
@@ -1007,9 +1030,13 @@ export default function WorkspaceLayout() {
         } catch { /* toast already shown */ }
       }
       showToast(t('citationInserted'));
-    } catch {
+    } catch (error) {
       setSaveStatus('error');
-      showToast(t('saveFailed'));
+      const status = error?.response?.status;
+      if (status === 409) showToast(t('saveConflict'));
+      else if (status === 403) showToast(t('saveReadOnly'));
+      else if (status === 404) showToast(t('saveSectionRemoved'));
+      else showToast(t('saveFailed'));
     }
   };
 
@@ -1088,25 +1115,25 @@ export default function WorkspaceLayout() {
   };
 
   const handleUndo = () => {
-    if (historyIndex > 0) { setHistoryIndex(historyIndex - 1); setCodeContent(codeHistory[historyIndex - 1]); }
+    if (!requireEditableCurrentSection()) return;
+    editorRef.current?.undo();
   };
 
   const handleRedo = () => {
-    if (historyIndex < codeHistory.length - 1) { setHistoryIndex(historyIndex + 1); setCodeContent(codeHistory[historyIndex + 1]); }
+    if (!requireEditableCurrentSection()) return;
+    editorRef.current?.redo();
   };
 
   const handleFindReplace = (replaceAll = false) => {
     if (!requireEditableCurrentSection()) return;
     if (!searchQuery) return;
-    const text = codeContent;
-    if (replaceAll) { updateCode(text.replaceAll(searchQuery, replaceQuery)); showToast(t('replacedAll')); return; }
-    const ta = document.getElementById('latex-textarea');
-    if (ta) {
-      const start = ta.selectionStart, end = ta.selectionEnd, selText = text.substring(start, end);
-      if (selText === searchQuery) { updateCode(text.substring(0, start) + replaceQuery + text.substring(end)); setTimeout(() => { ta.focus(); ta.setSelectionRange(start, start + replaceQuery.length); }, 50); return; }
-    }
-    const idx = text.indexOf(searchQuery);
-    if (idx !== -1) { updateCode(text.substring(0, idx) + replaceQuery + text.substring(idx + searchQuery.length)); } else showToast(t('notFound'));
+    const ed = editorRef.current;
+    if (!ed) return;
+    const result = replaceAll
+      ? ed.replaceAll(searchQuery, replaceQuery)
+      : ed.replaceFirst(searchQuery, replaceQuery);
+    if (!result.changed) { showToast(t('notFound')); return; }
+    if (replaceAll) showToast(t('replacedAll'));
   };
 
   const generateRichTextHtml = (latexCode) => {
@@ -1258,7 +1285,7 @@ export default function WorkspaceLayout() {
 
         <FilePanel compact={isCompactWorkspace} isOpen={isFileTreeOpen} width={fileTreeWidth} onResizeStart={handleLeftDividerMouseDown} sections={sections} assignedSections={assignedSections} selectedSectionId={selectedSectionId} onSelectSection={handleSelectSection} selectedPaper={selectedPaper} onSelectPaper={handleSelectPaper} papers={papers} onUploadPaper={isLocked ? undefined : handleUploadPaper} sources={sources} onUploadSource={isLocked ? undefined : handleUploadSource} onDeleteSource={handleDeleteSource} mediaAssets={mediaAssets} onUploadMedia={isLocked ? undefined : handleUploadMedia} onDeleteMedia={handleDeleteMedia} onInsertMedia={canEditCurrentSection ? handleInsertMedia : undefined} showToast={showToast} isLocked={isLocked} onSaveDraft={handleSaveDraft} saveStatus={saveStatus} />
 
-        <EditorPanel compact={isCompactWorkspace} editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSections={assignedSections} canEditCurrentSection={canEditCurrentSection} currentSection={currentSection} displayContent={displayContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} handleScanCitations={handleScanCitations} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} isLocked={isLocked} />
+        <EditorPanel compact={isCompactWorkspace} editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSections={assignedSections} canEditCurrentSection={canEditCurrentSection} currentSection={currentSection} displayContent={displayContent} previewContent={previewContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} handleScanCitations={handleScanCitations} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} isLocked={isLocked} />
 
         <ContextPanel compact={isCompactWorkspace} isOpen={isDrawerOpen} width={rightDrawerWidth} onResizeStart={handleRightDividerMouseDown} activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); localStorage.setItem('student_workspace_active_tab', tab); }} showToast={showToast}
           sources={sources} isUploading={isUploading} setIsUploading={setIsUploading} project={project} setViewerFile={setViewerFile} fetchSources={fetchSources} isLocked={isLocked}

@@ -354,6 +354,9 @@ export default function ReviewSpace() {
   };
 
   const pollAiJob = async (jobId, shouldAbort) => {
+    let polls = 0;
+    const MAX_POLLS = 240;
+    const startedAt = Date.now();
     for (;;) {
       if (shouldAbort?.()) return null;
       const { data: job } = await api.get(`/api/jobs/${jobId}`);
@@ -361,6 +364,11 @@ export default function ReviewSpace() {
       if (job.status === 'FAILED') {
         const error = new Error(job.errorMessage || t.suggestionFailed);
         error.status = Number(job.errorMessage?.match(/(\d{3})/)?.[1]) || undefined;
+        throw error;
+      }
+      if (++polls >= MAX_POLLS || Date.now() - startedAt > 6 * 60 * 1000) {
+        const error = new Error(t.aiSuggestionWorkerUnavailable);
+        error.status = 503;
         throw error;
       }
       await new Promise(resolve => setTimeout(resolve, 1500));

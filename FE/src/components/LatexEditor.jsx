@@ -29,6 +29,7 @@ const reviewRanges = StateField.define({
 const LatexEditor = forwardRef(function LatexEditor({ content, onChange, readOnly = false, fontSize = 14 }, ref) {
   const containerRef = useRef(null);
   const viewRef = useRef(null);
+  const lastEmittedRef = useRef('');
   const [isDark, setIsDark] = useState(() =>
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
   );
@@ -71,6 +72,51 @@ const LatexEditor = forwardRef(function LatexEditor({ content, onChange, readOnl
       });
       v.focus();
     },
+    undo: () => {
+      const v = viewRef.current;
+      if (!v) return;
+      v.undo();
+    },
+    redo: () => {
+      const v = viewRef.current;
+      if (!v) return;
+      v.redo();
+    },
+    replaceFirst: (query, replacement) => {
+      const v = viewRef.current;
+      if (!v || !query) return { changed: false, count: 0 };
+      const doc = v.state.doc.toString();
+      const cursor = v.state.selection.main.from;
+      let from = doc.indexOf(query, cursor);
+      if (from < 0) from = doc.indexOf(query);
+      if (from < 0) return { changed: false, count: 0 };
+      const to = from + query.length;
+      v.dispatch({
+        changes: { from, to, insert: replacement },
+        selection: { anchor: from + replacement.length },
+        scrollIntoView: true,
+      });
+      v.focus();
+      return { changed: true, count: 1 };
+    },
+    replaceAll: (query, replacement) => {
+      const v = viewRef.current;
+      if (!v || !query) return { changed: false, count: 0 };
+      const doc = v.state.doc.toString();
+      const parts = doc.split(query);
+      const count = parts.length - 1;
+      if (count === 0) return { changed: false, count: 0 };
+      const changes = [];
+      let pos = 0;
+      for (let i = 0; i < count; i++) {
+        pos += parts[i].length;
+        changes.push({ from: pos, to: pos + query.length, insert: replacement });
+        pos += query.length;
+      }
+      v.dispatch({ changes, scrollIntoView: true });
+      v.focus();
+      return { changed: true, count };
+    },
     setReviewRanges: (ranges = []) => {
       const v = viewRef.current;
       if (!v) return;
@@ -99,7 +145,9 @@ const LatexEditor = forwardRef(function LatexEditor({ content, onChange, readOnl
 
     const updateListener = EditorView.updateListener.of((update) => {
       if (update.docChanged && onChange) {
-        onChange(update.state.doc.toString());
+        const text = update.state.doc.toString();
+        lastEmittedRef.current = text;
+        onChange(text);
       }
     });
 
@@ -138,7 +186,7 @@ const LatexEditor = forwardRef(function LatexEditor({ content, onChange, readOnl
   }, [readOnly, fontSize, isDark]);
 
   useEffect(() => {
-    if (viewRef.current && content !== undefined) {
+    if (viewRef.current && content !== undefined && content !== lastEmittedRef.current) {
       const current = viewRef.current.state.doc.toString();
       if (current !== content) {
         viewRef.current.dispatch({

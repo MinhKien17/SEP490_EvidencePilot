@@ -70,7 +70,6 @@ export default function ProjectDetail() {
   const [standardSuggestion, setStandardSuggestion] = useState(null);
   const [standardSuggestionLoading, setStandardSuggestionLoading] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [addSourceDocType, setAddSourceDocType] = useState('SOURCE');
   const [addSourceLoading, setAddSourceLoading] = useState(false);
   const [shareLoadingId, setShareLoadingId] = useState(null);
   const [pendingAssign, setPendingAssign] = useState(null); // { sectionId, userId, userName }
@@ -203,7 +202,7 @@ export default function ProjectDetail() {
 
   const handleUpdateStandard = () => saveStandard(standard);
 
-  const handleImportDoiUnified = async (asSource) => {
+  const handleImportDoiUnified = async () => {
     if (!doiInput.trim()) return;
     setAddSourceLoading(true);
     setDoiError('');
@@ -212,15 +211,9 @@ export default function ProjectDetail() {
         doi: doiInput.trim(),
         projectId: id,
       };
-      if (asSource) payload.docType = 'SOURCE';
       await api.post('/api/documents/ingest/doi', payload);
       setDoiInput('');
-      if (asSource) {
-        await loadSources();
-      } else {
-        const papersRes = await api.get(`/api/projects/${id}/papers`);
-        setPapers(papersRes.data || []);
-      }
+      await loadSources();
       setShowAddSource(false);
     } catch (err) { setDoiError(err?.response?.data?.message || t.doiImportFailed); }
     finally { setAddSourceLoading(false); }
@@ -1236,30 +1229,14 @@ export default function ProjectDetail() {
         <div className="space-y-5 text-xs">
           <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
             <h3 className="font-bold text-[var(--brand-foreground)]">{t.importByDoi}</h3>
-            <div className="flex gap-2 mb-2">
-              <button
-                onClick={() => setAddSourceDocType('SOURCE')}
-                className={`flex-1 rounded-lg border px-3 py-2 text-xs font-bold transition ${addSourceDocType === 'SOURCE' ? 'border-[var(--brand)] bg-[var(--brand)] text-white' : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:border-indigo-300'}`}
-              >
-                {t.asSource}
-              </button>
-              <button
-                onClick={() => setAddSourceDocType('PAPER')}
-                className={`flex-1 rounded-lg border px-3 py-2 text-xs font-bold transition ${addSourceDocType === 'PAPER' ? 'border-[var(--brand)] bg-[var(--brand)] text-white' : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-secondary)] hover:border-indigo-300'}`}
-              >
-                {t.asPaper}
-              </button>
-            </div>
             <div className="flex gap-2">
               <input value={doiInput} onChange={e => setDoiInput(e.target.value)} placeholder="10.1000/xyz123" className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs outline-none" />
-              <button onClick={() => handleImportDoiUnified(addSourceDocType === 'SOURCE')} disabled={addSourceLoading || !doiInput.trim()} className="rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)] disabled:opacity-50">
+              <button onClick={() => handleImportDoiUnified()} disabled={addSourceLoading || !doiInput.trim()} className="rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)] disabled:opacity-50">
                 {addSourceLoading ? '...' : t.import}
               </button>
             </div>
             {doiError && <p className="text-xs font-semibold text-rose-600">{doiError}</p>}
-            {addSourceDocType === 'SOURCE' && (
-              <p className="text-[10px] italic text-[var(--text-tertiary)]">{t.sourcesAutoClassified}</p>
-            )}
+            <p className="text-[10px] italic text-[var(--text-tertiary)]">{t.sourcesAutoClassified}</p>
           </div>
           <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
             <h3 className="font-bold text-[var(--text-primary)]">{t.uploadSourceFile}</h3>

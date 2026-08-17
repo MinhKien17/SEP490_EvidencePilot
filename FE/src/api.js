@@ -18,7 +18,69 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+const LEAD_MS = 60 * 1000;
+const NEAR_MS = 10 * 60 * 1000;
+
 let refreshPromise = null;
+let refreshTimeout = null;
+
+function decodeExp(token) {
+  try {
+    const payload = token.split('.')[1];
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const json = JSON.parse(atob(base64));
+    return typeof json.exp === 'number' ? json.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+async function refreshToken() {
+  refreshPromise = refreshPromise || (async () => {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('no-token');
+    const r = await axios.post(`${baseURL}/api/auth/refresh`, null, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 15000,
+    });
+    localStorage.setItem('token', r.data.token);
+    if (r.data.user?.role) localStorage.setItem('role', r.data.user.role);
+    window.dispatchEvent(new CustomEvent('auth:refreshed', { detail: r.data }));
+    armProactiveRefresh();
+    return r.data.token;
+  })().finally(() => { refreshPromise = null; });
+  return refreshPromise;
+}
+
+function armProactiveRefresh() {
+  window.clearTimeout(refreshTimeout);
+  const token = localStorage.getItem('token');
+  if (!token) return;
+  const expMs = decodeExp(token);
+  if (!expMs) return;
+  refreshTimeout = window.setTimeout(async () => {
+    try {
+      await refreshToken();
+    } catch { /* interceptor + auth:expired handle the rest */ }
+  }, Math.max(0, expMs - Date.now() - LEAD_MS));
+}
+
+function refreshIfNearExpiry() {
+  const token = localStorage.getItem('token');
+  if (!token) return;
+  const expMs = decodeExp(token);
+  if (!expMs) return;
+  armProactiveRefresh();
+  if (expMs - Date.now() < NEAR_MS) {
+    refreshToken().catch(() => {});
+  }
+}
+
+window.addEventListener('focus', refreshIfNearExpiry);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') refreshIfNearExpiry();
+});
+armProactiveRefresh();
 
 api.interceptors.response.use(
   (response) => response,
@@ -29,19 +91,8 @@ api.interceptors.response.use(
     if (response?.status === 401 && !config._retried && !isAuthCall && !onLoginPage) {
       config._retried = true;
       try {
-        refreshPromise = refreshPromise || (async () => {
-          const token = localStorage.getItem('token');
-          if (!token) throw new Error('no-token');
-          const r = await axios.post(`${baseURL}/api/auth/refresh`, null, {
-            headers: { Authorization: `Bearer ${token}` },
-            timeout: 15000,
-          });
-          localStorage.setItem('token', r.data.token);
-          if (r.data.user?.role) localStorage.setItem('role', r.data.user.role);
-          window.dispatchEvent(new CustomEvent('auth:refreshed', { detail: r.data }));
-          return r.data.token;
-        })().finally(() => { refreshPromise = null; });
-        config.headers.Authorization = `Bearer ${await refreshPromise}`;
+        const token = await refreshToken();
+        config.headers.Authorization = `Bearer ${token}`;
         return api(config);
       } catch {
         window.dispatchEvent(new CustomEvent('auth:expired'));
@@ -51,4 +102,5 @@ api.interceptors.response.use(
   }
 );
 
+export { armProactiveRefresh };
 export default api;

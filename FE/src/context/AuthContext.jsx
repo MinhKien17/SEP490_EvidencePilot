@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import api from '../api.js';
+import api, { armProactiveRefresh } from '../api.js';
 
 const AuthContext = createContext(null);
 
@@ -46,6 +46,7 @@ export function AuthProvider({ children }) {
     }
     setToken(newToken);
     setRole(newRole || '');
+    armProactiveRefresh();
     verifySession().catch(() => {});
   }, [verifySession]);
 
