@@ -7,6 +7,7 @@ import com.evidencepilot.dto.response.PaperSectionResponse;
 import com.evidencepilot.dto.response.PaperStandardSuggestionResponse;
 import com.evidencepilot.dto.response.PaperValidationResponse;
 import com.evidencepilot.dto.response.JobSubmitResponse;
+import com.evidencepilot.dto.response.SectionUpdateResponse;
 import com.evidencepilot.dto.request.SectionContentUpdateRequest;
 import com.evidencepilot.dto.request.SectionReviewSourceMatchRequest;
 import com.evidencepilot.dto.request.SectionSuggestionRequest;
@@ -228,20 +229,23 @@ public class PaperController {
                     + "Structure and content changes must be sent separately.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Section updated"),
+            @ApiResponse(responseCode = "400", description = "Invalid or oversized section content"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
             @ApiResponse(responseCode = "403", description = "Access denied"),
             @ApiResponse(responseCode = "404", description = "Section not found")
     })
     @PutMapping("/papers/{documentId}/sections/{sectionId}")
-    public PaperSectionResponse updateSection(
+    public SectionUpdateResponse updateSection(
             @Parameter(description = "Paper document UUID") @PathVariable UUID documentId,
             @Parameter(description = "Section UUID") @PathVariable UUID sectionId,
-            @Parameter(description = "Section content (send structure changes as query params)") @RequestBody(required = false) SectionContentUpdateRequest body,
+            @Parameter(description = "Section content (send structure changes as query params)") @Valid @RequestBody(required = false) SectionContentUpdateRequest body,
             @RequestParam(required = false) String title,
             @RequestParam(required = false) Integer order,
             @RequestParam(required = false) UUID mergeIntoId) {
         String content = body != null ? body.content() : null;
-        return paperProcessingService.updateSection(documentId, sectionId, title, order, mergeIntoId, content);
+        PaperSectionResponse updated = paperProcessingService.updateSection(
+                documentId, sectionId, title, order, mergeIntoId, content);
+        return SectionUpdateResponse.from(updated);
     }
 
     @Operation(summary = "Assign a student to a paper section",

@@ -19,8 +19,9 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-const LEAD_MS = 60 * 1000;
+const LEAD_MS = 5 * 60 * 1000;
 const NEAR_MS = 10 * 60 * 1000;
+const REFRESH_RETRY_MS = 15 * 1000;
 
 let refreshPromise = null;
 let refreshTimeout = null;
@@ -36,12 +37,24 @@ function decodeExp(token) {
   }
 }
 
+function isAuthFailure(error) {
+  const status = error?.response?.status;
+  return status === 401 || status === 403;
+}
+
+function notifyAuthExpired() {
+  window.dispatchEvent(new CustomEvent('auth:expired'));
+}
+
 async function refreshToken() {
   refreshPromise = refreshPromise || (async () => {
     const token = localStorage.getItem('token');
     if (!token) throw new Error('no-token');
     const r = await axios.post(`${baseURL}/api/auth/refresh`, null, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'ngrok-skip-browser-warning': 'true',
+      },
       timeout: 15000,
     });
     localStorage.setItem('token', r.data.token);
@@ -53,17 +66,67 @@ async function refreshToken() {
   return refreshPromise;
 }
 
+function retryProactiveRefresh(token) {
+  window.clearTimeout(refreshTimeout);
+  const currentToken = localStorage.getItem('token');
+  if (!currentToken) return;
+  if (currentToken !== token) {
+    armProactiveRefresh();
+    return;
+  }
+  const expMs = decodeExp(currentToken);
+  const remainingMs = expMs ? expMs - Date.now() : 0;
+  if (remainingMs <= 0) {
+    notifyAuthExpired();
+    return;
+  }
+  const delay = Math.min(REFRESH_RETRY_MS, Math.max(250, Math.floor(remainingMs / 2)));
+  refreshTimeout = window.setTimeout(() => refreshProactively(currentToken), delay);
+}
+
+function handleRefreshFailure(error, attemptedToken) {
+  const currentToken = localStorage.getItem('token');
+  if (currentToken && attemptedToken && currentToken !== attemptedToken) {
+    armProactiveRefresh();
+    return;
+  }
+  const expMs = currentToken ? decodeExp(currentToken) : null;
+  if (!currentToken || isAuthFailure(error) || (expMs && expMs <= Date.now())) {
+    notifyAuthExpired();
+    return;
+  }
+  retryProactiveRefresh(currentToken);
+}
+
+async function refreshProactively(expectedToken = localStorage.getItem('token')) {
+  const attemptedToken = localStorage.getItem('token');
+  if (!attemptedToken) {
+    armProactiveRefresh();
+    return;
+  }
+  if (expectedToken && expectedToken !== attemptedToken) {
+    armProactiveRefresh();
+    return;
+  }
+  try {
+    await refreshToken();
+  } catch (error) {
+    handleRefreshFailure(error, attemptedToken);
+  }
+}
+
 function armProactiveRefresh() {
   window.clearTimeout(refreshTimeout);
   const token = localStorage.getItem('token');
   if (!token) return;
   const expMs = decodeExp(token);
   if (!expMs) return;
-  refreshTimeout = window.setTimeout(async () => {
-    try {
-      await refreshToken();
-    } catch { /* interceptor + auth:expired handle the rest */ }
-  }, Math.max(0, expMs - Date.now() - LEAD_MS));
+  const remainingMs = expMs - Date.now();
+  const leadMs = Math.min(LEAD_MS, Math.max(0, Math.floor(remainingMs / 2)));
+  refreshTimeout = window.setTimeout(
+    () => refreshProactively(token),
+    Math.max(0, remainingMs - leadMs),
+  );
 }
 
 function refreshIfNearExpiry() {
@@ -73,11 +136,14 @@ function refreshIfNearExpiry() {
   if (!expMs) return;
   armProactiveRefresh();
   if (expMs - Date.now() < NEAR_MS) {
-    refreshToken().catch(() => {});
+    refreshProactively(token);
   }
 }
 
 window.addEventListener('focus', refreshIfNearExpiry);
+window.addEventListener('storage', (event) => {
+  if (event.storageArea === localStorage && event.key === 'token') armProactiveRefresh();
+});
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') refreshIfNearExpiry();
 });
@@ -97,18 +163,20 @@ api.interceptors.response.use(
         config.headers.Authorization = `Bearer ${currentToken}`;
         return api(config);
       }
+      const refreshAttemptToken = localStorage.getItem('token');
       try {
         const token = await refreshToken();
         config.headers.Authorization = `Bearer ${token}`;
         return api(config);
-      } catch {
+      } catch (refreshError) {
         // refresh failed, but the token may have changed mid-flight (concurrent tab refresh)
         const nowToken = localStorage.getItem('token');
-        if (nowToken && nowToken !== config._authToken) {
+        if (nowToken && nowToken !== refreshAttemptToken) {
           config.headers.Authorization = `Bearer ${nowToken}`;
           return api(config);
         }
-        window.dispatchEvent(new CustomEvent('auth:expired'));
+        handleRefreshFailure(refreshError, refreshAttemptToken);
+        return Promise.reject(refreshError);
       }
     }
     return Promise.reject(error);

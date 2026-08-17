@@ -2,6 +2,7 @@ package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.JobSubmitResponse;
+import com.evidencepilot.dto.response.PaperSectionResponse;
 import com.evidencepilot.dto.response.PaperStandardSuggestionResponse;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.FeedbackRequest;
@@ -33,6 +34,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -138,6 +140,8 @@ class PaperControllerTest {
     void updateSection_bindsStructureParameters() throws Exception {
         UUID paperId = UUID.randomUUID();
         UUID sectionId = UUID.randomUUID();
+        when(paperService.updateSection(paperId, sectionId, "Methods", 2, null, null))
+                .thenReturn(sectionResponse(paperId, sectionId, null));
 
         mockMvc.perform(put("/api/papers/{paperId}/sections/{sectionId}", paperId, sectionId)
                         .param("title", "Methods")
@@ -153,6 +157,29 @@ class PaperControllerTest {
         UUID paperId = UUID.randomUUID();
         UUID sectionId = UUID.randomUUID();
         String content = "Section body text.";
+        when(paperService.updateSection(paperId, sectionId, null, null, null, content))
+                .thenReturn(sectionResponse(paperId, sectionId, content));
+
+        mockMvc.perform(put("/api/papers/{paperId}/sections/{sectionId}", paperId, sectionId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"" + content + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(sectionId.toString()))
+                .andExpect(jsonPath("$.version").value(2))
+                .andExpect(jsonPath("$.updatedAt").exists())
+                .andExpect(jsonPath("$.contentTex").doesNotExist())
+                .andExpect(jsonPath("$.previousContentTex").doesNotExist());
+
+        verify(paperService).updateSection(paperId, sectionId, null, null, null, content);
+    }
+
+    @Test
+    void updateSection_acceptsLargeContentInBody() throws Exception {
+        UUID paperId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        String content = "x".repeat(100_000);
+        when(paperService.updateSection(paperId, sectionId, null, null, null, content))
+                .thenReturn(sectionResponse(paperId, sectionId, content));
 
         mockMvc.perform(put("/api/papers/{paperId}/sections/{sectionId}", paperId, sectionId)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -163,17 +190,17 @@ class PaperControllerTest {
     }
 
     @Test
-    void updateSection_acceptsLargeContentInBody() throws Exception {
+    void updateSection_rejectsContentAboveLimit() throws Exception {
         UUID paperId = UUID.randomUUID();
         UUID sectionId = UUID.randomUUID();
-        String content = "x".repeat(100_000);
+        String content = "x".repeat(5_000_001);
 
         mockMvc.perform(put("/api/papers/{paperId}/sections/{sectionId}", paperId, sectionId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"content\":\"" + content + "\"}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isBadRequest());
 
-        verify(paperService).updateSection(paperId, sectionId, null, null, null, content);
+        verifyNoInteractions(paperService);
     }
 
     @Test
@@ -391,6 +418,21 @@ class PaperControllerTest {
         s.setId(UUID.randomUUID());
         s.setDocument(paper);
         return s;
+    }
+
+    private static PaperSectionResponse sectionResponse(UUID paperId, UUID sectionId, String content) {
+        return new PaperSectionResponse(
+                sectionId,
+                paperId,
+                null,
+                null,
+                1,
+                "Section",
+                content,
+                null,
+                2,
+                null,
+                LocalDateTime.of(2026, 8, 17, 10, 0));
     }
 
     private static DocumentResponse document(DocumentType type, boolean active) {

@@ -68,6 +68,7 @@
   "saved": "Saved",
   "saveFailed": "Save failed.",
   "saveConflict": "Another editor changed this section. Reload to see the latest version before saving again.",
+  "saveContentInvalid": "This section is too large or invalid. Reduce its size and try again.",
   "saveReadOnly": "You no longer have permission to edit this section.",
   "saveSectionRemoved": "This section was removed. Reload the paper.",
   "noPaperSelected": "No paper selected.",
