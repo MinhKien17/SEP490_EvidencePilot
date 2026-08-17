@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useDangerConfirm } from '../../../components/DangerConfirm';
 function SettingsSection({ lang, api }) {
+  const confirmDanger = useDangerConfirm();
   const [cats, setCats] = useState([]);
   const [catsLoading, setCatsLoading] = useState(true);
   const [showCatForm, setShowCatForm] = useState(false);
@@ -64,7 +66,7 @@ function SettingsSection({ lang, api }) {
   };
 
   const doCatDelete = async (id) => {
-    if (!window.confirm(lang.confirmDeleteCategory)) return;
+    if (!(await confirmDanger(lang.confirmDeleteCategory))) return;
     try {
       await api.delete(`/api/admin/collection-categories/${id}`);
       showToast(lang.categoryDeletedOk, 'success');

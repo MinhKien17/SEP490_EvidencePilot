@@ -55,6 +55,14 @@ export const studentText = {
     lastUpdated: 'Updated {{date}}',
     noMatchingProjects: 'No matching projects found',
     noMatchingProjectsDesc: 'No projects match your current filter or search criteria.',
+    guideButton: 'Guide',
+    guideTitle: 'How Evidence Pilot works',
+    guideSteps: [
+      'Open an assigned project to reach its workspace.',
+      'Add reference sources (DOI or file upload) in the Source tab.',
+      'Run Citation Review, then insert citations or record decisions for each finding.',
+      'Address instructor feedback in the Feedback tab, then submit your project for review.',
+    ],
   },
   vi: {
     projects: 'Dự án',
@@ -112,5 +120,13 @@ export const studentText = {
     lastUpdated: 'Cập nhật {{date}}',
     noMatchingProjects: 'Không tìm thấy dự án phù hợp',
     noMatchingProjectsDesc: 'Không có dự án nào thuộc trạng thái hoặc từ khóa tìm kiếm này.',
+    guideButton: 'Hướng dẫn',
+    guideTitle: 'Cách sử dụng Evidence Pilot',
+    guideSteps: [
+      'Mở một dự án được phân công để vào không gian làm việc.',
+      'Thêm tài liệu tham khảo (DOI hoặc tải tệp) trong tab Nguồn.',
+      'Chạy Đánh giá AI, sau đó chèn trích dẫn hoặc ghi nhận quyết định cho từng kết quả.',
+      'Xử lý phản hồi của giảng viên trong tab Nhận xét, sau đó gửi dự án để đánh giá.',
+    ],
   },
 };

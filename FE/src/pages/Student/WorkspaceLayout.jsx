@@ -12,6 +12,7 @@ import EditorPanel from './EditorPanel.jsx';
 import ContextPanel from './ContextPanel.jsx';
 import FullPaperPreview from './FullPaperPreview.jsx';
 import { hasActiveExtraction } from './extractionPolling.js';
+import { useDangerConfirm } from '../../components/DangerConfirm';
 
 async function loadAllProjectSources(projectId) {
   const sources = [];
@@ -34,6 +35,7 @@ export default function WorkspaceLayout() {
   const navigate = useNavigate();
   const { logout, user, role } = useAuth();
   const { t, i18n } = useTranslation();
+  const confirmDanger = useDangerConfirm();
   const [activeTab, setActiveTab] = useState(() => {
     const stored = localStorage.getItem('student_workspace_active_tab') || 'Source';
     return stored === 'Graph' || stored === 'Claims' ? 'AI Review' : stored;
@@ -174,20 +176,21 @@ export default function WorkspaceLayout() {
     return next;
   }, [selectedPaper]);
 
-  const handleSelectSection = (sec) => {
+  const handleSelectSection = async (sec) => {
     const current = selectedSectionIdRef.current;
     if (current && current !== sec.id && dirtySectionsRef.current.has(current)) {
-      if (!window.confirm(t('unsavedSectionSwitch'))) return;
+      if (!(await confirmDanger(t('unsavedSectionSwitch')))) return false;
       dirtySectionsRef.current.delete(current);
     }
     selectSection(sec.id);
     loadCode(sec.contentTex || '');
+    return true;
   };
 
-  const handleSelectPaper = (p) => {
+  const handleSelectPaper = async (p) => {
     const current = selectedSectionIdRef.current;
     if (current && dirtySectionsRef.current.has(current)) {
-      if (!window.confirm(t('unsavedPaperSwitch'))) return;
+      if (!(await confirmDanger(t('unsavedPaperSwitch')))) return;
       dirtySectionsRef.current.delete(current);
     }
     setSelectedPaper(p);
@@ -631,7 +634,7 @@ export default function WorkspaceLayout() {
   };
 
   const handleDeletePaper = async (paperId) => {
-    if (!window.confirm(t('deletePaperConfirm'))) return;
+    if (!(await confirmDanger(t('deletePaperConfirm')))) return;
     try {
       await api.delete(`/api/papers/${paperId}`);
       showToast(t('paperDeleted'));
@@ -659,7 +662,7 @@ export default function WorkspaceLayout() {
   };
 
   const handleDeleteSource = async (sourceId) => {
-    if (!window.confirm(t('deleteConfirm'))) return;
+    if (!(await confirmDanger(t('deleteConfirm')))) return;
     try {
       await api.delete(`/api/documents/${sourceId}`);
       showToast(t('sourceDeleted'));
@@ -684,7 +687,7 @@ export default function WorkspaceLayout() {
   };
 
   const handleDeleteMedia = async (mediaId) => {
-    if (!window.confirm(t('deleteMediaConfirm'))) return;
+    if (!(await confirmDanger(t('deleteMediaConfirm')))) return;
     try {
       await api.delete(`/api/media/${mediaId}`);
       showToast(t('mediaDeleted'));
@@ -713,7 +716,7 @@ export default function WorkspaceLayout() {
 
   const handleRollbackSection = async (sectionId) => {
     if (!selectedPaper) return;
-    if (!window.confirm(t('restoreConfirm'))) return;
+    if (!(await confirmDanger(t('restoreConfirm')))) return;
     setRollingBack(true);
     try {
       const res = await api.post(`/api/papers/${selectedPaper.id}/sections/${sectionId}/rollback`);
@@ -995,20 +998,6 @@ export default function WorkspaceLayout() {
     const nearby = current.slice(Math.max(0, range.start - 20), Math.min(current.length, range.end + 100));
     const citation = `\\cite{${candidate.citationKey}}`;
     if (nearby.includes(citation)) {
-      if (trace) {
-        try {
-          await handleDecideTrace(trace, {
-            studentAction: 'ADD_CITATION',
-            explanation: t('citationInsertTraceExplanation', {
-              source: candidate.title || candidate.sourceFilename || candidate.citationKey,
-            }),
-            sourceId: candidate.sourceId || candidate.documentId,
-            chunkId: candidate.documentChunkId,
-            evidenceQuote: candidate.excerpt,
-            relation: 'SUPPORTS',
-          });
-        } catch { /* toast already shown */ }
-      }
       showToast(t('citationAlreadyInserted'));
       return;
     }
@@ -1027,20 +1016,6 @@ export default function WorkspaceLayout() {
       localStorage.removeItem(`workspace_draft_${projectRef.current?.id}_${selectedSectionId}`);
       setSaveStatus('saved');
       setLastSaved(new Date());
-      if (trace) {
-        try {
-          await handleDecideTrace(trace, {
-            studentAction: 'ADD_CITATION',
-            explanation: t('citationInsertTraceExplanation', {
-              source: candidate.title || candidate.sourceFilename || candidate.citationKey,
-            }),
-            sourceId: candidate.sourceId || candidate.documentId,
-            chunkId: candidate.documentChunkId,
-            evidenceQuote: candidate.excerpt,
-            relation: 'SUPPORTS',
-          });
-        } catch { /* toast already shown */ }
-      }
       showToast(t('citationInserted'));
     } catch (error) {
       setSaveStatus('error');
@@ -1395,7 +1370,7 @@ export default function WorkspaceLayout() {
                     const isMySection = assignedSections.some(s => String(s.id) === String(sec.id));
                     return (
                       <div key={sec.id}
-                        onClick={() => { if (!handleSelectSection(sec)) return; setShowOverview(false); }}
+                        onClick={async () => { if (!(await handleSelectSection(sec))) return; setShowOverview(false); }}
                         className={`flex items-center justify-between p-2.5 rounded-lg text-xs border cursor-pointer transition-all ${isMySection ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' : 'bg-(--surface-secondary) border-(--border) hover:bg-(--surface-tertiary)'}`}>
                         <div className="flex items-center gap-2 truncate min-w-0">
                           {isMySection && <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" title={t('assignedToYou')}></span>}

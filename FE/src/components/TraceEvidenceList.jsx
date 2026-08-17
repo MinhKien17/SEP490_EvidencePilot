@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const STUDENT_ACTIONS = [
@@ -36,6 +37,13 @@ export default function TraceEvidenceList({
   const draftCandidates = decideDraft?.findingIndex != null
     ? (aiSourceMatches?.[decideDraft.findingIndex] || [])
     : [];
+
+  useEffect(() => {
+    if (!decideDraft) return;
+    const onKey = (e) => { if (e.key === 'Escape') setDecideDraft(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [decideDraft, setDecideDraft]);
 
   return (
     <div className="space-y-4">

@@ -13,6 +13,7 @@ import {
   isSourceSharedWithProject,
 } from './sourceShareSelection';
 import { getStudentSuggestions, studentDisplayName } from './studentSearch';
+import { useDangerConfirm } from '../../components/DangerConfirm';
 
 const STANDARDS = ['IEEE', 'ACM', 'SPRINGER_LNCS', 'APA', 'MLA', 'CUSTOM'];
 
@@ -22,6 +23,7 @@ export default function ProjectDetail() {
   const { language } = useLanguage();
   const ct = commonText[language];
   const t = instructorText[language];
+  const confirmDanger = useDangerConfirm();
   const [activeTab, setActiveTab] = useState('setup');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -51,6 +53,7 @@ export default function ProjectDetail() {
   const [showSourceDetail, setShowSourceDetail] = useState(false);
   const [sourceDetail, setSourceDetail] = useState(null);
   const [showAddSource, setShowAddSource] = useState(false);
+  const [pendingSourceFile, setPendingSourceFile] = useState(null);
   const [showShareCollection, setShowShareCollection] = useState(false);
   const [collections, setCollections] = useState([]);
   const [linkedCollections, setLinkedCollections] = useState([]);
@@ -219,16 +222,16 @@ export default function ProjectDetail() {
     finally { setAddSourceLoading(false); }
   };
 
-  const handleUploadSource = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleUploadSource = async (file) => {
+    if (!file) return false;
     const formData = new FormData();
     formData.append('file', file);
     formData.append('projectId', id);
     try {
       await api.post('/api/sources', formData);
       await loadSources();
-    } catch { alert(t.uploadFailed); }
+      return true;
+    } catch { alert(t.uploadFailed); return false; }
   };
 
   const handleUploadPaper = async (e) => {
@@ -421,7 +424,7 @@ export default function ProjectDetail() {
   };
 
   const handleDeleteSection = async (sectionId) => {
-    if (!selectedPaper || !window.confirm(t.deleteSectionConfirm)) return;
+    if (!selectedPaper || !(await confirmDanger(t.deleteSectionConfirm))) return;
     setSectionStructureSaving(true);
     try {
       await api.delete(`/api/papers/${selectedPaper.id}/sections/${sectionId}`);
@@ -813,14 +816,6 @@ export default function ProjectDetail() {
                     >
                       Save Change
                     </button>
-                  )}
-                  {selectedPaper && (
-                    <button onClick={async () => {
-                      try {
-                        const res = await api.get(`/api/papers/${selectedPaper.id}/validate`);
-                        alert(JSON.stringify(res.data, null, 2));
-                      } catch { }
-                    }} className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700">{t.validate}</button>
                   )}
                 </div>
               </div>
@@ -1225,7 +1220,7 @@ export default function ProjectDetail() {
         )}
       </Modal>
 
-      <Modal open={showAddSource} onClose={() => { setShowAddSource(false); setDoiInput(''); }} title={t.addSource}>
+      <Modal open={showAddSource} onClose={() => { setShowAddSource(false); setDoiInput(''); setPendingSourceFile(null); }} title={t.addSource}>
         <div className="space-y-5 text-xs">
           <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
             <h3 className="font-bold text-[var(--brand-foreground)]">{t.importByDoi}</h3>
@@ -1240,7 +1235,15 @@ export default function ProjectDetail() {
           </div>
           <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
             <h3 className="font-bold text-[var(--text-primary)]">{t.uploadSourceFile}</h3>
-            <input type="file" accept=".pdf,.docx" onChange={async (e) => { await handleUploadSource(e); setShowAddSource(false); }} className="text-xs" />
+            <input type="file" accept=".pdf,.docx" onChange={(e) => { setPendingSourceFile(e.target.files?.[0] || null); e.target.value = ''; }} className="text-xs" />
+            {pendingSourceFile && (
+              <div className="flex items-center justify-between gap-2 rounded-lg bg-[var(--surface-secondary)] px-3 py-2">
+                <span className="truncate font-semibold">{pendingSourceFile.name}</span>
+                <button onClick={async () => { if (await handleUploadSource(pendingSourceFile)) { setPendingSourceFile(null); setShowAddSource(false); } }} disabled={addSourceLoading} className="rounded-lg bg-[var(--brand)] px-3 py-1.5 text-xs font-bold text-white hover:bg-[var(--brand-hover)] disabled:opacity-50">
+                  {addSourceLoading ? '...' : ct.save}
+                </button>
+              </div>
+            )}
           </div>
           <div className="space-y-3 rounded-xl border border-[var(--border)] p-4">
             <h3 className="font-bold text-[var(--text-primary)]">{t.shareFromCollection}</h3>

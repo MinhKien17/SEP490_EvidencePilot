@@ -8,6 +8,7 @@ import { useCollectionSources } from '../../hooks/useCollections';
 import api from '../../api';
 import { Network } from 'vis-network';
 import { DataSet } from 'vis-data';
+import { useDangerConfirm } from '../../components/DangerConfirm';
 
 const TABS = ['documents', 'connectedMap', 'visualizeMap', 'analyzeCollection'];
 const TAB_IDS = ['documents-tab', 'connected-map-tab', 'visualize-map-tab', 'analyze-tab'];
@@ -30,12 +31,12 @@ export default function CollectionDetail() {
   const { language } = useLanguage();
   const t = instructorText[language];
   const ct = commonText[language];
+  const confirmDanger = useDangerConfirm();
 
   const TOUR_STEPS = useMemo(() => [
     { element: '#documents-tab', popover: { title: t.documents, description: t.tourDocumentsDesc, side: 'bottom', align: 'start' } },
     { element: '#add-doc-btn', popover: { title: t.addDocument, description: t.tourAddDocumentDesc, side: 'left', align: 'center' } },
     { element: '#documents-tab', popover: { title: t.tourDocumentList, description: t.tourDocumentListDesc, side: 'right', align: 'start' } },
-    { element: '#share-to-project', popover: { title: t.shareToProject, description: t.tourShareDocumentDesc, side: 'left', align: 'center' } },
     { element: '#connected-map-tab', popover: { title: t.connectedMap, description: t.tourConnectedDesc, side: 'bottom', align: 'start' } },
     { element: '#visualize-map-tab', popover: { title: t.visualizeMap, description: t.tourVisualizeDesc, side: 'bottom', align: 'start' } },
     { element: '#analyze-tab', popover: { title: t.analyzeCollection, description: t.tourAnalyzeDesc, side: 'bottom', align: 'start' } },
@@ -44,9 +45,6 @@ export default function CollectionDetail() {
   const [activeTab, setActiveTab] = useState(0);
   const { content: sources, loading: srcLoading, error: srcError, refetch: refetchSources } = useCollectionSources(id);
   const [selectedSource, setSelectedSource] = useState(null);
-  const [shareModal, setShareModal] = useState({ open: false, sourceId: null });
-  const [projects, setProjects] = useState([]);
-  const [projectSearch, setProjectSearch] = useState('');
 
   const [collection, setCollection] = useState(null);
   const [collectionLoading, setCollectionLoading] = useState(true);
@@ -70,28 +68,6 @@ export default function CollectionDetail() {
     api.get(`/api/collections/${id}`).then(r => setCollection(r.data)).catch(() => { }).finally(() => setCollectionLoading(false));
   }, [id]);
 
-  useEffect(() => {
-    api.get('/api/projects?size=100').then(r => setProjects(r.data?.content || [])).catch(() => setProjects([]));
-  }, []);
-
-  const openShare = async (sourceId) => {
-    setShareModal({ open: true, sourceId });
-    try {
-      const res = await api.get('/api/projects?size=100');
-      setProjects(res.data?.content || []);
-    } catch { setProjects([]); }
-  };
-
-  const doShare = async (projectId) => {
-    try {
-      await api.post(`/api/collections/${id}/sources/${shareModal.sourceId}/share-to-project/${projectId}`);
-      refetchSources();
-      setShareModal({ open: false, sourceId: null });
-    } catch (err) {
-      alert(t.shareFailed);
-    }
-  };
-
   const handleUpload = async (file) => {
     const fd = new FormData();
     fd.append('file', file);
@@ -105,7 +81,7 @@ export default function CollectionDetail() {
   };
 
   const handleDeleteSource = async (sourceId) => {
-    if (!window.confirm(t.deleteSourceConfirm)) return;
+    if (!(await confirmDanger(t.deleteSourceConfirm))) return;
     try { await api.delete(`/api/documents/${sourceId}`); refetchSources(); if (selectedSource?.id === sourceId) setSelectedSource(null); }
     catch { alert(t.deleteFailed); }
   };
@@ -124,10 +100,10 @@ export default function CollectionDetail() {
     }
   };
 
-  const handleDeleteCollection = () => {
+  const handleDeleteCollection = async () => {
     const shared = sources.filter(s => (s.projectIds || []).length > 0);
-    if (shared.length > 0 && !window.confirm(t.sharedDocsWarning)) return;
-    if (!window.confirm(t.deleteConfirm)) return;
+    if (shared.length > 0 && !(await confirmDanger(t.sharedDocsWarning))) return;
+    if (!(await confirmDanger(t.deleteConfirm))) return;
     api.delete(`/api/collections/${id}`).then(() => { window.location.href = '/instructor/collections'; }).catch(() => alert(t.deleteFailed));
   };
 
@@ -152,14 +128,8 @@ export default function CollectionDetail() {
       setEditModal(p => ({ ...p, submitting: false }));
     }
   };
-
-  const filteredProjects = projects.filter(p =>
-    !projectSearch || p.title?.toLowerCase().includes(projectSearch.toLowerCase())
-  );
-
-  const AddDocForm = () => {
+const AddDocForm = () => {
     const [doi, setDoi] = useState('');
-    const [file, setFile] = useState(null);
     const [submitting, setSubmitting] = useState(false);
     const [doiError, setDoiError] = useState('');
 
@@ -205,35 +175,8 @@ export default function CollectionDetail() {
       return (
         <div className="space-y-4">
           <p className="text-xs text-(--text-secondary)">{t.uploadDocumentDescription}</p>
-          <UploadZone onUpload={(f) => { setFile(f); handleUpload(f); }} accept=".pdf,.docx,.md,.tex" label={t.dropFiles} />
+          <UploadZone onUpload={(f) => { handleUpload(f); }} accept=".pdf,.docx,.md,.tex" label={t.dropFiles} />
         </div>
-      );
-    }
-
-    if (addDocOption === 'doi+upload') {
-      return (
-        <form onSubmit={async (e) => {
-          e.preventDefault();
-          setSubmitting(true);
-          try {
-            const doiSucceeded = !doi.trim() || await handleDoiSubmit();
-            if (doiSucceeded) {
-              if (file) await handleUpload(file);
-              setAddDocOption(null);
-              setAddDocModal(false);
-            }
-          } finally {
-            setSubmitting(false);
-          }
-        }} className="space-y-4">
-          <p className="text-xs text-(--text-secondary)">{t.inputDoiAndUploadDesc}</p>
-          <input type="text" value={doi} onChange={e => setDoi(e.target.value)} placeholder={t.doiPlaceholder}
-            className="w-full px-4 py-3 bg-(--surface-secondary) border border-(--border) rounded-xl text-(--text-primary) font-medium text-sm focus:outline-none focus:ring-2 focus:ring-(--focus) transition-colors" />
-          <UploadZone onUpload={f => setFile(f)} accept=".pdf,.docx,.md,.tex" label={t.dropFiles} />
-          {doiError && <p className="text-xs font-semibold text-rose-600">{doiError}</p>}
-          <button type="submit" disabled={submitting || (!doi.trim() && !file)}
-            className="w-full py-3 bg-(--brand) text-(--on-brand) font-bold text-xs rounded-xl hover:bg-(--brand-hover) transition-colors shadow-md disabled:opacity-50">{submitting ? ct.saving : ct.submit}</button>
-        </form>
       );
     }
 
@@ -290,8 +233,6 @@ export default function CollectionDetail() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button id="share-to-project" onClick={() => openShare(selectedSource.id)}
-                  className="px-3 py-1.5 bg-(--brand-soft) text-(--brand-foreground) border border-indigo-200 rounded-lg font-bold hover:border-indigo-300 transition-colors text-xs">{t.shareToProject}</button>
                 <button onClick={() => handleDeleteSource(selectedSource.id)}
                   className="px-3 py-1.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg font-bold hover:bg-rose-100 transition-colors text-xs">{ct.delete}</button>
               </div>
@@ -710,30 +651,12 @@ export default function CollectionDetail() {
         {tabContent[activeTab]()}
       </main>
 
-      <Modal open={shareModal.open} onClose={() => setShareModal({ open: false, sourceId: null })} title={t.shareToProject} closeLabel={ct.close}>
-        <div className="space-y-3 text-xs">
-          <input type="text" value={projectSearch} onChange={(e) => setProjectSearch(e.target.value)}
-            placeholder={t.searchProjects} className="w-full px-3 py-2 bg-(--surface-secondary) border border-(--border) text-(--text-primary) rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-(--focus)" />
-          <div className="max-h-60 overflow-y-auto space-y-1">
-            {filteredProjects.length === 0 ? (
-              <p className="text-(--text-tertiary) text-center py-4 font-medium">{ct.noData}</p>
-            ) : filteredProjects.map(p => (
-              <button key={p.id} onClick={() => doShare(p.id)}
-                className="w-full text-left px-3 py-2 rounded-lg hover:bg-(--brand-soft) transition-colors font-medium text-(--text-primary)">
-                {p.title}
-              </button>
-            ))}
-          </div>
-        </div>
-      </Modal>
-
       <Modal open={addDocModal} onClose={() => { setAddDocModal(false); setAddDocOption(null); }} title={t.addDocument} closeLabel={ct.close}>
         <div className="space-y-4 text-xs">
           <div className="grid grid-cols-1 gap-2">
             {[
               { key: 'doi', label: t.inputDoi, desc: t.inputDoiDescription },
               { key: 'upload', label: t.uploadDocument, desc: t.uploadDocumentDescription },
-              { key: 'doi+upload', label: t.inputDoiAndUpload, desc: t.inputDoiAndUploadDesc },
             ].map(opt => (
               <button key={opt.key} onClick={() => setAddDocOption(opt.key)}
                 className={`w-full text-left p-3 rounded-xl border transition flex items-center gap-3 ${addDocOption === opt.key

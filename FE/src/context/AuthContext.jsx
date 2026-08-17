@@ -27,11 +27,15 @@ export function AuthProvider({ children }) {
       setToken(storedToken);
       setRole(storedRole || '');
       verifySession()
-        .catch(() => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('role');
-          setToken(null);
-          setRole('');
+        .catch((err) => {
+          // only clear the session on auth failures; network hiccups keep the token
+          const status = err?.response?.status;
+          if (status === 401 || status === 403) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('role');
+            setToken(null);
+            setRole('');
+          }
         })
         .finally(() => setLoading(false));
     } else {

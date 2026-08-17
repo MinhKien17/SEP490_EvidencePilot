@@ -16,9 +16,11 @@ import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.UserRole;
 
 public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificationExecutor<User> {
-    Optional<User> findByEmail(String email);
+    // soft-deleted accounts are invisible to login, lookup, and duplicate checks
+    @Query("select user from User user where user.email = :email and user.accountStatus <> 'DELETED'")
+    Optional<User> findByEmail(@Param("email") String email);
 
-    @Query("select user from User user where lower(user.email) in :emails")
+    @Query("select user from User user where lower(user.email) in :emails and user.accountStatus <> 'DELETED'")
     List<User> findAllByEmailIn(@Param("emails") Collection<String> emails);
 
     @Query("select user from User user where upper(user.studentCode) = :studentCode")
@@ -33,7 +35,7 @@ public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificat
     int consumePasswordChangeNotice(@Param("id") UUID id);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select user from User user where user.email = :email")
+    @Query("select user from User user where user.email = :email and user.accountStatus <> 'DELETED'")
     Optional<User> findByEmailForPasswordReset(@Param("email") String email);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -44,7 +46,9 @@ public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificat
     @Query("select user from User user where user.passwordResetTokenHash = :tokenHash")
     Optional<User> findByPasswordResetTokenHashForUpdate(@Param("tokenHash") String tokenHash);
 
-    boolean existsByEmailIgnoreCase(String email);
+    @Query("select case when count(user) > 0 then true else false end "
+            + "from User user where lower(user.email) = lower(:email) and user.accountStatus <> 'DELETED'")
+    boolean existsByEmailIgnoreCase(@Param("email") String email);
 
     List<User> findByAccountStatus(AccountStatus status);
 

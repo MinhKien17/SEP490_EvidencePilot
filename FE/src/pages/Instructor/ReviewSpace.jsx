@@ -6,6 +6,7 @@ import api from '../../api.js';
 import { renderLatexToHtml } from '../../components/latexHtml.js';
 import { commonText, instructorText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
+import { useDangerConfirm } from '../../components/DangerConfirm';
 
 function wrapLatexLines(latex) {
   if (!latex) return '';
@@ -100,6 +101,7 @@ export default function ReviewSpace() {
   const { language } = useLanguage();
   const t = instructorText[language];
   const ct = commonText[language];
+  const confirmDanger = useDangerConfirm();
   const [project, setProject] = useState(null);
   const [papers, setPapers] = useState([]);
   const [sections, setSections] = useState([]);
@@ -114,6 +116,7 @@ export default function ReviewSpace() {
   const [successMessage, setSuccessMessage] = useState('');
   const [diffEnabled, setDiffEnabled] = useState(false);
   const [baseline, setBaseline] = useState(null);
+  const [baselineSectionId, setBaselineSectionId] = useState(null);
   const [feedbackDraft, setFeedbackDraft] = useState('');
   const [feedbackLineRef, setFeedbackLineRef] = useState('');
   const [editingFeedbackId, setEditingFeedbackId] = useState(null);
@@ -225,13 +228,15 @@ export default function ReviewSpace() {
   }, [selectedPaperId]);
 
   useEffect(() => {
-    if (!diffEnabled || !projectId || !selectedSectionId) { setBaseline(null); return; }
+    if (!diffEnabled || !projectId || !selectedSectionId) { setBaseline(null); setBaselineSectionId(null); return; }
+    setBaseline(null);
+    setBaselineSectionId(null);
     let cancelled = false;
     api.get(`/api/projects/${projectId}/checkpoints/latest/sections/${selectedSectionId}`, {
       params: activeRequest?.requestedAt ? { before: activeRequest.requestedAt } : {},
     })
-      .then(r => { if (!cancelled) setBaseline(r.data); })
-      .catch(() => { if (!cancelled) setBaseline(null); });
+      .then(r => { if (!cancelled) { setBaseline(r.data); setBaselineSectionId(selectedSectionId); } })
+      .catch(() => { if (!cancelled) { setBaseline(null); setBaselineSectionId(null); } });
     return () => { cancelled = true; };
   }, [diffEnabled, projectId, selectedSectionId, activeRequest?.requestedAt]);
 
@@ -265,11 +270,12 @@ export default function ReviewSpace() {
 
   const diffOps = useMemo(() => {
     if (!diffEnabled || !baseline || !selectedSection) return null;
+    if (String(baselineSectionId) !== String(selectedSection.id)) return null;
     const dmp = new DiffMatchPatch();
     const ops = dmp.diff_main(baseline.contentTex || '', selectedSection.contentTex || '');
     dmp.diff_cleanupSemantic(ops);
     return ops;
-  }, [diffEnabled, baseline, selectedSection]);
+  }, [diffEnabled, baseline, baselineSectionId, selectedSection]);
 
   const loadFeedback = useCallback(() => {
     if (!activeRequestId) return;
@@ -313,7 +319,7 @@ export default function ReviewSpace() {
   };
 
   const handleDeleteFeedback = async (itemId) => {
-    if (!window.confirm(t.deleteFeedbackConfirm)) return;
+    if (!(await confirmDanger(t.deleteFeedbackConfirm))) return;
     setErrorMessage('');
     try {
       await api.delete(`/api/instructor-feedback/${itemId}`);
@@ -543,7 +549,7 @@ export default function ReviewSpace() {
 
           {/* Right column: review guide + feedback + sources */}
           <div className="space-y-6">
-            <div className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm p-4 sm:p-6">
+            <div id="review-guide-panel" className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm p-4 sm:p-6">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <h2 className="text-sm font-bold text-(--brand-foreground)">{t.reviewGuide}</h2>
                 <button onClick={handleGenerateSuggestions} disabled={!activeGuide || suggestionLoading}
@@ -661,24 +667,23 @@ export default function ReviewSpace() {
                   )}
                 </>
               )}
-            </div>
-
-            <div className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm p-4 sm:p-6">
-              <h2 className="text-sm font-bold text-(--brand-foreground) mb-4">{t.sources}</h2>
-              {sources.length === 0 ? (
-                <p className="text-xs text-(--text-tertiary) italic">{t.noProjectSources}</p>
-              ) : (
-                <div className="space-y-2">
-                  {sources.map(src => (
-                    <div key={src.id} className="flex items-center justify-between gap-2 bg-(--surface-secondary) border border-(--border-light) rounded-lg px-3 py-2 text-xs">
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{src.title || src.originalFilename || src.id}</p>
-                        <StatusBadge status={src.processingStatus || 'READY'} />
+              <div className="border-t border-(--border-light) pt-4 mt-4">
+                <h3 className="text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider mb-3">{t.sources}</h3>
+                {sources.length === 0 ? (
+                  <p className="text-xs text-(--text-tertiary) italic">{t.noProjectSources}</p>
+                ) : (
+                  <div className="space-y-2">
+                    {sources.map(src => (
+                      <div key={src.id} className="flex items-center justify-between gap-2 bg-(--surface-secondary) border border-(--border-light) rounded-lg px-3 py-2 text-xs">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{src.title || src.originalFilename || src.id}</p>
+                          <StatusBadge status={src.processingStatus || 'READY'} />
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -700,6 +705,10 @@ export default function ReviewSpace() {
           <p className="text-(--text-secondary)">
             {pendingTransition?.targetStatus === 'REVIEWED' ? t.finalizeReviewConfirm : t.returnForRevision}
           </p>
+          {pendingTransition?.targetStatus === 'RETURNED' && (
+            <button type="button" onClick={() => { setPendingTransition(null); document.getElementById('review-guide-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
+              className="w-full py-2 bg-(--surface-secondary) hover:bg-(--surface-tertiary) text-(--brand-foreground) rounded-xl transition-colors border border-(--border) font-bold">{t.reviewGuide}</button>
+          )}
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={() => setPendingTransition(null)} disabled={!!transitioningRequestId}
               className="flex-1 py-3 bg-(--surface-secondary) hover:bg-(--surface-tertiary) text-(--text-secondary) rounded-xl transition-colors border border-(--border) disabled:opacity-50">{ct.cancel}</button>

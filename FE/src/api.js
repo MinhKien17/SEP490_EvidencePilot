@@ -12,6 +12,7 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
+  config._authToken = token;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -90,11 +91,23 @@ api.interceptors.response.use(
     const onLoginPage = window.location.pathname.startsWith('/login');
     if (response?.status === 401 && !config._retried && !isAuthCall && !onLoginPage) {
       config._retried = true;
+      const currentToken = localStorage.getItem('token');
+      if (config._authToken && currentToken && config._authToken !== currentToken) {
+        // token rotated by another tab — retry with the current one, no refresh
+        config.headers.Authorization = `Bearer ${currentToken}`;
+        return api(config);
+      }
       try {
         const token = await refreshToken();
         config.headers.Authorization = `Bearer ${token}`;
         return api(config);
       } catch {
+        // refresh failed, but the token may have changed mid-flight (concurrent tab refresh)
+        const nowToken = localStorage.getItem('token');
+        if (nowToken && nowToken !== config._authToken) {
+          config.headers.Authorization = `Bearer ${nowToken}`;
+          return api(config);
+        }
         window.dispatchEvent(new CustomEvent('auth:expired'));
       }
     }

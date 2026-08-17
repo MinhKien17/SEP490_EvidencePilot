@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AppHeader, EmptyState, LoadingSkeleton, TourLauncher, StatusBadge } from '../../components';
+import { AppHeader, EmptyState, LoadingSkeleton, TourLauncher, StatusBadge, Modal } from '../../components';
 import { commonText, studentText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
@@ -45,6 +45,7 @@ export default function Projects() {
   const [activeTab, setActiveTab] = useState('ALL'); // ALL, IN_PROGRESS, ASSIGNED, COMPLETED
   const [searchQuery, setSearchQuery] = useState('');
   const [isGridView, setIsGridView] = useState(true);
+  const [showGuide, setShowGuide] = useState(false);
 
   const tourSteps = [
     { element: '#projects-grid', popover: { title: t.tourProjects, description: t.tourProjectsDesc, side: 'bottom', align: 'start' } },
@@ -139,6 +140,11 @@ export default function Projects() {
             </h1>
             <p className="text-xs sm:text-sm text-(--text-secondary) mt-1">{t.workspaceDescription}</p>
           </div>
+          <button onClick={() => setShowGuide(true)}
+            className="shrink-0 inline-flex items-center gap-2 px-4 py-2.5 bg-(--surface) border border-(--border) rounded-xl text-xs font-bold text-(--text-secondary) hover:text-(--brand-foreground) hover:border-(--brand) transition-colors cursor-pointer">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg>
+            {t.guideButton}
+          </button>
         </div>
 
         {/* Top KPI Stats Cards Banner (No study hours card) */}
@@ -437,6 +443,17 @@ export default function Projects() {
       </main>
 
       <TourLauncher steps={tourSteps} tourKey="projects" />
+
+      <Modal open={showGuide} onClose={() => setShowGuide(false)} title={t.guideTitle} closeLabel={ct.close}>
+        <ol className="space-y-3 text-xs">
+          {(t.guideSteps || []).map((step, i) => (
+            <li key={i} className="flex items-start gap-3">
+              <span className="shrink-0 w-5 h-5 rounded-full bg-(--brand) text-(--on-brand) text-[10px] font-black flex items-center justify-center">{i + 1}</span>
+              <span className="text-(--text-secondary) leading-relaxed">{step}</span>
+            </li>
+          ))}
+        </ol>
+      </Modal>
     </div>
   );
 }

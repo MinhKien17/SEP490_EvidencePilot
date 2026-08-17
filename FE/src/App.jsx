@@ -6,6 +6,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import ScrollToTop from './components/ScrollToTop';
 import UrgentNotificationBanner from './components/UrgentNotificationBanner';
+import { DangerConfirmProvider } from './components/DangerConfirm';
 
 import Home from './pages/home/index.jsx';
 import Terms from './pages/Terms.jsx';
@@ -38,6 +39,7 @@ function App() {
       <AuthProvider>
         <LanguageProvider>
           <ThemeProvider>
+          <DangerConfirmProvider>
           <UrgentNotificationBanner />
           <Routes>
             {/* Public Entry Nodes */}
@@ -98,6 +100,7 @@ function App() {
             <Route path="*" element={<NotFound />} />
             
           </Routes>
+          </DangerConfirmProvider>
           </ThemeProvider>
         </LanguageProvider>
       </AuthProvider>
