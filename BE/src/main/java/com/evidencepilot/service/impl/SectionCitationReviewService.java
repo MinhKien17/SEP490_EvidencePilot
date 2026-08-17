@@ -66,6 +66,8 @@ public class SectionCitationReviewService {
     private static final int MAX_RATIONALE_LENGTH = 1_000;
     private static final int MAX_EVIDENCE_PER_FINDING = 3;
     private static final Pattern SENTENCE_BOUNDARY = Pattern.compile("(?<=[.!?])\\s+");
+    private static final Pattern LEADING_SOURCE_HEADINGS = Pattern.compile(
+            "\\A(?:#{1,6}\\h+[^\\r\\n]*(?:\\R|\\z))+\\R*");
     private final AiModelClient aiModelClient;
     private final PaperSectionRepository paperSectionRepository;
     private final ReviewSnapshotRepository reviewSnapshotRepository;
@@ -621,8 +623,15 @@ public class SectionCitationReviewService {
                 source.getAuthors(),
                 source.getPublicationYear(),
                 source.getDoi(),
-                match.chunk().getText(),
+                sourceExcerpt(match.chunk().getText()),
                 match.similarityScore());
+    }
+
+    private static String sourceExcerpt(String text) {
+        if (text == null) {
+            return "";
+        }
+        return LEADING_SOURCE_HEADINGS.matcher(text.stripLeading()).replaceFirst("").strip();
     }
 
     private static List<Chunk> chunks(String content) {
