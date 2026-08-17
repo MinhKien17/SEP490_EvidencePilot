@@ -42,6 +42,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 import java.util.regex.Pattern;
 
 @Service
@@ -92,6 +93,23 @@ public class SectionCitationReviewService {
             UUID sectionId,
             String expectedFingerprint,
             UUID requestedByUserId) {
+        return run(
+                documentId,
+                projectId,
+                sectionId,
+                expectedFingerprint,
+                requestedByUserId,
+                (current, total) -> {});
+    }
+
+    @Transactional
+    public SectionCitationReviewResponse run(
+            UUID documentId,
+            UUID projectId,
+            UUID sectionId,
+            String expectedFingerprint,
+            UUID requestedByUserId,
+            BiConsumer<Integer, Integer> onProgress) {
         PaperSection section = requireSection(documentId, sectionId, true);
         Project project = section.getDocument().getProject();
         if (!projectId.equals(project.getId())) {
@@ -113,7 +131,7 @@ public class SectionCitationReviewService {
         String normalizedTitle = paperStandardService.normalizeSectionTitle(section.getSectionTitle());
         SectionCitationReviewResponse review = isPolicyExempt(normalizedTitle)
                 ? notApplicable(section, fingerprint, exemptionSummary(normalizedTitle))
-                : generate(section, fingerprint, normalizedTitle);
+                : generate(section, fingerprint, normalizedTitle, onProgress);
         saveSnapshot(project, fingerprint, review);
 
         User actor = userRepository.findById(requestedByUserId)
@@ -209,7 +227,8 @@ public class SectionCitationReviewService {
     private SectionCitationReviewResponse generate(
             PaperSection section,
             String fingerprint,
-            String normalizedTitle) {
+            String normalizedTitle,
+            BiConsumer<Integer, Integer> onProgress) {
         UUID projectId = section.getDocument().getProject().getId();
         List<Chunk> chunks = chunks(section.getContentTex());
         List<SectionCitationReviewResponse.Finding> findings = new ArrayList<>();
@@ -218,6 +237,7 @@ public class SectionCitationReviewService {
         String model = null;
         RuntimeException lastFailure = null;
         int completedChunks = 0;
+        onProgress.accept(0, chunks.size());
 
         for (int i = 0; i < chunks.size(); i++) {
             Chunk chunk = chunks.get(i);
@@ -262,6 +282,8 @@ public class SectionCitationReviewService {
                 lastFailure = exception;
                 limitations.add("Chunk " + (i + 1) + "/" + chunks.size()
                         + " could not be reviewed: " + exception.getMessage());
+            } finally {
+                onProgress.accept(i + 1, chunks.size());
             }
         }
         if (completedChunks == 0 && lastFailure != null) {

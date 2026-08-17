@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -169,20 +170,24 @@ class AiEvaluationServiceImplTest {
         job.setKind(AiEvaluationJob.KIND_SECTION_CITATION_REVIEW);
         when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
         when(sectionCitationReviewService.run(
-                documentId, projectId, sectionId, "fingerprint", requesterId))
-                .thenReturn(new SectionCitationReviewResponse(
-                        "section-citation-v1",
-                        "citation-rules-v1",
-                        sectionId,
-                        1,
-                        "fingerprint",
-                        LocalDateTime.now(),
-                        "provider",
-                        "model",
-                        true,
-                        "Done",
-                        List.of(),
-                        List.of()));
+                eq(documentId), eq(projectId), eq(sectionId), eq("fingerprint"), eq(requesterId), any()))
+                .thenAnswer(invocation -> {
+                    BiConsumer<Integer, Integer> progress = invocation.getArgument(5);
+                    progress.accept(2, 9);
+                    return new SectionCitationReviewResponse(
+                            "section-citation-v1",
+                            "citation-rules-v1",
+                            sectionId,
+                            1,
+                            "fingerprint",
+                            LocalDateTime.now(),
+                            "provider",
+                            "model",
+                            true,
+                            "Done",
+                            List.of(),
+                            List.of());
+                });
         when(evidenceTraceService.materialize(
                 eq(documentId), eq(sectionId), eq(requesterId), any(SectionCitationReviewResponse.class)))
                 .thenReturn(new EvidenceTraceService.RoundMaterialization(
@@ -192,8 +197,14 @@ class AiEvaluationServiceImplTest {
 
         assertThat(job.getStatus()).isEqualTo(AiEvaluationJob.STATUS_SUCCESS);
         assertThat(job.getResultJson()).contains("section-citation-v1");
+        assertThat(job.getProgressCurrent()).isEqualTo(2);
+        assertThat(job.getProgressTotal()).isEqualTo(9);
+        var response = service().getJob(jobId);
+        assertThat(response.progressCurrent()).isEqualTo(2);
+        assertThat(response.progressTotal()).isEqualTo(9);
+        verify(jobRepository).updateProgress(job.getId(), 2, 9);
         verify(sectionCitationReviewService).run(
-                documentId, projectId, sectionId, "fingerprint", requesterId);
+                eq(documentId), eq(projectId), eq(sectionId), eq("fingerprint"), eq(requesterId), any());
         verify(evidenceTraceService, never()).recheck(any(), any(), any());
     }
 
@@ -252,7 +263,7 @@ class AiEvaluationServiceImplTest {
             return saved;
         });
         when(sectionCitationReviewService.run(
-                documentId, projectId, sectionId, "fingerprint", requesterId))
+                eq(documentId), eq(projectId), eq(sectionId), eq("fingerprint"), eq(requesterId), any()))
                 .thenReturn(new SectionCitationReviewResponse(
                         "section-citation-v1",
                         "citation-rules-v1",
@@ -308,7 +319,7 @@ class AiEvaluationServiceImplTest {
         assertThat(job.getErrorMessage()).contains("503");
         assertThat(job.getCompletedAt()).isNotNull();
         verify(sectionCitationReviewService, never()).run(
-                any(), any(), any(), anyString(), any());
+                any(), any(), any(), anyString(), any(), any());
     }
 
     @Test
@@ -330,7 +341,7 @@ class AiEvaluationServiceImplTest {
         job.setKind(AiEvaluationJob.KIND_SECTION_CITATION_REVIEW);
         when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
         when(sectionCitationReviewService.run(
-                documentId, projectId, sectionId, "fingerprint", requesterId))
+                eq(documentId), eq(projectId), eq(sectionId), eq("fingerprint"), eq(requesterId), any()))
                 .thenThrow(new ResponseStatusException(
                         HttpStatus.BAD_GATEWAY, "AI returned an invalid section citation review"));
 
