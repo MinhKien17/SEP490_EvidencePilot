@@ -33,7 +33,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                         "https://*.ngrok-free.app",
                         "https://*.ngrok.app",
                         "https://*.ngrok.dev",
-                        "https://sep-490-prototype.vercel.app");
+                        "https://sep-490-prototype.vercel.app",
+                        "https://evidence-pilot.vercel.app"
+                    );
     }
 
     @Override

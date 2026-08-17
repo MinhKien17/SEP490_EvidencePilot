@@ -100,7 +100,8 @@ public class SecurityConfig {
                 "https://*.ngrok-free.app",
                 "https://*.ngrok.app",
                 "https://*.ngrok.dev",
-                "https://sep-490-prototype.vercel.app"));
+                "https://sep-490-prototype.vercel.app",
+                "https://evidence-pilot.vercel.app"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "ngrok-skip-browser-warning"));
         configuration.setAllowCredentials(true);
