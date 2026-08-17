@@ -29,6 +29,53 @@ async function loadAllProjectSources(projectId) {
   return sources;
 }
 
+function workspaceDraftKey(projectId, sectionId) {
+  return projectId && sectionId ? `workspace_draft_${projectId}_${sectionId}` : null;
+}
+
+function readWorkspaceDraft(projectId, sectionId) {
+  const key = workspaceDraftKey(projectId, sectionId);
+  if (!key) return null;
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    console.warn('Unable to read the workspace draft from local storage.');
+    return null;
+  }
+}
+
+function storeWorkspaceDraft(projectId, sectionId, content) {
+  const key = workspaceDraftKey(projectId, sectionId);
+  if (!key) return;
+  try {
+    localStorage.setItem(key, content);
+  } catch {
+    console.warn('Unable to persist the workspace draft in local storage.');
+  }
+}
+
+function removeWorkspaceDraft(projectId, sectionId) {
+  const key = workspaceDraftKey(projectId, sectionId);
+  if (!key) return;
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    console.warn('Unable to remove the workspace draft from local storage.');
+  }
+}
+
+function withSavedContent(section, sectionId, content, update) {
+  if (String(section.id) !== String(sectionId)) return section;
+  return {
+    ...section,
+    previousContentTex: section.contentTex,
+    contentTex: content,
+    contentMdCache: null,
+    version: update?.version ?? section.version,
+    updatedAt: update?.updatedAt ?? section.updatedAt,
+  };
+}
+
 export default function WorkspaceLayout() {
   const compactAtLoad = typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches;
   const { projectId } = useParams();
@@ -168,12 +215,14 @@ export default function WorkspaceLayout() {
   const putSectionContent = useCallback((sectionId, content) => {
     if (!selectedPaper) return Promise.reject(new Error('No paper selected'));
     const prev = saveInFlightRef.current.get(sectionId) || Promise.resolve();
-    const next = prev.then(() =>
-      api.put(`/api/papers/${selectedPaper.id}/sections/${sectionId}`, { content }));
-    saveInFlightRef.current.set(sectionId, next.finally(() => {
-      if (saveInFlightRef.current.get(sectionId) === next) saveInFlightRef.current.delete(sectionId);
-    }));
-    return next;
+    const next = prev.catch(() => undefined).then(() =>
+      api.put(`/api/papers/${selectedPaper.id}/sections/${sectionId}`, { content })
+        .then(response => response.data));
+    const tracked = next.finally(() => {
+      if (saveInFlightRef.current.get(sectionId) === tracked) saveInFlightRef.current.delete(sectionId);
+    });
+    saveInFlightRef.current.set(sectionId, tracked);
+    return tracked;
   }, [selectedPaper]);
 
   const handleSelectSection = async (sec) => {
@@ -348,7 +397,7 @@ export default function WorkspaceLayout() {
     if (prevProjectId && prevProjectId !== projId) {
       const sid = selectedSectionIdRef.current;
       if (sid && dirtySectionsRef.current.has(sid)) {
-        localStorage.setItem(`workspace_draft_${prevProjectId}_${sid}`, codeContentRef.current);
+        storeWorkspaceDraft(prevProjectId, sid, codeContentRef.current);
       }
     }
     setProjectLoadError(null);
@@ -440,7 +489,7 @@ export default function WorkspaceLayout() {
     return () => {
       const sid = selectedSectionIdRef.current;
       if (sid && dirtySectionsRef.current.has(sid)) {
-        localStorage.setItem(`workspace_draft_${projectRef.current?.id}_${sid}`, codeContentRef.current);
+        storeWorkspaceDraft(projectRef.current?.id, sid, codeContentRef.current);
       }
     };
   }, []);
@@ -526,8 +575,7 @@ export default function WorkspaceLayout() {
         const mine = user ? list.filter(s => String(s.assignedUserId) === String(user.id)) : [];
         if (mine.length > 0) {
           selectSection(mine[0].id);
-          const draftKey = `workspace_draft_${projectRef.current?.id}_${mine[0].id}`;
-          const draft = localStorage.getItem(draftKey);
+          const draft = readWorkspaceDraft(projectRef.current?.id, mine[0].id);
           if (draft !== null) {
             loadCode(draft);
             dirtySectionsRef.current.add(mine[0].id);
@@ -739,13 +787,12 @@ export default function WorkspaceLayout() {
     const sectionId = selectedSectionId;
     const content = codeContentRef.current;
     try {
-      await putSectionContent(sectionId, content);
+      const updated = await putSectionContent(sectionId, content);
+      setSections(previous => previous.map(section =>
+        withSavedContent(section, sectionId, content, updated)));
+      removeWorkspaceDraft(projectRef.current?.id, sectionId);
       setSaveStatus('saved'); setLastSaved(new Date());
       dirtySectionsRef.current.delete(sectionId);
-      localStorage.removeItem(`workspace_draft_${projectRef.current?.id}_${sectionId}`);
-      const sectionResponse = await api.get(`/api/papers/${selectedPaper.id}/sections`);
-      setSections((sectionResponse.data || []).map(s =>
-        String(s.id) === String(sectionId) ? { ...s, contentTex: content } : s));
       setTimeout(() => setSaveStatus(''), 3000);
       return true;
     } catch (error) {
@@ -754,7 +801,7 @@ export default function WorkspaceLayout() {
       if (status === 409) showToast(t('saveConflict'));
       else if (status === 403) showToast(t('saveReadOnly'));
       else if (status === 404) showToast(t('saveSectionRemoved'));
-      else if (status === 400) showToast(t('saveConflict'));
+      else if (status === 400) showToast(t('saveContentInvalid'));
       else showToast(t('saveFailed'));
       return false;
     }
@@ -1006,14 +1053,12 @@ export default function WorkspaceLayout() {
     const next = current.slice(0, insertionOffset) + ` ${citation}` + current.slice(insertionOffset);
     setSaveStatus('saving');
     try {
-      await putSectionContent(selectedSectionId, next);
+      const updated = await putSectionContent(selectedSectionId, next);
       editorRef.current?.insertAtOffset(insertionOffset, ` ${citation}`);
       setSections(previous => previous.map(section =>
-        String(section.id) === String(selectedSectionId)
-          ? { ...section, contentTex: next }
-          : section));
+        withSavedContent(section, selectedSectionId, next, updated)));
       dirtySectionsRef.current.delete(selectedSectionId);
-      localStorage.removeItem(`workspace_draft_${projectRef.current?.id}_${selectedSectionId}`);
+      removeWorkspaceDraft(projectRef.current?.id, selectedSectionId);
       setSaveStatus('saved');
       setLastSaved(new Date());
       showToast(t('citationInserted'));
@@ -1023,6 +1068,7 @@ export default function WorkspaceLayout() {
       if (status === 409) showToast(t('saveConflict'));
       else if (status === 403) showToast(t('saveReadOnly'));
       else if (status === 404) showToast(t('saveSectionRemoved'));
+      else if (status === 400) showToast(t('saveContentInvalid'));
       else showToast(t('saveFailed'));
     }
   };

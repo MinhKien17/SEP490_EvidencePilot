@@ -57,6 +57,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     localStorage.removeItem('token');
     localStorage.removeItem('role');
+    armProactiveRefresh();
     setToken(null);
     setRole('');
     setUser(null);
@@ -76,13 +77,31 @@ export function AuthProvider({ children }) {
       setUser(e.detail?.user ?? null);
       if (e.detail?.user?.role) setRole(e.detail.user.role);
     };
+    const onStorage = (e) => {
+      if (e.storageArea !== localStorage) return;
+      if (e.key === 'token') {
+        setToken(e.newValue);
+        armProactiveRefresh();
+        if (!e.newValue) {
+          setRole('');
+          setUser(null);
+        } else if (!token) {
+          setRole(localStorage.getItem('role') || '');
+          verifySession().catch(() => {});
+        }
+      } else if (e.key === 'role') {
+        setRole(e.newValue || '');
+      }
+    };
     window.addEventListener('auth:expired', onAuthExpired);
     window.addEventListener('auth:refreshed', onAuthRefreshed);
+    window.addEventListener('storage', onStorage);
     return () => {
       window.removeEventListener('auth:expired', onAuthExpired);
       window.removeEventListener('auth:refreshed', onAuthRefreshed);
+      window.removeEventListener('storage', onStorage);
     };
-  }, [logout]);
+  }, [logout, token, verifySession]);
 
   const isAuthenticated = !!token;
 

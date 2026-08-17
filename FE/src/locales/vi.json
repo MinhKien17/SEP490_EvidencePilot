@@ -68,6 +68,7 @@
   "saved": "Đã lưu",
   "saveFailed": "Lưu thất bại.",
   "saveConflict": "Một người khác đã chỉnh sửa phần này. Hãy tải lại để xem phiên bản mới nhất trước khi lưu lại.",
+  "saveContentInvalid": "Nội dung phần này quá lớn hoặc không hợp lệ. Hãy giảm kích thước rồi thử lại.",
   "saveReadOnly": "Bạn không còn quyền chỉnh sửa phần này.",
   "saveSectionRemoved": "Phần này đã bị xóa. Hãy tải lại bài viết.",
   "noPaperSelected": "Chưa chọn bài viết.",
