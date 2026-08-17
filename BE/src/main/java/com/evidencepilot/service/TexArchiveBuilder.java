@@ -20,14 +20,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -35,10 +29,6 @@ import java.util.zip.ZipOutputStream;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class TexArchiveBuilder {
-
-    private static final Pattern CITE_PATTERN = Pattern.compile(
-            "\\\\cite(?:\\[[^\\]]*\\])?\\{([^}]+)\\}");
-    private static final String BIBLIOGRAPHY_END = "\\end{thebibliography}";
 
     private final ProjectRepository projectRepository;
     private final DocumentRepository documentRepository;
@@ -77,19 +67,11 @@ public class TexArchiveBuilder {
                         .findByDocumentIdOrderBySectionOrderAsc(paper.getId()).stream())
                 .filter(PaperSection::isActive)
                 .toList();
-        Map<String, Document> activeSources = new LinkedHashMap<>();
-        sourceMatchingService.activeSources(projectId)
-                .forEach(source -> activeSources.put(
-                        SourceMatchingService.citationKey(source.getId()), source));
-        Set<String> autoCitationKeys = autoCitationKeys(sections);
+        CitationBibliography.Result bibliography = CitationBibliography.resolve(
+                sections, sourceMatchingService.activeSources(projectId));
         List<String> citationWarnings = new ArrayList<>();
-        autoCitationKeys.stream()
-                .filter(key -> !activeSources.containsKey(key))
-                .forEach(key -> citationWarnings.add(
+        bibliography.unresolvedKeys().forEach(key -> citationWarnings.add(
                         "Auto citation `" + key + "` no longer resolves to an active project source."));
-        List<String> resolvedKeys = autoCitationKeys.stream()
-                .filter(activeSources::containsKey)
-                .toList();
 
         try (OutputStream output = Files.newOutputStream(destination);
                 ZipOutputStream zip = new ZipOutputStream(output, StandardCharsets.UTF_8)) {
@@ -99,17 +81,17 @@ public class TexArchiveBuilder {
             for (PaperSection section : sections) {
                 String content = section.getContentTex() == null ? "" : section.getContentTex();
                 boolean referenceSection = isReferenceSection(section.getSectionTitle());
-                if (referenceSection && content.isBlank() && !resolvedKeys.isEmpty()) {
+                if (referenceSection && content.isBlank() && !bibliography.entries().isEmpty()) {
                     continue;
                 }
-                if (referenceSection && !bibliographyInjected && !resolvedKeys.isEmpty()
+                if (referenceSection && !bibliographyInjected && !bibliography.entries().isEmpty()
                         && content.contains("\\begin{thebibliography}")
-                        && content.contains(BIBLIOGRAPHY_END)) {
+                        && content.contains(CitationBibliography.BIBLIOGRAPHY_END)) {
                     content = content.replace(
-                            BIBLIOGRAPHY_END,
-                            "\\input{references.tex}\n" + BIBLIOGRAPHY_END);
+                            CitationBibliography.BIBLIOGRAPHY_END,
+                            "\\input{references.tex}\n" + CitationBibliography.BIBLIOGRAPHY_END);
                     bibliographyInjected = true;
-                } else if (referenceSection && !resolvedKeys.isEmpty() && !content.isBlank()) {
+                } else if (referenceSection && !bibliography.entries().isEmpty() && !content.isBlank()) {
                     citationWarnings.add(
                             "Manual References content was preserved; generated references were appended.");
                 }
@@ -117,19 +99,19 @@ public class TexArchiveBuilder {
                         "%02d-%s.tex", index++, sanitizeFilename(section.getSectionTitle()));
                 body.append("\\input{sections/").append(filename).append("}\n");
                 writeEntry(zip, "sections/" + filename,
-                        "\\section{" + escapeLatex(section.getSectionTitle()) + "}\n\n"
+                        "\\section{" + CitationBibliography.escapeLatex(section.getSectionTitle()) + "}\n\n"
                                 + content + "\n");
             }
-            if (!resolvedKeys.isEmpty()) {
+            if (!bibliography.entries().isEmpty()) {
                 if (!bibliographyInjected) {
                     body.append("\\input{references.tex}\n");
                 }
-                writeEntry(zip, "references.tex", bibliography(
-                        resolvedKeys, activeSources, !bibliographyInjected));
+                writeEntry(zip, "references.tex", bibliography.toLatex(!bibliographyInjected));
             }
             writeEntry(zip, "main.tex", paperStandardService.renderTemplate(
                     project.getTargetStandard(),
-                    escapeLatex(project.getTitle() == null ? "Untitled" : project.getTitle()),
+                    CitationBibliography.escapeLatex(
+                            project.getTitle() == null ? "Untitled" : project.getTitle()),
                     body.toString()));
             if (!citationWarnings.isEmpty()) {
                 writeEntry(zip, "CITATION_WARNINGS.md", citationWarningText(citationWarnings));
@@ -138,62 +120,6 @@ public class TexArchiveBuilder {
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to build export archive", exception);
         }
-    }
-
-    private static Set<String> autoCitationKeys(List<PaperSection> sections) {
-        Set<String> keys = new LinkedHashSet<>();
-        for (PaperSection section : sections) {
-            Matcher matcher = CITE_PATTERN.matcher(
-                    section.getContentTex() == null ? "" : section.getContentTex());
-            while (matcher.find()) {
-                for (String key : matcher.group(1).split(",")) {
-                    String trimmed = key.trim();
-                    if (SourceMatchingService.citationDocumentId(trimmed).isPresent()) {
-                        keys.add(trimmed);
-                    }
-                }
-            }
-        }
-        return keys;
-    }
-
-    private static String bibliography(
-            List<String> keys,
-            Map<String, Document> sources,
-            boolean includeEnvironment) {
-        StringBuilder content = new StringBuilder();
-        if (includeEnvironment) {
-            content.append("\\begin{thebibliography}{99}\n");
-        }
-        for (String key : keys) {
-            Document source = sources.get(key);
-            String title = source.getTitle() == null || source.getTitle().isBlank()
-                    ? source.getOriginalFilename() : source.getTitle();
-            if (title == null || title.isBlank()) {
-                title = source.getId().toString();
-            }
-            content.append("\\bibitem{").append(key).append("}\n");
-            if (source.getAuthors() != null && !source.getAuthors().isBlank()) {
-                content.append(escapeLatex(source.getAuthors())).append(". ");
-            }
-            content.append("\\textit{").append(escapeLatex(title)).append("}.");
-            if (source.getPublisher() != null && !source.getPublisher().isBlank()) {
-                content.append(' ').append(escapeLatex(source.getPublisher())).append(',');
-            }
-            if (source.getPublicationYear() != null) {
-                content.append(' ').append(source.getPublicationYear()).append('.');
-            }
-            if (source.getDoi() != null && !source.getDoi().isBlank()) {
-                String doi = source.getDoi().replaceFirst(
-                        "(?i)^https?://(?:dx\\.)?doi\\.org/", "");
-                content.append(" \\url{https://doi.org/").append(doi).append("}.");
-            }
-            content.append("\n\n");
-        }
-        if (includeEnvironment) {
-            content.append(BIBLIOGRAPHY_END).append('\n');
-        }
-        return content.toString();
     }
 
     private static String citationWarningText(List<String> warnings) {
@@ -215,15 +141,6 @@ public class TexArchiveBuilder {
         zip.putNextEntry(new ZipEntry(name));
         zip.write(content.getBytes(StandardCharsets.UTF_8));
         zip.closeEntry();
-    }
-
-    private static String escapeLatex(String value) {
-        return value.replace("\\", "\\textbackslash{}")
-                .replace("&", "\\&").replace("%", "\\%")
-                .replace("$", "\\$").replace("#", "\\#")
-                .replace("_", "\\_").replace("{", "\\{")
-                .replace("}", "\\}").replace("~", "\\textasciitilde{}")
-                .replace("^", "\\textasciicircum{}");
     }
 
     private static String sanitizeFilename(String value) {

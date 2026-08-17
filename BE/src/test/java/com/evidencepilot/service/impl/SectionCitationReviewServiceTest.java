@@ -705,12 +705,19 @@ class SectionCitationReviewServiceTest {
                         HttpStatus.SERVICE_UNAVAILABLE, "provider unavailable"));
 
         SectionCitationReviewService service = service();
+        List<String> progress = new java.util.ArrayList<>();
         SectionCitationReviewResponse result = service.run(
-                documentId, projectId, sectionId, service.fingerprint(section), actorId);
+                documentId,
+                projectId,
+                sectionId,
+                service.fingerprint(section),
+                actorId,
+                (current, total) -> progress.add(current + "/" + total));
 
         assertThat(result.complete()).isFalse();
         assertThat(result.provider()).isEqualTo("provider");
         assertThat(result.limitations()).singleElement().asString().contains("Chunk 2/2");
+        assertThat(progress).containsExactly("0/2", "1/2", "2/2");
         verify(aiModelClient, times(2)).generateForReview(anyString(), anyString());
         verify(snapshotRepository).save(any(ReviewSnapshot.class));
     }

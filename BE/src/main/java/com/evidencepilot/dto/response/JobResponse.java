@@ -10,6 +10,8 @@ public record JobResponse(
         UUID projectId,
         String kind,
         String status,
+        int progressCurrent,
+        int progressTotal,
         JsonNode result,
         String errorMessage,
         LocalDateTime completedAt) {}

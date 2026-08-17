@@ -188,6 +188,7 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
         }
         return new JobResponse(
                 job.getId(), job.getProjectId(), job.getKind(), job.getStatus(),
+                job.getProgressCurrent(), job.getProgressTotal(),
                 result, job.getErrorMessage(), job.getCompletedAt());
     }
 
@@ -220,7 +221,8 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
                         projectId,
                         sectionId,
                         payload.path("contentFingerprint").asText(),
-                        requestedByUserId);
+                        requestedByUserId,
+                        (current, total) -> updateProgress(job, current, total));
                 EvidenceTraceService.RoundMaterialization materialization =
                         evidenceTraceService.materialize(
                                 documentId, sectionId, requestedByUserId, review);
@@ -271,6 +273,17 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
         };
     }
 
+    private void updateProgress(AiEvaluationJob job, int current, int total) {
+        job.setProgressCurrent(current);
+        job.setProgressTotal(total);
+        try {
+            jobRepository.updateProgress(job.getId(), current, total);
+        } catch (RuntimeException exception) {
+            log.warn("Could not update progress for AI evaluation job {}: {}",
+                    job.getId(), exception.getMessage());
+        }
+    }
+
     private void submitTraceRecheck(
             UUID projectId, UUID previousRoundId, UUID linkedRoundId) {
         try {
@@ -295,8 +308,9 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
             throw new IllegalArgumentException(
                     "Source matches payload project does not match its job");
         }
-        SectionReviewSourceMatchRequest request = objectMapper.treeToValue(
-                payload.get("findings"), SectionReviewSourceMatchRequest.class);
+        List<SectionReviewSourceMatchRequest.Finding> findings = objectMapper.convertValue(
+                payload.get("findings"), new TypeReference<>() {});
+        SectionReviewSourceMatchRequest request = new SectionReviewSourceMatchRequest(findings);
         return objectMapper.valueToTree(
                 sectionCitationReviewService.sourceMatches(documentId, sectionId, request));
     }

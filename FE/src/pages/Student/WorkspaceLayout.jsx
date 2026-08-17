@@ -82,6 +82,7 @@ export default function WorkspaceLayout() {
   const [loadingCitation, setLoadingCitation] = useState(false);
 
   const [loadingAiReview, setLoadingAiReview] = useState(false);
+  const [aiReviewProgress, setAiReviewProgress] = useState(null);
   const [rollingBack, setRollingBack] = useState(false);
   const [aiReviewResult, setAiReviewResult] = useState(null);
   const [aiReviewError, setAiReviewError] = useState(null);
@@ -207,25 +208,28 @@ export default function WorkspaceLayout() {
     setTimeout(() => setToastMessage(''), 3000);
   };
 
-  const pollAiJob = async (jobId, shouldAbort) => {
-    let polls = 0;
-    const MAX_POLLS = 240;
+  const pollAiJob = async (jobId, shouldAbort, onProgress) => {
     for (; ;) {
       if (shouldAbort?.()) return null;
       const { data: job } = await api.get(`/api/jobs/${jobId}`);
+      if (shouldAbort?.()) return null;
+      onProgress?.({
+        current: Math.max(0, Number(job.progressCurrent) || 0),
+        total: Math.max(0, Number(job.progressTotal) || 0),
+      });
       if (job.status === 'SUCCESS') return job;
       if (job.status === 'FAILED') {
         const error = new Error(job.errorMessage || t('aiEvaluationFailed'));
         error.status = Number(job.errorMessage?.match(/(\d{3})/)?.[1]) || undefined;
         throw error;
       }
-      if (++polls >= MAX_POLLS) {
-        const error = new Error(t('aiWorkerUnavailable'));
-        error.status = 503;
-        throw error;
-      }
       await new Promise((resolve) => setTimeout(resolve, 1500));
     }
+  };
+
+  const updateAiReviewProgress = (next) => {
+    setAiReviewProgress((current) =>
+      current?.current === next.current && current?.total === next.total ? current : next);
   };
 
   useEffect(() => {
@@ -233,6 +237,7 @@ export default function WorkspaceLayout() {
     aiSourceRequestRef.current += 1;
     aiReviewJobRef.current = null;
     setLoadingAiReview(false);
+    setAiReviewProgress(null);
     setAiReviewResult(null);
     setAiReviewError(null);
     setAiReviewedContent('');
@@ -357,6 +362,7 @@ export default function WorkspaceLayout() {
     formatScanRequestRef.current += 1;
     setAiReviewResult(null);
     setAiReviewError(null);
+    setAiReviewProgress(null);
     setAiReviewedContent('');
     setAiSourceMatches({});
     setAiSourcesError('');
@@ -912,6 +918,7 @@ export default function WorkspaceLayout() {
     if (aiReviewJobRef.current) return;
     aiReviewJobRef.current = 'saving';
     setLoadingAiReview(true);
+    setAiReviewProgress(null);
     let requestId = aiReviewRequestRef.current;
     try {
       const saved = await handleSaveDraft();
@@ -931,7 +938,11 @@ export default function WorkspaceLayout() {
         `/api/papers/${selectedPaper.id}/sections/${sectionId}/review`);
       if (aiReviewRequestRef.current !== requestId) return;
       aiReviewJobRef.current = submit.jobId;
-      const job = await pollAiJob(submit.jobId, () => aiReviewRequestRef.current !== requestId);
+      const job = await pollAiJob(
+        submit.jobId,
+        () => aiReviewRequestRef.current !== requestId,
+        updateAiReviewProgress,
+      );
       if (!job) return;
       setAiReviewResult(job.result);
       setAiReviewedContent(reviewedContent);
@@ -956,6 +967,7 @@ export default function WorkspaceLayout() {
     } finally {
       aiReviewJobRef.current = null;
       setLoadingAiReview(false);
+      setAiReviewProgress(null);
     }
   };
 
@@ -1285,12 +1297,12 @@ export default function WorkspaceLayout() {
 
         <FilePanel compact={isCompactWorkspace} isOpen={isFileTreeOpen} width={fileTreeWidth} onResizeStart={handleLeftDividerMouseDown} sections={sections} assignedSections={assignedSections} selectedSectionId={selectedSectionId} onSelectSection={handleSelectSection} selectedPaper={selectedPaper} onSelectPaper={handleSelectPaper} papers={papers} onUploadPaper={isLocked ? undefined : handleUploadPaper} sources={sources} onUploadSource={isLocked ? undefined : handleUploadSource} onDeleteSource={handleDeleteSource} mediaAssets={mediaAssets} onUploadMedia={isLocked ? undefined : handleUploadMedia} onDeleteMedia={handleDeleteMedia} onInsertMedia={canEditCurrentSection ? handleInsertMedia : undefined} showToast={showToast} isLocked={isLocked} onSaveDraft={handleSaveDraft} saveStatus={saveStatus} />
 
-        <EditorPanel compact={isCompactWorkspace} editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSections={assignedSections} canEditCurrentSection={canEditCurrentSection} currentSection={currentSection} displayContent={displayContent} previewContent={previewContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} handleScanCitations={handleScanCitations} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} isLocked={isLocked} />
+        <EditorPanel compact={isCompactWorkspace} editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSections={assignedSections} canEditCurrentSection={canEditCurrentSection} currentSection={currentSection} displayContent={displayContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} handleScanCitations={handleScanCitations} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} citationPreview={citationResult} isLocked={isLocked} />
 
         <ContextPanel compact={isCompactWorkspace} isOpen={isDrawerOpen} width={rightDrawerWidth} onResizeStart={handleRightDividerMouseDown} activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); localStorage.setItem('student_workspace_active_tab', tab); }} showToast={showToast}
           sources={sources} isUploading={isUploading} setIsUploading={setIsUploading} project={project} setViewerFile={setViewerFile} fetchSources={fetchSources} isLocked={isLocked}
           feedbacks={feedbacks} assignedSections={assignedSections} setShowSubmitReviewModal={setShowSubmitReviewModal} userProjectRole={project?.currentUserRole}
-          aiReview={aiReviewResult} aiReviewLoading={loadingAiReview} aiReviewError={aiReviewError} aiReviewStale={aiReviewStale}
+          aiReview={aiReviewResult} aiReviewLoading={loadingAiReview} aiReviewProgress={aiReviewProgress} aiReviewError={aiReviewError} aiReviewStale={aiReviewStale}
           aiSourceMatches={aiSourceMatches} aiSourcesLoading={loadingAiSources} aiSourcesError={aiSourcesError}
           sectionTraces={sectionTraces} updatingTraceIds={updatingTraceIds} traceError={traceError}
           onDecideTrace={handleDecideTrace} reviewSectionTitle={currentSection?.sectionTitle}
@@ -1562,6 +1574,7 @@ export default function WorkspaceLayout() {
           sections={sections}
           paperTitle={selectedPaper?.originalFilename || 'Paper'}
           mediaAssets={mediaAssets}
+          citationPreview={citationResult}
           onClose={() => setShowFullPaperPreview(false)}
         />
       )}

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import LatexEditor from '../../components/LatexEditor';
 import PreviewPane from '../../components/PreviewPane';
+import { isReferenceSectionTitle } from '../../components/latexHtml.js';
 import { useTranslation } from 'react-i18next';
 
 export default function EditorPanel({
@@ -11,12 +12,15 @@ export default function EditorPanel({
   insertLatexTag, insertSymbol, handleFindReplace, handleDownloadTex,
   showSymbolMenu, setShowSymbolMenu, showTextSizeMenu, setShowTextSizeMenu,
   showSearchPanel, setShowSearchPanel, searchQuery, setSearchQuery, replaceQuery, setReplaceQuery,
-  textSize, setTextSize, showToast, editorRef, mediaAssets, isLocked
+  textSize, setTextSize, showToast, editorRef, mediaAssets, citationPreview, isLocked
 }) {
   const { t } = useTranslation();
   const isOwnSection = canEditCurrentSection
     ?? (assignedSections && assignedSections.some(s => String(s.id) === String(selectedSectionId)));
   const [previewZoom, setPreviewZoom] = useState(100);
+  const generatedReferences = isReferenceSectionTitle(currentSection?.sectionTitle)
+    ? citationPreview?.references || []
+    : [];
   return (
     <div id="editor-preview-container" className="flex-1 min-w-0 flex overflow-hidden bg-(--surface-tertiary)/50 p-2 gap-2">
       <div style={{ width: compact ? '100%' : `${editorWidth}%`, flexGrow: 0, flexShrink: 0 }} className="bg-(--surface) rounded-lg shadow-sm border border-(--border) flex flex-col overflow-hidden min-w-0">
@@ -149,7 +153,13 @@ export default function EditorPanel({
         </div>
         <div className="flex-1 min-h-0 overflow-auto flex justify-center">
           <div style={{ transform: `scale(${previewZoom / 100})`, transformOrigin: 'center top' }}>
-            <PreviewPane latex={previewContent} mediaAssets={mediaAssets} />
+            <PreviewPane
+              latex={displayContent}
+              mediaAssets={mediaAssets}
+              citationNumbers={citationPreview?.citationNumbers}
+              generatedReferences={generatedReferences}
+              referencesTitle={currentSection?.sectionTitle || 'References'}
+            />
           </div>
         </div>
       </div>

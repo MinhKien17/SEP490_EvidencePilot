@@ -5,7 +5,11 @@ function escHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-export function renderLatexToHtml(latex, mediaUrlMap) {
+export function isReferenceSectionTitle(title = '') {
+  return ['references', 'reference', 'bibliography', 'works cited'].includes(title.trim().toLowerCase());
+}
+
+export function renderLatexToHtml(latex, mediaUrlMap, citationNumbers = {}) {
   if (!latex) return '<p class="text-slate-400 italic">No content to preview.</p>';
 
   let body = latex
@@ -22,7 +26,16 @@ export function renderLatexToHtml(latex, mediaUrlMap) {
     .replace(/\\textbf\{([^}]*)\}/g, '<strong>$1</strong>')
     .replace(/\\textit\{([^}]*)\}/g, '<em>$1</em>')
     .replace(/\\hl\{([^}]*)\}/g, '<span class="bg-yellow-200 px-1 rounded">$1</span>')
-    .replace(/\\cite\{([^}]*)\}/g, '<span class="text-indigo-600 text-xs">[$1]</span>')
+    .replace(/\\cite(?:\[[^\]]*\])?\{([^}]*)\}/g, (_, keys) => {
+      const labels = keys.split(',').map(key => {
+        const trimmed = key.trim();
+        if (Object.prototype.hasOwnProperty.call(citationNumbers, trimmed)) {
+          return citationNumbers[trimmed];
+        }
+        return /^ep[0-9a-f]{32}$/i.test(trimmed) ? '?' : escHtml(trimmed);
+      });
+      return `<span class="text-indigo-600 text-xs">[${labels.join(', ')}]</span>`;
+    })
     .replace(/\\label\{([^}]*)\}/g, '')
 
     // includegraphics → <img>

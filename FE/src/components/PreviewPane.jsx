@@ -2,7 +2,13 @@ import { useMemo, useEffect, useState } from 'react';
 import api from '../api.js';
 import { renderLatexToHtml } from './latexHtml.js';
 
-export default function PreviewPane({ latex, mediaAssets }) {
+export default function PreviewPane({
+  latex,
+  mediaAssets,
+  citationNumbers,
+  generatedReferences = [],
+  referencesTitle = 'References',
+}) {
   const [mediaUrlMap, setMediaUrlMap] = useState({});
 
   useEffect(() => {
@@ -29,11 +35,29 @@ export default function PreviewPane({ latex, mediaAssets }) {
     return () => { cancelled = true; };
   }, [mediaAssets]);
 
-  const html = useMemo(() => renderLatexToHtml(latex, mediaUrlMap), [latex, mediaUrlMap]);
+  const html = useMemo(
+    () => (!latex && generatedReferences.length > 0
+      ? ''
+      : renderLatexToHtml(latex, mediaUrlMap, citationNumbers)),
+    [citationNumbers, generatedReferences.length, latex, mediaUrlMap],
+  );
 
   return (
     <div className="h-full overflow-y-auto bg-white p-8">
-      <div className="max-w-prose mx-auto whitespace-pre-wrap break-words preview-content" dangerouslySetInnerHTML={{ __html: html }} />
+      {html && <div className="max-w-prose mx-auto whitespace-pre-wrap break-words preview-content" dangerouslySetInnerHTML={{ __html: html }} />}
+      {generatedReferences.length > 0 && (
+        <section className="max-w-prose mx-auto text-slate-700">
+          <h2 className="text-lg font-bold mt-6 mb-3 text-slate-800">{referencesTitle}</h2>
+          <ol className="space-y-3 text-sm">
+            {generatedReferences.map(reference => (
+              <li key={reference.key} className="flex gap-2 leading-relaxed">
+                <span className="shrink-0 text-indigo-700">[{reference.number}]</span>
+                <span>{reference.reference}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
     </div>
   );
 }

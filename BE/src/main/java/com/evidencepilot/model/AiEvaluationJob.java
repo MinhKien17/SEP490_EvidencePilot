@@ -51,6 +51,12 @@ public class AiEvaluationJob {
     @Column(name = "started_at")
     private LocalDateTime startedAt;
 
+    @Column(name = "progress_current", nullable = false)
+    private int progressCurrent;
+
+    @Column(name = "progress_total", nullable = false)
+    private int progressTotal;
+
     @Column(name = "result_json", columnDefinition = "LONGTEXT")
     private String resultJson;
 

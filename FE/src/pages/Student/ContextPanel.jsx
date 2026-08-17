@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../../api.js';
-import CitationReviewList from '../../components/CitationReviewList';
-import TraceEvidenceList from '../../components/TraceEvidenceList';
+import { getSourceDownloadUrl } from './sourceDownload.js';
 
 const CLAIM_STATUS_CLASSES = {
   PRESENT: 'border-emerald-200 bg-emerald-50 text-emerald-700',
@@ -126,7 +125,7 @@ export default function ContextPanel({
   // Feedback tab
   feedbacks, assignedSections, setShowSubmitReviewModal, userProjectRole,
   // Citation Review tab
-  aiReview, aiReviewLoading, aiReviewError, aiReviewStale, aiSourceMatches,
+  aiReview, aiReviewLoading, aiReviewProgress, aiReviewError, aiReviewStale, aiSourceMatches,
   aiSourcesLoading, aiSourcesError, sectionTraces, updatingTraceIds, traceError,
   onDecideTrace, reviewSectionTitle,
   onRunAiReview, onSelectReviewFinding, onInsertCitation, onRetryReviewSources,
@@ -209,6 +208,14 @@ export default function ContextPanel({
 
   const activeClass = (tab) =>
     `flex-1 py-3 text-xs font-bold uppercase tracking-wider flex flex-col justify-center items-center gap-1 transition-all relative ${activeTab === tab ? 'text-(--brand)' : 'text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-secondary)'}`;
+  const reviewProgressTotal = Math.max(0, Number(aiReviewProgress?.total) || 0);
+  const reviewProgressCurrent = Math.min(
+    reviewProgressTotal,
+    Math.max(0, Number(aiReviewProgress?.current) || 0),
+  );
+  const reviewProgressPercent = reviewProgressTotal > 0
+    ? Math.round((reviewProgressCurrent / reviewProgressTotal) * 100)
+    : 0;
 
   return (
     <>
@@ -326,84 +333,361 @@ export default function ContextPanel({
                 <h3 className="text-[11px] font-bold text-(--text-tertiary) tracking-widest mb-3 uppercase flex items-center gap-2"><div className="h-px bg-(--border) flex-1"></div> {t('availableSource')} <div className="h-px bg-(--border) flex-1"></div></h3>
                 <div className="flex flex-col gap-3">
                   {sources.length === 0 ? <div className="text-sm text-(--text-secondary) italic text-center p-4">{t('noUploadedSources')}</div> : (
-                    sources.map(src => (
-                      <div key={src.id} onClick={() => src.fileUrl && src.fileUrl !== 'pending' ? setViewerFile({ fileUrl: `/api/documents/${src.id}/download`, fileName: src.originalFilename }) : showToast(t('fileUrlUnavailable'))} className="bg-(--surface) border border-(--border) rounded-xl p-3.5 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors cursor-pointer">
-                        <p className="text-sm font-bold text-(--text-primary) flex items-center gap-2"><svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>{src.originalFilename}</p>
-                        <p className="text-xs text-(--text-secondary) mt-1.5 line-clamp-2 leading-relaxed">{t('uploadedSourceDescription')}</p>
-                        {src.processingStatus === 'METADATA_FETCHED' && (
-                          <div className="mt-3">
-                            <input
-                              id={`attach-pdf-${src.id}`}
-                              type="file"
-                              accept=".pdf,application/pdf"
-                              disabled={isLocked || attachingSourceId !== null}
-                              className="peer sr-only"
-                              onClick={(event) => event.stopPropagation()}
-                              onChange={(event) => {
-                                const file = event.target.files?.[0];
-                                event.target.value = '';
-                                handleAttachPdf(src.id, file);
-                              }}
-                            />
-                            <label
-                              htmlFor={`attach-pdf-${src.id}`}
-                              aria-disabled={isLocked || attachingSourceId !== null}
-                              onClick={(event) => event.stopPropagation()}
-                              className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500 peer-focus-visible:ring-offset-2 ${isLocked || attachingSourceId !== null ? 'cursor-not-allowed border-(--border) bg-(--surface-secondary) text-(--text-tertiary)' : 'cursor-pointer border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50'}`}
-                            >
-                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 16V4m0 0L8 8m4-4 4 4M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" /></svg>
-                              {attachingSourceId === src.id ? t('working') : t('attachPdf')}
-                            </label>
-                          </div>
-                        )}
-                      </div>
-                    ))
+                    sources.map(src => {
+                      const sourceDownloadUrl = getSourceDownloadUrl(src.processingError);
+                      return (
+                        <div key={src.id} onClick={() => src.fileUrl && src.fileUrl !== 'pending' ? setViewerFile({ fileUrl: `/api/documents/${src.id}/download`, fileName: src.originalFilename }) : showToast(t('fileUrlUnavailable'))} className="bg-(--surface) border border-(--border) rounded-xl p-3.5 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors cursor-pointer">
+                          <p className="text-sm font-bold text-(--text-primary) flex items-center gap-2"><svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>{src.originalFilename}</p>
+                          {src.processingStatus === 'METADATA_FETCHED' ? (
+                            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[10px] leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                              <p className="font-bold">{t('metadataFetchedDescription')}</p>
+                              {src.processingError && <p className="mt-1 break-words">{t('sourceDownloadFailureReason', { reason: src.processingError })}</p>}
+                              {sourceDownloadUrl && (
+                                <a
+                                  href={sourceDownloadUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(event) => event.stopPropagation()}
+                                  className="mt-1.5 block break-all font-bold text-indigo-700 underline hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-200"
+                                >
+                                  {t('sourceDownloadLink')}: {sourceDownloadUrl}
+                                </a>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-(--text-secondary) mt-1.5 line-clamp-2 leading-relaxed">{t('uploadedSourceDescription')}</p>
+                          )}
+                          {src.processingStatus === 'METADATA_FETCHED' && (
+                            <div className="mt-3">
+                              <input
+                                id={`attach-pdf-${src.id}`}
+                                type="file"
+                                accept=".pdf,application/pdf"
+                                disabled={isLocked || attachingSourceId !== null}
+                                className="peer sr-only"
+                                onClick={(event) => event.stopPropagation()}
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0];
+                                  event.target.value = '';
+                                  handleAttachPdf(src.id, file);
+                                }}
+                              />
+                              <label
+                                htmlFor={`attach-pdf-${src.id}`}
+                                aria-disabled={isLocked || attachingSourceId !== null}
+                                onClick={(event) => event.stopPropagation()}
+                                className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500 peer-focus-visible:ring-offset-2 ${isLocked || attachingSourceId !== null ? 'cursor-not-allowed border-(--border) bg-(--surface-secondary) text-(--text-tertiary)' : 'cursor-pointer border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50'}`}
+                              >
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 16V4m0 0L8 8m4-4 4 4M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" /></svg>
+                                {attachingSourceId === src.id ? t('working') : t('attachPdf')}
+                              </label>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>
             </div>
           )}
 
-{activeTab === 'AI Review' && (
+          {activeTab === 'AI Review' && (
             <div className="space-y-4 animate-in fade-in duration-300">
-              <CitationReviewList
-                reviewSectionTitle={reviewSectionTitle}
-                aiReview={aiReview}
-                aiReviewLoading={aiReviewLoading}
-                aiReviewError={aiReviewError}
-                aiReviewStale={aiReviewStale}
-                aiSourceMatches={aiSourceMatches}
-                aiSourcesLoading={aiSourcesLoading}
-                aiSourcesError={aiSourcesError}
-                sectionTraces={sectionTraces}
-                updatingTraceIds={updatingTraceIds}
-                canReviewSection={canReviewSection}
-                isLocked={isLocked}
-                onRunAiReview={onRunAiReview}
-                onSelectReviewFinding={onSelectReviewFinding}
-                onInsertCitation={onInsertCitation}
-                onRetryReviewSources={onRetryReviewSources}
-                onStartTraceDecision={(findingIndex, trace) => setDecideDraft({
-                  findingIndex,
-                  action: trace?.studentAction || '',
-                  sourceId: trace?.sourceId || '',
-                  chunkId: trace?.documentChunkId || '',
-                  evidenceQuote: trace?.evidenceQuote || '',
-                  relation: trace?.evidenceRelation || '',
-                  explanation: trace?.explanation || '',
-                })}
-              />
-              <TraceEvidenceList
-                sectionTraces={sectionTraces}
-                updatingTraceIds={updatingTraceIds}
-                traceError={traceError}
-                decideDraft={decideDraft}
-                setDecideDraft={setDecideDraft}
-onDecideTrace={onDecideTrace}
-                onRunReview={onRunAiReview}
-                aiSourceMatches={aiSourceMatches}
-                showHistory={!aiReview && sectionTraces.length > 0}
-              />
+              <div className="rounded-xl border border-(--border) bg-(--surface) p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-(--text-primary)">{t('citationReview')}</h3>
+                    <p className="mt-1 text-[11px] text-(--text-tertiary)">{reviewSectionTitle || t('selectSectionFirst')}</p>
+                  </div>
+                  <button type="button" onClick={onRunAiReview} disabled={!canReviewSection || aiReviewLoading || isLocked}
+                    className="shrink-0 rounded-lg bg-(--brand) px-3 py-1.5 text-xs font-bold text-(--on-brand) hover:bg-(--brand-hover) disabled:opacity-40">
+                    {aiReviewLoading ? t('reviewing') : t('runReview')}
+                  </button>
+                </div>
+                <p className="mt-3 text-[11px] leading-relaxed text-(--text-secondary)">{t('citationReviewDescription')}</p>
+              </div>
+
+              {aiReviewError && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800">
+                  <p>{aiReviewError.message}</p>
+                  <button type="button" onClick={onRunAiReview} className="mt-2 font-bold underline">{t('retry')}</button>
+                </div>
+              )}
+              {aiReviewStale && aiReview && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900">
+                  {t('reviewStale')}
+                </div>
+              )}
+              {aiReviewLoading && (
+                <div className="rounded-xl border border-(--border) bg-(--surface) p-4 text-xs text-(--text-secondary)" role="status" aria-live="polite">
+                  <div className="flex items-center gap-3">
+                    <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600 motion-reduce:animate-none" aria-hidden="true"></span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="min-w-0 leading-relaxed">
+                          {reviewProgressTotal > 0
+                            ? t('aiReviewProgress', { current: reviewProgressCurrent, total: reviewProgressTotal })
+                            : t('aiAnalyzing')}
+                        </span>
+                        {reviewProgressTotal > 0 && (
+                          <span className="shrink-0 font-bold tabular-nums text-indigo-700">{reviewProgressPercent}%</span>
+                        )}
+                      </div>
+                      <div
+                        className="mt-2 h-2 overflow-hidden rounded-full bg-indigo-100"
+                        role={reviewProgressTotal > 0 ? 'progressbar' : undefined}
+                        aria-label={reviewProgressTotal > 0 ? t('aiReviewProgressLabel') : undefined}
+                        aria-valuemin={reviewProgressTotal > 0 ? 0 : undefined}
+                        aria-valuemax={reviewProgressTotal > 0 ? reviewProgressTotal : undefined}
+                        aria-valuenow={reviewProgressTotal > 0 ? reviewProgressCurrent : undefined}
+                        aria-valuetext={reviewProgressTotal > 0
+                          ? t('aiReviewProgress', { current: reviewProgressCurrent, total: reviewProgressTotal })
+                          : undefined}
+                      >
+                        <div
+                          className={`h-full rounded-full bg-indigo-600 transition-[width] duration-300 motion-reduce:transition-none ${reviewProgressTotal > 0 ? '' : 'w-1/3 animate-pulse motion-reduce:animate-none'}`}
+                          style={reviewProgressTotal > 0 ? { width: `${reviewProgressPercent}%` } : undefined}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {(aiReview || sectionTraces.length > 0) && !aiReviewLoading && (
+                <div className="grid grid-cols-1 gap-1.5 rounded-xl border border-(--border) bg-(--surface) p-3 text-[10px] sm:grid-cols-3">
+                  <span className="rounded-lg bg-emerald-50 px-2 py-1.5 font-bold text-emerald-700">
+                    {aiReview ? t('reviewCompletedStatus') : t('savedTraceStatus')}
+                  </span>
+                  <span className={`rounded-lg px-2 py-1.5 font-bold ${aiSourcesLoading ? 'bg-amber-50 text-amber-700' : aiSourcesError ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
+                    {aiSourcesLoading
+                      ? t('sourceMatchesLoadingStatus')
+                      : aiSourcesError
+                        ? t('sourceMatchesFailedStatus')
+                        : aiReview
+                          ? t('sourceMatchesReadyStatus')
+                          : t('sourceMatchesUnavailableStatus')}
+                  </span>
+                  <span className={`rounded-lg px-2 py-1.5 font-bold ${sectionTraces.some(trace => trace.aiRecheckedAt) ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
+                    {sectionTraces.some(trace => trace.aiRecheckedAt)
+                      ? t('aiComparisonReadyStatus')
+                      : t('aiComparisonPendingStatus')}
+                  </span>
+                </div>
+              )}
+              {!aiReviewLoading && !aiReview && !aiReviewError && sectionTraces.length === 0 && (
+                <div className="rounded-xl border border-dashed border-(--border) p-6 text-center text-xs text-(--text-tertiary)">{t('sectionNotReviewed')}</div>
+              )}
+              {!aiReviewLoading && !aiReview && sectionTraces.length > 0 && (
+                <div className="space-y-2 rounded-xl border border-(--border) bg-(--surface) p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('savedTraceDecisions')}</p>
+                  {sectionTraces.slice(0, 10).map(trace => (
+                    <div key={trace.id} className="rounded-lg border border-(--border-light) bg-(--surface-secondary) p-2.5 text-[10px]">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-bold text-(--text-primary)">#{trace.findingIndex + 1} {trace.studentAction?.replaceAll('_', ' ') || t('notAddressed')}</span>
+                        {trace.judgment && <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-bold text-emerald-700">{trace.judgment}</span>}
+                      </div>
+                      <p className="mt-1 line-clamp-2 italic text-(--text-secondary)">“{trace.excerpt || ''}”</p>
+                      {trace.explanation && <p className="mt-1 text-(--text-secondary)">{trace.explanation}</p>}
+                      {trace.aiRecheckJudgment && (
+                        <p className="mt-1 rounded bg-indigo-50 p-1.5 text-indigo-700">
+                          {t('aiAdvisory')}: <strong>{trace.aiRecheckJudgment}</strong>{trace.aiRecheckReason ? ` — ${trace.aiRecheckReason}` : ''}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {aiReview && !aiReviewLoading && (
+                <>
+                  {aiReview.summary && <p className="rounded-xl border border-(--border) bg-(--surface) p-3 text-xs leading-relaxed text-(--text-secondary)">{aiReview.summary}</p>}
+                  {traceError && (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-[11px] text-rose-800">
+                      {traceError}
+                      <button type="button" onClick={onRunAiReview} className="mt-1 font-bold underline">{t('runReviewAgain')}</button>
+                    </div>
+                  )}
+                  {(aiReview.findings || []).map((finding, index) => {
+                    const candidates = aiSourceMatches?.[index] || [];
+                    const trace = sectionTraces?.find(item => item.findingIndex === index);
+                    const traceUpdating = Boolean(trace && updatingTraceIds?.includes(trace.id));
+                    const outcome = trace?.outcome;
+                    const decided = Boolean(trace?.studentAction);
+                    const judged = Boolean(trace?.judgment);
+                    const draft = decideDraft?.findingIndex === index;
+                    return (
+                      <div key={trace?.id || `${finding.type}-${finding.startOffset}-${finding.endOffset}`} className={`rounded-xl border bg-(--surface) p-4 shadow-sm ${outcome === 'RESOLVED' ? 'border-emerald-300' : 'border-(--border)'}`}>
+                        <button type="button" onClick={() => onSelectReviewFinding(finding)} className="w-full text-left">
+                          <div className="flex items-start justify-between gap-2">
+                            <h4 className={`text-[11px] font-black ${finding.type === 'SOURCE_DISCREPANCY' ? 'text-rose-700' : 'text-indigo-700'}`}>{finding.type.replaceAll('_', ' ')}</h4>
+                            <span className="flex items-center gap-1">
+                              {finding.confidence && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">{finding.confidence}</span>}
+                              {outcome && <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${OUTCOME_CLASSES[outcome] || OUTCOME_CLASSES.UNRESOLVED}`}>{outcome.replaceAll('_', ' ')}</span>}
+                            </span>
+                          </div>
+                          <blockquote className="mt-2 border-l-2 border-amber-400 pl-2 text-[11px] italic leading-relaxed text-(--text-secondary)">“{finding.excerpt}”</blockquote>
+                          <p className="mt-2 text-[11px] leading-relaxed text-(--text-secondary)">{finding.rationale}</p>
+                          {(finding.evidence || []).length > 0 && (
+                            <span className="mt-2 block space-y-1">
+                              {finding.evidence.map((item, evidenceIndex) => (
+                                <span key={evidenceIndex} className="block rounded-lg border border-(--border-light) bg-(--surface-secondary) p-2">
+                                  <span className={`text-[9px] font-bold ${item.relation === 'CONTRADICTS' ? 'text-rose-600' : item.relation === 'SUPPORTS' ? 'text-emerald-600' : 'text-slate-500'}`}>{item.relation.replaceAll('_', ' ')}</span>
+                                  {item.quote && <span className="mt-0.5 block text-[10px] italic leading-relaxed text-(--text-secondary)">“{item.quote}”</span>}
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </button>
+                        {trace?.aiRecheckJudgment && (
+                          <div className="mt-2 rounded-lg border border-indigo-200 bg-indigo-50 p-2 text-[10px] text-indigo-800">
+                            <p className="font-bold">{t('aiAdvisory')}: {trace.aiRecheckJudgment}</p>
+                            {trace.aiRecheckReason && <p className="mt-0.5 leading-relaxed">{trace.aiRecheckReason}</p>}
+                          </div>
+                        )}
+                        {trace?.judgment && (
+                          <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[10px] text-emerald-800">
+                            <p className="font-bold">{t('instructorJudgment')}: {trace.judgment}</p>
+                            {trace.instructorFeedback && <p className="mt-0.5 leading-relaxed">{trace.instructorFeedback}</p>}
+                          </div>
+                        )}
+                        <div className="mt-3 border-t border-(--border-light) pt-3">
+                          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('relatedSources')}</p>
+                          {aiSourcesLoading ? (
+                            <p className="text-[10px] italic text-(--text-tertiary)">{t('searchingSources')}</p>
+                          ) : candidates.length === 0 ? (
+                            <p className="text-[10px] italic text-(--text-tertiary)">{t('noRelatedSources')}</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {candidates.map(candidate => (
+                                <div key={candidate.documentChunkId} className="rounded-lg border border-(--border) bg-(--surface-secondary) p-2.5">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <p className="truncate text-[11px] font-bold text-(--text-primary)">{candidate.title || candidate.sourceFilename}</p>
+                                      <p className="text-[9px] text-(--text-tertiary)">{[candidate.authors, candidate.publicationYear].filter(Boolean).join(' · ')}</p>
+                                    </div>
+                                    <span className="text-[9px] font-bold text-indigo-600">{Number.isFinite(candidate.similarityScore) ? `${Math.round(candidate.similarityScore * 100)}%` : '--'}</span>
+                                  </div>
+                                  <p className="mt-1 line-clamp-3 text-[10px] italic leading-relaxed text-(--text-secondary)">“{candidate.excerpt}”</p>
+                                  <button type="button" onClick={() => onInsertCitation(finding, index, candidate, trace)} disabled={!trace || decided || judged || traceUpdating || !canReviewSection}
+                                    className="mt-2 w-full rounded bg-(--brand) px-2 py-1 text-[10px] font-bold text-(--on-brand) hover:bg-(--brand-hover) disabled:opacity-40">
+                                    {traceUpdating ? t('saving') : decided ? t('citationInserted') : t('insertCitation')}
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {!draft && (
+                            <button type="button" onClick={() => setDecideDraft({ findingIndex: index, action: decided ? trace.studentAction : '', sourceId: trace?.sourceId || '', evidenceQuote: trace?.evidenceQuote || '', relation: trace?.evidenceRelation || '', explanation: trace?.explanation || '' })}
+                              disabled={!trace || judged || traceUpdating || !canReviewSection}
+                              className="mt-2 w-full rounded-lg border border-(--border) px-2 py-1.5 text-[10px] font-bold text-(--text-secondary) hover:bg-(--surface-secondary) disabled:opacity-40">
+                              {judged ? t('traceJudgedLocked') : decided ? t('editTraceDecision') : t('recordTraceDecision')}
+                            </button>
+                          )}
+                          {draft && trace && (
+                            <div className="mt-2 space-y-2 rounded-lg border border-(--border-light) bg-(--surface-secondary) p-2.5">
+                              <label className="block">
+                                <span className="mb-1 block text-[9px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('studentAction')}</span>
+                                <select
+                                  value={decideDraft.action}
+                                  onChange={e => setDecideDraft(prev => ({ ...prev, action: e.target.value }))}
+                                  className="w-full rounded-lg border border-(--border) bg-(--surface) px-2 py-1.5 text-[11px] text-(--text-primary) outline-none">
+                                  <option value="">{t('selectAction')}</option>
+                                  {STUDENT_ACTIONS.map(action => (
+                                    <option key={action} value={action}>{action.replaceAll('_', ' ')}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              {['ADD_CITATION', 'QUOTE', 'PARAPHRASE', 'SYNTHESIZE', 'QUALIFY'].includes(decideDraft.action) && candidates.length > 0 && (
+                                <label className="block">
+                                  <span className="mb-1 block text-[9px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('bindSource')}</span>
+                                  <select
+                                    value={decideDraft.sourceId}
+                                    onChange={e => {
+                                      const selected = candidates.find(c => (c.sourceId || c.documentId) === e.target.value);
+                                      setDecideDraft(prev => ({
+                                        ...prev,
+                                        sourceId: e.target.value,
+                                        chunkId: selected?.documentChunkId || '',
+                                        evidenceQuote: selected?.excerpt || prev.evidenceQuote,
+                                      }));
+                                    }}
+                                    className="w-full rounded-lg border border-(--border) bg-(--surface) px-2 py-1.5 text-[11px] text-(--text-primary) outline-none">
+                                    <option value="">{t('selectSource')}</option>
+                                    {candidates.map(candidate => (
+                                      <option key={candidate.documentChunkId} value={candidate.sourceId || candidate.documentId}>
+                                        {candidate.title || candidate.sourceFilename}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              )}
+                              {decideDraft.sourceId && (
+                                <label className="block">
+                                  <span className="mb-1 block text-[9px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('evidenceQuote')}</span>
+                                  <textarea
+                                    value={decideDraft.evidenceQuote}
+                                    onChange={e => setDecideDraft(prev => ({ ...prev, evidenceQuote: e.target.value }))}
+                                    rows={2}
+                                    className="w-full rounded-lg border border-(--border) bg-(--surface) px-2 py-1.5 text-[10px] italic text-(--text-secondary) outline-none resize-y" />
+                                </label>
+                              )}
+                              <label className="block">
+                                <span className="mb-1 block text-[9px] font-bold uppercase tracking-wider text-(--text-tertiary)">{t('explanation')} *</span>
+                                <textarea
+                                  value={decideDraft.explanation}
+                                  onChange={e => setDecideDraft(prev => ({ ...prev, explanation: e.target.value }))}
+                                  maxLength={2000}
+                                  required
+                                  rows={2}
+                                  className="w-full rounded-lg border border-(--border) bg-(--surface) px-2 py-1.5 text-[10px] text-(--text-secondary) outline-none resize-y"
+                                  placeholder={t('explanationPlaceholder')} />
+                                <span className="mt-0.5 block text-right text-[9px] text-(--text-tertiary)">{decideDraft.explanation.length}/2000</span>
+                              </label>
+                              <div className="flex gap-2">
+                                <button type="button" disabled={!decideDraft.action || !decideDraft.explanation.trim() || traceUpdating}
+                                  onClick={async () => {
+                                    try {
+                                      await onDecideTrace(trace, {
+                                        studentAction: decideDraft.action,
+                                        sourceId: decideDraft.sourceId || null,
+                                        chunkId: decideDraft.chunkId || null,
+                                        evidenceQuote: decideDraft.evidenceQuote || null,
+                                        relation: decideDraft.relation || null,
+                                        explanation: decideDraft.explanation.trim(),
+                                      });
+                                      setDecideDraft(null);
+                                    } catch { /* toast shown by parent */ }
+                                  }}
+                                  className="flex-1 rounded-lg bg-(--brand) px-2 py-1.5 text-[10px] font-bold text-(--on-brand) hover:bg-(--brand-hover) disabled:opacity-40">
+                                  {traceUpdating ? t('saving') : t('saveDecision')}
+                                </button>
+                                <button type="button" onClick={() => setDecideDraft(null)}
+                                  className="rounded-lg border border-(--border) px-2 py-1.5 text-[10px] font-bold text-(--text-secondary) hover:bg-(--surface-tertiary)">
+                                  {t('cancel')}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {(aiReview.findings || []).length === 0 && (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-800">{t('noCitationFindings')}</div>
+                  )}
+                  {(aiReview.limitations || []).length > 0 && (
+                    <ul className="list-disc space-y-1 rounded-xl border border-slate-200 bg-slate-50 p-4 pl-8 text-[10px] text-slate-700">
+                      {aiReview.limitations.map((limitation, index) => <li key={index}>{limitation}</li>)}
+                    </ul>
+                  )}
+                </>
+              )}
+              {aiSourcesError && aiReview && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900">
+                  <p>{aiSourcesError}</p>
+                  <button type="button" onClick={onRetryReviewSources} className="mt-1 font-bold underline">{t('retrySourceSearch')}</button>
+                </div>
+              )}
             </div>
           )}
 

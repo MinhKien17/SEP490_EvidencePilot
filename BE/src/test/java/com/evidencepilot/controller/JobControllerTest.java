@@ -38,7 +38,7 @@ class JobControllerTest {
         ObjectNode result = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
         result.put("score", 3);
         JobResponse job = new JobResponse(
-                jobId, projectId, "SECTION_SUGGESTION", "SUCCESS", result, null, null);
+                jobId, projectId, "SECTION_SUGGESTION", "SUCCESS", 2, 9, result, null, null);
         User user = new User();
         Project project = new Project();
         when(aiEvaluationService.getJob(jobId)).thenReturn(job);
@@ -48,6 +48,8 @@ class JobControllerTest {
         mockMvc().perform(get("/api/jobs/{jobId}", jobId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.progressCurrent").value(2))
+                .andExpect(jsonPath("$.progressTotal").value(9))
                 .andExpect(jsonPath("$.result.score").value(3));
 
         verify(currentUserService).requireProjectAccess(user, project);
