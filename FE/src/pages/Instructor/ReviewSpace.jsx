@@ -7,6 +7,7 @@ import { renderLatexToHtml } from '../../components/latexHtml.js';
 import { commonText, instructorText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
 import { useDangerConfirm } from '../../components/DangerConfirm';
+import FileViewerModal from '../../components/FileViewerModal';
 
 function wrapLatexLines(latex) {
   if (!latex) return '';
@@ -132,6 +133,8 @@ export default function ReviewSpace() {
   const [suggestionLoading, setSuggestionLoading] = useState(false);
   const [suggestionError, setSuggestionError] = useState('');
   const [suggestionRan, setSuggestionRan] = useState(false);
+  const [viewerFile, setViewerFile] = useState(null);
+  const [showGuide, setShowGuide] = useState(false);
   const suggestionRequestRef = useRef(0);
 
   useEffect(() => {
@@ -418,7 +421,6 @@ export default function ReviewSpace() {
       return existing ? `${existing}\n\n${incoming}` : incoming;
     });
     if (lineRef) setFeedbackLineRef(lineRef);
-    setEditingFeedbackId(null);
   };
 
   if (loading) {
@@ -451,6 +453,10 @@ export default function ReviewSpace() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 shrink-0">
+            <button type="button" onClick={() => setShowGuide(true)}
+              className="px-3 py-2 text-xs font-bold text-(--brand-foreground) rounded-xl transition border border-(--border) bg-(--surface) hover:bg-(--surface-secondary)">
+              {t.reviewGuide}
+            </button>
             {activeRequest && (activeRequest.status === 'PENDING' || activeRequest.status === 'RETURNED') && (
               <>
                 <button onClick={() => setPendingTransition({ requestId: activeRequest.id, targetStatus: 'RETURNED' })} disabled={transitioningRequestId === activeRequest.id}
@@ -547,139 +553,115 @@ export default function ReviewSpace() {
             )}
           </div>
 
-          {/* Right column: review guide + feedback + sources */}
+          {/* Right column: feedback + sources */}
           <div className="space-y-6">
-            <div id="review-guide-panel" className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm p-4 sm:p-6">
-              <div className="flex items-center justify-between gap-3 mb-3">
-                <h2 className="text-sm font-bold text-(--brand-foreground)">{t.reviewGuide}</h2>
-                <button onClick={handleGenerateSuggestions} disabled={!activeGuide || suggestionLoading}
-                  className="px-3 py-1.5 rounded-lg text-[10px] font-black bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50">
-                  {suggestionLoading ? t.generatingSuggestions : t.generateSuggestions}
-                </button>
-              </div>
-              {!selectedSection || !activeGuide ? (
-                <p className="text-xs text-(--text-tertiary) italic">{t.selectSectionGuide}</p>
-              ) : (
-                <>
-                  <span className="inline-block text-[9px] font-black text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded mb-3">{activeGuide.sectionType}</span>
-                  <p className="text-xs text-(--text-secondary) leading-relaxed mb-4">{activeGuide.guidance}</p>
-                  <ul className="space-y-1.5">
-                    {activeGuide.checklist.map((item, i) => {
-                      const key = `${selectedSectionId}-${i}`;
-                      const checked = !!checkedItems[key];
-                      return (
-                        <li key={key}>
-                          <label className="flex items-start gap-2 cursor-pointer text-xs text-(--text-secondary)">
-                            <input type="checkbox" checked={checked} onChange={() => setCheckedItems(prev => ({ ...prev, [key]: !checked }))}
-                              className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a8a] focus:ring-[#1e3a8a]" />
-                            <span className={checked ? 'line-through opacity-60' : ''}>{item}</span>
-                          </label>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  {suggestionError && (
-                    <p className="text-[10px] font-bold text-rose-600 mt-3">{suggestionError}</p>
-                  )}
-                  {suggestionLoading && (
-                    <div className="mt-3 space-y-2" aria-busy="true">
-                      <div className="h-14 bg-(--surface-secondary) animate-pulse rounded-xl" />
-                      <div className="h-14 bg-(--surface-secondary) animate-pulse rounded-xl" />
-                    </div>
-                  )}
-                  {suggestionRan && !suggestionLoading && suggestions.length === 0 && (
-                    <p className="text-[10px] text-(--text-secondary) italic mt-3">{t.noSuggestionIssues}</p>
-                  )}
-                  {suggestions.length > 0 && (
-                    <ul className="mt-3 space-y-2">
-                      {suggestions.map((suggestion, i) => (
-                        <li key={i} className="border border-(--border-light) rounded-xl p-3 text-xs space-y-1">
-                          <p className="font-bold text-(--text-primary) leading-relaxed">{suggestion.issue}</p>
-                          {suggestion.quote && (
-                            <p className="text-[10px] text-gray-400 italic leading-relaxed">"{suggestion.quote}"</p>
-                          )}
-                          <button onClick={() => injectIntoFeedback(null, suggestion.actionableFix)}
-                            className="text-[10px] font-black text-indigo-600 hover:underline">
-                            {t.insertAsDraft}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </>
-              )}
-            </div>
-            <div className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm p-4 sm:p-6">
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <h2 className="text-sm font-bold text-(--brand-foreground)">{t.sectionFeedback}</h2>
-              </div>
-              {!selectedSectionId ? (
-                <p className="text-xs text-(--text-tertiary) italic">{t.selectSectionFeedback}</p>
-              ) : (
-                <>
-                  <div className="space-y-3 mb-4">
-                    {sectionFeedback.length === 0 ? (
-                      <p className="text-xs text-(--text-tertiary) italic">{t.noSectionFeedback}</p>
-                    ) : sectionFeedback.map(fb => (
-                      <div key={fb.id} className="bg-(--surface-secondary) border border-(--border-light) rounded-xl p-3 text-xs space-y-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">{t.section} {fb.sectionTitle || ''}</span>
-                          <div className="flex items-center gap-1.5">
-                            {fb.stale && <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">{t.sectionChanged}</span>}
-                            {fb.answered && <span className="text-[9px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">{t.answered}</span>}
-                            {!fb.answered && !requestLocked && (
-                              <>
-                                <button onClick={() => handleEditFeedback(fb)} className="text-(--text-tertiary) hover:text-(--brand) p-1" title={ct.edit} aria-label={ct.edit}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 13H9v-2.828l6.586-6.586z" /></svg></button>
-                                <button onClick={() => handleDeleteFeedback(fb.id)} className="text-(--text-tertiary) hover:text-rose-600 p-1" title={ct.delete} aria-label={ct.delete}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M4 7h16" /></svg></button>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                        {fb.lineReference && <p className="text-[10px] text-gray-400 font-mono">{fb.lineReference}</p>}
-                        <p className="text-(--text-primary) leading-relaxed">{fb.content}</p>
-                        {fb.answered && fb.answerContent && (
-                          <p className="text-[10px] text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg p-2">{t.studentAnswer.replace('{{answer}}', fb.answerContent)}</p>
-                        )}
-                      </div>
-                    ))}
+            <div className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm">
+              <div className="p-4 sm:p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <h2 className="text-sm font-bold text-(--brand-foreground)">{t.sectionFeedback}</h2>
+                  <button onClick={handleGenerateSuggestions} disabled={!activeGuide || suggestionLoading}
+                    className="px-3 py-1.5 rounded-lg text-[10px] font-black bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50">
+                    {suggestionLoading ? t.generatingSuggestions : t.generateSuggestions}
+                  </button>
+                </div>
+                {suggestionError && (
+                  <p className="text-[10px] font-bold text-rose-600 mb-3">{suggestionError}</p>
+                )}
+                {suggestionLoading && (
+                  <div className="mb-3 space-y-2" aria-busy="true">
+                    <div className="h-14 bg-(--surface-secondary) animate-pulse rounded-xl" />
+                    <div className="h-14 bg-(--surface-secondary) animate-pulse rounded-xl" />
                   </div>
-                  {requestLocked ? (
-                    <p className="text-xs text-(--text-tertiary) italic">{t.reviewClosed}</p>
-                  ) : (
-                    <form onSubmit={handleSubmitFeedback} className="space-y-2 border-t border-(--border-light) pt-3">
-                      <input value={feedbackLineRef} onChange={e => setFeedbackLineRef(e.target.value)}
-                        placeholder={t.lineReferencePlaceholder} maxLength={100}
-                        className="w-full px-3 py-2 bg-(--surface-secondary) border border-(--border) rounded-xl text-xs text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--focus)" />
-                      <textarea rows="3" value={feedbackDraft} onChange={e => setFeedbackDraft(e.target.value)}
-                        placeholder={t.sectionFeedbackPlaceholder}
-                        className="w-full px-3 py-2 bg-(--surface-secondary) border border-(--border) rounded-xl text-xs text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--focus)" />
-                      <div className="flex gap-2">
-                        {editingFeedbackId && (
-                          <button type="button" onClick={handleCancelEdit}
-                            className="flex-1 py-2 bg-(--surface-secondary) text-(--text-secondary) rounded-xl hover:bg-(--surface-tertiary) transition-colors text-xs font-bold">{ct.cancel}</button>
+                )}
+                {suggestionRan && !suggestionLoading && suggestions.length === 0 && (
+                  <p className="text-[10px] text-(--text-secondary) italic mb-3">{t.noSuggestionIssues}</p>
+                )}
+                {suggestions.length > 0 && (
+                  <ul className="mb-3 max-h-48 space-y-2 overflow-y-auto pr-1">
+                    {suggestions.map((suggestion, i) => (
+                      <li key={i} className="border border-(--border-light) rounded-xl p-3 text-xs space-y-1">
+                        <p className="font-bold text-(--text-primary) leading-relaxed">{suggestion.issue}</p>
+                        {suggestion.quote && (
+                          <p className="text-[10px] text-gray-400 italic leading-relaxed">"{suggestion.quote}"</p>
                         )}
-                        <button type="submit" disabled={savingFeedback || !feedbackDraft.trim()}
-                          className="flex-1 py-2 bg-(--brand) text-(--on-brand) rounded-xl hover:bg-(--brand-hover) transition-colors shadow-sm disabled:opacity-50 text-xs font-bold">
-                          {savingFeedback ? ct.saving : editingFeedbackId ? t.updateFeedback : t.addFeedback}
+                        <button type="button" onClick={() => injectIntoFeedback(null, suggestion.actionableFix)}
+                          className="text-[10px] font-black text-indigo-600 hover:underline">
+                          {t.insertAsDraft}
                         </button>
-                      </div>
-                    </form>
-                  )}
-                </>
-              )}
-              <div className="border-t border-(--border-light) pt-4 mt-4">
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {!selectedSectionId ? (
+                  <p className="text-xs text-(--text-tertiary) italic">{t.selectSectionFeedback}</p>
+                ) : (
+                  <>
+                    <div className="space-y-3 mb-4">
+                      {sectionFeedback.length === 0 ? (
+                        <p className="text-xs text-(--text-tertiary) italic">{t.noSectionFeedback}</p>
+                      ) : sectionFeedback.map(fb => (
+                        <div key={fb.id} className="bg-(--surface-secondary) border border-(--border-light) rounded-xl p-3 text-xs space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">{t.section} {fb.sectionTitle || ''}</span>
+                            <div className="flex items-center gap-1.5">
+                              {fb.stale && <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">{t.sectionChanged}</span>}
+                              {fb.answered && <span className="text-[9px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">{t.answered}</span>}
+                              {!fb.answered && !requestLocked && (
+                                <>
+                                  <button onClick={() => handleEditFeedback(fb)} className="text-(--text-tertiary) hover:text-(--brand) p-1" title={ct.edit} aria-label={ct.edit}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 13H9v-2.828l6.586-6.586z" /></svg></button>
+                                  <button onClick={() => handleDeleteFeedback(fb.id)} className="text-(--text-tertiary) hover:text-rose-600 p-1" title={ct.delete} aria-label={ct.delete}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M4 7h16" /></svg></button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          {fb.lineReference && <p className="text-[10px] text-gray-400 font-mono">{fb.lineReference}</p>}
+                          <p className="text-(--text-primary) leading-relaxed">{fb.content}</p>
+                          {fb.answered && fb.answerContent && (
+                            <p className="text-[10px] text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg p-2">{t.studentAnswer.replace('{{answer}}', fb.answerContent)}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {requestLocked ? (
+                      <p className="text-xs text-(--text-tertiary) italic">{t.reviewClosed}</p>
+                    ) : (
+                      <form onSubmit={handleSubmitFeedback} className="space-y-2 border-t border-(--border-light) pt-3">
+                        <input value={feedbackLineRef} onChange={e => setFeedbackLineRef(e.target.value)}
+                          placeholder={t.lineReferencePlaceholder} maxLength={100}
+                          className="w-full px-3 py-2 bg-(--surface-secondary) border border-(--border) rounded-xl text-xs text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--focus)" />
+                        <textarea rows="3" value={feedbackDraft} onChange={e => setFeedbackDraft(e.target.value)}
+                          placeholder={t.sectionFeedbackPlaceholder}
+                          className="w-full px-3 py-2 bg-(--surface-secondary) border border-(--border) rounded-xl text-xs text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--focus)" />
+                        <div className="flex gap-2">
+                          {editingFeedbackId && (
+                            <button type="button" onClick={handleCancelEdit}
+                              className="flex-1 py-2 bg-(--surface-secondary) text-(--text-secondary) rounded-xl hover:bg-(--surface-tertiary) transition-colors text-xs font-bold">{ct.cancel}</button>
+                          )}
+                          <button type="submit" disabled={savingFeedback || !feedbackDraft.trim()}
+                            className="flex-1 py-2 bg-(--brand) text-(--on-brand) rounded-xl hover:bg-(--brand-hover) transition-colors shadow-sm disabled:opacity-50 text-xs font-bold">
+                            {savingFeedback ? ct.saving : editingFeedbackId ? t.updateFeedback : t.addFeedback}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </>
+                )}
+              </div>
+              <div className="border-t border-(--border-light) p-4 sm:p-6">
                 <h3 className="text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider mb-3">{t.sources}</h3>
                 {sources.length === 0 ? (
                   <p className="text-xs text-(--text-tertiary) italic">{t.noProjectSources}</p>
                 ) : (
                   <div className="space-y-2">
                     {sources.map(src => (
-                      <div key={src.id} className="flex items-center justify-between gap-2 bg-(--surface-secondary) border border-(--border-light) rounded-lg px-3 py-2 text-xs">
+                      <button key={src.id} type="button" onClick={() => setViewerFile({ fileUrl: `/api/documents/${src.id}/download`, fileName: src.originalFilename || src.title || src.id })}
+                        className="flex w-full items-center justify-between gap-2 bg-(--surface-secondary) border border-(--border-light) rounded-lg px-3 py-2 text-xs transition hover:bg-(--surface-tertiary) text-left">
                         <div className="min-w-0">
                           <p className="font-medium truncate">{src.title || src.originalFilename || src.id}</p>
                           <StatusBadge status={src.processingStatus || 'READY'} />
                         </div>
-                      </div>
+                        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-none stroke-(--text-tertiary)" strokeWidth="2"><path d="M14 3v4a1 1 0 0 0 1 1h4" /><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z" /></svg>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -705,10 +687,6 @@ export default function ReviewSpace() {
           <p className="text-(--text-secondary)">
             {pendingTransition?.targetStatus === 'REVIEWED' ? t.finalizeReviewConfirm : t.returnForRevision}
           </p>
-          {pendingTransition?.targetStatus === 'RETURNED' && (
-            <button type="button" onClick={() => { setPendingTransition(null); document.getElementById('review-guide-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
-              className="w-full py-2 bg-(--surface-secondary) hover:bg-(--surface-tertiary) text-(--brand-foreground) rounded-xl transition-colors border border-(--border) font-bold">{t.reviewGuide}</button>
-          )}
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={() => setPendingTransition(null)} disabled={!!transitioningRequestId}
               className="flex-1 py-3 bg-(--surface-secondary) hover:bg-(--surface-tertiary) text-(--text-secondary) rounded-xl transition-colors border border-(--border) disabled:opacity-50">{ct.cancel}</button>
@@ -718,6 +696,32 @@ export default function ReviewSpace() {
           </div>
         </div>
       </Modal>
+      <Modal open={showGuide} onClose={() => setShowGuide(false)} title={t.reviewGuide} closeLabel={ct.close}>
+        {!selectedSection || !activeGuide ? (
+          <p className="text-xs text-(--text-tertiary) italic">{t.selectSectionGuide}</p>
+        ) : (
+          <div className="space-y-4 text-xs">
+            <span className="inline-block text-[9px] font-black text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">{activeGuide.sectionType}</span>
+            <p className="text-(--text-secondary) leading-relaxed">{activeGuide.guidance}</p>
+            <ul className="space-y-1.5">
+              {activeGuide.checklist.map((item, i) => {
+                const key = `${selectedSectionId}-${i}`;
+                const checked = !!checkedItems[key];
+                return (
+                  <li key={key}>
+                    <label className="flex items-start gap-2 cursor-pointer text-xs text-(--text-secondary)">
+                      <input type="checkbox" checked={checked} onChange={() => setCheckedItems(prev => ({ ...prev, [key]: !checked }))}
+                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a8a] focus:ring-[#1e3a8a]" />
+                      <span className={checked ? 'line-through opacity-60' : ''}>{item}</span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+      </Modal>
+      {viewerFile && <FileViewerModal fileUrl={viewerFile.fileUrl} fileName={viewerFile.fileName} onClose={() => setViewerFile(null)} />}
     </div>
   );
 }

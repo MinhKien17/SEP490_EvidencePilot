@@ -389,16 +389,15 @@ export default function ContextPanel({
                   relation: trace?.evidenceRelation || '',
                   explanation: trace?.explanation || '',
                 })}
+                decideDraft={decideDraft}
+                setDecideDraft={setDecideDraft}
+                onDecideTrace={onDecideTrace}
               />
               <TraceEvidenceList
                 sectionTraces={sectionTraces}
                 updatingTraceIds={updatingTraceIds}
                 traceError={traceError}
-                decideDraft={decideDraft}
-                setDecideDraft={setDecideDraft}
-                onDecideTrace={onDecideTrace}
                 onRunReview={onRunAiReview}
-                aiSourceMatches={aiSourceMatches}
                 showHistory={!aiReview && sectionTraces.length > 0}
               />
             </div>

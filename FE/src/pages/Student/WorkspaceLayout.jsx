@@ -179,7 +179,7 @@ export default function WorkspaceLayout() {
   const handleSelectSection = async (sec) => {
     const current = selectedSectionIdRef.current;
     if (current && current !== sec.id && dirtySectionsRef.current.has(current)) {
-      if (!(await confirmDanger(t('unsavedSectionSwitch')))) return false;
+      if (!window.confirm(t('unsavedSectionSwitch'))) return false;
       dirtySectionsRef.current.delete(current);
     }
     selectSection(sec.id);
@@ -190,7 +190,7 @@ export default function WorkspaceLayout() {
   const handleSelectPaper = async (p) => {
     const current = selectedSectionIdRef.current;
     if (current && dirtySectionsRef.current.has(current)) {
-      if (!(await confirmDanger(t('unsavedPaperSwitch')))) return;
+      if (!window.confirm(t('unsavedPaperSwitch'))) return;
       dirtySectionsRef.current.delete(current);
     }
     setSelectedPaper(p);

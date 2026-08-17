@@ -436,6 +436,16 @@ export default function ProjectDetail() {
     }
   };
 
+  const handleRemoveSource = async (sourceId) => {
+    if (!(await confirmDanger(t.removeSourceConfirm, 5))) return;
+    try {
+      await api.delete(`/api/sources/projects/${id}/sources/${sourceId}`);
+      await loadSources();
+    } catch (err) {
+      alert(err?.response?.data?.message || t.removeSourceFailed);
+    }
+  };
+
   const handleAssignSection = async (sectionId, userId) => {
     const section = sections.find(s => s.id === sectionId);
     if (!userId) return handleConfirmAssign(null, sectionId);
@@ -654,12 +664,16 @@ export default function ProjectDetail() {
               ) : (
                 <div className="space-y-1">
                   {sources.map(s => (
-                    <button key={s.id} onClick={() => { setSourceDetail(s); setShowSourceDetail(true); }} className="flex w-full items-center justify-between gap-2 rounded-lg bg-[var(--surface-secondary)] px-3 py-2 text-left text-xs transition hover:bg-[var(--surface-tertiary)]">
-                      <span className="min-w-0 truncate font-medium">{s.title || s.originalFilename || s.id}</span>
-                      <span className="flex items-center gap-2">
+                    <div key={s.id} className="flex items-center gap-2 rounded-lg bg-[var(--surface-secondary)] px-3 py-2 text-xs transition hover:bg-[var(--surface-tertiary)]">
+                      <button onClick={() => { setSourceDetail(s); setShowSourceDetail(true); }} className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
+                        <span className="min-w-0 truncate font-medium">{s.title || s.originalFilename || s.id}</span>
                         <StatusBadge status={s.processingStatus || 'READY'} />
-                      </span>
-                    </button>
+                      </button>
+                      <button onClick={() => handleRemoveSource(s.id)} title={t.removeSource}
+                        className="shrink-0 rounded-lg p-1.5 text-[var(--text-tertiary)] transition hover:bg-rose-100 hover:text-rose-600">
+                        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M10 11v6M14 11v6" /></svg>
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}

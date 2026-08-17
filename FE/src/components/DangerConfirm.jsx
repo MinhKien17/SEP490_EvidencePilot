@@ -9,9 +9,9 @@ export function DangerConfirmProvider({ children }) {
   const [state, setState] = useState(null);
   const resolverRef = useRef(null);
 
-  const confirmDanger = useCallback((message) => new Promise((resolve) => {
+  const confirmDanger = useCallback((message, seconds = 10) => new Promise((resolve) => {
     resolverRef.current = resolve;
-    setState({ message });
+    setState({ message, seconds });
   }), []);
 
   const close = useCallback((result) => {
@@ -40,7 +40,7 @@ function DangerConfirmModal({ state, onCancel, onConfirm }) {
 
   useEffect(() => {
     if (!state) return;
-    setRemaining(10);
+    setRemaining(state.seconds ?? 10);
     const id = setInterval(() => setRemaining(r => Math.max(0, r - 1)), 1000);
     return () => clearInterval(id);
   }, [state]);
