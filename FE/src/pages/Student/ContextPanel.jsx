@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../../api.js';
+import { getSourceDownloadUrl } from './sourceDownload.js';
 
 const CLAIM_STATUS_CLASSES = {
   PRESENT: 'border-emerald-200 bg-emerald-50 text-emerald-700',
@@ -341,12 +342,32 @@ export default function ContextPanel({
                 <h3 className="text-[11px] font-bold text-(--text-tertiary) tracking-widest mb-3 uppercase flex items-center gap-2"><div className="h-px bg-(--border) flex-1"></div> {t('availableSource')} <div className="h-px bg-(--border) flex-1"></div></h3>
                 <div className="flex flex-col gap-3">
                   {sources.length === 0 ? <div className="text-sm text-(--text-secondary) italic text-center p-4">{t('noUploadedSources')}</div> : (
-                    sources.map(src => (
-                      <div key={src.id} onClick={() => src.fileUrl && src.fileUrl !== 'pending' ? setViewerFile({ fileUrl: `/api/documents/${src.id}/download`, fileName: src.originalFilename }) : showToast(t('fileUrlUnavailable'))} className="bg-(--surface) border border-(--border) rounded-xl p-3.5 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors cursor-pointer">
-                        <p className="text-sm font-bold text-(--text-primary) flex items-center gap-2"><svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>{src.originalFilename}</p>
-                        <p className="text-xs text-(--text-secondary) mt-1.5 line-clamp-2 leading-relaxed">{t('uploadedSourceDescription')}</p>
-                        {src.processingStatus === 'METADATA_FETCHED' && (
-                          <div className="mt-3">
+                    sources.map(src => {
+                      const sourceDownloadUrl = getSourceDownloadUrl(src.processingError);
+                      return (
+                        <div key={src.id} onClick={() => src.fileUrl && src.fileUrl !== 'pending' ? setViewerFile({ fileUrl: `/api/documents/${src.id}/download`, fileName: src.originalFilename }) : showToast(t('fileUrlUnavailable'))} className="bg-(--surface) border border-(--border) rounded-xl p-3.5 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors cursor-pointer">
+                          <p className="text-sm font-bold text-(--text-primary) flex items-center gap-2"><svg className="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>{src.originalFilename}</p>
+                          {src.processingStatus === 'METADATA_FETCHED' ? (
+                            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[10px] leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                              <p className="font-bold">{t('metadataFetchedDescription')}</p>
+                              {src.processingError && <p className="mt-1 break-words">{t('sourceDownloadFailureReason', { reason: src.processingError })}</p>}
+                              {sourceDownloadUrl && (
+                                <a
+                                  href={sourceDownloadUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(event) => event.stopPropagation()}
+                                  className="mt-1.5 block break-all font-bold text-indigo-700 underline hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-200"
+                                >
+                                  {t('sourceDownloadLink')}: {sourceDownloadUrl}
+                                </a>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-(--text-secondary) mt-1.5 line-clamp-2 leading-relaxed">{t('uploadedSourceDescription')}</p>
+                          )}
+                          {src.processingStatus === 'METADATA_FETCHED' && (
+                            <div className="mt-3">
                             <input
                               id={`attach-pdf-${src.id}`}
                               type="file"
@@ -369,10 +390,11 @@ export default function ContextPanel({
                               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 16V4m0 0L8 8m4-4 4 4M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" /></svg>
                               {attachingSourceId === src.id ? t('working') : t('attachPdf')}
                             </label>
-                          </div>
-                        )}
-                      </div>
-                    ))
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>

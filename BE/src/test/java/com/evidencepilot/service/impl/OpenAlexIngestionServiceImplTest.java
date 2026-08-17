@@ -220,6 +220,7 @@ class OpenAlexIngestionServiceImplTest {
         var result = service.ingestByDoi(project.getId(), null, "10.1000/no-pdf");
 
         assertThat(result.processingStatus()).isEqualTo(ProcessingStatus.METADATA_FETCHED);
+        assertThat(result.processingError()).isEqualTo("No open-access PDF available for this DOI");
         assertThat(result.originalFilename()).contains("No PDF");
     }
 
