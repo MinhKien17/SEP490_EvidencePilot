@@ -8,6 +8,7 @@ import com.evidencepilot.dto.response.CitationValidationResponse;
 import com.evidencepilot.dto.response.FormatScanResponse;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.PaperSection;
+import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.PaperStandard;
 import com.evidencepilot.repository.DocumentRepository;
@@ -31,6 +32,7 @@ class FormatScanServiceImplTest {
     private final PaperSectionRepository paperSectionRepository = mock(PaperSectionRepository.class);
     private final CitationValidationService citationValidationService = mock(CitationValidationService.class);
     private final CurrentUserService currentUserService = mock(CurrentUserService.class);
+    private final SourceMatchingService sourceMatchingService = mock(SourceMatchingService.class);
 
     @Test
     void flagsOnlyClearlyMarkedQuotationsAtFortyWords() {
@@ -55,9 +57,36 @@ class FormatScanServiceImplTest {
         assertThat(excessiveQuotationFindings(scan("% \"" + words(40) + "\""))).isEmpty();
     }
 
+    @Test
+    void resolvesGeneratedCitationsForPreview() {
+        UUID sourceId = UUID.randomUUID();
+        Document source = new Document();
+        source.setId(sourceId);
+        source.setTitle("Evidence Source");
+        source.setAuthors("A. Researcher");
+        source.setPublicationYear(2026);
+        String key = SourceMatchingService.citationKey(sourceId);
+
+        FormatScanResponse response = scan(
+                "Supported claim \\cite{" + key + "}. Repeated \\cite{" + key + "}.", source);
+
+        assertThat(response.citationNumbers()).containsEntry(key, 1);
+        assertThat(response.references()).singleElement().satisfies(reference -> {
+            assertThat(reference.number()).isEqualTo(1);
+            assertThat(reference.reference()).contains("A. Researcher", "Evidence Source", "2026");
+        });
+    }
+
     private FormatScanResponse scan(String content) {
+        return scan(content, null);
+    }
+
+    private FormatScanResponse scan(String content, Document source) {
         Document document = new Document();
         document.setTitle("Paper");
+        Project project = new Project();
+        project.setId(UUID.randomUUID());
+        document.setProject(project);
         PaperSection section = new PaperSection();
         section.setSectionTitle("Introduction");
         section.setContentTex(content);
@@ -66,8 +95,14 @@ class FormatScanServiceImplTest {
         when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(DOCUMENT_ID)).thenReturn(List.of(section));
         when(citationValidationService.validateCitations(DOCUMENT_ID)).thenReturn(new CitationValidationResponse(
                 true, "Paper", 1, 1, List.of(), List.of(), List.of(), PaperStandard.IEEE, null));
+        when(sourceMatchingService.activeSources(project.getId()))
+                .thenReturn(source == null ? List.of() : List.of(source));
         return new FormatScanServiceImpl(
-                documentRepository, paperSectionRepository, citationValidationService, currentUserService)
+                documentRepository,
+                paperSectionRepository,
+                citationValidationService,
+                currentUserService,
+                sourceMatchingService)
                 .scanFormat(DOCUMENT_ID);
     }
 

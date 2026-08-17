@@ -1,10 +1,14 @@
 import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import PreviewPane from '../../components/PreviewPane';
+import { isReferenceSectionTitle } from '../../components/latexHtml.js';
 
-export default function FullPaperPreview({ sections, paperTitle, mediaAssets, onClose }) {
+export default function FullPaperPreview({ sections, paperTitle, mediaAssets, citationPreview, onClose }) {
   const { t } = useTranslation();
   const sectionRefs = useRef({});
+  const generatedReferences = citationPreview?.references || [];
+  const hasReferenceSection = sections.some(section =>
+    isReferenceSectionTitle(section.sectionTitle));
 
   return (
     <div className="fixed inset-0 z-50 flex bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -41,12 +45,32 @@ export default function FullPaperPreview({ sections, paperTitle, mediaAssets, on
           {sections.length === 0 ? (
             <p className="text-sm text-slate-400 italic text-center py-16">{t('noSections')}</p>
           ) : (
-            sections.map((sec, i) => (
-              <div key={sec.id} ref={el => { sectionRefs.current[sec.id] = el; }}>
-                <PreviewPane latex={sec.contentTex || ''} mediaAssets={mediaAssets} />
-                {i < sections.length - 1 && <hr className="my-8 border-(--border)" />}
-              </div>
-            ))
+            <>
+              {sections.map((sec, i) => {
+                const referenceSection = isReferenceSectionTitle(sec.sectionTitle);
+                return (
+                  <div key={sec.id} ref={el => { sectionRefs.current[sec.id] = el; }}>
+                    <PreviewPane
+                      latex={sec.contentTex || ''}
+                      mediaAssets={mediaAssets}
+                      citationNumbers={citationPreview?.citationNumbers}
+                      generatedReferences={referenceSection ? generatedReferences : []}
+                      referencesTitle={sec.sectionTitle || 'References'}
+                    />
+                    {(i < sections.length - 1 || (!hasReferenceSection && generatedReferences.length > 0))
+                      && <hr className="my-8 border-(--border)" />}
+                  </div>
+                );
+              })}
+              {!hasReferenceSection && generatedReferences.length > 0 && (
+                <PreviewPane
+                  latex=""
+                  mediaAssets={mediaAssets}
+                  citationNumbers={citationPreview?.citationNumbers}
+                  generatedReferences={generatedReferences}
+                />
+              )}
+            </>
           )}
         </div>
       </div>

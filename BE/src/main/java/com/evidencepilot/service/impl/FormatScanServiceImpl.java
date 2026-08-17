@@ -9,6 +9,7 @@ import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.User;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
+import com.evidencepilot.service.CitationBibliography;
 import com.evidencepilot.service.CitationValidationService;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.FormatScanService;
@@ -43,6 +44,7 @@ public class FormatScanServiceImpl implements FormatScanService {
     private final PaperSectionRepository paperSectionRepository;
     private final CitationValidationService citationValidationService;
     private final CurrentUserService currentUserService;
+    private final SourceMatchingService sourceMatchingService;
 
     @Override
     public FormatScanResponse scanFormat(UUID documentId) {
@@ -69,8 +71,17 @@ public class FormatScanServiceImpl implements FormatScanService {
 
         checkCitationCoverage(citationResult, findings);
 
+        CitationBibliography.Result bibliography = CitationBibliography.resolve(
+                sections, sourceMatchingService.activeSources(doc.getProject().getId()));
         String paperTitle = doc.getTitle() != null ? doc.getTitle() : doc.getOriginalFilename();
-        return new FormatScanResponse(paperTitle, findings);
+        return new FormatScanResponse(
+                paperTitle,
+                findings,
+                bibliography.citationNumbers(),
+                bibliography.entries().stream()
+                        .map(entry -> new FormatScanResponse.CitationReference(
+                                entry.key(), entry.number(), entry.reference()))
+                        .toList());
     }
 
     private void checkFirstPerson(String tex, String sectionTitle, List<ScanFinding> findings) {
