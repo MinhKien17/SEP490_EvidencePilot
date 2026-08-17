@@ -295,8 +295,9 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
             throw new IllegalArgumentException(
                     "Source matches payload project does not match its job");
         }
-        SectionReviewSourceMatchRequest request = objectMapper.treeToValue(
-                payload.get("findings"), SectionReviewSourceMatchRequest.class);
+        List<SectionReviewSourceMatchRequest.Finding> findings = objectMapper.convertValue(
+                payload.get("findings"), new TypeReference<>() {});
+        SectionReviewSourceMatchRequest request = new SectionReviewSourceMatchRequest(findings);
         return objectMapper.valueToTree(
                 sectionCitationReviewService.sourceMatches(documentId, sectionId, request));
     }

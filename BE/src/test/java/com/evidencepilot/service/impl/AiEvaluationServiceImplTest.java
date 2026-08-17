@@ -1,6 +1,8 @@
 package com.evidencepilot.service.impl;
 
+import com.evidencepilot.dto.request.SectionReviewSourceMatchRequest;
 import com.evidencepilot.dto.response.SectionCitationReviewResponse;
+import com.evidencepilot.dto.response.SectionReviewSourceMatchesResponse;
 import com.evidencepilot.model.AiEvaluationJob;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.PaperSection;
@@ -193,6 +195,35 @@ class AiEvaluationServiceImplTest {
         verify(sectionCitationReviewService).run(
                 documentId, projectId, sectionId, "fingerprint", requesterId);
         verify(evidenceTraceService, never()).recheck(any(), any(), any());
+    }
+
+    @Test
+    void process_sourceMatches_deserializesFindingsPayload() throws Exception {
+        UUID jobId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        var finding = new SectionReviewSourceMatchRequest.Finding(0, "Supported claim", 0, 15);
+        var request = new SectionReviewSourceMatchRequest(List.of(finding));
+        AiEvaluationJob job = job(
+                sectionId,
+                projectId,
+                objectMapper.writeValueAsString(Map.of(
+                        "projectId", projectId,
+                        "documentId", documentId,
+                        "sectionId", sectionId,
+                        "findings", request.findings())));
+        job.setKind(AiEvaluationJob.KIND_SOURCE_MATCHES);
+        when(jobRepository.findById(jobId)).thenReturn(Optional.of(job));
+        when(sectionCitationReviewService.sourceMatches(documentId, sectionId, request))
+                .thenReturn(new SectionReviewSourceMatchesResponse(List.of(
+                        new SectionReviewSourceMatchesResponse.FindingMatches(0, List.of()))));
+
+        service().process(jobId);
+
+        assertThat(job.getStatus()).isEqualTo(AiEvaluationJob.STATUS_SUCCESS);
+        assertThat(job.getResultJson()).contains("\"findingIndex\":0");
+        verify(sectionCitationReviewService).sourceMatches(documentId, sectionId, request);
     }
 
     @Test
