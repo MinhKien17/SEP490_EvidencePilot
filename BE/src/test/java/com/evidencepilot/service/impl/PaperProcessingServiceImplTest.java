@@ -175,6 +175,61 @@ class PaperProcessingServiceImplTest {
         assertThat(saved.get(4).getContentTex()).contains("## Study limitations");
     }
 
+    @Test
+    void preservesTwelveTopLevelSectionsForFlattenedNumberedPaper() {
+        UUID documentId = UUID.randomUUID();
+        Document document = new Document();
+        document.setId(documentId);
+        DocumentText text = new DocumentText();
+        text.setDocument(document);
+        List<String> headings = List.of(
+                "1. Introduction",
+                "2. Background",
+                "3. Research methodology",
+                "4. Results",
+                "5. Discussion",
+                "6. Conclusion",
+                "7. Acknowledgments",
+                "8. References",
+                "Appendix A",
+                "Appendix B",
+                "Appendix C",
+                "Appendix D");
+        text.setExtractedText("# Paper title\n" + String.join(
+                "\n",
+                headings.stream().map(title -> "## " + title + "\nBody.").toList()));
+        document.setDocumentText(text);
+
+        List<AiModelClient.ExtractionBlock> blocks = new ArrayList<>();
+        blocks.add(heading("Paper title", 1));
+        headings.forEach(title -> blocks.add(heading(title, 2)));
+        when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(documentId)).thenReturn(List.of());
+        List<PaperSection> saved = new ArrayList<>();
+        when(paperSectionRepository.saveAll(anyList())).thenAnswer(invocation -> {
+            Iterable<PaperSection> sections = invocation.getArgument(0);
+            sections.forEach(saved::add);
+            return saved;
+        });
+
+        service().detectAndPersistSections(documentId, blocks);
+
+        assertThat(saved).extracting(PaperSection::getSectionTitle)
+                .containsExactly(
+                        "Introduction",
+                        "Background",
+                        "Research methodology",
+                        "Results",
+                        "Discussion",
+                        "Conclusion",
+                        "Acknowledgments",
+                        "References",
+                        "Appendix A",
+                        "Appendix B",
+                        "Appendix C",
+                        "Appendix D");
+    }
+
     private static AiModelClient.ExtractionBlock heading(String text, int level) {
         return new AiModelClient.ExtractionBlock("heading", text, level, null);
     }
