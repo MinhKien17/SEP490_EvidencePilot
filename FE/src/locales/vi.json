@@ -213,6 +213,8 @@
   "aiReviewError": "Lỗi Citation Review",
   "lastReviewAvailable": "Kết quả đánh giá thành công gần nhất vẫn được hiển thị bên dưới.",
   "aiAnalyzing": "AI đang phân tích...",
+  "aiReviewProgress": "Đã xử lý {{current}}/{{total}} phần nội dung",
+  "aiReviewProgressLabel": "Tiến độ Citation Review",
   "projectAssessment": "Đánh giá dự án",
   "rubricScore": "Điểm tiêu chí",
   "pass": "Đạt",

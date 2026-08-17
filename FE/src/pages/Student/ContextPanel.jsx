@@ -142,7 +142,7 @@ export default function ContextPanel({
   // Feedback tab
   feedbacks, assignedSections, setShowSubmitReviewModal, userProjectRole,
   // Citation Review tab
-  aiReview, aiReviewLoading, aiReviewError, aiReviewStale, aiSourceMatches,
+  aiReview, aiReviewLoading, aiReviewProgress, aiReviewError, aiReviewStale, aiSourceMatches,
   aiSourcesLoading, aiSourcesError, sectionTraces, updatingTraceIds, traceError,
   onDecideTrace, reviewSectionTitle,
   onRunAiReview, onSelectReviewFinding, onInsertCitation, onRetryReviewSources,
@@ -225,6 +225,14 @@ export default function ContextPanel({
 
   const activeClass = (tab) =>
     `flex-1 py-3 text-xs font-bold uppercase tracking-wider flex flex-col justify-center items-center gap-1 transition-all relative ${activeTab === tab ? 'text-(--brand)' : 'text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-secondary)'}`;
+  const reviewProgressTotal = Math.max(0, Number(aiReviewProgress?.total) || 0);
+  const reviewProgressCurrent = Math.min(
+    reviewProgressTotal,
+    Math.max(0, Number(aiReviewProgress?.current) || 0),
+  );
+  const reviewProgressPercent = reviewProgressTotal > 0
+    ? Math.round((reviewProgressCurrent / reviewProgressTotal) * 100)
+    : 0;
 
   return (
     <>
@@ -429,9 +437,38 @@ export default function ContextPanel({
                 </div>
               )}
               {aiReviewLoading && (
-                <div className="flex items-center justify-center gap-2 rounded-xl border border-(--border) bg-(--surface) p-8 text-xs text-(--text-secondary)">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600"></span>
-                  {t('aiAnalyzing')}
+                <div className="rounded-xl border border-(--border) bg-(--surface) p-4 text-xs text-(--text-secondary)" role="status" aria-live="polite">
+                  <div className="flex items-center gap-3">
+                    <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600 motion-reduce:animate-none" aria-hidden="true"></span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="min-w-0 leading-relaxed">
+                          {reviewProgressTotal > 0
+                            ? t('aiReviewProgress', { current: reviewProgressCurrent, total: reviewProgressTotal })
+                            : t('aiAnalyzing')}
+                        </span>
+                        {reviewProgressTotal > 0 && (
+                          <span className="shrink-0 font-bold tabular-nums text-indigo-700">{reviewProgressPercent}%</span>
+                        )}
+                      </div>
+                      <div
+                        className="mt-2 h-2 overflow-hidden rounded-full bg-indigo-100"
+                        role={reviewProgressTotal > 0 ? 'progressbar' : undefined}
+                        aria-label={reviewProgressTotal > 0 ? t('aiReviewProgressLabel') : undefined}
+                        aria-valuemin={reviewProgressTotal > 0 ? 0 : undefined}
+                        aria-valuemax={reviewProgressTotal > 0 ? reviewProgressTotal : undefined}
+                        aria-valuenow={reviewProgressTotal > 0 ? reviewProgressCurrent : undefined}
+                        aria-valuetext={reviewProgressTotal > 0
+                          ? t('aiReviewProgress', { current: reviewProgressCurrent, total: reviewProgressTotal })
+                          : undefined}
+                      >
+                        <div
+                          className={`h-full rounded-full bg-indigo-600 transition-[width] duration-300 motion-reduce:transition-none ${reviewProgressTotal > 0 ? '' : 'w-1/3 animate-pulse motion-reduce:animate-none'}`}
+                          style={reviewProgressTotal > 0 ? { width: `${reviewProgressPercent}%` } : undefined}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
               {(aiReview || sectionTraces.length > 0) && !aiReviewLoading && (

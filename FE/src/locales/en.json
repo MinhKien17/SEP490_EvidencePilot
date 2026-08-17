@@ -213,6 +213,8 @@
   "aiReviewError": "Citation Review error",
   "lastReviewAvailable": "The last successful review remains below.",
   "aiAnalyzing": "AI is analyzing...",
+  "aiReviewProgress": "Processed {{current}}/{{total}} content chunks",
+  "aiReviewProgressLabel": "Citation Review progress",
   "projectAssessment": "Project assessment",
   "rubricScore": "Rubric score",
   "pass": "Pass",
