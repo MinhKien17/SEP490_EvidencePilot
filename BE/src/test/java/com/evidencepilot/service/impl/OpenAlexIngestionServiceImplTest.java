@@ -14,6 +14,7 @@ import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.CollectionRepository;
+import com.evidencepilot.repository.CollectionDocumentRepository;
 import com.evidencepilot.repository.DocumentReferenceRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
@@ -60,6 +61,8 @@ class OpenAlexIngestionServiceImplTest {
     @Mock
     private CollectionRepository collectionRepository;
     @Mock
+    private CollectionDocumentRepository collectionDocumentRepository;
+    @Mock
     private CurrentUserService currentUserService;
     @Mock
     private DocumentObjectStorage documentObjectStorage;
@@ -80,7 +83,7 @@ class OpenAlexIngestionServiceImplTest {
     void setUp() {
         service = new OpenAlexIngestionServiceImpl(
                 openAlexClient, documentRepository, projectRepository,
-                collectionRepository, currentUserService, documentObjectStorage,
+                collectionRepository, collectionDocumentRepository, currentUserService, documentObjectStorage,
                 documentPersistenceService, documentReferenceRepository, new ObjectMapper(),
                 projectCollectionService);
         serviceSpy = spy(service);

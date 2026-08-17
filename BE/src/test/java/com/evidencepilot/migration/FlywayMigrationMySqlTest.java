@@ -21,6 +21,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Testcontainers(disabledWithoutDocker = true)
@@ -54,7 +55,7 @@ class FlywayMigrationMySqlTest {
         Integer successfulMigrations = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1",
                 Integer.class);
-        assertThat(successfulMigrations).isEqualTo(9);
+        assertThat(successfulMigrations).isEqualTo(11);
 
         assertThat(jdbcTemplate.queryForList("""
                         SELECT constraint_name
@@ -104,6 +105,15 @@ class FlywayMigrationMySqlTest {
                 INSERT INTO users (id, email, password_hash, role, account_status)
                 VALUES (UUID_TO_BIN(?), ?, 'hash', 'STUDENT', 'ACTIVE')
                 """, userId, "migration-test@example.com");
+        jdbcTemplate.update("""
+                INSERT INTO users (id, email, password_hash, role, account_status, student_code)
+                VALUES (UUID_TO_BIN(?), ?, 'hash', 'STUDENT', 'DELETED', ?)
+                """, UUID.randomUUID().toString(), "reusable@example.com", "SE-REUSE");
+        assertThatCode(() -> jdbcTemplate.update("""
+                INSERT INTO users (id, email, password_hash, role, account_status, student_code)
+                VALUES (UUID_TO_BIN(?), ?, 'hash', 'STUDENT', 'ACTIVE', ?)
+                """, UUID.randomUUID().toString(), "reusable@example.com", "SE-REUSE"))
+                .doesNotThrowAnyException();
         jdbcTemplate.update("""
                 INSERT INTO projects (id, title, status, active)
                 VALUES (UUID_TO_BIN(?), 'Migration Test', 'CREATED', TRUE)
@@ -202,10 +212,10 @@ class FlywayMigrationMySqlTest {
                 .migrate()
                 .migrationsExecuted;
 
-        assertThat(migrationsExecuted).isEqualTo(8);
+        assertThat(migrationsExecuted).isEqualTo(10);
         assertThat(rehearsalJdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1",
-                Integer.class)).isEqualTo(9);
+                Integer.class)).isEqualTo(11);
         assertThat(rehearsalJdbcTemplate.queryForObject(
                 "SELECT type FROM flyway_schema_history WHERE installed_rank = 1",
                 String.class)).isEqualTo("BASELINE");

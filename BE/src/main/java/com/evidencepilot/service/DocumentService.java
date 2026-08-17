@@ -36,7 +36,10 @@ public interface DocumentService {
             Boolean active);
     List<DocumentResponse> getSourcesByCollection(UUID collectionId);
     PagedResponse<DocumentResponse> getSourcesByCollection(UUID collectionId, int page, int size, String sort, String q);
+    PagedResponse<DocumentResponse> getAvailableLibrarySources(
+            UUID collectionId, int page, int size, String sort, String q);
     DocumentResponse addSourceToCollection(UUID collectionId, UUID sourceId);
+    void removeSourceFromCollection(UUID collectionId, UUID sourceId);
     DocumentResponse updateDocumentMetadata(UUID id, String title, String originalFilename);
     DocumentResponse uploadDocument(UUID projectId, MultipartFile file, DocumentType docType);
 

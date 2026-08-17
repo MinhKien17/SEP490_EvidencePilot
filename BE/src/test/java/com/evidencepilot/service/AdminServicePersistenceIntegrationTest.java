@@ -1,6 +1,7 @@
 package com.evidencepilot.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.evidencepilot.dto.request.AdminUserCreateRequest;
 import com.evidencepilot.dto.request.AdminUserImportRequest;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.AccountStatus;
@@ -77,6 +78,32 @@ class AdminServicePersistenceIntegrationTest {
         assertThat(unchanged.getFirstName()).isEqualTo("Original");
         assertThat(unchanged.getStudentCode()).isEqualTo("SE1");
         assertThat(users.findByEmail("new@example.com")).isEmpty();
+    }
+
+    @Test
+    void recreatesDeletedStudentWithSameEmailAndCodeAndKeepsDeletedRow() {
+        User deleted = save("recreate@example.com", "Old", "Student", UserRole.STUDENT, AccountStatus.DELETED);
+        deleted.setStudentCode("SE-REUSE");
+        users.saveAndFlush(deleted);
+
+        User admin = new User();
+        admin.setId(java.util.UUID.randomUUID());
+        admin.setRole(UserRole.ADMIN);
+        admin.setAccountStatus(AccountStatus.ACTIVE);
+        when(currentUsers.requireCurrentUser()).thenReturn(admin);
+
+        var response = service.createUser(new AdminUserCreateRequest(
+                "recreate@example.com", "New", "Student", UserRole.STUDENT, " se-reuse "));
+
+        assertThat(response.email()).isEqualTo("recreate@example.com");
+        assertThat(response.studentCode()).isEqualTo("SE-REUSE");
+        assertThat(users.findAll().stream()
+                .filter(user -> "recreate@example.com".equals(user.getEmail()))
+                .map(User::getAccountStatus))
+                .containsExactlyInAnyOrder(AccountStatus.DELETED, AccountStatus.ACTIVE);
+        assertThat(users.findByEmail("recreate@example.com")).isPresent()
+                .get().extracting(User::getId).isNotEqualTo(deleted.getId());
+        assertThat(deleted.getAccountStatus()).isEqualTo(AccountStatus.DELETED);
     }
 
     private User save(String email, String firstName, String lastName, UserRole role, AccountStatus status) {

@@ -22,7 +22,7 @@ public class User {
     @JdbcTypeCode(java.sql.Types.BINARY)
     private UUID id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private String email;
 
     @Column(name = "password_hash", nullable = false)
@@ -35,7 +35,7 @@ public class User {
     @Column(name = "account_status", nullable = false)
     private AccountStatus accountStatus = AccountStatus.ACTIVE;
 
-    @Column(name = "student_code", unique = true, length = 50)
+    @Column(name = "student_code", length = 50)
     private String studentCode;
 
     @Column(name = "password_change_notice_pending", nullable = false)

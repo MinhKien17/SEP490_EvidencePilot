@@ -8,6 +8,7 @@ import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.OpenAlexPreview;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Collection;
+import com.evidencepilot.model.CollectionDocument;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentReference;
 import com.evidencepilot.model.Project;
@@ -16,6 +17,7 @@ import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.EdgeType;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.repository.CollectionRepository;
+import com.evidencepilot.repository.CollectionDocumentRepository;
 import com.evidencepilot.repository.DocumentReferenceRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectRepository;
@@ -49,6 +51,7 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
     private final DocumentRepository documentRepository;
     private final ProjectRepository projectRepository;
     private final CollectionRepository collectionRepository;
+    private final CollectionDocumentRepository collectionDocumentRepository;
     private final CurrentUserService currentUserService;
     private final DocumentObjectStorage documentObjectStorage;
     private final DocumentPersistenceService documentPersistenceService;
@@ -304,17 +307,19 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public CitationGraphResponse getCitationGraph(UUID collectionId, boolean includeFailed) {
         User currentUser = currentUserService.requireCurrentUser();
         Collection collection = collectionRepository.findById(collectionId)
                 .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
         currentUserService.requireCollectionAccess(currentUser, collection);
 
+        List<Document> collectionDocuments = collectionDocuments(collectionId);
         List<Document> docs;
         if (includeFailed) {
-            docs = documentRepository.findByCollectionId(collectionId);
+            docs = collectionDocuments;
         } else {
-            docs = documentRepository.findByCollectionId(collectionId).stream()
+            docs = collectionDocuments.stream()
                     .filter(d -> d.getProcessingStatus() != ProcessingStatus.FAILED)
                     .toList();
         }
@@ -355,6 +360,16 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
 
         nodes.addAll(externalNodes.values());
         return new CitationGraphResponse(nodes, edges);
+    }
+
+    private List<Document> collectionDocuments(UUID collectionId) {
+        Map<UUID, Document> documents = new LinkedHashMap<>();
+        documentRepository.findByCollectionId(collectionId)
+                .forEach(document -> documents.put(document.getId(), document));
+        collectionDocumentRepository.findByCollectionId(collectionId).stream()
+                .map(CollectionDocument::getDocument)
+                .forEach(document -> documents.put(document.getId(), document));
+        return List.copyOf(documents.values());
     }
 
     protected boolean urlIsReachable(String url) {

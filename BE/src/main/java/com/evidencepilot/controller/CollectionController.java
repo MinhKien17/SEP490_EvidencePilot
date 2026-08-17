@@ -97,6 +97,18 @@ public class CollectionController {
         return documentService.getSourcesByCollection(id, page, size, sort, q);
     }
 
+    @Operation(summary = "List reusable sources",
+            description = "Returns active source documents uploaded by the current user that are not already in this collection.")
+    @GetMapping("/{id}/library-sources")
+    public PagedResponse<DocumentResponse> getAvailableLibrarySources(
+            @Parameter(description = "Collection UUID") @PathVariable UUID id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String q) {
+        return documentService.getAvailableLibrarySources(id, page, size, sort, q);
+    }
+
     @Operation(summary = "Share collection document to project",
             description = "Shares a source document from a collection to a project by reference. "
                     + "No file copy occurs — chunks and embeddings are reused. "
@@ -123,6 +135,16 @@ public class CollectionController {
             @Parameter(description = "Collection UUID") @PathVariable UUID collectionId,
             @Parameter(description = "Source document UUID") @PathVariable UUID sourceId) {
         return documentService.addSourceToCollection(collectionId, sourceId);
+    }
+
+    @Operation(summary = "Remove a library source from collection",
+            description = "Removes only the collection association. The original document and file remain available elsewhere.")
+    @DeleteMapping("/{collectionId}/sources/{sourceId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeSourceFromCollection(
+            @Parameter(description = "Collection UUID") @PathVariable UUID collectionId,
+            @Parameter(description = "Source document UUID") @PathVariable UUID sourceId) {
+        documentService.removeSourceFromCollection(collectionId, sourceId);
     }
 
     @Operation(summary = "Soft-delete a collection",

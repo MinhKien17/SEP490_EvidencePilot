@@ -3,6 +3,7 @@ package com.evidencepilot.service.impl;
 import com.evidencepilot.dto.response.CollectionResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.model.Collection;
+import com.evidencepilot.model.CollectionDocument;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectCollection;
@@ -11,6 +12,7 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.CollectionRepository;
+import com.evidencepilot.repository.CollectionDocumentRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectCollectionRepository;
 import com.evidencepilot.repository.ProjectDocumentRepository;
@@ -23,7 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -41,6 +46,7 @@ public class ProjectCollectionService {
     private final ProjectRepository projectRepository;
     private final CollectionRepository collectionRepository;
     private final DocumentRepository documentRepository;
+    private final CollectionDocumentRepository collectionDocumentRepository;
     private final CurrentUserService currentUserService;
 
     public List<CollectionResponse> getLinkedCollections(UUID projectId) {
@@ -87,25 +93,18 @@ public class ProjectCollectionService {
 
         projectCollectionRepository.findByProjectIdAndCollectionId(projectId, collectionId)
                 .ifPresent(link -> {
-                    projectDocumentRepository.findByProjectCollectionId(link.getId())
-                            .forEach(this::detachDerivedShare);
+                    detachCollectionLink(link);
                     projectCollectionRepository.delete(link);
                 });
     }
 
     @Transactional
     public void syncSource(Document document) {
-        if (document == null || document.getCollection() == null
-                || !document.getCollection().isActive()
-                || document.getDocType() != DocumentType.SOURCE || !document.isActive()) {
+        if (document == null || document.getDocType() != DocumentType.SOURCE || !document.isActive()) {
             return;
         }
-        for (ProjectCollection link : projectCollectionRepository
-                .findByCollectionId(document.getCollection().getId())) {
-            Project project = link.getProject();
-            if (project.isActive() && !isSyncPaused(project)) {
-                materialize(link, document);
-            }
+        for (Collection collection : sourceCollections(document)) {
+            syncCollectionSource(collection, document);
         }
     }
 
@@ -125,12 +124,20 @@ public class ProjectCollectionService {
         for (ProjectCollection link : links) {
             for (ProjectDocument projectDocument : projectDocumentRepository
                     .findByProjectCollectionId(link.getId())) {
-                projectDocument.setPinned(true);
-                projectDocument.setProjectCollection(null);
-                projectDocumentRepository.save(projectDocument);
+                ProjectCollection replacement = replacementLink(projectDocument, link);
+                if (replacement != null) {
+                    projectDocument.setProjectCollection(replacement);
+                    projectDocumentRepository.save(projectDocument);
+                } else {
+                    projectDocument.setPinned(true);
+                    projectDocument.setProjectCollection(null);
+                    projectDocumentRepository.save(projectDocument);
+                }
             }
         }
         projectCollectionRepository.deleteAll(links);
+        collectionDocumentRepository.deleteAll(
+                collectionDocumentRepository.findByCollectionId(collection.getId()));
 
         List<Document> retained = documentRepository
                 .findByCollectionIdAndDocTypeAndActiveTrue(collection.getId(), DocumentType.SOURCE).stream()
@@ -141,25 +148,30 @@ public class ProjectCollectionService {
     }
 
     @Transactional
-    public Document moveSource(Document document, Collection targetCollection) {
-        if (document.getCollection() != null
-                && document.getCollection().getId().equals(targetCollection.getId())) {
-            syncSource(document);
+    public Document addSource(Document document, Collection targetCollection, User addedBy) {
+        if (isInCollection(document, targetCollection.getId())) {
+            syncCollectionSource(targetCollection, document);
             return document;
         }
 
-        for (ProjectDocument projectDocument : projectDocumentRepository.findByDocumentId(document.getId())) {
-            ProjectCollection link = projectDocument.getProjectCollection();
-            if (link != null && !link.getCollection().getId().equals(targetCollection.getId())) {
-                requireCorpusMutable(link.getProject());
-                detachDerivedShare(projectDocument);
-            }
-        }
+        CollectionDocument membership = new CollectionDocument();
+        membership.setCollection(targetCollection);
+        membership.setDocument(document);
+        membership.setAddedBy(addedBy);
+        membership.setAddedAt(LocalDateTime.now());
+        collectionDocumentRepository.save(membership);
+        syncCollectionSource(targetCollection, document);
+        return document;
+    }
 
-        document.setCollection(targetCollection);
-        Document saved = documentRepository.save(document);
-        syncSource(saved);
-        return saved;
+    @Transactional
+    public void removeSource(Document document, Collection collection) {
+        collectionDocumentRepository
+                .findByCollectionIdAndDocumentId(collection.getId(), document.getId())
+                .ifPresent(membership -> {
+                    collectionDocumentRepository.delete(membership);
+                    detachCollectionSource(collection, document);
+                });
     }
 
     @Transactional
@@ -172,10 +184,15 @@ public class ProjectCollectionService {
 
     @Transactional
     public void pinSource(Project project, Document document, User sharedBy) {
+        pinSource(project, document, document.getCollection(), sharedBy);
+    }
+
+    @Transactional
+    public void pinSource(Project project, Document document, Collection sourceCollection, User sharedBy) {
         requireCorpusMutable(project);
-        ProjectCollection link = document.getCollection() == null ? null
+        ProjectCollection link = sourceCollection == null ? null
                 : projectCollectionRepository
-                        .findByProjectIdAndCollectionId(project.getId(), document.getCollection().getId())
+                        .findByProjectIdAndCollectionId(project.getId(), sourceCollection.getId())
                         .orElse(null);
         ProjectDocument projectDocument = projectDocumentRepository
                 .findByProjectIdAndDocumentId(project.getId(), document.getId())
@@ -207,8 +224,7 @@ public class ProjectCollectionService {
     }
 
     private void syncCollection(ProjectCollection link) {
-        documentRepository.findByCollectionIdAndDocTypeAndActiveTrue(
-                        link.getCollection().getId(), DocumentType.SOURCE)
+        collectionSources(link.getCollection().getId())
                 .forEach(document -> materialize(link, document));
     }
 
@@ -223,11 +239,100 @@ public class ProjectCollectionService {
             projectDocument.setSharedBy(link.getLinkedBy());
             projectDocument.setSharedAt(LocalDateTime.now());
             projectDocument.setPinned(false);
+            projectDocument.setProjectCollection(link);
         } else if (projectDocument.getProjectCollection() == null) {
             projectDocument.setPinned(true);
+            projectDocument.setProjectCollection(link);
         }
-        projectDocument.setProjectCollection(link);
         projectDocumentRepository.save(projectDocument);
+    }
+
+    private void syncCollectionSource(Collection collection, Document document) {
+        if (!collection.isActive()) {
+            return;
+        }
+        for (ProjectCollection link : projectCollectionRepository.findByCollectionId(collection.getId())) {
+            Project project = link.getProject();
+            if (project.isActive() && !isSyncPaused(project)) {
+                materialize(link, document);
+            }
+        }
+    }
+
+    private List<Collection> sourceCollections(Document document) {
+        Map<UUID, Collection> collections = new LinkedHashMap<>();
+        if (document.getCollection() != null && document.getCollection().isActive()) {
+            collections.put(document.getCollection().getId(), document.getCollection());
+        }
+        collectionDocumentRepository.findByDocumentId(document.getId()).stream()
+                .map(CollectionDocument::getCollection)
+                .filter(Collection::isActive)
+                .forEach(collection -> collections.put(collection.getId(), collection));
+        return List.copyOf(collections.values());
+    }
+
+    private List<Document> collectionSources(UUID collectionId) {
+        Map<UUID, Document> documents = new LinkedHashMap<>();
+        documentRepository.findByCollectionIdAndDocTypeAndActiveTrue(collectionId, DocumentType.SOURCE)
+                .forEach(document -> documents.put(document.getId(), document));
+        collectionDocumentRepository.findByCollectionId(collectionId).stream()
+                .map(CollectionDocument::getDocument)
+                .filter(document -> document.isActive() && document.getDocType() == DocumentType.SOURCE)
+                .forEach(document -> documents.put(document.getId(), document));
+        return List.copyOf(documents.values());
+    }
+
+    private boolean isInCollection(Document document, UUID collectionId) {
+        return (document.getCollection() != null
+                && Objects.equals(document.getCollection().getId(), collectionId))
+                || collectionDocumentRepository.existsByCollectionIdAndDocumentId(
+                        collectionId, document.getId());
+    }
+
+    private void detachCollectionLink(ProjectCollection removedLink) {
+        for (ProjectDocument projectDocument : projectDocumentRepository
+                .findByProjectCollectionId(removedLink.getId())) {
+            ProjectCollection replacement = replacementLink(projectDocument, removedLink);
+            if (replacement != null) {
+                projectDocument.setProjectCollection(replacement);
+                projectDocumentRepository.save(projectDocument);
+            } else {
+                detachDerivedShare(projectDocument);
+            }
+        }
+    }
+
+    private void detachCollectionSource(Collection collection, Document document) {
+        for (ProjectCollection link : projectCollectionRepository.findByCollectionId(collection.getId())) {
+            projectDocumentRepository
+                    .findByProjectIdAndDocumentId(link.getProject().getId(), document.getId())
+                    .filter(projectDocument -> projectDocument.getProjectCollection() != null)
+                    .filter(projectDocument -> Objects.equals(
+                            projectDocument.getProjectCollection().getId(), link.getId()))
+                    .ifPresent(projectDocument -> {
+                        ProjectCollection replacement = replacementLink(projectDocument, link);
+                        if (replacement != null) {
+                            projectDocument.setProjectCollection(replacement);
+                            projectDocumentRepository.save(projectDocument);
+                        } else if (isSyncPaused(projectDocument.getProject())) {
+                            projectDocument.setPinned(true);
+                            projectDocument.setProjectCollection(null);
+                            projectDocumentRepository.save(projectDocument);
+                        } else {
+                            detachDerivedShare(projectDocument);
+                        }
+                    });
+        }
+    }
+
+    private ProjectCollection replacementLink(
+            ProjectDocument projectDocument, ProjectCollection removedLink) {
+        return projectCollectionRepository.findByProjectId(projectDocument.getProject().getId()).stream()
+                .filter(link -> !Objects.equals(link.getId(), removedLink.getId()))
+                .filter(link -> isInCollection(
+                        projectDocument.getDocument(), link.getCollection().getId()))
+                .findFirst()
+                .orElse(null);
     }
 
     private void detachDerivedShare(ProjectDocument projectDocument) {

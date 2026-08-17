@@ -23,10 +23,10 @@ public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificat
     @Query("select user from User user where lower(user.email) in :emails and user.accountStatus <> 'DELETED'")
     List<User> findAllByEmailIn(@Param("emails") Collection<String> emails);
 
-    @Query("select user from User user where upper(user.studentCode) = :studentCode")
+    @Query("select user from User user where upper(user.studentCode) = :studentCode and user.accountStatus <> 'DELETED'")
     Optional<User> findByStudentCode(@Param("studentCode") String studentCode);
 
-    @Query("select user from User user where upper(user.studentCode) in :studentCodes")
+    @Query("select user from User user where upper(user.studentCode) in :studentCodes and user.accountStatus <> 'DELETED'")
     List<User> findAllByStudentCodeIn(@Param("studentCodes") Collection<String> studentCodes);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)

@@ -1,6 +1,7 @@
 package com.evidencepilot.service;
 
 import com.evidencepilot.model.Collection;
+import com.evidencepilot.model.CollectionDocument;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectCollection;
@@ -10,6 +11,7 @@ import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.CollectionRepository;
+import com.evidencepilot.repository.CollectionDocumentRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.ProjectCollectionRepository;
 import com.evidencepilot.repository.ProjectDocumentRepository;
@@ -47,6 +49,8 @@ class ProjectCollectionServiceTest {
     @Mock
     private DocumentRepository documentRepository;
     @Mock
+    private CollectionDocumentRepository collectionDocumentRepository;
+    @Mock
     private CurrentUserService currentUserService;
 
     @Test
@@ -80,6 +84,35 @@ class ProjectCollectionServiceTest {
                 .requireCollectionAccess(instructor, collection);
         verify(currentUserService, org.mockito.Mockito.times(2))
                 .requireProjectWriteAccess(instructor, project);
+    }
+
+    @Test
+    void linkMaterializesSourcesAttachedFromLibrary() {
+        User instructor = instructor();
+        Project project = project(ProjectStatus.CREATED);
+        Collection originalCollection = collection(instructor);
+        Collection targetCollection = collection(instructor);
+        Document source = source(originalCollection);
+        ProjectCollection link = link(project, targetCollection, instructor);
+        CollectionDocument membership = new CollectionDocument();
+        membership.setCollection(targetCollection);
+        membership.setDocument(source);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(collectionRepository.findById(targetCollection.getId())).thenReturn(Optional.of(targetCollection));
+        when(projectCollectionRepository.findByProjectIdAndCollectionId(
+                project.getId(), targetCollection.getId())).thenReturn(Optional.empty());
+        when(projectCollectionRepository.save(any(ProjectCollection.class))).thenReturn(link);
+        when(collectionDocumentRepository.findByCollectionId(targetCollection.getId()))
+                .thenReturn(List.of(membership));
+
+        service().link(project.getId(), targetCollection.getId());
+
+        ArgumentCaptor<ProjectDocument> materialized = ArgumentCaptor.forClass(ProjectDocument.class);
+        verify(projectDocumentRepository).save(materialized.capture());
+        assertThat(materialized.getValue().getDocument()).isEqualTo(source);
+        assertThat(materialized.getValue().getProjectCollection()).isEqualTo(link);
     }
 
     @Test
@@ -186,6 +219,87 @@ class ProjectCollectionServiceTest {
     }
 
     @Test
+    void unlinkKeepsSourceThroughAnotherLinkedCollection() {
+        User instructor = instructor();
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        Collection originalCollection = collection(instructor);
+        Collection secondCollection = collection(instructor);
+        Document source = source(originalCollection);
+        ProjectCollection originalLink = link(project, originalCollection, instructor);
+        ProjectCollection secondLink = link(project, secondCollection, instructor);
+        ProjectDocument projectDocument = projectDocument(project, source, originalLink, false);
+        stubAuthorizedLink(instructor, project, originalCollection, originalLink);
+        when(projectDocumentRepository.findByProjectCollectionId(originalLink.getId()))
+                .thenReturn(List.of(projectDocument));
+        when(projectCollectionRepository.findByProjectId(project.getId()))
+                .thenReturn(List.of(originalLink, secondLink));
+        when(collectionDocumentRepository.existsByCollectionIdAndDocumentId(
+                secondCollection.getId(), source.getId())).thenReturn(true);
+
+        service().unlink(project.getId(), originalCollection.getId());
+
+        assertThat(projectDocument.getProjectCollection()).isEqualTo(secondLink);
+        verify(projectDocumentRepository).save(projectDocument);
+        verify(projectDocumentRepository, never()).delete(projectDocument);
+    }
+
+    @Test
+    void removingLibraryReferenceRemovesItsDerivedProjectShare() {
+        User instructor = instructor();
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        Collection originalCollection = collection(instructor);
+        Collection targetCollection = collection(instructor);
+        Document source = source(originalCollection);
+        ProjectCollection targetLink = link(project, targetCollection, instructor);
+        ProjectDocument projectDocument = projectDocument(project, source, targetLink, false);
+        CollectionDocument membership = new CollectionDocument();
+        membership.setCollection(targetCollection);
+        membership.setDocument(source);
+        when(collectionDocumentRepository.findByCollectionIdAndDocumentId(
+                targetCollection.getId(), source.getId())).thenReturn(Optional.of(membership));
+        when(projectCollectionRepository.findByCollectionId(targetCollection.getId()))
+                .thenReturn(List.of(targetLink));
+        when(projectDocumentRepository.findByProjectIdAndDocumentId(project.getId(), source.getId()))
+                .thenReturn(Optional.of(projectDocument));
+        when(projectCollectionRepository.findByProjectId(project.getId()))
+                .thenReturn(List.of(targetLink));
+
+        service().removeSource(source, targetCollection);
+
+        verify(collectionDocumentRepository).delete(membership);
+        verify(projectDocumentRepository).delete(projectDocument);
+    }
+
+    @Test
+    void removingLibraryReferencePreservesSourceInFrozenProject() {
+        User instructor = instructor();
+        Project project = project(ProjectStatus.APPROVED);
+        Collection originalCollection = collection(instructor);
+        Collection targetCollection = collection(instructor);
+        Document source = source(originalCollection);
+        ProjectCollection targetLink = link(project, targetCollection, instructor);
+        ProjectDocument projectDocument = projectDocument(project, source, targetLink, false);
+        CollectionDocument membership = new CollectionDocument();
+        membership.setCollection(targetCollection);
+        membership.setDocument(source);
+        when(collectionDocumentRepository.findByCollectionIdAndDocumentId(
+                targetCollection.getId(), source.getId())).thenReturn(Optional.of(membership));
+        when(projectCollectionRepository.findByCollectionId(targetCollection.getId()))
+                .thenReturn(List.of(targetLink));
+        when(projectDocumentRepository.findByProjectIdAndDocumentId(project.getId(), source.getId()))
+                .thenReturn(Optional.of(projectDocument));
+        when(projectCollectionRepository.findByProjectId(project.getId()))
+                .thenReturn(List.of(targetLink));
+
+        service().removeSource(source, targetCollection);
+
+        assertThat(projectDocument.isPinned()).isTrue();
+        assertThat(projectDocument.getProjectCollection()).isNull();
+        verify(projectDocumentRepository).save(projectDocument);
+        verify(projectDocumentRepository, never()).delete(projectDocument);
+    }
+
+    @Test
     void deletingCollectionPreservesSharedSourcesAsPinnedStandaloneDocuments() {
         User instructor = instructor();
         Project project = project(ProjectStatus.APPROVED);
@@ -232,22 +346,20 @@ class ProjectCollectionServiceTest {
     }
 
     @Test
-    void movingSourceDetachesOldDerivedShareBeforeSyncingNewCollection() {
+    void addingSourceCreatesReferenceWithoutChangingOriginalCollection() {
         User instructor = instructor();
-        Project project = project(ProjectStatus.IN_PROGRESS);
         Collection oldCollection = collection(instructor);
         Collection newCollection = collection(instructor);
         Document source = source(oldCollection);
-        ProjectCollection oldLink = link(project, oldCollection, instructor);
-        ProjectDocument projectDocument = projectDocument(project, source, oldLink, false);
-        when(projectDocumentRepository.findByDocumentId(source.getId()))
-                .thenReturn(List.of(projectDocument));
-        when(documentRepository.save(source)).thenReturn(source);
 
-        service().moveSource(source, newCollection);
+        service().addSource(source, newCollection, instructor);
 
-        assertThat(source.getCollection()).isEqualTo(newCollection);
-        verify(projectDocumentRepository).delete(projectDocument);
+        ArgumentCaptor<CollectionDocument> membership = ArgumentCaptor.forClass(CollectionDocument.class);
+        verify(collectionDocumentRepository).save(membership.capture());
+        assertThat(membership.getValue().getDocument()).isEqualTo(source);
+        assertThat(membership.getValue().getCollection()).isEqualTo(newCollection);
+        assertThat(membership.getValue().getAddedBy()).isEqualTo(instructor);
+        assertThat(source.getCollection()).isEqualTo(oldCollection);
         verify(projectCollectionRepository).findByCollectionId(newCollection.getId());
     }
 
@@ -281,6 +393,7 @@ class ProjectCollectionServiceTest {
                 projectRepository,
                 collectionRepository,
                 documentRepository,
+                collectionDocumentRepository,
                 currentUserService);
     }
 

@@ -3,11 +3,11 @@
 -- ==========================================
 CREATE TABLE users (
     id BINARY(16) NOT NULL PRIMARY KEY,
-    email VARCHAR(255) NOT NULL UNIQUE,
+    email VARCHAR(255) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL CHECK (role IN ('STUDENT', 'INSTRUCTOR', 'ADMIN')),
     account_status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (account_status IN ('PENDING', 'ACTIVE', 'BANNED', 'DELETED')),
-    student_code VARCHAR(50) NULL UNIQUE,
+    student_code VARCHAR(50) NULL,
     password_change_notice_pending BOOLEAN NOT NULL DEFAULT FALSE,
     password_reset_token_hash VARCHAR(255) UNIQUE,
     password_reset_token_expires_at DATETIME,
@@ -194,6 +194,19 @@ CREATE TABLE project_collections (
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
     FOREIGN KEY (linked_by) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE collection_documents (
+    id BINARY(16) NOT NULL PRIMARY KEY,
+    collection_id BINARY(16) NOT NULL,
+    document_id BINARY(16) NOT NULL,
+    added_by BINARY(16) NOT NULL,
+    added_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE INDEX idx_collection_documents_unique (collection_id, document_id),
+    INDEX idx_collection_documents_document (document_id),
+    FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+    FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE project_documents (
@@ -434,3 +447,9 @@ CREATE TABLE evidence_revision_traces (
     FOREIGN KEY (instructor_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (linked_round_id) REFERENCES citation_review_rounds(id) ON DELETE SET NULL
 );
+
+CREATE UNIQUE INDEX idx_users_email_active
+    ON users ((CASE WHEN account_status = 'DELETED' THEN NULL ELSE email END));
+
+CREATE UNIQUE INDEX idx_users_student_code_active
+    ON users ((CASE WHEN account_status = 'DELETED' THEN NULL ELSE student_code END));

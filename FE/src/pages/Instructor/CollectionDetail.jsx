@@ -81,8 +81,16 @@ export default function CollectionDetail() {
   };
 
   const handleDeleteSource = async (sourceId) => {
-    if (!(await confirmDanger(t.deleteSourceConfirm))) return;
-    try { await api.delete(`/api/documents/${sourceId}`); refetchSources(); if (selectedSource?.id === sourceId) setSelectedSource(null); }
+    const source = sources.find(item => item.id === sourceId);
+    const isLibraryReference = source?.collectionId !== id;
+    if (!(await confirmDanger(isLibraryReference ? t.removeLibrarySourceConfirm : t.deleteSourceConfirm))) return;
+    try {
+      await api.delete(isLibraryReference
+        ? `/api/collections/${id}/sources/${sourceId}`
+        : `/api/documents/${sourceId}`);
+      refetchSources();
+      if (selectedSource?.id === sourceId) setSelectedSource(null);
+    }
     catch { alert(t.deleteFailed); }
   };
 
@@ -128,10 +136,35 @@ export default function CollectionDetail() {
       setEditModal(p => ({ ...p, submitting: false }));
     }
   };
-const AddDocForm = () => {
+  const AddDocForm = () => {
     const [doi, setDoi] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [doiError, setDoiError] = useState('');
+    const [librarySources, setLibrarySources] = useState([]);
+    const [libraryLoading, setLibraryLoading] = useState(false);
+    const [libraryError, setLibraryError] = useState('');
+    const [libraryQuery, setLibraryQuery] = useState('');
+    const [addingSourceId, setAddingSourceId] = useState(null);
+
+    useEffect(() => {
+      if (addDocOption !== 'library') return undefined;
+
+      let active = true;
+      setLibraryLoading(true);
+      setLibraryError('');
+      api.get(`/api/collections/${id}/library-sources`, { params: { size: 100 } })
+        .then(response => {
+          if (active) setLibrarySources(response.data?.content || []);
+        })
+        .catch(() => {
+          if (active) setLibraryError(t.libraryLoadFailed);
+        })
+        .finally(() => {
+          if (active) setLibraryLoading(false);
+        });
+
+      return () => { active = false; };
+    }, [addDocOption, id, t.libraryLoadFailed]);
 
     const handleDoiSubmit = async () => {
       setDoiError('');
@@ -160,7 +193,7 @@ const AddDocForm = () => {
           } finally {
             setSubmitting(false);
           }
-        }} className="space-y-4">
+        }} id="add-doc-panel" role="tabpanel" aria-labelledby="add-doc-tab-doi" className="space-y-4">
           <p className="text-xs text-(--text-secondary)">{t.inputDoiDescription}</p>
           <input type="text" value={doi} onChange={e => setDoi(e.target.value)} placeholder={t.doiPlaceholder} required
             className="w-full px-4 py-3 bg-(--surface-secondary) border border-(--border) rounded-xl text-(--text-primary) font-medium text-sm focus:outline-none focus:ring-2 focus:ring-(--focus) transition-colors" />
@@ -173,9 +206,80 @@ const AddDocForm = () => {
 
     if (addDocOption === 'upload') {
       return (
-        <div className="space-y-4">
+        <div id="add-doc-panel" role="tabpanel" aria-labelledby="add-doc-tab-upload" className="space-y-4">
           <p className="text-xs text-(--text-secondary)">{t.uploadDocumentDescription}</p>
           <UploadZone onUpload={(f) => { handleUpload(f); }} accept=".pdf,.docx,.md,.tex" label={t.dropFiles} />
+        </div>
+      );
+    }
+
+    if (addDocOption === 'library') {
+      const normalizedQuery = libraryQuery.trim().toLowerCase();
+      const filteredSources = librarySources.filter(source =>
+        !normalizedQuery || String(source.originalFilename || source.id)
+          .toLowerCase().includes(normalizedQuery));
+
+      const addLibrarySource = async (sourceId) => {
+        setAddingSourceId(sourceId);
+        setLibraryError('');
+        try {
+          await api.post(`/api/collections/${id}/sources/${sourceId}`);
+          setLibrarySources(current => current.filter(source => source.id !== sourceId));
+          await refetchSources();
+        } catch (err) {
+          setLibraryError(err.response?.data?.message || t.libraryAddFailed);
+        } finally {
+          setAddingSourceId(null);
+        }
+      };
+
+      return (
+        <div id="add-doc-panel" className="space-y-3" role="tabpanel" aria-labelledby="add-doc-tab-library">
+          <p className="text-xs text-(--text-secondary)">{t.chooseFromLibraryDescription}</p>
+          <div className="relative">
+            <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--text-tertiary)" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
+            </svg>
+            <input value={libraryQuery} onChange={event => setLibraryQuery(event.target.value)}
+              placeholder={t.searchLibrarySources} aria-label={t.searchLibrarySources}
+              className="w-full rounded-xl border border-(--border) bg-(--surface-secondary) py-2.5 pl-9 pr-3 text-sm text-(--text-primary) transition-colors focus:outline-none focus:ring-2 focus:ring-(--focus)" />
+          </div>
+
+          {libraryError && (
+            <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">
+              {libraryError}
+            </p>
+          )}
+
+          {libraryLoading ? <LoadingSkeleton count={3} height="h-14" /> : filteredSources.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-(--border) bg-(--surface-secondary) px-4 py-8 text-center text-xs text-(--text-tertiary)">
+              {librarySources.length === 0 ? t.noLibrarySources : t.noLibraryMatches}
+            </div>
+          ) : (
+            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+              {filteredSources.map(source => (
+                <div key={source.id} className="flex items-center gap-3 rounded-xl border border-(--border) bg-(--surface) p-3">
+                  <FileIcon name={source.originalFilename} className="h-5 w-5 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-bold text-(--text-primary)">{source.originalFilename || source.id}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <span className={`rounded border px-1.5 py-0.5 text-[9px] font-bold ${statusColor(source.processingStatus)}`}>
+                        {ct.statusLabels?.[source.processingStatus] || source.processingStatus}
+                      </span>
+                      {source.fileSizeBytes && (
+                        <span className="text-[10px] text-(--text-tertiary)">{(source.fileSizeBytes / 1024).toFixed(0)} KB</span>
+                      )}
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => addLibrarySource(source.id)}
+                    disabled={addingSourceId !== null}
+                    className="shrink-0 rounded-lg bg-(--brand) px-3 py-2 text-[10px] font-bold text-(--on-brand) transition-colors hover:bg-(--brand-hover) focus:outline-none focus:ring-2 focus:ring-(--focus) disabled:cursor-not-allowed disabled:opacity-50">
+                    {addingSourceId === source.id ? t.addingToCollection : t.addToCollection}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       );
     }
@@ -653,21 +757,21 @@ const AddDocForm = () => {
 
       <Modal open={addDocModal} onClose={() => { setAddDocModal(false); setAddDocOption(null); }} title={t.addDocument} closeLabel={ct.close}>
         <div className="space-y-4 text-xs">
-          <div className="grid grid-cols-1 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="tablist" aria-label={t.addDocument}>
             {[
               { key: 'doi', label: t.inputDoi, desc: t.inputDoiDescription },
               { key: 'upload', label: t.uploadDocument, desc: t.uploadDocumentDescription },
+              { key: 'library', label: t.chooseFromLibrary, desc: t.chooseFromLibraryDescription },
             ].map(opt => (
-              <button key={opt.key} onClick={() => setAddDocOption(opt.key)}
-                className={`w-full text-left p-3 rounded-xl border transition flex items-center gap-3 ${addDocOption === opt.key
+              <button key={opt.key} id={`add-doc-tab-${opt.key}`} type="button" role="tab"
+                aria-controls="add-doc-panel" aria-selected={addDocOption === opt.key}
+                onClick={() => setAddDocOption(opt.key)}
+                className={`w-full cursor-pointer rounded-xl border p-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-(--focus) ${addDocOption === opt.key
                   ? 'bg-(--brand-soft) border-indigo-300 shadow-sm'
                   : 'bg-(--surface) border-(--border) hover:border-indigo-300 hover:bg-(--surface-secondary)'
                   }`}>
-                <svg className="w-5 h-5 text-(--brand) shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                <div>
-                  <p className="font-bold text-(--text-primary)">{opt.label}</p>
-                  <p className="text-[10px] text-(--text-tertiary) mt-0.5">{opt.desc}</p>
-                </div>
+                <p className="font-bold text-(--text-primary)">{opt.label}</p>
+                <p className="mt-1 text-[10px] leading-relaxed text-(--text-tertiary)">{opt.desc}</p>
               </button>
             ))}
           </div>

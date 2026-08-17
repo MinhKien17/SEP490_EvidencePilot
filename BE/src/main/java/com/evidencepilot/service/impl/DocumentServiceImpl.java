@@ -7,6 +7,7 @@ import com.evidencepilot.dto.response.PagedResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.DocumentMapper;
 import com.evidencepilot.model.Collection;
+import com.evidencepilot.model.CollectionDocument;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentChunk;
 import com.evidencepilot.model.DocumentText;
@@ -17,6 +18,7 @@ import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.CollectionRepository;
+import com.evidencepilot.repository.CollectionDocumentRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.DocumentTextRepository;
@@ -37,6 +39,7 @@ import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import jakarta.annotation.PostConstruct;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Subquery;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
@@ -74,6 +77,7 @@ public class DocumentServiceImpl implements DocumentService {
     private final DocumentTextRepository documentTextRepository;
     private final ProjectRepository projectRepository;
     private final CollectionRepository collectionRepository;
+    private final CollectionDocumentRepository collectionDocumentRepository;
     private final ProjectDocumentRepository projectDocumentRepository;
     private final PaperSectionRepository paperSectionRepository;
     private final CurrentUserService currentUserService;
@@ -164,6 +168,7 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public PagedResponse<DocumentResponse> getSourcesByCollection(
             UUID collectionId, int page, int size, String sort, String q) {
         var currentUser = currentUserService.requireCurrentUser();
@@ -186,6 +191,21 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public PagedResponse<DocumentResponse> getAvailableLibrarySources(
+            UUID collectionId, int page, int size, String sort, String q) {
+        User currentUser = currentUserService.requireCurrentUser();
+        var collection = collectionRepository.findById(collectionId)
+                .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
+        currentUserService.requireCollectionAccess(currentUser, collection);
+        var pageable = PagingRequest.pageable(
+                page, size, sort, DOCUMENT_SORT_FIELDS, "createdAt,desc");
+        var results = documentRepository.findAll(
+                availableLibrarySourceSpec(collectionId, currentUser.getId(), q), pageable);
+        return PagedResponse.from(results.map(DocumentResponse::from));
+    }
+
+    @Override
     @Transactional
     public DocumentResponse addSourceToCollection(UUID collectionId, UUID sourceId) {
         var currentUser = currentUserService.requireCurrentUser();
@@ -196,8 +216,25 @@ public class DocumentServiceImpl implements DocumentService {
         if (doc.getDocType() != DocumentType.SOURCE || !doc.isActive()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source not found or inactive");
         }
-        requireDocumentWriteAccess(currentUser, doc);
-        return DocumentResponse.from(projectCollectionService.moveSource(doc, collection));
+        currentUserService.requireUserIdOrAdmin(currentUser, doc.getUploadedBy().getId());
+        return DocumentResponse.from(projectCollectionService.addSource(doc, collection, currentUser));
+    }
+
+    @Override
+    @Transactional
+    public void removeSourceFromCollection(UUID collectionId, UUID sourceId) {
+        var currentUser = currentUserService.requireCurrentUser();
+        var collection = collectionRepository.findById(collectionId)
+                .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
+        currentUserService.requireCollectionAccess(currentUser, collection);
+        Document document = findDocument(sourceId);
+        if (document.getCollection() != null
+                && collectionId.equals(document.getCollection().getId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "The original source cannot be detached; delete the document instead");
+        }
+        projectCollectionService.removeSource(document, collection);
     }
 
     @Override
@@ -212,15 +249,21 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<DocumentResponse> getSourcesByCollection(UUID collectionId) {
         var currentUser = currentUserService.requireCurrentUser();
         var collection = collectionRepository.findById(collectionId)
                 .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
         currentUserService.requireCollectionAccess(currentUser, collection);
-        return documentRepository.findByCollectionId(collectionId).stream()
-                .filter(doc -> doc.getDocType() == DocumentType.SOURCE)
-                .map(DocumentResponse::from)
-                .toList();
+        Map<UUID, Document> documents = new LinkedHashMap<>();
+        documentRepository.findByCollectionId(collectionId).stream()
+                .filter(doc -> doc.isActive() && doc.getDocType() == DocumentType.SOURCE)
+                .forEach(doc -> documents.put(doc.getId(), doc));
+        collectionDocumentRepository.findByCollectionId(collectionId).stream()
+                .map(CollectionDocument::getDocument)
+                .filter(doc -> doc.isActive() && doc.getDocType() == DocumentType.SOURCE)
+                .forEach(doc -> documents.put(doc.getId(), doc));
+        return documents.values().stream().map(DocumentResponse::from).toList();
     }
 
     @Override
@@ -341,7 +384,10 @@ public class DocumentServiceImpl implements DocumentService {
         if (doc.getDocType() != DocumentType.SOURCE || !doc.isActive()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source not found or inactive");
         }
-        if (doc.getCollection() == null || !collectionId.equals(doc.getCollection().getId())) {
+        boolean inCollection = doc.getCollection() != null
+                && collectionId.equals(doc.getCollection().getId());
+        if (!inCollection && !collectionDocumentRepository
+                .existsByCollectionIdAndDocumentId(collectionId, doc.getId())) {
             throw new ResourceNotFoundException(sourceId, "Source in collection");
         }
         ProcessingStatus status = doc.getProcessingStatus();
@@ -354,7 +400,7 @@ public class DocumentServiceImpl implements DocumentService {
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
         currentUserService.requireProjectWriteAccess(currentUser, project);
 
-        projectCollectionService.pinSource(project, doc, currentUser);
+        projectCollectionService.pinSource(project, doc, collection, currentUser);
 
         String score = "MEDIUM";
         String explanation = "Document shared to project \"" + project.getTitle() + "\"";
@@ -608,9 +654,43 @@ public class DocumentServiceImpl implements DocumentService {
     private Specification<Document> collectionSourceSpec(UUID collectionId, String q) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("collection").get("id"), collectionId));
+            Subquery<UUID> memberships = query.subquery(UUID.class);
+            var membership = memberships.from(CollectionDocument.class);
+            memberships.select(membership.get("document").get("id"))
+                    .where(cb.equal(membership.get("collection").get("id"), collectionId));
+            predicates.add(cb.or(
+                    cb.equal(root.get("collection").get("id"), collectionId),
+                    root.get("id").in(memberships)));
             predicates.add(cb.equal(root.get("docType"), DocumentType.SOURCE));
             predicates.add(cb.equal(root.get("active"), true));
+
+            if (q != null && !q.isBlank()) {
+                String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("originalFilename")), like),
+                        cb.like(cb.lower(root.get("fileUrl")), like)));
+            }
+
+            return cb.and(predicates.toArray(Predicate[]::new));
+        };
+    }
+
+    private Specification<Document> availableLibrarySourceSpec(
+            UUID collectionId, UUID uploadedBy, String q) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            Subquery<UUID> memberships = query.subquery(UUID.class);
+            var membership = memberships.from(CollectionDocument.class);
+            memberships.select(membership.get("document").get("id"))
+                    .where(cb.equal(membership.get("collection").get("id"), collectionId));
+
+            predicates.add(cb.equal(root.get("uploadedBy").get("id"), uploadedBy));
+            predicates.add(cb.equal(root.get("docType"), DocumentType.SOURCE));
+            predicates.add(cb.equal(root.get("active"), true));
+            predicates.add(cb.or(
+                    cb.isNull(root.get("collection")),
+                    cb.notEqual(root.get("collection").get("id"), collectionId)));
+            predicates.add(cb.not(root.get("id").in(memberships)));
 
             if (q != null && !q.isBlank()) {
                 String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";

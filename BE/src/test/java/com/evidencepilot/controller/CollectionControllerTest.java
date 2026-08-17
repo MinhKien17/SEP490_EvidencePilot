@@ -75,6 +75,32 @@ class CollectionControllerTest {
     }
 
     @Test
+    void getAvailableLibrarySources_passesPagingAndSearch() throws Exception {
+        UUID collectionId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/collections/{id}/library-sources", collectionId)
+                        .param("page", "1")
+                        .param("size", "25")
+                        .param("sort", "originalFilename,asc")
+                        .param("q", "review"))
+                .andExpect(status().isOk());
+
+        verify(documentService).getAvailableLibrarySources(
+                collectionId, 1, 25, "originalFilename,asc", "review");
+    }
+
+    @Test
+    void removeSourceFromCollection_returns204() throws Exception {
+        UUID collectionId = UUID.randomUUID();
+        UUID sourceId = UUID.randomUUID();
+
+        mockMvc.perform(delete("/api/collections/{collectionId}/sources/{sourceId}", collectionId, sourceId))
+                .andExpect(status().isNoContent());
+
+        verify(documentService).removeSourceFromCollection(collectionId, sourceId);
+    }
+
+    @Test
     void deleteCollection_returns204() throws Exception {
         UUID id = UUID.randomUUID();
         mockMvc.perform(delete("/api/collections/{id}", id)).andExpect(status().isNoContent());

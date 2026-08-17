@@ -10,6 +10,7 @@ import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.repository.CollectionRepository;
+import com.evidencepilot.repository.CollectionDocumentRepository;
 import com.evidencepilot.repository.DocumentChunkRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.DocumentTextRepository;
@@ -65,6 +66,9 @@ class DocumentServiceImplAccessTest {
 
     @Mock
     private CollectionRepository collectionRepository;
+
+    @Mock
+    private CollectionDocumentRepository collectionDocumentRepository;
 
     @Mock
     private ProjectDocumentRepository projectDocumentRepository;
@@ -207,7 +211,7 @@ class DocumentServiceImplAccessTest {
     }
 
     @Test
-    void addSourceToCollectionDelegatesMoveAfterWriteAccessCheck() {
+    void addSourceToCollectionCreatesReferenceAfterWriteAccessCheck() {
         User user = user();
         com.evidencepilot.model.Collection collection = collection();
         Document source = document(null);
@@ -215,12 +219,48 @@ class DocumentServiceImplAccessTest {
         when(currentUserService.requireCurrentUser()).thenReturn(user);
         when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
         when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
-        when(projectCollectionService.moveSource(source, collection)).thenReturn(source);
+        when(projectCollectionService.addSource(source, collection, user)).thenReturn(source);
 
         service().addSourceToCollection(collection.getId(), source.getId());
 
         verify(currentUserService).requireUserIdOrAdmin(user, source.getUploadedBy().getId());
-        verify(projectCollectionService).moveSource(source, collection);
+        verify(projectCollectionService).addSource(source, collection, user);
+    }
+
+    @Test
+    void removeSourceFromCollectionDelegatesReferenceRemoval() {
+        User user = user();
+        com.evidencepilot.model.Collection targetCollection = collection();
+        Document source = document(null);
+        source.setDocType(DocumentType.SOURCE);
+        source.setCollection(collection());
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(collectionRepository.findById(targetCollection.getId()))
+                .thenReturn(Optional.of(targetCollection));
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+
+        service().removeSourceFromCollection(targetCollection.getId(), source.getId());
+
+        verify(currentUserService).requireCollectionAccess(user, targetCollection);
+        verify(projectCollectionService).removeSource(source, targetCollection);
+    }
+
+    @Test
+    void removeSourceFromOriginalCollectionRequiresDocumentDelete() {
+        User user = user();
+        com.evidencepilot.model.Collection collection = collection();
+        Document source = document(null);
+        source.setDocType(DocumentType.SOURCE);
+        source.setCollection(collection);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+
+        assertThatThrownBy(() -> service().removeSourceFromCollection(collection.getId(), source.getId()))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        error -> assertThat(error.getStatusCode().value()).isEqualTo(400));
+
+        verify(projectCollectionService, never()).removeSource(any(), any());
     }
 
     @Test
@@ -386,7 +426,7 @@ class DocumentServiceImplAccessTest {
         service().shareToProject(collection.getId(), source.getId(), project.getId());
         service().shareToProject(collection.getId(), source.getId(), project.getId());
 
-        verify(projectCollectionService, times(2)).pinSource(project, source, user);
+        verify(projectCollectionService, times(2)).pinSource(project, source, collection, user);
     }
 
     @Test
@@ -618,6 +658,7 @@ class DocumentServiceImplAccessTest {
                 documentTextRepository,
                 projectRepository,
                 collectionRepository,
+                collectionDocumentRepository,
                 projectDocumentRepository,
                 paperSectionRepository,
                 currentUserService,
