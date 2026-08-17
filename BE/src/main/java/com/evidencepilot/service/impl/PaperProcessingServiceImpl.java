@@ -59,6 +59,7 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
             "Results and discussion",
             "Discussion and conclusions",
             "Introduction and background",
+            "Research methodology",
             "Materials and methods",
             "Material and methods",
             "Methods and materials",
@@ -306,6 +307,13 @@ public class PaperProcessingServiceImpl implements PaperProcessingService {
 
     private static DetectedHeading academicHeading(String rawHeading) {
         String heading = stripHeadingNumber(rawHeading);
+        String appendix = "Appendix";
+        if (heading.length() > appendix.length()
+                && heading.regionMatches(true, 0, appendix, 0, appendix.length())
+                && Character.isWhitespace(heading.charAt(appendix.length()))) {
+            return new DetectedHeading(
+                    appendix + " " + heading.substring(appendix.length()).trim(), "");
+        }
         for (String title : ACADEMIC_TOP_LEVEL_SECTIONS) {
             if (heading.equalsIgnoreCase(title)) {
                 return new DetectedHeading(title, "");

@@ -787,7 +787,7 @@ class SectionCitationReviewServiceTest {
     }
 
     @Test
-    void sourceMatchesDeduplicatesSourcesAndLimitsEachFindingToThreeCandidates() {
+    void sourceMatchesReturnsCleanCandidateList() {
         UUID projectId = UUID.randomUUID();
         UUID documentId = UUID.randomUUID();
         UUID sectionId = UUID.randomUUID();
@@ -800,7 +800,8 @@ class SectionCitationReviewServiceTest {
         UUID fourthSourceId = UUID.randomUUID();
         List<SourceMatchingService.SourceMatch> candidates = List.of(
                 new SourceMatchingService.SourceMatch(
-                        sourceChunk(firstSourceId, UUID.randomUUID(), "first"), 0.99f),
+                        sourceChunk(firstSourceId, UUID.randomUUID(),
+                                "# Paper title\n## Threats to validity\n\nfirst"), 0.99f),
                 new SourceMatchingService.SourceMatch(
                         sourceChunk(firstSourceId, UUID.randomUUID(), "duplicate source"), 0.98f),
                 new SourceMatchingService.SourceMatch(
@@ -824,6 +825,7 @@ class SectionCitationReviewServiceTest {
             assertThat(matches.candidates())
                     .extracting(SectionReviewSourceMatchesResponse.SourceCandidate::documentId)
                     .containsExactly(firstSourceId, secondSourceId, thirdSourceId);
+            assertThat(matches.candidates().getFirst().excerpt()).isEqualTo("first");
         });
     }
 
