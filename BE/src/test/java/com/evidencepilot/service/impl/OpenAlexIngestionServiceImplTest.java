@@ -137,7 +137,7 @@ class OpenAlexIngestionServiceImplTest {
     void ingestByDoi_savesDocumentUploadsPdfAndAppendsReferences() {
         String doi = "10.1000/xyz123";
         UUID projectId = project.getId();
-        byte[] pdfBytes = "fake-pdf".getBytes();
+        byte[] pdfBytes = "%PDF-1.7\nmock content\n%%EOF".getBytes();
         String existingReferenceId = "https://openalex.org/W-EXISTING";
         String newReferenceId = "https://openalex.org/W-NEW";
         var workWithReferences = new OpenAlexWorkResponse(
@@ -203,6 +203,35 @@ class OpenAlexIngestionServiceImplTest {
             assertThat(reference.getReferenceIndex()).isEqualTo(5);
             assertThat(reference.getEdgeType()).isEqualTo(EdgeType.REFERENCES);
         });
+    }
+
+    @Test
+    void ingestByDoi_keepsMetadataOnlyWhenPublisherReturnsHtml() {
+        String doi = "10.1000/html-block";
+        byte[] htmlBytes = "<!DOCTYPE html><html><body>Checking your browser</body></html>".getBytes();
+
+        when(currentUserService.requireCurrentUser()).thenReturn(currentUser);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(openAlexClient.fetchWork(doi)).thenReturn(sampleWork);
+        when(openAlexClient.downloadPdf("https://example.com/paper.pdf"))
+                .thenReturn(new ByteArrayInputStream(htmlBytes));
+        when(openAlexClient.fetchCitedByWorks(sampleWork.id(), 5)).thenReturn(List.of());
+        when(documentRepository.save(any())).thenAnswer(invocation -> {
+            var document = (Document) invocation.getArgument(0);
+            if (document.getId() == null) document.setId(UUID.randomUUID());
+            return document;
+        });
+
+        var result = service.ingestByDoi(project.getId(), null, doi);
+
+        assertThat(result.processingStatus()).isEqualTo(ProcessingStatus.METADATA_FETCHED);
+        assertThat(result.processingError())
+                .contains("not a valid PDF")
+                .contains("HTML bot-block page");
+        assertThat(result.fileSizeBytes()).isZero();
+        verify(documentObjectStorage, never()).write(anyString(), any(byte[].class), anyString());
+        verify(documentPersistenceService, never()).markDocumentAsUploaded(any(), anyString());
+        verify(projectCollectionService).syncSource(any(Document.class));
     }
 
     @Test

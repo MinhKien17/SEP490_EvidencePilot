@@ -3,6 +3,7 @@ package com.evidencepilot.client.openalex;
 import com.evidencepilot.dto.openalex.OpenAlexWorkResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpHeaders;
@@ -177,7 +178,8 @@ class OpenAlexClientImplTest {
         when(httpResponse.body()).thenReturn(new ByteArrayInputStream(pdfBytes));
 
         HttpClient httpClient = mock();
-        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+        ArgumentCaptor<HttpRequest> requestCaptor = ArgumentCaptor.forClass(HttpRequest.class);
+        when(httpClient.send(requestCaptor.capture(), any(HttpResponse.BodyHandler.class)))
                 .thenReturn(httpResponse);
 
         OpenAlexClientImpl client = new OpenAlexClientImpl(restClient, BASE, "", httpClient, new ObjectMapper());
@@ -185,5 +187,7 @@ class OpenAlexClientImplTest {
             assertThat(result).isNotNull();
             assertThat(result.readAllBytes()).isEqualTo(pdfBytes);
         }
+        assertThat(requestCaptor.getValue().headers().firstValue("Accept"))
+                .hasValue("application/pdf,application/octet-stream;q=0.9,*/*;q=0.1");
     }
 }

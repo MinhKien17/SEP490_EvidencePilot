@@ -47,6 +47,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
 
+    private static final byte[] PDF_SIGNATURE = {'%', 'P', 'D', 'F', '-'};
+    private static final int PDF_HEADER_SCAN_LIMIT = 1024;
+
     private final OpenAlexClient openAlexClient;
     private final DocumentRepository documentRepository;
     private final ProjectRepository projectRepository;
@@ -145,6 +148,10 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
         String objectKey = "sources/raw/" + document.getId() + ".pdf";
         try (var pdfStream = openAlexClient.downloadPdf(oaUrl)) {
             byte[] pdfBytes = pdfStream.readAllBytes();
+            if (!hasPdfSignature(pdfBytes)) {
+                throw new IllegalArgumentException(
+                        "Downloaded content is not a valid PDF; the publisher may have returned an HTML bot-block page");
+            }
             documentObjectStorage.write(objectKey, pdfBytes, "application/pdf");
             document.setFileSizeBytes((long) pdfBytes.length);
             document = documentPersistenceService.markDocumentAsUploaded(document.getId(), objectKey);
@@ -161,6 +168,23 @@ public class OpenAlexIngestionServiceImpl implements OpenAlexIngestionService {
         projectCollectionService.syncSource(document);
 
         return DocumentResponse.from(document);
+    }
+
+    private static boolean hasPdfSignature(byte[] content) {
+        if (content == null || content.length < PDF_SIGNATURE.length) return false;
+
+        int scanLength = Math.min(content.length, PDF_HEADER_SCAN_LIMIT);
+        for (int offset = 0; offset <= scanLength - PDF_SIGNATURE.length; offset++) {
+            boolean matches = true;
+            for (int index = 0; index < PDF_SIGNATURE.length; index++) {
+                if (content[offset + index] != PDF_SIGNATURE[index]) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) return true;
+        }
+        return false;
     }
 
     @Override
