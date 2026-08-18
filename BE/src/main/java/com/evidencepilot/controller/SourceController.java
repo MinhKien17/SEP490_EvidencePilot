@@ -1,8 +1,12 @@
 package com.evidencepilot.controller;
 
+import com.evidencepilot.dto.request.SourceUpdateRequest;
 import com.evidencepilot.dto.response.DocumentResponse;
+import com.evidencepilot.dto.response.PagedResponse;
+import com.evidencepilot.dto.response.SourceLibraryItemResponse;
 import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.repository.ProjectDocumentRepository;
 import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
@@ -46,6 +50,18 @@ public class SourceController {
     private final CurrentUserService currentUserService;
     private final ProjectRepository projectRepository;
 
+    @Operation(summary = "List the current user's source library",
+            description = "Returns active source documents uploaded by the current user, including collection and project usage.")
+    @GetMapping
+    public PagedResponse<SourceLibraryItemResponse> findLibrary(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) ProcessingStatus processingStatus) {
+        return documentService.getSourceLibrary(page, size, sort, q, processingStatus);
+    }
+
     @Operation(summary = "List sources by project",
             description = "Returns all active source documents belonging to a project.")
     @ApiResponses({
@@ -82,6 +98,24 @@ public class SourceController {
     public DocumentResponse findById(
             @Parameter(description = "Source document UUID") @PathVariable UUID id) {
         return documentService.getSourceById(id);
+    }
+
+    @Operation(summary = "Update a source title",
+            description = "Updates the display title of an active source owned by the current user.")
+    @PutMapping("/{id}")
+    public SourceLibraryItemResponse update(
+            @Parameter(description = "Source document UUID") @PathVariable UUID id,
+            @Valid @RequestBody SourceUpdateRequest request) {
+        return documentService.updateSource(id, request.title());
+    }
+
+    @Operation(summary = "Delete a source everywhere",
+            description = "Soft-deletes an owned source so it is no longer available in the library, collections, or projects.")
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(
+            @Parameter(description = "Source document UUID") @PathVariable UUID id) {
+        documentService.deleteSource(id);
     }
 
     @Operation(summary = "Remove shared source from project",

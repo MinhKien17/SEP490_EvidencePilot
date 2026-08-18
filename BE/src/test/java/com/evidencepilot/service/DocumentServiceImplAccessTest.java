@@ -3,6 +3,7 @@ package com.evidencepilot.service;
 import com.evidencepilot.mapper.DocumentMapper;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentText;
+import com.evidencepilot.model.CollectionDocument;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectDocument;
 import com.evidencepilot.model.User;
@@ -246,7 +247,7 @@ class DocumentServiceImplAccessTest {
     }
 
     @Test
-    void removeSourceFromOriginalCollectionRequiresDocumentDelete() {
+    void removeSourceFromOriginalCollectionKeepsDocumentInLibrary() {
         User user = user();
         com.evidencepilot.model.Collection collection = collection();
         Document source = document(null);
@@ -256,11 +257,10 @@ class DocumentServiceImplAccessTest {
         when(collectionRepository.findById(collection.getId())).thenReturn(Optional.of(collection));
         when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
 
-        assertThatThrownBy(() -> service().removeSourceFromCollection(collection.getId(), source.getId()))
-                .isInstanceOfSatisfying(ResponseStatusException.class,
-                        error -> assertThat(error.getStatusCode().value()).isEqualTo(400));
+        service().removeSourceFromCollection(collection.getId(), source.getId());
 
-        verify(projectCollectionService, never()).removeSource(any(), any());
+        verify(currentUserService).requireCollectionAccess(user, collection);
+        verify(projectCollectionService).removeSource(source, collection);
     }
 
     @Test
@@ -599,6 +599,129 @@ class DocumentServiceImplAccessTest {
         assertThat(page.content()).singleElement()
                 .extracting(response -> response.projectIds())
                 .isEqualTo(List.of(targetProject.getId()));
+        verify(currentUserService).requireCollectionAccess(user, collection);
+    }
+
+    @Test
+    void sourceLibraryReturnsOwnedSourcesWithCollectionAndProjectUsage() {
+        User user = user();
+        com.evidencepilot.model.Collection homeCollection = collection();
+        homeCollection.setTitle("Research library");
+        com.evidencepilot.model.Collection reusedCollection = collection();
+        reusedCollection.setTitle("Capstone references");
+        Project project = project();
+        project.setTitle("Capstone A");
+
+        Document source = document(null);
+        source.setUploadedBy(user);
+        source.setDocType(DocumentType.SOURCE);
+        source.setTitle("Evidence synthesis");
+        source.setOriginalFilename("evidence.pdf");
+        source.setCollection(homeCollection);
+
+        CollectionDocument collectionLink = new CollectionDocument();
+        collectionLink.setCollection(reusedCollection);
+        collectionLink.setDocument(source);
+        ProjectDocument projectLink = new ProjectDocument();
+        projectLink.setProject(project);
+        projectLink.setDocument(source);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(source)));
+        when(collectionDocumentRepository.findByDocumentId(source.getId()))
+                .thenReturn(List.of(collectionLink));
+        when(projectDocumentRepository.findByDocumentId(source.getId()))
+                .thenReturn(List.of(projectLink));
+
+        var page = service().getSourceLibrary(
+                0, 20, "createdAt,desc", "evidence", ProcessingStatus.READY);
+
+        assertThat(page.content()).singleElement().satisfies(item -> {
+            assertThat(item.title()).isEqualTo("Evidence synthesis");
+            assertThat(item.collections()).extracting(usage -> usage.name())
+                    .containsExactly("Research library", "Capstone references");
+            assertThat(item.projects()).extracting(usage -> usage.name())
+                    .containsExactly("Capstone A");
+        });
+    }
+
+    @Test
+    void sourceLibraryOmitsInactiveCollectionAndProjectUsage() {
+        User user = user();
+
+        com.evidencepilot.model.Collection deletedHomeCollection = collection();
+        deletedHomeCollection.setTitle("Deleted home");
+        deletedHomeCollection.setActive(false);
+        com.evidencepilot.model.Collection activeCollection = collection();
+        activeCollection.setTitle("Active references");
+        com.evidencepilot.model.Collection deletedLinkedCollection = collection();
+        deletedLinkedCollection.setTitle("Deleted references");
+        deletedLinkedCollection.setActive(false);
+
+        Project deletedHomeProject = project();
+        deletedHomeProject.setTitle("Deleted project");
+        deletedHomeProject.setActive(false);
+        Project activeProject = project();
+        activeProject.setTitle("Active project");
+        Project deletedLinkedProject = project();
+        deletedLinkedProject.setTitle("Deleted linked project");
+        deletedLinkedProject.setActive(false);
+
+        Document source = document(deletedHomeProject);
+        source.setUploadedBy(user);
+        source.setDocType(DocumentType.SOURCE);
+        source.setCollection(deletedHomeCollection);
+
+        CollectionDocument activeCollectionLink = new CollectionDocument();
+        activeCollectionLink.setCollection(activeCollection);
+        activeCollectionLink.setDocument(source);
+        CollectionDocument deletedCollectionLink = new CollectionDocument();
+        deletedCollectionLink.setCollection(deletedLinkedCollection);
+        deletedCollectionLink.setDocument(source);
+        ProjectDocument activeProjectLink = new ProjectDocument();
+        activeProjectLink.setProject(activeProject);
+        activeProjectLink.setDocument(source);
+        ProjectDocument deletedProjectLink = new ProjectDocument();
+        deletedProjectLink.setProject(deletedLinkedProject);
+        deletedProjectLink.setDocument(source);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(source)));
+        when(collectionDocumentRepository.findByDocumentId(source.getId()))
+                .thenReturn(List.of(activeCollectionLink, deletedCollectionLink));
+        when(projectDocumentRepository.findByDocumentId(source.getId()))
+                .thenReturn(List.of(activeProjectLink, deletedProjectLink));
+
+        var page = service().getSourceLibrary(
+                0, 20, "createdAt,desc", "", ProcessingStatus.READY);
+
+        assertThat(page.content()).singleElement().satisfies(item -> {
+            assertThat(item.collections()).extracting(usage -> usage.name())
+                    .containsExactly("Active references");
+            assertThat(item.projects()).extracting(usage -> usage.name())
+                    .containsExactly("Active project");
+        });
+    }
+
+    @Test
+    void updateSourceTrimsTitleAndChecksOwnership() {
+        User user = user();
+        com.evidencepilot.model.Collection collection = collection();
+        Document source = document(null);
+        source.setUploadedBy(user);
+        source.setDocType(DocumentType.SOURCE);
+        source.setCollection(collection);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(documentRepository.save(source)).thenReturn(source);
+
+        var updated = service().updateSource(source.getId(), "  Updated title  ");
+
+        assertThat(updated.title()).isEqualTo("Updated title");
+        verify(currentUserService).requireUserIdOrAdmin(user, user.getId());
         verify(currentUserService).requireCollectionAccess(user, collection);
     }
 

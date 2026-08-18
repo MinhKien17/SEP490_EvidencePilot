@@ -244,6 +244,23 @@ class ProjectCollectionServiceTest {
     }
 
     @Test
+    void removingOriginalSourceDetachesItButKeepsItInLibrary() {
+        User instructor = instructor();
+        Collection collection = collection(instructor);
+        Document source = source(collection);
+        when(projectCollectionRepository.findByCollectionId(collection.getId()))
+                .thenReturn(List.of());
+
+        service().removeSource(source, collection);
+
+        assertThat(source.getCollection()).isNull();
+        assertThat(source.isActive()).isTrue();
+        verify(documentRepository).save(source);
+        verify(collectionDocumentRepository, never())
+                .findByCollectionIdAndDocumentId(collection.getId(), source.getId());
+    }
+
+    @Test
     void removingLibraryReferenceRemovesItsDerivedProjectShare() {
         User instructor = instructor();
         Project project = project(ProjectStatus.IN_PROGRESS);

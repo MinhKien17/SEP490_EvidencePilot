@@ -166,6 +166,13 @@ public class ProjectCollectionService {
 
     @Transactional
     public void removeSource(Document document, Collection collection) {
+        if (document.getCollection() != null
+                && Objects.equals(document.getCollection().getId(), collection.getId())) {
+            detachCollectionSource(collection, document);
+            document.setCollection(null);
+            documentRepository.save(document);
+            return;
+        }
         collectionDocumentRepository
                 .findByCollectionIdAndDocumentId(collection.getId(), document.getId())
                 .ifPresent(membership -> {

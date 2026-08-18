@@ -4,6 +4,7 @@ import com.evidencepilot.dto.response.DocumentChunkResponse;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.DocumentTextResponse;
 import com.evidencepilot.dto.response.PagedResponse;
+import com.evidencepilot.dto.response.SourceLibraryItemResponse;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
@@ -38,8 +39,12 @@ public interface DocumentService {
     PagedResponse<DocumentResponse> getSourcesByCollection(UUID collectionId, int page, int size, String sort, String q);
     PagedResponse<DocumentResponse> getAvailableLibrarySources(
             UUID collectionId, int page, int size, String sort, String q);
+    PagedResponse<SourceLibraryItemResponse> getSourceLibrary(
+            int page, int size, String sort, String q, ProcessingStatus processingStatus);
     DocumentResponse addSourceToCollection(UUID collectionId, UUID sourceId);
     void removeSourceFromCollection(UUID collectionId, UUID sourceId);
+    SourceLibraryItemResponse updateSource(UUID id, String title);
+    void deleteSource(UUID id);
     DocumentResponse updateDocumentMetadata(UUID id, String title, String originalFilename);
     DocumentResponse uploadDocument(UUID projectId, MultipartFile file, DocumentType docType);
 

@@ -7,6 +7,7 @@ import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -39,6 +40,53 @@ class SourceControllerTest {
         UUID id = UUID.randomUUID();
         mockMvc.perform(get("/api/sources/{id}", id)).andExpect(status().isOk());
         verify(service).getSourceById(id);
+    }
+
+    @Test
+    void findLibrary_passesPagingSearchAndStatus() throws Exception {
+        mockMvc.perform(get("/api/sources")
+                        .param("page", "2")
+                        .param("size", "15")
+                        .param("sort", "title,asc")
+                        .param("q", "evidence")
+                        .param("processingStatus", "READY"))
+                .andExpect(status().isOk());
+
+        verify(service).getSourceLibrary(
+                2, 15, "title,asc", "evidence",
+                com.evidencepilot.model.enums.ProcessingStatus.READY);
+    }
+
+    @Test
+    void update_bindsValidatedTitle() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mockMvc.perform(put("/api/sources/{id}", id)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"Updated evidence\"}"))
+                .andExpect(status().isOk());
+
+        verify(service).updateSource(id, "Updated evidence");
+    }
+
+    @Test
+    void update_rejectsBlankTitle() throws Exception {
+        mockMvc.perform(put("/api/sources/{id}", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"   \"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(service, never()).updateSource(any(), any());
+    }
+
+    @Test
+    void delete_delegatesId() throws Exception {
+        UUID id = UUID.randomUUID();
+
+        mockMvc.perform(delete("/api/sources/{id}", id))
+                .andExpect(status().isNoContent());
+
+        verify(service).deleteSource(id);
     }
 
     @Test

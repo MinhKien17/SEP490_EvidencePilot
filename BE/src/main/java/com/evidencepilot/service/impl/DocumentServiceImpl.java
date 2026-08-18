@@ -4,6 +4,7 @@ import com.evidencepilot.dto.response.DocumentChunkResponse;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.DocumentTextResponse;
 import com.evidencepilot.dto.response.PagedResponse;
+import com.evidencepilot.dto.response.SourceLibraryItemResponse;
 import com.evidencepilot.exception.ResourceNotFoundException;
 import com.evidencepilot.mapper.DocumentMapper;
 import com.evidencepilot.model.Collection;
@@ -65,7 +66,7 @@ import java.util.UUID;
 public class DocumentServiceImpl implements DocumentService {
 
     private static final Set<String> DOCUMENT_SORT_FIELDS = Set.of(
-            "originalFilename", "docType", "processingStatus", "createdAt", "fileSizeBytes");
+            "title", "originalFilename", "docType", "processingStatus", "createdAt", "fileSizeBytes");
 
     private static final int MAX_EXTRACTED_TEXT_LENGTH = 5_000_000;
 
@@ -206,6 +207,18 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public PagedResponse<SourceLibraryItemResponse> getSourceLibrary(
+            int page, int size, String sort, String q, ProcessingStatus processingStatus) {
+        User currentUser = currentUserService.requireCurrentUser();
+        var pageable = PagingRequest.pageable(
+                page, size, sort, DOCUMENT_SORT_FIELDS, "createdAt,desc");
+        var results = documentRepository.findAll(
+                sourceLibrarySpec(currentUser.getId(), q, processingStatus), pageable);
+        return PagedResponse.from(results.map(this::toSourceLibraryItem));
+    }
+
+    @Override
     @Transactional
     public DocumentResponse addSourceToCollection(UUID collectionId, UUID sourceId) {
         var currentUser = currentUserService.requireCurrentUser();
@@ -228,13 +241,28 @@ public class DocumentServiceImpl implements DocumentService {
                 .orElseThrow(() -> new ResourceNotFoundException(collectionId, "Collection"));
         currentUserService.requireCollectionAccess(currentUser, collection);
         Document document = findDocument(sourceId);
-        if (document.getCollection() != null
-                && collectionId.equals(document.getCollection().getId())) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "The original source cannot be detached; delete the document instead");
-        }
         projectCollectionService.removeSource(document, collection);
+    }
+
+    @Override
+    @Transactional
+    public SourceLibraryItemResponse updateSource(UUID id, String title) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Document source = requireOwnedActiveSource(currentUser, id);
+        requireDocumentWriteAccess(currentUser, source);
+        source.setTitle(title.trim());
+        return toSourceLibraryItem(documentRepository.save(source));
+    }
+
+    @Override
+    @Transactional
+    public void deleteSource(UUID id) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Document source = requireOwnedActiveSource(currentUser, id);
+        requireDocumentWriteAccess(currentUser, source);
+        projectCollectionService.removeSource(source);
+        source.setActive(false);
+        documentRepository.save(source);
     }
 
     @Override
@@ -651,6 +679,44 @@ public class DocumentServiceImpl implements DocumentService {
         currentUserService.requireProjectAccess(currentUser, project);
     }
 
+    private SourceLibraryItemResponse toSourceLibraryItem(Document source) {
+        Map<UUID, String> collections = new LinkedHashMap<>();
+        if (source.getCollection() != null && source.getCollection().isActive()) {
+            collections.put(source.getCollection().getId(), source.getCollection().getTitle());
+        }
+        collectionDocumentRepository.findByDocumentId(source.getId()).stream()
+                .map(CollectionDocument::getCollection)
+                .filter(Collection::isActive)
+                .forEach(collection -> collections.put(collection.getId(), collection.getTitle()));
+
+        Map<UUID, String> projects = new LinkedHashMap<>();
+        if (source.getProject() != null && source.getProject().isActive()) {
+            projects.put(source.getProject().getId(), source.getProject().getTitle());
+        }
+        projectDocumentRepository.findByDocumentId(source.getId()).stream()
+                .map(ProjectDocument::getProject)
+                .filter(Project::isActive)
+                .forEach(project -> projects.put(project.getId(), project.getTitle()));
+
+        return new SourceLibraryItemResponse(
+                source.getId(),
+                source.getTitle(),
+                source.getOriginalFilename(),
+                source.getContentType(),
+                source.getFileSizeBytes(),
+                source.getProcessingStatus(),
+                source.getProcessingError(),
+                source.getCreatedAt(),
+                toUsages(collections),
+                toUsages(projects));
+    }
+
+    private static List<SourceLibraryItemResponse.Usage> toUsages(Map<UUID, String> usages) {
+        return usages.entrySet().stream()
+                .map(entry -> new SourceLibraryItemResponse.Usage(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
     private Specification<Document> collectionSourceSpec(UUID collectionId, String q) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -667,12 +733,22 @@ public class DocumentServiceImpl implements DocumentService {
             if (q != null && !q.isBlank()) {
                 String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
                 predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("title")), like),
                         cb.like(cb.lower(root.get("originalFilename")), like),
                         cb.like(cb.lower(root.get("fileUrl")), like)));
             }
 
             return cb.and(predicates.toArray(Predicate[]::new));
         };
+    }
+
+    private Document requireOwnedActiveSource(User currentUser, UUID id) {
+        Document source = findDocument(id);
+        if (source.getDocType() != DocumentType.SOURCE || !source.isActive()) {
+            throw new ResourceNotFoundException(id, "Source");
+        }
+        currentUserService.requireUserIdOrAdmin(currentUser, source.getUploadedBy().getId());
+        return source;
     }
 
     private Specification<Document> availableLibrarySourceSpec(
@@ -695,8 +771,32 @@ public class DocumentServiceImpl implements DocumentService {
             if (q != null && !q.isBlank()) {
                 String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
                 predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("title")), like),
                         cb.like(cb.lower(root.get("originalFilename")), like),
                         cb.like(cb.lower(root.get("fileUrl")), like)));
+            }
+
+            return cb.and(predicates.toArray(Predicate[]::new));
+        };
+    }
+
+    private Specification<Document> sourceLibrarySpec(
+            UUID uploadedBy, String q, ProcessingStatus processingStatus) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(cb.equal(root.get("uploadedBy").get("id"), uploadedBy));
+            predicates.add(cb.equal(root.get("docType"), DocumentType.SOURCE));
+            predicates.add(cb.equal(root.get("active"), true));
+
+            if (processingStatus != null) {
+                predicates.add(cb.equal(root.get("processingStatus"), processingStatus));
+            }
+            if (q != null && !q.isBlank()) {
+                String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("title")), like),
+                        cb.like(cb.lower(root.get("originalFilename")), like),
+                        cb.like(cb.lower(root.get("contentType")), like)));
             }
 
             return cb.and(predicates.toArray(Predicate[]::new));
@@ -725,6 +825,7 @@ public class DocumentServiceImpl implements DocumentService {
             if (q != null && !q.isBlank()) {
                 String like = "%" + q.trim().toLowerCase(Locale.ROOT) + "%";
                 predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("title")), like),
                         cb.like(cb.lower(root.get("originalFilename")), like),
                         cb.like(cb.lower(root.get("contentType")), like),
                         cb.like(cb.lower(root.get("fileUrl")), like)));
@@ -739,7 +840,8 @@ public class DocumentServiceImpl implements DocumentService {
             return true;
         }
         String query = q.trim().toLowerCase(Locale.ROOT);
-        return containsIgnoreCase(document.getOriginalFilename(), query)
+        return containsIgnoreCase(document.getTitle(), query)
+                || containsIgnoreCase(document.getOriginalFilename(), query)
                 || containsIgnoreCase(document.getContentType(), query)
                 || containsIgnoreCase(document.getFileUrl(), query);
     }
@@ -750,6 +852,9 @@ public class DocumentServiceImpl implements DocumentService {
 
     private static Comparator<Document> documentComparator(Sort.Order order) {
         Comparator<Document> comparator = switch (order.getProperty()) {
+            case "title" -> Comparator.comparing(
+                    Document::getTitle,
+                    Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER));
             case "originalFilename" -> Comparator.comparing(
                     Document::getOriginalFilename,
                     Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER));
