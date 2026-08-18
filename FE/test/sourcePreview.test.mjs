@@ -13,6 +13,15 @@ test('source preview uses the authenticated download route and releases its blob
   assert.match(fileViewer, /URL\.revokeObjectURL\(objectUrl\)/);
 });
 
+test('instructor source library previews stored PDFs through the authenticated viewer', async () => {
+  const sourceLibrary = await readFile(new URL('../src/pages/Instructor/SourceLibraryPanel.jsx', import.meta.url), 'utf8');
+
+  assert.match(sourceLibrary, /import FileViewerModal from '\.\.\/\.\.\/components\/FileViewerModal'/);
+  assert.match(sourceLibrary, /Number\(source\.fileSizeBytes\) > 0/);
+  assert.match(sourceLibrary, /fileUrl: `\/api\/documents\/\$\{source\.id\}\/download`/);
+  assert.match(sourceLibrary, /<FileViewerModal/);
+});
+
 test('metadata-only source exposes the failed upstream download URL', async () => {
   const processingError = 'PDF download not completed: Download failed: HTTP 403 for https://downloads.hindawi.com/paper.pdf. Metadata saved.';
   const contextPanel = await readFile(new URL('../src/pages/Student/ContextPanel.jsx', import.meta.url), 'utf8');

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { EmptyState, LoadingSkeleton, Modal } from '../../components';
+import FileViewerModal from '../../components/FileViewerModal';
 import { useDangerConfirm } from '../../components/DangerConfirm';
 import { useLanguage } from '../../context/LanguageContext';
 import { commonText, instructorText } from '../../locales';
@@ -31,6 +32,13 @@ function displayTitle(source) {
 function initialTitle(source) {
   if (source.title) return source.title;
   return (source.originalFilename || '').replace(/\.[^.]+$/, '');
+}
+
+function canPreviewPdf(source) {
+  const contentType = (source.contentType || '').toLowerCase();
+  const filename = source.originalFilename || '';
+  return Number(source.fileSizeBytes) > 0
+    && (contentType.includes('pdf') || /\.pdf$/i.test(filename));
 }
 
 function sourceErrorCode(source) {
@@ -93,6 +101,7 @@ export default function SourceLibraryPanel() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
+  const [viewerFile, setViewerFile] = useState(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -335,6 +344,7 @@ export default function SourceLibraryPanel() {
                 ...(source.projects || []).map(item => item.name),
               ].filter(Boolean);
               const downloadable = source.processingStatus === 'READY' || source.processingStatus === 'COMPLETED';
+              const previewable = canPreviewPdf(source);
               const recovery = recoveryInfo(source, t);
               const recovering = recoveringSource?.id === source.id;
               const recoveryPanelClass = recovery?.action === 'retry'
@@ -378,6 +388,21 @@ export default function SourceLibraryPanel() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                      {previewable && (
+                        <button type="button"
+                          onClick={() => setViewerFile({
+                            fileUrl: `/api/documents/${source.id}/download`,
+                            fileName: source.originalFilename || displayTitle(source),
+                          })}
+                          disabled={recovering}
+                          className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-(--border) bg-(--brand-soft) px-3 py-2 text-[11px] font-bold text-(--brand-foreground) transition-colors hover:bg-(--surface-tertiary) focus:outline-none focus:ring-2 focus:ring-(--focus) disabled:cursor-not-allowed disabled:opacity-50">
+                          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+                            <circle cx="12" cy="12" r="2.5" strokeWidth="2" />
+                          </svg>
+                          {t.previewSource}
+                        </button>
+                      )}
                       {downloadable && (
                         <button type="button" onClick={() => downloadSource(source)} disabled={downloadingId === source.id || recovering}
                           className="cursor-pointer rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-700 transition-colors hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-(--focus) disabled:cursor-not-allowed disabled:opacity-50">
@@ -473,6 +498,14 @@ export default function SourceLibraryPanel() {
             </nav>
           )}
         </>
+      )}
+
+      {viewerFile && (
+        <FileViewerModal
+          fileUrl={viewerFile.fileUrl}
+          fileName={viewerFile.fileName}
+          onClose={() => setViewerFile(null)}
+        />
       )}
 
       <Modal open={!!editingSource} onClose={closeEdit} title={t.editSourceTitle} closeLabel={ct.close}>
