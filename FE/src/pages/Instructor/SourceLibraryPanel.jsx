@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { EmptyState, LoadingSkeleton, Modal } from '../../components';
-import { useDangerConfirm } from '../../components/DangerConfirm';
+import useUndoDelete, { UndoToast } from '../../components/UndoDelete.jsx';
 import { useLanguage } from '../../context/LanguageContext';
 import { commonText, instructorText } from '../../locales';
 import api from '../../api';
@@ -74,7 +74,15 @@ export default function SourceLibraryPanel() {
   const { language } = useLanguage();
   const t = instructorText[language];
   const ct = commonText[language];
-  const confirmDanger = useDangerConfirm();
+  const { pending: pendingDelete, start: startDelete, undo: undoDelete, dismiss: dismissDelete } = useUndoDelete();
+  const undoStrings = {
+    header: t.undoHeader,
+    bodyTemplate: t.undoBodyTemplate,
+    caution: t.undoCaution,
+    undoLabel: t.undoLabel,
+    undoRemaining: t.undoRemaining,
+    dismissLabel: t.dismissLabel,
+  };
   const [sources, setSources] = useState([]);
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -269,22 +277,31 @@ export default function SourceLibraryPanel() {
     if (usageNames.length > 0) {
       message += `\n\n${t.deleteSourceUsageWarning.replace('{{locations}}', usageNames.join(', '))}`;
     }
-    if (!(await confirmDanger(message, 5))) return;
-
-    setDeletingId(source.id);
-    setError('');
-    try {
-      await api.delete(`/api/sources/${source.id}`);
-      if (sources.length === 1 && page > 0) {
-        setPage(current => current - 1);
-      } else {
+    const sid = String(source.id);
+    setSources(prev => prev.filter(s => String(s.id) !== sid));
+    startDelete({
+      ...undoStrings,
+      bodyTemplate: undefined,
+      message,
+      entityName: displayTitle(source),
+      entityDetails: source.id,
+    }, async () => {
+      setDeletingId(source.id);
+      setError('');
+      try {
+        await api.delete(`/api/sources/${source.id}`);
+        if (sources.length === 1 && page > 0) {
+          setPage(current => current - 1);
+        } else {
+          await loadSources();
+        }
+      } catch (requestError) {
+        setError(requestError.response?.data?.message || t.sourceDeleteFailed);
         await loadSources();
+      } finally {
+        setDeletingId(null);
       }
-    } catch (requestError) {
-      setError(requestError.response?.data?.message || t.sourceDeleteFailed);
-    } finally {
-      setDeletingId(null);
-    }
+    }, () => { loadSources(); });
   };
 
   return (
@@ -499,6 +516,8 @@ export default function SourceLibraryPanel() {
           </div>
         </form>
       </Modal>
+
+      {pendingDelete && <UndoToast pending={pendingDelete} onUndo={undoDelete} onDismiss={dismissDelete} />}
     </section>
   );
 }
