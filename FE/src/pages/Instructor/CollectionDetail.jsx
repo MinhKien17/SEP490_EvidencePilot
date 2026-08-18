@@ -80,14 +80,10 @@ export default function CollectionDetail() {
     }
   };
 
-  const handleDeleteSource = async (sourceId) => {
-    const source = sources.find(item => item.id === sourceId);
-    const isLibraryReference = source?.collectionId !== id;
-    if (!(await confirmDanger(isLibraryReference ? t.removeLibrarySourceConfirm : t.deleteSourceConfirm))) return;
+  const handleRemoveSource = async (sourceId) => {
+    if (!(await confirmDanger(t.removeSourceFromCollectionConfirm))) return;
     try {
-      await api.delete(isLibraryReference
-        ? `/api/collections/${id}/sources/${sourceId}`
-        : `/api/documents/${sourceId}`);
+      await api.delete(`/api/collections/${id}/sources/${sourceId}`);
       refetchSources();
       if (selectedSource?.id === sourceId) setSelectedSource(null);
     }
@@ -216,7 +212,7 @@ export default function CollectionDetail() {
     if (addDocOption === 'library') {
       const normalizedQuery = libraryQuery.trim().toLowerCase();
       const filteredSources = librarySources.filter(source =>
-        !normalizedQuery || String(source.originalFilename || source.id)
+        !normalizedQuery || `${source.title || ''} ${source.originalFilename || source.id}`
           .toLowerCase().includes(normalizedQuery));
 
       const addLibrarySource = async (sourceId) => {
@@ -261,7 +257,10 @@ export default function CollectionDetail() {
                 <div key={source.id} className="flex items-center gap-3 rounded-xl border border-(--border) bg-(--surface) p-3">
                   <FileIcon name={source.originalFilename} className="h-5 w-5 shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-bold text-(--text-primary)">{source.originalFilename || source.id}</p>
+                    <p className="truncate text-xs font-bold text-(--text-primary)">{source.title || source.originalFilename || source.id}</p>
+                    {source.title && source.originalFilename && (
+                      <p className="truncate text-[10px] text-(--text-tertiary)">{source.originalFilename}</p>
+                    )}
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       <span className={`rounded border px-1.5 py-0.5 text-[9px] font-bold ${statusColor(source.processingStatus)}`}>
                         {ct.statusLabels?.[source.processingStatus] || source.processingStatus}
@@ -308,7 +307,7 @@ export default function CollectionDetail() {
                   }`}>
                 <FileIcon name={doc.originalFilename} />
                 <div className="min-w-0 flex-1">
-                  <p className="font-bold text-(--text-primary) truncate">{doc.originalFilename || doc.id}</p>
+                  <p className="font-bold text-(--text-primary) truncate">{doc.title || doc.originalFilename || doc.id}</p>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold ${statusColor(doc.processingStatus)}`}>{ct.statusLabels?.[doc.processingStatus] || doc.processingStatus}</span>
                     {doc.fileSizeBytes && <span className="text-[10px] text-(--text-tertiary)">{(doc.fileSizeBytes / 1024).toFixed(0)} KB</span>}
@@ -332,13 +331,16 @@ export default function CollectionDetail() {
               <div className="flex items-center gap-3">
                 <FileIcon name={selectedSource.originalFilename} className="w-7 h-7" />
                 <div>
-                  <h3 className="text-base font-black text-(--text-primary)">{selectedSource.originalFilename || t.unnamed}</h3>
+                  <h3 className="text-base font-black text-(--text-primary)">{selectedSource.title || selectedSource.originalFilename || t.unnamed}</h3>
+                  {selectedSource.title && selectedSource.originalFilename && (
+                    <p className="text-[11px] text-(--text-tertiary)">{selectedSource.originalFilename}</p>
+                  )}
                   <p className="text-[11px] text-(--text-tertiary) font-mono">ID: {selectedSource.id}</p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button onClick={() => handleDeleteSource(selectedSource.id)}
-                  className="px-3 py-1.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg font-bold hover:bg-rose-100 transition-colors text-xs">{ct.delete}</button>
+                <button onClick={() => handleRemoveSource(selectedSource.id)}
+                  className="cursor-pointer rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-(--focus)">{t.removeFromCollection}</button>
               </div>
             </div>
 
