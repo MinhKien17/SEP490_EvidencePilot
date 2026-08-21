@@ -252,7 +252,9 @@ export default function WorkspaceLayout() {
       dirtySectionsRef.current.delete(current);
     }
     selectSection(sec.id);
-    loadCode(sec.contentTex || '');
+    const draft = readWorkspaceDraft(projectRef.current?.id, sec.id);
+    loadCode(draft ?? sec.contentTex ?? '');
+    if (draft !== null) dirtySectionsRef.current.add(sec.id);
     return true;
   };
 
