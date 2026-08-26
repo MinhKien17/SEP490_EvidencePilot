@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import api from '../../api.js';
 import { getSourceDownloadUrl } from './sourceDownload.js';
 import CitationReviewList from '../../components/CitationReviewList.jsx';
-import TraceEvidenceList from '../../components/TraceEvidenceList.jsx';
+import VisualSourceMap from '../../components/VisualSourceMap.jsx';
 
 const FUNCTIONAL_TYPES = [
   { value: 'EMPIRICAL', labelKey: 'functionalTypeEmpirical' },
@@ -121,12 +121,12 @@ export default function ContextPanel({
   // Feedback tab
   feedbacks, assignedSections, setShowSubmitReviewModal, userProjectRole,
   // Citation Review tab
-  aiReview, aiReviewLoading, aiReviewProgress, aiReviewError, aiReviewStale, aiSourceMatches,
-  aiSourcesLoading, aiSourcesError, sectionTraces, updatingTraceIds, traceError,
-  onDecideTrace, reviewSectionTitle,
+  aiReview, aiReviewLoading, aiReviewProgress, aiReviewError, aiSourceMatches,
+  aiSourcesLoading, aiSourcesError,
   onRunAiReview, onSelectReviewFinding, onInsertCitation, onRetryReviewSources,
   canReviewSection,
   isLocked,
+  reviewSectionTitle,
 }) {
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [sourceMode, setSourceMode] = useState('doi');
@@ -140,11 +140,6 @@ export default function ContextPanel({
   const [answerDrafts, setAnswerDrafts] = useState({});
   const [answeringId, setAnsweringId] = useState(null);
   const [answerErrors, setAnswerErrors] = useState({});
-  const [decideDraft, setDecideDraft] = useState(null);
-
-  useEffect(() => {
-    setDecideDraft(null);
-  }, [reviewSectionTitle, aiReview?.result?.id, activeTab]);
 
   const submitAnswer = async (item, fb) => {
     const content = (answerDrafts[item.id] || '').trim();
@@ -360,7 +355,7 @@ export default function ContextPanel({
             </div>
           )}
 
-          {activeTab === 'AI Review' && (
+{activeTab === 'AI Review' && (
             <div className="space-y-4 animate-in fade-in duration-300">
               <CitationReviewList
                 reviewSectionTitle={reviewSectionTitle}
@@ -368,38 +363,28 @@ export default function ContextPanel({
                 aiReviewLoading={aiReviewLoading}
                 aiReviewProgress={aiReviewProgress}
                 aiReviewError={aiReviewError}
-                aiReviewStale={aiReviewStale}
                 aiSourceMatches={aiSourceMatches}
                 aiSourcesLoading={aiSourcesLoading}
                 aiSourcesError={aiSourcesError}
-                sectionTraces={sectionTraces}
-                updatingTraceIds={updatingTraceIds}
                 canReviewSection={canReviewSection}
                 isLocked={isLocked}
                 onRunAiReview={onRunAiReview}
                 onSelectReviewFinding={onSelectReviewFinding}
                 onInsertCitation={onInsertCitation}
                 onRetryReviewSources={onRetryReviewSources}
-                onStartTraceDecision={(findingIndex, trace) => setDecideDraft({
-                  findingIndex,
-                  action: trace?.studentAction || '',
-                  sourceId: trace?.sourceId || '',
-                  chunkId: trace?.documentChunkId || '',
-                  evidenceQuote: trace?.evidenceQuote || '',
-                  relation: trace?.evidenceRelation || '',
-                  explanation: trace?.explanation || '',
-                })}
-                decideDraft={decideDraft}
-                setDecideDraft={setDecideDraft}
-                onDecideTrace={onDecideTrace}
               />
-              <TraceEvidenceList
-                sectionTraces={sectionTraces}
-                updatingTraceIds={updatingTraceIds}
-                traceError={traceError}
-                onRunReview={onRunAiReview}
-                showHistory={!aiReview && sectionTraces.length > 0}
-              />
+              <div className="mt-4 rounded-xl border border-(--border) bg-(--surface) overflow-hidden">
+                <div className="px-3 py-2 border-b border-(--border) bg-(--surface-secondary) flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-(--text-primary)">{t('visualSourceMap') || 'Visual Map of Sources'}</h4>
+                </div>
+                <div className="h-96">
+                  <VisualSourceMap
+                    sources={sources}
+                    aiSourceMatches={aiSourceMatches}
+                    isDark={document.documentElement.classList.contains('dark')}
+                  />
+                </div>
+              </div>
             </div>
           )}
 

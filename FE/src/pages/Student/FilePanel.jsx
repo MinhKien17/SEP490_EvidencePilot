@@ -1,15 +1,24 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import DeleteConfirm from '../../components/DeleteConfirm.jsx';
 
-export default function FilePanel({ compact, isOpen, width, onResizeStart, sections, assignedSections, selectedSectionId, onSelectSection, selectedPaper, onSelectPaper, papers, onUploadPaper, sources, onUploadSource, onDeleteSource, mediaAssets, onUploadMedia, onDeleteMedia, onInsertMedia, showToast, isLocked, onSaveDraft, saveStatus }) {
+export default function FilePanel({ compact, isOpen, width, onResizeStart, sections, assignedSections, selectedSectionId, onSelectSection, selectedPaper, onSelectPaper, onViewFullPaper, papers, onUploadPaper, sources, onUploadSource, onDeleteSource, mediaAssets, onUploadMedia, onDeleteMedia, onInsertMedia, showToast, isLocked, onSaveDraft, saveStatus }) {
   const { t } = useTranslation();
+  const [mediaSearchQuery, setMediaSearchQuery] = useState('');
+  const [hoveredMediaId, setHoveredMediaId] = useState(null);
   if (!isOpen) return null;
   const saveLabel = saveStatus === 'saving' ? t('saving') : saveStatus === 'saved' ? t('saved') : saveStatus === 'error' ? t('saveFailed') : null;
   return (
     <>
       <aside data-tour="file-panel" style={{ width: compact ? 'min(20rem, calc(100vw - 3.5rem))' : width }} className={`bg-(--surface-secondary) border-r border-(--border) flex flex-col shrink-0 z-30 backdrop-blur-sm ${compact ? 'absolute inset-y-0 left-14 shadow-xl' : 'relative'}`}>
-        <div className="px-4 py-2.5 border-b border-(--border) bg-(--surface-tertiary)/40 flex items-center">
+        <div className="px-4 py-2.5 border-b border-(--border) bg-(--surface-tertiary)/40 flex items-center justify-between">
           <span className="text-xs font-bold text-(--text-primary) truncate max-w-[180px]">{selectedPaper?.originalFilename || selectedPaper?.title || t('paper')}</span>
+          {selectedPaper && (
+            <button onClick={onViewFullPaper} className="ml-2 text-xs font-medium text-(--brand) hover:underline hidden sm:inline-flex items-center gap-1" title={t('viewFullPaper')}>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+              {t('viewFullPaper')}
+            </button>
+          )}
         </div>
         <div className="px-3 py-2 border-b border-(--border) flex items-center justify-between">
           <span className="text-[10px] font-bold text-(--text-secondary) tracking-wider uppercase">{t('sections')}</span>
@@ -52,12 +61,15 @@ export default function FilePanel({ compact, isOpen, width, onResizeStart, secti
             </label>
           )}
         </div>
+        <div className="px-3 py-2 border-b border-(--border) bg-(--surface-tertiary)/40">
+          <input type="text" placeholder={t('searchMedia') || 'Search media...'} value={mediaSearchQuery} onChange={(e) => setMediaSearchQuery(e.target.value)} className="w-full text-xs border border-(--border) rounded-lg px-2 py-1 bg-(--surface) outline-none focus:ring-1 focus:ring-indigo-500 text-(--text-primary)" />
+        </div>
         <div className="p-2 flex-1 overflow-y-auto">
           {mediaAssets.length === 0 ? (
             <div className="text-xs text-(--text-tertiary) italic text-center py-4">{t('noMedia')}</div>
           ) : (
-            mediaAssets.map(m => (
-              <div key={m.id} onClick={() => onInsertMedia?.(m.texFilename)} className={`flex items-center justify-between text-xs font-medium p-2 rounded-md transition-all mt-1 group text-(--text-secondary) ${onInsertMedia ? 'hover:bg-(--surface-tertiary) cursor-pointer' : 'cursor-default opacity-60'}`}>
+            mediaAssets.filter(m => m.texFilename.toLowerCase().includes(mediaSearchQuery.toLowerCase())).map(m => (
+              <div key={m.id} onClick={() => onInsertMedia?.(m.texFilename)} onMouseEnter={() => setHoveredMediaId(m.id)} onMouseLeave={() => setHoveredMediaId(null)} className={`flex items-center justify-between text-xs font-medium p-2 rounded-md transition-all mt-1 group text-(--text-secondary) relative ${onInsertMedia ? 'hover:bg-(--surface-tertiary) cursor-pointer' : 'cursor-default opacity-60'}`}>
                 <div className="flex items-center gap-2 truncate">
                   <svg className="w-3.5 h-3.5 shrink-0 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                   <span className="truncate" title={m.texFilename}>{m.texFilename}</span>
@@ -65,6 +77,12 @@ export default function FilePanel({ compact, isOpen, width, onResizeStart, secti
                 <DeleteConfirm message={t('deleteMediaConfirm')} onConfirm={() => onDeleteMedia(m.id)} triggerLabel={t('deleteMedia')} confirmLabel={t('delete')} cancelLabel={t('cancel')} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-red-600 transition-all p-0.5">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                 </DeleteConfirm>
+                {hoveredMediaId === m.id && m.fileUrl && m.fileUrl !== 'pending' && (
+                  <div className="absolute left-full top-0 ml-2 z-20 w-64 bg-(--surface) border border-(--border) rounded-lg shadow-xl p-1 animate-in fade-in duration-100">
+                    <img src={m.fileUrl} alt={m.texFilename} className="w-full h-auto max-h-64 object-contain rounded" />
+                    <p className="text-[10px] text-center text-(--text-secondary) mt-1 truncate">{m.texFilename}</p>
+                  </div>
+                )}
               </div>
             ))
           )}

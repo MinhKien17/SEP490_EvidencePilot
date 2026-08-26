@@ -1,14 +1,15 @@
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useEffect, useState, useRef, forwardRef, useImperativeHandle } from 'react';
 import api from '../api.js';
 import { renderLatexToHtml } from './latexHtml.js';
 
-export default function PreviewPane({
+const PreviewPane = forwardRef(function PreviewPane({
   latex,
   mediaAssets,
   citationNumbers,
   generatedReferences = [],
   referencesTitle = 'References',
-}) {
+}, ref) {
+  const containerRef = useRef(null);
   const [mediaUrlMap, setMediaUrlMap] = useState({});
 
   useEffect(() => {
@@ -42,8 +43,24 @@ export default function PreviewPane({
     [citationNumbers, generatedReferences.length, latex, mediaUrlMap],
   );
 
+  useImperativeHandle(ref, () => ({
+    getScrollInfo: () => {
+      const el = containerRef.current;
+      if (!el) return { top: 0, height: 0, clientHeight: 0 };
+      return {
+        top: el.scrollTop,
+        height: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      };
+    },
+    scrollTo: (top) => {
+      const el = containerRef.current;
+      if (el) el.scrollTop = top;
+    },
+  }));
+
   return (
-    <div className="h-full overflow-y-auto bg-white p-8">
+    <div ref={containerRef} className="h-full overflow-y-auto bg-white p-8">
       {html && <div className="max-w-prose mx-auto whitespace-pre-wrap break-words preview-content" dangerouslySetInnerHTML={{ __html: html }} />}
       {generatedReferences.length > 0 && (
         <section className="max-w-prose mx-auto text-slate-700">
@@ -60,4 +77,6 @@ export default function PreviewPane({
       )}
     </div>
   );
-}
+});
+
+export default PreviewPane;

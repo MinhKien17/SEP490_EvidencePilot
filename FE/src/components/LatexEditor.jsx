@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import { basicSetup } from 'codemirror';
 import { EditorState, StateEffect, StateField } from '@codemirror/state';
-import { Decoration, EditorView } from '@codemirror/view';
+import { EditorView, Decoration } from '@codemirror/view';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { latex } from 'codemirror-lang-latex';
 
@@ -26,7 +26,7 @@ const reviewRanges = StateField.define({
   provide: field => EditorView.decorations.from(field),
 });
 
-const LatexEditor = forwardRef(function LatexEditor({ content, onChange, readOnly = false, fontSize = 14 }, ref) {
+const LatexEditor = forwardRef(function LatexEditor({ content, onChange, readOnly = false, fontSize = 14, findings = [], onFindingClick }, ref) {
   const containerRef = useRef(null);
   const viewRef = useRef(null);
   const lastEmittedRef = useRef('');
@@ -133,6 +133,21 @@ const LatexEditor = forwardRef(function LatexEditor({ content, onChange, readOnl
         .sort((left, right) => left.from - right.from);
       v.dispatch({ effects: setReviewRanges.of(valid) });
     },
+    getScrollInfo: () => {
+      const v = viewRef.current;
+      if (!v) return { top: 0, height: 0, clientHeight: 0 };
+      const scroller = v.scrollDOM;
+      return {
+        top: scroller.scrollTop,
+        height: scroller.scrollHeight,
+        clientHeight: scroller.clientHeight,
+      };
+    },
+    scrollTo: (top) => {
+      const v = viewRef.current;
+      if (!v) return;
+      v.scrollDOM.scrollTop = top;
+    },
   }));
 
   useEffect(() => {
@@ -190,17 +205,13 @@ const LatexEditor = forwardRef(function LatexEditor({ content, onChange, readOnl
     return () => { if (viewRef.current) viewRef.current.destroy(); };
   }, [readOnly, fontSize, isDark]);
 
+  // Update review ranges when findings change
   useEffect(() => {
-    if (viewRef.current && content !== undefined && content !== lastEmittedRef.current) {
-      const current = viewRef.current.state.doc.toString();
-      if (current !== content) {
-        lastEmittedRef.current = content || '';
-        viewRef.current.dispatch({
-          changes: { from: 0, to: current.length, insert: content || '' },
-        });
-      }
+    if (viewRef.current && findings) {
+      const ranges = findings.map(f => ({ from: f.from, to: f.to }));
+      viewRef.current.dispatch({ effects: setReviewRanges.of(ranges) });
     }
-  }, [content]);
+  }, [findings]);
 
   return <div ref={containerRef} className="h-full w-full overflow-hidden" />;
 });
