@@ -51,6 +51,7 @@ export default function FullPaperPreview({ sections, paperTitle, mediaAssets, on
                 return (
                   <div key={sec.id} ref={el => { sectionRefs.current[sec.id] = el; }}>
                     <PreviewPane
+                      sectionTitle={sec.sectionTitle}
                       latex={sec.contentTex || ''}
                       mediaAssets={mediaAssets}
                       generatedReferences={referenceSection ? generatedReferences : []}

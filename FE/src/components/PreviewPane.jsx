@@ -64,7 +64,6 @@ const PreviewPane = forwardRef(function PreviewPane({
       {html && <div className="max-w-prose mx-auto whitespace-pre-wrap break-words preview-content" dangerouslySetInnerHTML={{ __html: html }} />}
       {generatedReferences.length > 0 && (
         <section className="max-w-prose mx-auto text-slate-700">
-          <h2 className="text-lg font-bold mt-6 mb-3 text-slate-800">{referencesTitle}</h2>
           <ol className="space-y-3 text-sm">
             {generatedReferences.map(reference => (
               <li key={reference.key} className="flex gap-2 leading-relaxed">
