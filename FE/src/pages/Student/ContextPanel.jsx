@@ -113,7 +113,7 @@ function EvidenceEvaluationCard({ match, status, breakdownOpenId, setBreakdownOp
 }
 
 export default function ContextPanel({
-  compact, isOpen, width, onResizeStart,
+  compact, isOpen, width,
   activeTab, setActiveTab,
   showToast,
   // Source tab
@@ -201,10 +201,7 @@ export default function ContextPanel({
 
   return (
     <>
-      <div onMouseDown={onResizeStart} className={`${compact ? 'hidden' : 'flex'} w-1 hover:w-1.5 bg-(--border) hover:bg-(--text-tertiary) cursor-col-resize self-stretch transition-all shrink-0 z-10 relative group items-center justify-center border-l border-(--border)/80`}>
-        <div className="h-6 w-0.5 bg-(--text-tertiary) group-hover:bg-(--text-secondary) rounded"></div>
-      </div>
-      <aside data-tour="context-panel" style={{ width: compact ? 'min(24rem, calc(100vw - 3.5rem))' : width }} className={`bg-(--surface) border-l border-(--border) flex flex-col shrink-0 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.12)] overflow-hidden ${compact ? 'absolute inset-y-0 right-0 z-30' : 'z-10'}`}>
+      <aside data-tour="context-panel" style={{ width: compact ? 'min(24rem, calc(100vw - 3.5rem))' : width }} className="absolute inset-y-0 right-0 z-40 bg-(--surface) border-l border-(--border) flex flex-col shadow-[-8px_0_24px_-6px_rgba(0,0,0,0.25)] overflow-hidden">
         <div className="flex border-b border-(--border) bg-(--surface) relative shrink-0">
           <button data-tour="context-info-tab" onClick={() => setActiveTab('Source')} className={activeClass('Source')}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>

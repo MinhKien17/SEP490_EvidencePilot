@@ -1,13 +1,39 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import api from '../../api.js';
 import DeleteConfirm from '../../components/DeleteConfirm.jsx';
 
 export default function FilePanel({ compact, isOpen, width, onResizeStart, sections, assignedSections, selectedSectionId, onSelectSection, selectedPaper, onSelectPaper, onViewFullPaper, papers, onUploadPaper, sources, onUploadSource, onDeleteSource, mediaAssets, onUploadMedia, onDeleteMedia, onInsertMedia, showToast, isLocked, onSaveDraft, saveStatus }) {
   const { t } = useTranslation();
   const [mediaSearchQuery, setMediaSearchQuery] = useState('');
-  const [hoveredMediaId, setHoveredMediaId] = useState(null);
+  const [hoveredMedia, setHoveredMedia] = useState(null);
+  const [mediaUrlMap, setMediaUrlMap] = useState({});
+
+  // Signed URLs are not part of the list response — fetch them like PreviewPane does.
+  useEffect(() => {
+    if (!mediaAssets || mediaAssets.length === 0) {
+      setMediaUrlMap({});
+      return undefined;
+    }
+    let cancelled = false;
+    api.post('/api/media/urls', { ids: mediaAssets.map(a => a.id) })
+      .then(r => { if (!cancelled) setMediaUrlMap(r.data || {}); })
+      .catch(() => { if (!cancelled) setMediaUrlMap({}); });
+    return () => { cancelled = true; };
+  }, [mediaAssets]);
+
   if (!isOpen) return null;
   const saveLabel = saveStatus === 'saving' ? t('saving') : saveStatus === 'saved' ? t('saved') : saveStatus === 'error' ? t('saveFailed') : null;
+
+  const handleMediaEnter = (m, e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setHoveredMedia({ id: m.id, top: rect.top, left: rect.right });
+  };
+
+  const hoveredAsset = hoveredMedia ? mediaAssets.find(m => String(m.id) === String(hoveredMedia.id)) : null;
+  const previewSrc = hoveredMedia && mediaUrlMap[hoveredMedia.id] ? mediaUrlMap[hoveredMedia.id] : null;
+
   return (
     <>
       <aside data-tour="file-panel" style={{ width: compact ? 'min(20rem, calc(100vw - 3.5rem))' : width }} className={`bg-(--surface-secondary) border-r border-(--border) flex flex-col shrink-0 z-30 backdrop-blur-sm ${compact ? 'absolute inset-y-0 left-14 shadow-xl' : 'relative'}`}>
@@ -40,7 +66,7 @@ export default function FilePanel({ compact, isOpen, width, onResizeStart, secti
                       <svg className="w-3.5 h-3.5 shrink-0 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                     )}
                     <span className="truncate max-w-[120px]" title={sec.sectionTitle}>{sec.sectionTitle || t('untitled')}</span>
-                    <span className="text-[9px] text-(--text-tertiary) font-mono">#{sec.sectionOrder}</span>
+                    <span className="text-[9px] text-(--text-tertiary) font-mono">#{(sec.sectionOrder ?? 0) + 1}</span>
                   </div>
                   <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1 py-0.5 rounded shrink-0">v{sec.version || 1}</span>
                   {isSelected && onSaveDraft && (
@@ -69,7 +95,7 @@ export default function FilePanel({ compact, isOpen, width, onResizeStart, secti
             <div className="text-xs text-(--text-tertiary) italic text-center py-4">{t('noMedia')}</div>
           ) : (
             mediaAssets.filter(m => m.texFilename.toLowerCase().includes(mediaSearchQuery.toLowerCase())).map(m => (
-              <div key={m.id} onClick={() => onInsertMedia?.(m.texFilename)} onMouseEnter={() => setHoveredMediaId(m.id)} onMouseLeave={() => setHoveredMediaId(null)} className={`flex items-center justify-between text-xs font-medium p-2 rounded-md transition-all mt-1 group text-(--text-secondary) relative ${onInsertMedia ? 'hover:bg-(--surface-tertiary) cursor-pointer' : 'cursor-default opacity-60'}`}>
+              <div key={m.id} onClick={() => onInsertMedia?.(m.texFilename)} onMouseEnter={(e) => handleMediaEnter(m, e)} onMouseLeave={() => setHoveredMedia(null)} className={`flex items-center justify-between text-xs font-medium p-2 rounded-md transition-all mt-1 group text-(--text-secondary) ${onInsertMedia ? 'hover:bg-(--surface-tertiary) cursor-pointer' : 'cursor-default opacity-60'}`}>
                 <div className="flex items-center gap-2 truncate">
                   <svg className="w-3.5 h-3.5 shrink-0 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                   <span className="truncate" title={m.texFilename}>{m.texFilename}</span>
@@ -77,20 +103,23 @@ export default function FilePanel({ compact, isOpen, width, onResizeStart, secti
                 <DeleteConfirm message={t('deleteMediaConfirm')} onConfirm={() => onDeleteMedia(m.id)} triggerLabel={t('deleteMedia')} confirmLabel={t('delete')} cancelLabel={t('cancel')} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-red-600 transition-all p-0.5">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                 </DeleteConfirm>
-                {hoveredMediaId === m.id && m.fileUrl && m.fileUrl !== 'pending' && (
-                  <div className="absolute left-full top-0 ml-2 z-20 w-64 bg-(--surface) border border-(--border) rounded-lg shadow-xl p-1 animate-in fade-in duration-100">
-                    <img src={m.fileUrl} alt={m.texFilename} className="w-full h-auto max-h-64 object-contain rounded" />
-                    <p className="text-[10px] text-center text-(--text-secondary) mt-1 truncate">{m.texFilename}</p>
-                  </div>
-                )}
               </div>
             ))
           )}
         </div>
       </aside>
-      <div onMouseDown={onResizeStart} className={`${compact ? 'hidden' : 'flex'} w-1 hover:w-1.5 bg-(--border) hover:bg-(--text-tertiary) cursor-col-resize self-stretch transition-all shrink-0 z-30 relative group items-center justify-center border-r border-(--border)/80`} title={t('dragToResize')}>
-        <div className="h-6 w-0.5 bg-(--text-tertiary) group-hover:bg-(--text-secondary) rounded"></div>
-      </div>
+
+      {/* Hover preview portal — appended to document.body so no sidebar overflow can clip it */}
+      {hoveredMedia && previewSrc && hoveredAsset && createPortal(
+        <div
+          className="fixed z-[9999] pointer-events-none w-64 bg-(--surface) border border-(--border) rounded-lg shadow-xl p-1 animate-in fade-in duration-100"
+          style={{ left: Math.min(hoveredMedia.left + 8, window.innerWidth - 272), top: Math.max(8, Math.min(hoveredMedia.top, window.innerHeight - 280)) }}
+        >
+          <img src={previewSrc} alt={hoveredAsset.texFilename} className="w-full h-auto max-h-64 object-contain rounded" />
+          <p className="text-[10px] text-center text-(--text-secondary) mt-1 truncate">{hoveredAsset.texFilename}</p>
+        </div>,
+        document.body,
+      )}
     </>
   );
 }

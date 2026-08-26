@@ -2,12 +2,11 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import LatexEditor from '../../components/LatexEditor';
 import PreviewPane from '../../components/PreviewPane';
 import VisualSourceMap from '../../components/VisualSourceMap.jsx';
-import { isReferenceSectionTitle } from '../../components/latexHtml.js';
 import { useTranslation } from 'react-i18next';
 
 export default function EditorPanel({
   compact,
-  selectedPaper, selectedSectionId, assignedSections, canEditCurrentSection, currentSection, displayContent, previewContent, updateCode,
+  selectedPaper, selectedSectionId, assignedSections, canEditCurrentSection, currentSection, displayContent, updateCode,
   editorWidth, onEditorResizeStart,
   saveStatus, lastSaved, handleSaveDraft,
   insertLatexTag, insertSymbol, handleFindReplace, handleDownloadTex,
@@ -23,50 +22,109 @@ export default function EditorPanel({
   const [previewZoom, setPreviewZoom] = useState(100);
   const [showVisualMap, setShowVisualMap] = useState(false);
   const generatedReferences = [];
-  const previewRef = useRef(null);
-  const syncingRef = useRef(false);
+  const previewOuterRef = useRef(null);
 
-  const syncEditorToPreview = useCallback(() => {
-    if (syncingRef.current || !editorRef.current || !previewRef.current) return;
-    const editorInfo = editorRef.current.getScrollInfo();
-    const previewInfo = previewRef.current.getScrollInfo();
-    if (!editorInfo.height || !previewInfo.height) return;
-    syncingRef.current = true;
-    const ratio = editorInfo.top / Math.max(1, editorInfo.height - editorInfo.clientHeight);
-    const targetTop = ratio * Math.max(1, previewInfo.height - previewInfo.clientHeight);
-    previewRef.current.scrollTo(targetTop);
-    requestAnimationFrame(() => { syncingRef.current = false; });
-  }, []);
+  // --- Anchor-only sync engine (Overleaf-style) ---
+  const zoomScaleRef = useRef(1);
+  const contentKeyRef = useRef(displayContent);
+  const blocksCacheRef = useRef({ key: null, items: [] });
+  const editorScrollHandlerRef = useRef(null);
+  const editorScrollBridge = useCallback(() => { editorScrollHandlerRef.current?.(); }, []);
 
-  const syncPreviewToEditor = useCallback(() => {
-    if (syncingRef.current || !editorRef.current || !previewRef.current) return;
-    const editorInfo = editorRef.current.getScrollInfo();
-    const previewInfo = previewRef.current.getScrollInfo();
-    if (!editorInfo.height || !previewInfo.height) return;
-    syncingRef.current = true;
-    const ratio = previewInfo.top / Math.max(1, previewInfo.height - previewInfo.clientHeight);
-    const targetTop = ratio * Math.max(1, editorInfo.height - editorInfo.clientHeight);
-    editorRef.current.scrollTo(targetTop);
-    requestAnimationFrame(() => { syncingRef.current = false; });
-  }, []);
+  contentKeyRef.current = displayContent;
+  useEffect(() => { zoomScaleRef.current = previewZoom / 100; }, [previewZoom]);
 
+  // Recreated per section so locks/anchors reset; both panes start at top.
   useEffect(() => {
-    if (!previewRef.current) return;
-    const el = previewRef.current.containerRef?.current;
-    if (!el) return;
-    const handleScroll = () => syncPreviewToEditor();
-    el.addEventListener('scroll', handleScroll, { passive: true });
-    return () => el.removeEventListener('scroll', handleScroll);
-  }, [syncPreviewToEditor]);
+    const container = previewOuterRef.current;
+    if (!container) return undefined;
 
-  useEffect(() => {
-    if (!editorRef.current) return;
-    const scroller = editorRef.current.viewRef?.current?.scrollDOM;
-    if (!scroller) return;
-    const handleScroll = () => syncEditorToPreview();
-    scroller.addEventListener('scroll', handleScroll, { passive: true });
-    return () => scroller.removeEventListener('scroll', handleScroll);
-  }, [syncEditorToPreview]);
+    let frame = null;
+    let pending = null;
+    let lock = null;
+    let lastToPreview = null;
+    let lastToEditor = null;
+
+    const getBlocks = () => {
+      if (blocksCacheRef.current.key !== contentKeyRef.current) {
+        blocksCacheRef.current = {
+          key: contentKeyRef.current,
+          items: Array.from(container.querySelectorAll('[data-src-start]')).map(el => ({
+            el,
+            start: Number(el.getAttribute('data-src-start')),
+          })),
+        };
+      }
+      return blocksCacheRef.current.items;
+    };
+
+    const alignBlockTop = (el) => {
+      const scale = zoomScaleRef.current || 1;
+      const delta = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
+      container.scrollTop += delta / scale;
+    };
+
+    const runFromEditor = () => {
+      const blocks = getBlocks();
+      if (!blocks.length || !editorRef.current?.getTopVisibleOffset) return;
+      const offset = editorRef.current.getTopVisibleOffset();
+      let target = null;
+      for (const b of blocks) {
+        if (b.start <= offset) target = b;
+        else break;
+      }
+      if (!target) target = blocks[0]; // preamble / unrenderable region → anchor to first block
+      if (target.start === lastToPreview) return; // idempotent anchor — no jitter
+      lastToPreview = target.start;
+      lock = 'preview';
+      if (target === blocks[0] && offset <= blocks[0].start) container.scrollTop = 0;
+      else alignBlockTop(target.el);
+      requestAnimationFrame(() => { lock = null; });
+    };
+
+    const runFromPreview = () => {
+      const blocks = getBlocks();
+      if (!blocks.length || !editorRef.current?.scrollToOffset) return;
+      const cTop = container.getBoundingClientRect().top;
+      let target = blocks[0];
+      for (const b of blocks) {
+        if (b.el.getBoundingClientRect().top <= cTop + 1) target = b;
+        else break;
+      }
+      if (target.start === lastToEditor) return;
+      lastToEditor = target.start;
+      lock = 'editor';
+      editorRef.current.scrollToOffset(target.start);
+      requestAnimationFrame(() => { lock = null; });
+    };
+
+    const flush = () => {
+      frame = null;
+      const side = pending;
+      pending = null;
+      if (side === 'editor') runFromEditor();
+      else if (side === 'preview') runFromPreview();
+    };
+    const schedule = (side) => {
+      pending = side;
+      if (frame == null) frame = requestAnimationFrame(flush);
+    };
+
+    editorScrollHandlerRef.current = () => { if (lock !== 'editor') schedule('editor'); };
+    const onPreviewScroll = () => { if (lock !== 'preview') schedule('preview'); };
+
+    container.addEventListener('scroll', onPreviewScroll, { passive: true });
+
+    // Reset both panes for the new section.
+    container.scrollTop = 0;
+    editorRef.current?.scrollToTop?.();
+
+    return () => {
+      container.removeEventListener('scroll', onPreviewScroll);
+      editorScrollHandlerRef.current = null;
+      if (frame != null) cancelAnimationFrame(frame);
+    };
+  }, [selectedSectionId]);
 
   return (
     <div id="editor-preview-container" className="flex-1 min-w-0 flex overflow-hidden bg-(--surface-tertiary)/50 p-2 gap-2">
@@ -182,7 +240,7 @@ export default function EditorPanel({
           </div>
         )}
         <div className="flex-1 min-h-0 overflow-hidden">
-          <LatexEditor ref={editorRef} content={displayContent} onChange={isOwnSection && !isLocked ? updateCode : undefined} readOnly={!isOwnSection || isLocked} fontSize={textSize} findings={findings} onFindingClick={onFindingClick} />
+          <LatexEditor key={selectedSectionId || 'no-section'} ref={editorRef} content={displayContent} onChange={isOwnSection && !isLocked ? updateCode : undefined} readOnly={!isOwnSection || isLocked} fontSize={textSize} findings={findings} onFindingClick={onFindingClick} onScroll={editorScrollBridge} />
         </div>
       </div>
       <div onMouseDown={onEditorResizeStart} className={`${compact ? 'hidden' : 'flex'} w-1.5 hover:bg-indigo-500 cursor-col-resize self-stretch transition-all shrink-0 z-10 relative group items-center justify-center border-l border-r border-(--border)`} title={t('dragToResize')}>
@@ -203,10 +261,10 @@ export default function EditorPanel({
             <button onClick={() => setPreviewZoom(p => Math.max(50, p - 10))} className="text-xs font-bold text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-secondary) px-1.5 py-0.5 rounded transition-colors">−</button>
           </div>
         </div>
-        <div className="flex-1 min-h-0 overflow-auto flex justify-center relative">
+        <div ref={previewOuterRef} className="flex-1 min-h-0 overflow-auto flex justify-center relative">
           <div style={{ transform: `scale(${previewZoom / 100})`, transformOrigin: 'center top' }}>
             <PreviewPane
-              ref={previewRef}
+              sectionTitle={currentSection?.sectionTitle}
               latex={displayContent}
               mediaAssets={mediaAssets}
               generatedReferences={generatedReferences}

@@ -126,7 +126,7 @@ export default function WorkspaceLayout() {
   const [replaceQuery, setReplaceQuery] = useState('');
   const [editorWidth, setEditorWidth] = useState(50);
   const [fileTreeWidth, setFileTreeWidth] = useState(256);
-  const [rightDrawerWidth, setRightDrawerWidth] = useState(380);
+  const [rightDrawerWidth] = useState(380);
   const [isCompactWorkspace, setIsCompactWorkspace] = useState(compactAtLoad);
   const [isDrawerOpen, setIsDrawerOpen] = useState(!compactAtLoad);
   const [isFileTreeOpen, setIsFileTreeOpen] = useState(!compactAtLoad);
@@ -231,6 +231,7 @@ export default function WorkspaceLayout() {
     if (current && current !== sec.id && dirtySectionsRef.current.has(current)) {
       if (!window.confirm(t('unsavedSectionSwitch'))) return false;
       dirtySectionsRef.current.delete(current);
+      removeWorkspaceDraft(projectRef.current?.id, current); // discard also drops the stale local draft
     }
     selectSection(sec.id);
     const draft = readWorkspaceDraft(projectRef.current?.id, sec.id);
@@ -251,12 +252,6 @@ export default function WorkspaceLayout() {
   };
 
   const displayContent = selectedPaper ? codeContent : `% ${t('noPaper')}`;
-
-  const [previewContent, setPreviewContent] = useState(displayContent);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setPreviewContent(displayContent), 250);
-    return () => window.clearTimeout(timer);
-  }, [displayContent]);
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -332,23 +327,6 @@ export default function WorkspaceLayout() {
       if (nw < 160) nw = 160;
       if (nw > 450) nw = 450;
       setFileTreeWidth(nw);
-    };
-    const onMouseUp = () => { document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); document.body.style.cursor = ''; document.body.style.userSelect = ''; };
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  };
-
-  const handleRightDividerMouseDown = (e) => {
-    e.preventDefault();
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    const onMouseMove = (me) => {
-      let nw = 380;
-      const p = document.getElementById('workspace-container');
-      if (p) nw = p.getBoundingClientRect().right - me.clientX;
-      if (nw < 250) nw = 250;
-      if (nw > 600) nw = 600;
-      setRightDrawerWidth(nw);
     };
     const onMouseUp = () => { document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); document.body.style.cursor = ''; document.body.style.userSelect = ''; };
     document.addEventListener('mousemove', onMouseMove);
@@ -1245,9 +1223,9 @@ export default function WorkspaceLayout() {
 
         <FilePanel compact={isCompactWorkspace} isOpen={isFileTreeOpen} width={fileTreeWidth} onResizeStart={handleLeftDividerMouseDown} sections={sections} assignedSections={assignedSections} selectedSectionId={selectedSectionId} onSelectSection={handleSelectSection} selectedPaper={selectedPaper} onSelectPaper={handleSelectPaper} onViewFullPaper={setShowFullPaperPreview} papers={papers} onUploadPaper={isLocked ? undefined : handleUploadPaper} sources={sources} onUploadSource={isLocked ? undefined : handleUploadSource} onDeleteSource={handleDeleteSource} mediaAssets={mediaAssets} onUploadMedia={isLocked ? undefined : handleUploadMedia} onDeleteMedia={handleDeleteMedia} onInsertMedia={canEditCurrentSection ? handleInsertMedia : undefined} showToast={showToast} isLocked={isLocked} onSaveDraft={handleSaveDraft} saveStatus={saveStatus} />
 
-        <EditorPanel compact={isCompactWorkspace} editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSections={assignedSections} canEditCurrentSection={canEditCurrentSection} currentSection={currentSection} displayContent={displayContent} previewContent={previewContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} isLocked={isLocked} findings={editorFindings} onFindingClick={handleFindingClick} sources={sources} aiSourceMatches={aiSourceMatches} />
+        <EditorPanel compact={isCompactWorkspace} editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSections={assignedSections} canEditCurrentSection={canEditCurrentSection} currentSection={currentSection} displayContent={displayContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={handleSaveDraft} insertLatexTag={insertLatexTag} insertSymbol={insertSymbol} handleFindReplace={handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} isLocked={isLocked} findings={editorFindings} onFindingClick={handleFindingClick} sources={sources} aiSourceMatches={aiSourceMatches} />
 
-        <ContextPanel compact={isCompactWorkspace} isOpen={isDrawerOpen} width={rightDrawerWidth} onResizeStart={handleRightDividerMouseDown} activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); localStorage.setItem('student_workspace_active_tab', tab); }} showToast={showToast}
+        <ContextPanel compact={isCompactWorkspace} isOpen={isDrawerOpen} width={rightDrawerWidth} activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); localStorage.setItem('student_workspace_active_tab', tab); }} showToast={showToast}
           sources={sources} isUploading={isUploading} setIsUploading={setIsUploading} project={project} setViewerFile={setViewerFile} fetchSources={fetchSources} isLocked={isLocked}
           feedbacks={feedbacks} assignedSections={assignedSections} setShowSubmitReviewModal={setShowSubmitReviewModal} userProjectRole={project?.currentUserRole}
           aiReview={aiReviewResult} aiReviewLoading={loadingAiReview} aiReviewProgress={aiReviewProgress} aiReviewError={aiReviewError}
