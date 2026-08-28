@@ -33,10 +33,20 @@ public class AiModelClientImpl implements AiModelClient {
 
     private static final MediaType APPLICATION_ZIP = MediaType.valueOf("application/zip");
     private static final Set<Integer> RETRYABLE_STATUSES = Set.of(429, 502, 503, 504);
+    private static final String MODEL_UNAVAILABLE_DETAIL = "Generation model is currently unavailable";
+    private static final String PROVIDER_REJECTED_DETAIL = "Generation provider rejected the request";
+    private static final Set<String> NON_RETRYABLE_UPSTREAM_DETAILS = Set.of(
+            MODEL_UNAVAILABLE_DETAIL,
+            PROVIDER_REJECTED_DETAIL);
     private static final Set<String> PUBLIC_UPSTREAM_DETAILS = Set.of(
+            MODEL_UNAVAILABLE_DETAIL,
             "Generation provider is temporarily overloaded",
             "Generation provider is temporarily unavailable",
-            "Provider rate limit exceeded");
+            "Generation provider could not be reached",
+            "Generation provider returned an unexpected status",
+            PROVIDER_REJECTED_DETAIL,
+            "Provider rate limit exceeded",
+            "Provider returned an invalid generation response");
     private static final long BASE_RETRY_DELAY_MS = 2_000;
     private static final long MAX_RETRY_DELAY_MS = 30_000;
     // Some provider throttle windows are minute-scale; a shorter 429 backoff can
@@ -231,12 +241,16 @@ public class AiModelClientImpl implements AiModelClient {
                 throw e;
             } catch (RestClientResponseException e) {
                 int status = e.getStatusCode().value();
-                if (!RETRYABLE_STATUSES.contains(status) || attempt >= retryLimit) {
+                String publicDetail = publicUpstreamDetail(e);
+                boolean retryable = RETRYABLE_STATUSES.contains(status)
+                        && (publicDetail == null
+                            || !NON_RETRYABLE_UPSTREAM_DETAILS.contains(publicDetail));
+                if (!retryable || attempt >= retryLimit) {
                     aiModelCallGate.recordFinalOutcome(
                             endpoint, status >= 500 && status <= 599);
                     log.warn("ai_call endpoint={} outcome=http_error status={} attempts={} duration_ms={}",
                             endpoint, status, attempt + 1, elapsedMillis(startedNanos));
-                    throw new AiApiException(endpoint, status, publicUpstreamDetail(e), e);
+                    throw new AiApiException(endpoint, status, publicDetail, e);
                 }
                 long retryAfterMillis = retryAfterMillis(e);
                 attempt++;

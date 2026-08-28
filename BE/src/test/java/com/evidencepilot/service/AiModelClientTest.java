@@ -291,6 +291,44 @@ class AiModelClientTest {
     }
 
     @Test
+    void generateDoesNotRetryRejectedProviderRequest() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("http://ai.test/ai/generate"))
+                .andRespond(withStatus(HttpStatus.BAD_GATEWAY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"detail\":\"Generation provider rejected the request\"}"));
+
+        AiModelClient.AiApiException error = assertThrows(
+                AiModelClient.AiApiException.class,
+                () -> client(builder.build(), "http://ai.test", 3)
+                        .generate("system", "prompt"));
+
+        assertThat(error.getStatusCode()).isEqualTo(502);
+        assertThat(error).hasMessageContaining("Generation provider rejected the request");
+        server.verify();
+    }
+
+    @Test
+    void generateDoesNotRetryUnavailableProviderModel() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo("http://ai.test/ai/generate"))
+                .andRespond(withStatus(HttpStatus.SERVICE_UNAVAILABLE)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"detail\":\"Generation model is currently unavailable\"}"));
+
+        AiModelClient.AiApiException error = assertThrows(
+                AiModelClient.AiApiException.class,
+                () -> client(builder.build(), "http://ai.test", 3)
+                        .generate("system", "prompt"));
+
+        assertThat(error.getStatusCode()).isEqualTo(503);
+        assertThat(error).hasMessageContaining("Generation model is currently unavailable");
+        server.verify();
+    }
+
+    @Test
     void generateDoesNotExposeUntrustedUpstreamDetail() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
