@@ -15,6 +15,8 @@ import FullPaperPreview from './FullPaperPreview.jsx';
 import { hasActiveExtraction } from './extractionPolling.js';
 import useUndoDelete, { UndoToast } from '../../components/UndoDelete.jsx';
 
+const SOURCE_MATCH_BATCH_SIZE = 10;
+
 async function loadAllProjectSources(projectId) {
   const sources = [];
   let page = 0;
@@ -910,27 +912,32 @@ export default function WorkspaceLayout() {
     setLoadingAiSources(true);
     setAiSourcesError('');
     try {
-      const { data: submit } = await api.post(
-        `/api/papers/${selectedPaper.id}/sections/${selectedSectionId}/review/source-matches`,
-        {
-          findings: findings.slice(0, 10).map((finding, findingIndex) => ({
-            findingIndex,
-            excerpt: finding.excerpt,
-            startOffset: finding.startOffset,
-            endOffset: finding.endOffset,
-          })),
-        },
-      );
-      if (aiReviewRequestRef.current !== reviewRequestId
-        || aiSourceRequestRef.current !== sourceRequestId) return;
-      const job = await pollAiJob(submit.jobId, () =>
-        aiReviewRequestRef.current !== reviewRequestId
-        || aiSourceRequestRef.current !== sourceRequestId);
-      if (!job) return;
-      if (aiReviewRequestRef.current !== reviewRequestId
-        || aiSourceRequestRef.current !== sourceRequestId) return;
       const grouped = {};
-      (job.result?.findings || []).forEach(item => { grouped[item.findingIndex] = item.candidates || []; });
+      for (let start = 0; start < findings.length; start += SOURCE_MATCH_BATCH_SIZE) {
+        const { data: submit } = await api.post(
+          `/api/papers/${selectedPaper.id}/sections/${selectedSectionId}/review/source-matches`,
+          {
+            findings: findings.slice(start, start + SOURCE_MATCH_BATCH_SIZE)
+              .map((finding, batchIndex) => ({
+                findingIndex: start + batchIndex,
+                excerpt: finding.excerpt,
+                startOffset: finding.startOffset,
+                endOffset: finding.endOffset,
+              })),
+          },
+        );
+        if (aiReviewRequestRef.current !== reviewRequestId
+          || aiSourceRequestRef.current !== sourceRequestId) return;
+        const job = await pollAiJob(submit.jobId, () =>
+          aiReviewRequestRef.current !== reviewRequestId
+          || aiSourceRequestRef.current !== sourceRequestId);
+        if (!job) return;
+        if (aiReviewRequestRef.current !== reviewRequestId
+          || aiSourceRequestRef.current !== sourceRequestId) return;
+        (job.result?.findings || []).forEach(item => {
+          grouped[item.findingIndex] = item.candidates || [];
+        });
+      }
       setAiSourceMatches(grouped);
     } catch (error) {
       if (aiReviewRequestRef.current === reviewRequestId
