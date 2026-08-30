@@ -642,7 +642,10 @@ public class SectionCitationReviewService {
             Project project,
             String fingerprint,
             SectionCitationReviewResponse review) {
-        ReviewSnapshot snapshot = new ReviewSnapshot();
+        ReviewSnapshot snapshot = reviewSnapshotRepository
+                .findByProjectIdAndStyleAndInputFingerprint(
+                        project.getId(), SNAPSHOT_STYLE, fingerprint)
+                .orElseGet(ReviewSnapshot::new);
         snapshot.setProject(project);
         snapshot.setStyle(SNAPSHOT_STYLE);
         snapshot.setInputFingerprint(fingerprint);

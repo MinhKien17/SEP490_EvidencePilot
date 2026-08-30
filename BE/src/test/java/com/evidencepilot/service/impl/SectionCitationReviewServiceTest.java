@@ -772,7 +772,7 @@ class SectionCitationReviewServiceTest {
         assertThat(result.complete()).isTrue();
         assertThat(result.provider()).isEqualTo("provider");
         verify(aiModelClient).generateForReview(anyString(), anyString());
-        verify(snapshotRepository).save(any(ReviewSnapshot.class));
+        verify(snapshotRepository).save(snapshot);
     }
 
     @Test
