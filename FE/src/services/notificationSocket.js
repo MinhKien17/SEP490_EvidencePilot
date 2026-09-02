@@ -5,6 +5,7 @@ const subscribers = new Set();
 let client = null;
 let activeToken = null;
 let subscription = null;
+let reconnectAttempts = 0;
 
 function disconnect() {
   subscription?.unsubscribe();
@@ -12,6 +13,7 @@ function disconnect() {
   const current = client;
   client = null;
   activeToken = null;
+  reconnectAttempts = 0;
   current?.deactivate();
 }
 
@@ -49,7 +51,7 @@ if (typeof window !== 'undefined') {
 }
 
 export function subscribeToNotifications(token, handler) {
-  if (!token || typeof handler !== 'function') return () => {};
+  if (!token || typeof handler !== 'function') return () => { };
 
   const subscriber = { handler };
   subscribers.add(subscriber);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppHeader from '../../components/layout/AppHeader.jsx';
 import Breadcrumb from '../../components/layout/Breadcrumb.jsx';
@@ -30,65 +30,55 @@ export default function ProjectManagement() {
   const [deletingId, setDeletingId] = useState(null);
 
   const [search, setSearch] = useState('');
-  const abortControllerRef = useRef(null);
-  const debounceRef = useRef(null);
 
-  const fetchProjects = useCallback(async () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    abortControllerRef.current = new AbortController();
+  const fetchProjects = useCallback(async (signal) => {
     setLoading(true);
-    try { 
+    try {
       const r = await api.get(`/api/projects?page=${page}&size=${PAGINATION_LIMIT}${search ? `&search=${encodeURIComponent(search)}` : ''}`, {
-        signal: abortControllerRef.current.signal
-      }); 
-      setProjects(r.data.content || []); 
-      setTotal(r.data.totalElements || 0); 
-    } catch (err) { 
+        signal
+      });
+      setProjects(r.data.content || []);
+      setTotal(r.data.totalElements || 0);
+    } catch (err) {
       if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
-        setProjects([]); 
+        setProjects([]);
       }
-    } finally { 
-      if (abortControllerRef.current && !abortControllerRef.current.signal.aborted) {
-        setLoading(false); 
-      }
+    } finally {
+      if (!signal?.aborted) setLoading(false);
     }
   }, [page, search]);
 
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      fetchProjects();
-    }, 300);
-    return () => clearTimeout(debounceRef.current);
+    const controller = new AbortController();
+    const timer = setTimeout(() => fetchProjects(controller.signal), 300);
+    return () => { clearTimeout(timer); controller.abort(); };
   }, [fetchProjects]);
 
   const handleCreate = async () => {
     if (!newTitle.trim()) return;
     setCreating(true);
-    try { 
-      await api.post('/api/projects', { title: newTitle, description: newDescription }); 
-      setShowCreate(false); 
-      setNewTitle(''); 
-      setNewDescription(''); 
-      fetchProjects(); 
-    } catch { 
-      alert(t.createProjectFailed); 
-    } finally { 
-      setCreating(false); 
+    try {
+      await api.post('/api/projects', { title: newTitle, description: newDescription });
+      setShowCreate(false);
+      setNewTitle('');
+      setNewDescription('');
+      fetchProjects();
+    } catch {
+      alert(t.createProjectFailed);
+    } finally {
+      setCreating(false);
     }
   };
 
   const handleUpdate = async (id) => {
     if (!editTitle.trim()) return;
-    try { 
-      await api.put(`/api/projects/${id}`, { title: editTitle }); 
-      setEditId(null); 
-      setEditTitle(''); 
-      fetchProjects(); 
-    } catch { 
-      alert(t.updateProjectFailed); 
+    try {
+      await api.put(`/api/projects/${id}`, { title: editTitle });
+      setEditId(null);
+      setEditTitle('');
+      fetchProjects();
+    } catch {
+      alert(t.updateProjectFailed);
     }
   };
 
@@ -98,19 +88,19 @@ export default function ProjectManagement() {
     try {
       await api.delete(`/api/projects/${id}`);
       await fetchProjects();
-    } catch { 
-      alert(t.deleteProjectFailed); 
-    } finally { 
-      setDeletingId(null); 
+    } catch {
+      alert(t.deleteProjectFailed);
+    } finally {
+      setDeletingId(null);
     }
   };
 
   const handlePatch = async (id, action) => {
-    try { 
-      await api.patch(`/api/projects/${id}/${action}`); 
-      fetchProjects(); 
-    } catch { 
-      alert(t.projectActionFailed.replace('{{action}}', t[action] || action)); 
+    try {
+      await api.patch(`/api/projects/${id}/${action}`);
+      fetchProjects();
+    } catch {
+      alert(t.projectActionFailed.replace('{{action}}', t[action] || action));
     }
   };
 
@@ -129,7 +119,7 @@ export default function ProjectManagement() {
 
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
           <h1 className="text-2xl font-black text-(--brand-foreground)">{t.projects} ({total})</h1>
-          <div className="flex items-center gap-3">
+          <div className="flex w-full items-center gap-3 sm:w-auto">
             <input
               type="text"
               placeholder={ct.search || 'Search...'}
@@ -186,7 +176,7 @@ export default function ProjectManagement() {
                   </div>
                   <p className="text-xs text-(--text-secondary) line-clamp-2 mb-4">{p.description || ct.noData}</p>
                 </div>
-                
+
                 <div className="border-t border-(--border-light) pt-3">
                   <div className="flex items-center justify-between text-[11px] text-(--text-tertiary) mb-3">
                     <span className="flex items-center gap-1">
@@ -195,7 +185,7 @@ export default function ProjectManagement() {
                     </span>
                     <span>{t.created}: {formatDate(p.createdAt, language)}</span>
                   </div>
-                  
+
                   <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
                     <button onClick={() => navigate(`/instructor/projects/${p.id}`)} className="text-xs text-(--brand) hover:bg-(--brand-soft) font-bold px-2.5 py-1 rounded-lg transition-colors">{t.detail}</button>
                     <button onClick={() => { setEditId(p.id); setEditTitle(p.title); }} className="text-xs text-(--brand) hover:bg-(--brand-soft) font-bold px-2.5 py-1 rounded-lg transition-colors">{ct.edit}</button>
