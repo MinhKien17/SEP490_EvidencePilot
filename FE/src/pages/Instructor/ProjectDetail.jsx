@@ -1237,8 +1237,6 @@ export default function ProjectDetail() {
                   onReloadConflict={handleReloadConflictSection}
                   onDragEnd={handleDragEnd}
                   onConfigSave={saveSectionStandard}
-                  onEvaluateStandard={runStandardCheck}
-                  evaluatingSectionId={evaluatingSectionId}
                 />
               )}
             </div>

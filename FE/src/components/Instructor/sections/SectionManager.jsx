@@ -12,7 +12,7 @@ export default function SectionManager({
   sectionStructureLocked,
   projectReadOnly,
   sectionStructureSaving,
-  sectionEvals,
+  sectionEvals = {},
   t,
   ct,
   users,
@@ -28,16 +28,11 @@ export default function SectionManager({
   onReloadConflict,
   onDragEnd,
   onConfigSave,
-  onEvaluateStandard,
-  evaluatingSectionId,
 }) {
   const [configSectionId, setConfigSectionId] = useState(null);
   const draggedIndexRef = useRef(null);
   const [draggedIndex, setDraggedIndex] = useState(null);
-  const draftDirty = JSON.stringify(sections) !== JSON.stringify(draftSections);
-  const orderDirty = draftDirty;
-  const standardsDirty = Object.keys(pendingStandards || {}).length > 0;
-  const anyDirty = draftDirty || standardsDirty;
+  const anyDirty = JSON.stringify(sections) !== JSON.stringify(draftSections);
   const configSection = displaySections.find(s => String(s.id) === String(configSectionId)) || null;
   const configEval = configSection ? sectionEvals[String(configSection.id)] : null;
 
@@ -49,9 +44,6 @@ export default function SectionManager({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 space-y-3 h-full">
-      {displaySections.some(section => sectionEvals[String(section.id)]?.status !== 'PASSED') && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">{t.standardAttentionRequired}</div>
-      )}
       {conflictSectionId && (
         <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 shrink-0" role="alert">{t.sectionConflict}</div>
       )}
@@ -90,10 +82,7 @@ export default function SectionManager({
               onDelete={onDelete}
               onAssign={onAssign}
               onReloadConflict={onReloadConflict}
-              evaluation={sectionEvals[String(s.id)]}
               onConfigStandard={(sid) => setConfigSectionId(sid)}
-              onEvaluateStandard={onEvaluateStandard}
-              isEvaluating={String(s.id) === String(evaluatingSectionId)}
               projectMembers={projectMembers}
               users={users}
               t={t}

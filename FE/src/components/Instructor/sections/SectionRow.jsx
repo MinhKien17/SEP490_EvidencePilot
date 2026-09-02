@@ -17,10 +17,7 @@ export default function SectionRow({
   onDelete,
   onAssign,
   onReloadConflict,
-  evaluation,
   onConfigStandard,
-  onEvaluateStandard,
-  isEvaluating,
   projectMembers,
   users,
   t,
@@ -66,17 +63,6 @@ export default function SectionRow({
           <span className="font-medium truncate">{s.sectionTitle}</span>
         )}
         {s.version > 1 && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold">v{s.version}</span>}
-        {evaluation?.status && (
-          <span
-            className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${evaluation.status === 'PASSED' ? 'bg-emerald-100 text-emerald-700'
-                : evaluation.status === 'FAILED' || evaluation.status === 'SYSTEM_ERROR' ? 'bg-rose-100 text-rose-700'
-                  : 'bg-amber-100 text-amber-700'
-              }`}
-            title={evaluation.errorMessage || undefined}
-          >
-            {evaluation.status}{evaluation.scorePercent != null ? ` · ${evaluation.scorePercent}%` : ''}
-          </span>
-        )}
         {s.assignedUserId && (
           <span className="flex items-center gap-1 rounded bg-[var(--surface-tertiary)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--text-secondary)]">
             <svg aria-hidden="true" viewBox="0 0 24 24" className="h-3 w-3 fill-none stroke-current" strokeWidth="2"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
@@ -115,16 +101,6 @@ export default function SectionRow({
               className="rounded border border-indigo-200 bg-white px-2 py-1 text-[10px] font-bold text-indigo-600 hover:bg-indigo-50 disabled:opacity-50"
             >
               {t.configStandard}
-            </button>
-          )}
-          {evaluation && (
-            <button
-              type="button"
-              onClick={() => onEvaluateStandard(s.id)}
-              disabled={isReadOnly || isSaving || isEvaluating}
-              className="rounded border border-emerald-200 bg-white px-2 py-1 text-[10px] font-bold text-emerald-700 transition-colors hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isEvaluating ? t.evaluatingStandard : t.evaluateStandard}
             </button>
           )}
           <select
