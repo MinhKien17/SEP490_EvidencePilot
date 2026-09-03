@@ -458,7 +458,7 @@ export default function SourceLibraryPanel() {
                       <button
                         type="button"
                         onClick={() => setViewerFile({
-                          fileUrl: API_ROUTES.DOCUMENTS.DOWNLOAD(source.id),
+                          fileUrl: `/api/documents/${source.id}/download`,
                           fileName: source.originalFilename || displayTitle(source),
                         })}
                         disabled={recovering}
@@ -586,7 +586,7 @@ export default function SourceLibraryPanel() {
                       <button
                         type="button"
                         onClick={() => setViewerFile({
-                          fileUrl: API_ROUTES.DOCUMENTS.DOWNLOAD(source.id),
+                          fileUrl: `/api/documents/${source.id}/download`,
                           fileName: source.originalFilename || displayTitle(source),
                         })}
                         disabled={recovering}

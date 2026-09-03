@@ -6,6 +6,7 @@ import { commonText } from '../locales';
 import api from '../services/api.js';
 import { getPostLoginDestination } from './loginOrigin.js';
 import { AuroraBackground } from '../components/ui/aurora-background';
+import WordRotate from '../components/ui/WordRotate.jsx';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -66,96 +67,104 @@ export default function Login() {
 
   return (
     <AuroraBackground className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 lg:p-8">
-      <div className="w-full max-w-md bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-slate-200/80 dark:border-zinc-800 rounded-3xl p-8 sm:p-10 shadow-2xl relative z-10 transition-colors">
-        {/* Back to Home Link */}
-        <div className="mb-6">
-          <Link
-            to="/"
-            className="inline-flex items-center text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors gap-1.5 group"
-          >
-            <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            {t.backToHome || (language === 'vi' ? 'Quay lại Trang chủ' : 'Back to Home')}
-          </Link>
-        </div>
-
-        {/* Brand Header */}
-        <div className="mb-8 text-left">
-          <div className="inline-flex items-center gap-2 mb-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-500 flex items-center justify-center text-white font-black text-sm shadow-md">
-              EP
-            </div>
-            <span className="font-extrabold text-sm tracking-tight text-slate-900 dark:text-slate-100">
-              Evidence Pilot
-            </span>
+      <div className="flex w-full max-w-6xl mx-auto gap-8 lg:gap-12 items-center justify-between">
+        {/* Left 50% — Login Card */}
+        <div className="w-full max-w-md lg:w-1/2 lg:max-w-md bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-slate-200/80 dark:border-zinc-800 rounded-3xl p-8 sm:p-10 shadow-2xl relative z-10 transition-colors">
+          {/* Back to Home Link */}
+          <div className="mb-6">
+            <Link
+              to="/"
+              className="inline-flex items-center text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors gap-1.5 group"
+            >
+              <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              {t.backToHome || (language === 'vi' ? 'Quay lại Trang chủ' : 'Back to Home')}
+            </Link>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
-            {t.welcomeBack || 'Welcome back'}
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            {t.signInSubtitle || 'Sign in to Evidence Pilot to manage your projects.'}
+
+          {/* Brand Header */}
+          <div className="mb-8 text-left">
+            <div className="inline-flex items-center gap-2 mb-3">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-500 flex items-center justify-center text-white font-black text-sm shadow-md">
+                EP
+              </div>
+              <span className="font-extrabold text-sm tracking-tight text-slate-900 dark:text-slate-100">
+                Evidence Pilot
+              </span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
+              {t.welcomeBack || 'Welcome back'}
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+              {t.signInSubtitle || 'Sign in to Evidence Pilot to manage your projects.'}
+            </p>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                {t.email}
+              </label>
+              <input
+                type="email"
+                name="email"
+                value={form.email}
+                onChange={handleChange}
+                required
+                placeholder="you@example.com"
+                className="w-full bg-slate-50/70 dark:bg-zinc-800/80 border border-slate-300 dark:border-zinc-700 rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all shadow-2xs"
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                  {t.password || (language === 'vi' ? 'Mật khẩu' : 'Password')}
+                </label>
+              </div>
+              <input
+                type="password"
+                name="passwordHash"
+                value={form.passwordHash}
+                onChange={handleChange}
+                required
+                placeholder="••••••••"
+                className="w-full bg-slate-50/70 dark:bg-zinc-800/80 border border-slate-300 dark:border-zinc-700 rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all shadow-2xs"
+              />
+            </div>
+
+            {notice && !error && (
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-200 rounded-xl text-xs font-medium border border-amber-200 dark:border-amber-800">
+                {notice}
+              </div>
+            )}
+
+            {error && (
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-200 rounded-xl text-xs font-medium border border-rose-200 dark:border-rose-800">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 mt-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg hover:shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {loading ? (t.signingIn || 'Signing in...') : (t.signIn || 'Sign In')}
+            </button>
+          </form>
+
+          <p className="text-center text-xs text-slate-500 dark:text-slate-400 mt-6">
+            {t.needAccountHelp || 'Need an account? Contact your administrator.'}
           </p>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-              {t.email}
-            </label>
-            <input
-              type="email"
-              name="email"
-              value={form.email}
-              onChange={handleChange}
-              required
-              placeholder="you@example.com"
-              className="w-full bg-slate-50/70 dark:bg-zinc-800/80 border border-slate-300 dark:border-zinc-700 rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all shadow-2xs"
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                {t.password || (language === 'vi' ? 'Mật khẩu' : 'Password')}
-              </label>
-            </div>
-            <input
-              type="password"
-              name="passwordHash"
-              value={form.passwordHash}
-              onChange={handleChange}
-              required
-              placeholder="••••••••"
-              className="w-full bg-slate-50/70 dark:bg-zinc-800/80 border border-slate-300 dark:border-zinc-700 rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all shadow-2xs"
-            />
-          </div>
-
-          {notice && !error && (
-            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-200 rounded-xl text-xs font-medium border border-amber-200 dark:border-amber-800">
-              {notice}
-            </div>
-          )}
-
-          {error && (
-            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-200 rounded-xl text-xs font-medium border border-rose-200 dark:border-rose-800">
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 mt-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg hover:shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-          >
-            {loading ? (t.signingIn || 'Signing in...') : (t.signIn || 'Sign In')}
-          </button>
-        </form>
-
-        <p className="text-center text-xs text-slate-500 dark:text-slate-400 mt-6">
-          {t.needAccountHelp || 'Need an account? Contact your administrator.'}
-        </p>
+        {/* Right 50% — WordRotate (hidden on small) */}
+        <div className="hidden lg:flex flex-1 lg:w-1/2 items-center justify-center">
+          <WordRotate />
+        </div>
       </div>
     </AuroraBackground>
   );
