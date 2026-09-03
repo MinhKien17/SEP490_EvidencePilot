@@ -420,7 +420,7 @@ export default function ProjectDetail() {
       if (specificDoi) {
         setDoiErrors(prev => prev.map(e => e.doi === specificDoi ? { ...e, error: err?.response?.data?.message || 'Network error' } : e));
       } else {
-        setDoiErrors([{ doi: 'batch', error: err?.response?.data?.message || 'Network/Server Error: Could not complete ingestion' }]);
+        setDoiErrors([{ doi: dois.length === 1 ? dois[0] : 'batch', error: err?.response?.data?.message || 'Network/Server Error: Could not complete ingestion' }]);
       }
     }
     finally { setAddSourceLoading(false); }
