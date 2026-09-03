@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { AppHeader, LoadingSkeleton, EmptyState, Modal, UploadZone, Breadcrumb, FileViewerModal } from '../../components';
+import { AppHeader, LoadingSkeleton, EmptyState, Modal, UploadZone, Breadcrumb, FileViewerModal, UniversalDocumentIngestionModal } from '../../components';
 import { instructorText, commonText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -11,25 +11,26 @@ import { DataSet } from 'vis-data';
 import useUndoDelete, { UndoToast } from '../../components/ui/UndoDelete.jsx';
 import DeleteConfirm from '../../components/ui/DeleteConfirm.jsx';
 
-const TABS = ['documents', 'connectedMap', 'visualizeMap'];
-const TAB_IDS = ['documents-tab', 'connected-map-tab', 'visualize-map-tab'];
-const DEFAULT_GRAPH_SETTINGS = {
-  arrows: true,
-  showUnresolved: true,
-  textFade: 1.1,
-  nodeSize: 1,
-  linkThickness: 1,
-  centerForce: 0.01,
-  repelForce: 70,
-  linkForce: 0.06,
-  linkDistance: 160,
-};
+import {
+  COLLECTION_DETAIL_TAB_KEYS,
+  COLLECTION_DETAIL_TAB_IDS,
+  DEFAULT_GRAPH_SETTINGS,
+  STATUS_COLOR_MAP,
+  DOCUMENT_PROCESSING_STATUS,
+  DEFAULT_PAGE,
+  SHARED_DOCS_PAGE_SIZE,
+  MAX_BATCH_FETCH_SIZE,
+  ENTITY_TYPES,
+  DEFAULT_COLLECTION_INGESTION_TABS,
+  API_ROUTES,
+  DATE_FORMATS,
+} from '../../constants';
+
+const TABS = COLLECTION_DETAIL_TAB_KEYS;
+const TAB_IDS = COLLECTION_DETAIL_TAB_IDS;
 
 function statusColor(s) {
-  if (s === 'READY' || s === 'COMPLETED') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-  if (s === 'PROCESSING' || s === 'UPLOADED' || s === 'QUEUED') return 'bg-amber-100 text-amber-700 border-amber-200';
-  if (s === 'FAILED') return 'bg-rose-100 text-rose-700 border-rose-200';
-  return 'bg-gray-100 text-gray-500 border-gray-200';
+  return STATUS_COLOR_MAP[s] || STATUS_COLOR_MAP.DEFAULT;
 }
 
 function FileIcon({ name, className = 'w-5 h-5' }) {
@@ -38,763 +39,35 @@ function FileIcon({ name, className = 'w-5 h-5' }) {
   return <svg className={`${className} ${color}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 3h7l5 5v13H7a2 2 0 01-2-2V5a2 2 0 012-2zm7 0v6h6M9 13h6m-6 4h6" /></svg>;
 }
 
-export default function CollectionDetail() {
-  const { id } = useParams();
-  const { language } = useLanguage();
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
-  const t = instructorText[language];
-  const ct = commonText[language];
-  const { pending: pendingDelete, start: startDelete, undo: undoDelete, dismiss: dismissDelete } = useUndoDelete();
-  const undoStrings = {
-    header: t.undoHeader,
-    bodyTemplate: t.undoBodyTemplate,
-    caution: t.undoCaution,
-    undoLabel: t.undoLabel,
-    undoRemaining: t.undoRemaining,
-    dismissLabel: t.dismissLabel,
-  };
-
-  const [activeTab, setActiveTab] = useState(0);
-  const { content: sourcesRaw, loading: srcLoading, error: srcError, refetch: refetchSources } = useCollectionSources(id);
-  const [removedIds, setRemovedIds] = useState(() => new Set());
-  const sources = useMemo(() => sourcesRaw.filter(s => !removedIds.has(String(s.id))), [sourcesRaw, removedIds]);
-  const [selectedSource, setSelectedSource] = useState(null);
-  const [viewerFile, setViewerFile] = useState(null);
-  const [showGuide, setShowGuide] = useState(false);
-
-  const [sharedSearch, setSharedSearch] = useState('');
-  const [sharedProjectFilter, setSharedProjectFilter] = useState('');
-  const [sharedPage, setSharedPage] = useState(0);
-  const [isSharedGridView, setIsSharedGridView] = useState(true);
-
-  const [collection, setCollection] = useState(null);
-  const [collectionLoading, setCollectionLoading] = useState(true);
-
-  const [addDocModal, setAddDocModal] = useState(false);
-  const [addDocOption, setAddDocOption] = useState(null);
-
-  const [categories, setCategories] = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [editModal, setEditModal] = useState({ open: false, name: '', description: '', categoryId: '', submitting: false });
+function VisualizeMapPanel({ collectionId, isDark, t, ct }) {
   const [graphData, setGraphData] = useState(null);
-  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphLoading, setGraphLoading] = useState(true);
   const [selectedGraphNode, setSelectedGraphNode] = useState(null);
   const [graphSettingsOpen, setGraphSettingsOpen] = useState(false);
   const [graphSettings, setGraphSettings] = useState(() => ({ ...DEFAULT_GRAPH_SETTINGS }));
   const [graphSearch, setGraphSearch] = useState('');
+
   const graphRef = useRef(null);
   const networkRef = useRef(null);
   const graphRuntimeRef = useRef(null);
   const graphSettingsRef = useRef(DEFAULT_GRAPH_SETTINGS);
   const graphSearchRef = useRef('');
 
-  useEffect(() => {
-    api.get('/api/collection-categories').then(r => setCategories(r.data)).catch(() => { });
-  }, []);
-
-  useEffect(() => {
-    api.get('/api/projects?page=0&size=100').then(r => setProjects(r.data?.content || [])).catch(() => { });
-  }, []);
-
-  useEffect(() => {
-    api.get(`/api/collections/${id}`).then(r => setCollection(r.data)).catch(() => { }).finally(() => setCollectionLoading(false));
-  }, [id]);
-
-  const handleUploadBatch = async (files) => {
-    if (!files || files.length === 0) return false;
-    const fd = new FormData();
-    const fileList = Array.from(files);
-    for (const f of fileList) {
-      fd.append('files', f);
-    }
-    fd.append('collectionId', id);
-    try {
-      const res = await api.post('/api/sources/batch', fd);
-      await refetchSources();
-      if (res.data?.failed && res.data.failed.length > 0) {
-        alert(`${res.data.succeeded?.length || 0} uploaded, ${res.data.failed.length} failed.`);
-      }
-      return true;
-    } catch {
-      alert(t.uploadFailed);
-      return false;
-    }
-  };
-
-  const handleRemoveSource = async (sourceId) => {
-    const sid = String(sourceId);
-    setRemovedIds(prev => new Set(prev).add(sid));
-    try {
-      await api.delete(`/api/collections/${id}/sources/${sourceId}`);
-      if (String(selectedSource?.id) === sid) setSelectedSource(null);
-      await refetchSources();
-    } catch {
-      alert(t.deleteFailed);
-      setRemovedIds(prev => { const n = new Set(prev); n.delete(sid); return n; });
-    }
-  };
-
-  const handleDownloadSource = async (source) => {
-    try {
-      const response = await api.get(`/api/documents/${source.id}/download`, { responseType: 'blob' });
-      const url = URL.createObjectURL(response.data);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = source.originalFilename || 'document';
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      alert(t.downloadFailed);
-    }
-  };
-
-  const handleDeleteCollection = async () => {
-    const shared = sources.filter(s => (s.projectIds || []).length > 0);
-    const msg = shared.length > 0 ? `${t.sharedDocsWarning} ${t.deleteConfirm}` : t.deleteConfirm;
-    startDelete({
-      ...undoStrings,
-      bodyTemplate: undefined,
-      message: msg,
-      entityName: collection?.name || collection?.title || id,
-      entityDetails: id,
-    }, () => {
-      api.delete(`/api/collections/${id}`).then(() => { window.location.href = '/instructor/collections'; }).catch(() => alert(t.deleteFailed));
-    });
-  };
-
-  const handleEditOpen = () => {
-    setEditModal({ open: true, name: collection?.name || '', description: collection?.description || '', categoryId: collection?.categoryId || '', submitting: false });
-  };
-
-  const handleEditSubmit = async (e) => {
-    e.preventDefault();
-    if (!editModal.name.trim()) return;
-    setEditModal(p => ({ ...p, submitting: true }));
-    try {
-      const res = await api.put(`/api/collections/${id}`, {
-        name: editModal.name.trim(),
-        description: editModal.description.trim() || null,
-        categoryId: editModal.categoryId || null,
-      });
-      setCollection(res.data);
-      setEditModal({ open: false, name: '', description: '', categoryId: '', submitting: false });
-    } catch (err) {
-      alert(err.response?.data?.message || t.uploadFailed);
-      setEditModal(p => ({ ...p, submitting: false }));
-    }
-  };
-  const AddDocForm = () => {
-    const [doiInput, setDoiInput] = useState('');
-    const [submitting, setSubmitting] = useState(false);
-    const [doiError, setDoiError] = useState('');
-    const [librarySources, setLibrarySources] = useState([]);
-    const [libraryLoading, setLibraryLoading] = useState(false);
-    const [libraryError, setLibraryError] = useState('');
-    const [libraryQuery, setLibraryQuery] = useState('');
-    const [selectedLibraryIds, setSelectedLibraryIds] = useState(() => new Set());
-    const [uploadingFiles, setUploadingFiles] = useState(false);
-
-    useEffect(() => {
-      if (addDocOption !== 'library') return undefined;
-
-      let active = true;
-      setLibraryLoading(true);
-      setLibraryError('');
-      api.get(`/api/collections/${id}/library-sources`, { params: { size: 100 } })
-        .then(response => {
-          if (active) setLibrarySources(response.data?.content || []);
-        })
-        .catch(() => {
-          if (active) setLibraryError(t.libraryLoadFailed);
-        })
-        .finally(() => {
-          if (active) setLibraryLoading(false);
-        });
-
-      return () => { active = false; };
-    }, [addDocOption, id, t.libraryLoadFailed]);
-
-    const handleDoiBatchSubmit = async () => {
-      setDoiError('');
-      const dois = doiInput
-        .split(/[\n,;]+/)
-        .map(d => d.trim())
-        .filter(Boolean);
-
-      if (dois.length === 0) {
-        setDoiError(language === 'vi' ? 'Vui lòng nhập ít nhất một DOI' : 'Please enter at least one DOI');
-        return false;
-      }
-
-      setSubmitting(true);
-      try {
-        const res = await api.post('/api/documents/ingest/doi/batch', { dois, collectionId: id });
-        await refetchSources();
-        if (res.data?.failed && res.data.failed.length > 0) {
-          alert(`${res.data.succeeded?.length || 0} DOIs ingested, ${res.data.failed.length} failed.`);
-        }
-        return true;
-      } catch (err) {
-        setDoiError(err.response?.data?.message || t.uploadFailed);
-        return false;
-      } finally {
-        setSubmitting(false);
-      }
-    };
-
-    const toggleSelectLibrary = (sourceId) => {
-      setSelectedLibraryIds(prev => {
-        const next = new Set(prev);
-        if (next.has(sourceId)) next.delete(sourceId);
-        else next.add(sourceId);
-        return next;
-      });
-    };
-
-    const handleSelectAllLibrary = (filtered) => {
-      if (selectedLibraryIds.size === filtered.length && filtered.length > 0) {
-        setSelectedLibraryIds(new Set());
-      } else {
-        setSelectedLibraryIds(new Set(filtered.map(s => s.id)));
-      }
-    };
-
-    const handleAddSelectedLibrary = async () => {
-      if (selectedLibraryIds.size === 0) return;
-      setSubmitting(true);
-      setLibraryError('');
-      try {
-        await api.post(`/api/collections/${id}/sources/batch`, { sourceIds: Array.from(selectedLibraryIds) });
-        setLibrarySources(current => current.filter(s => !selectedLibraryIds.has(s.id)));
-        setSelectedLibraryIds(new Set());
-        await refetchSources();
-        setAddDocOption(null);
-        setAddDocModal(false);
-      } catch (err) {
-        setLibraryError(err.response?.data?.message || t.libraryAddFailed);
-      } finally {
-        setSubmitting(false);
-      }
-    };
-
-    if (!addDocOption) return null;
-
-    if (addDocOption === 'doi') {
-      return (
-        <form onSubmit={async (e) => {
-          e.preventDefault();
-          if (await handleDoiBatchSubmit()) {
-            setAddDocOption(null);
-            setAddDocModal(false);
-          }
-        }} id="add-doc-panel" role="tabpanel" aria-labelledby="add-doc-tab-doi" className="space-y-4">
-          <p className="text-xs text-(--text-secondary)">
-            {language === 'vi'
-              ? 'Nhập một hoặc nhiều mã DOI (phân tách bằng dấu phẩy hoặc xuống dòng):'
-              : 'Enter one or multiple DOIs (separated by commas or newlines):'}
-          </p>
-          <textarea
-            rows="4"
-            value={doiInput}
-            onChange={e => setDoiInput(e.target.value)}
-            placeholder="10.1038/s41586-020-2649-2&#10;10.1145/3313831.3376727"
-            required
-            className="w-full px-4 py-3 bg-(--surface-secondary) border border-(--border) rounded-xl text-(--text-primary) font-mono text-xs focus:outline-none focus:ring-2 focus:ring-(--focus) transition-colors resize-y"
-          />
-          {doiError && <p className="text-xs font-semibold text-rose-600">{doiError}</p>}
-          <button type="submit" disabled={submitting || !doiInput.trim()}
-            className="w-full py-3 bg-(--brand) text-(--on-brand) font-bold text-xs rounded-xl hover:bg-(--brand-hover) transition-colors shadow-md disabled:opacity-50">
-            {submitting ? ct.saving : t.submitDoi}
-          </button>
-        </form>
-      );
-    }
-
-    if (addDocOption === 'upload') {
-      return (
-        <div id="add-doc-panel" role="tabpanel" aria-labelledby="add-doc-tab-upload" className="space-y-4">
-          <p className="text-xs text-(--text-secondary)">
-            {language === 'vi'
-              ? 'Kéo thả hoặc chọn một hoặc nhiều tệp PDF / DOCX / TeX để tải lên bộ sưu tập:'
-              : 'Drag & drop or select multiple PDF / DOCX / TeX files to upload to this collection:'}
-          </p>
-          <div className="space-y-3">
-            <UploadZone
-              onUpload={async (f) => {
-                setUploadingFiles(true);
-                const ok = await handleUploadBatch([f]);
-                setUploadingFiles(false);
-                if (ok) {
-                  setAddDocOption(null);
-                  setAddDocModal(false);
-                }
-              }}
-              accept=".pdf,.docx,.md,.tex"
-              label={t.dropFiles}
-            />
-            <div className="flex items-center justify-between text-xs text-(--text-tertiary) px-1">
-              <span>{language === 'vi' ? 'Hỗ trợ tải lên nhiều tệp cùng lúc' : 'Multi-file batch upload supported'}</span>
-              <label className="cursor-pointer text-(--brand) font-bold hover:underline">
-                <input
-                  type="file"
-                  multiple
-                  accept=".pdf,.docx,.md,.tex"
-                  className="hidden"
-                  onChange={async (e) => {
-                    if (e.target.files && e.target.files.length > 0) {
-                      setUploadingFiles(true);
-                      const ok = await handleUploadBatch(e.target.files);
-                      setUploadingFiles(false);
-                      if (ok) {
-                        setAddDocOption(null);
-                        setAddDocModal(false);
-                      }
-                    }
-                  }}
-                />
-                {language === 'vi' ? 'Chọn nhiều tệp...' : 'Select multiple files...'}
-              </label>
-            </div>
-            {uploadingFiles && (
-              <div className="p-3 bg-blue-50 text-blue-700 rounded-xl text-xs font-bold text-center animate-pulse">
-                {language === 'vi' ? 'Đang tải lên các tệp...' : 'Uploading files...'}
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    if (addDocOption === 'library') {
-      const normalizedQuery = libraryQuery.trim().toLowerCase();
-      const filteredSources = librarySources.filter(source =>
-        !normalizedQuery || `${source.title || ''} ${source.originalFilename || source.id}`
-          .toLowerCase().includes(normalizedQuery));
-
-      return (
-        <div id="add-doc-panel" className="space-y-3" role="tabpanel" aria-labelledby="add-doc-tab-library">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-(--text-secondary)">{t.chooseFromLibraryDescription}</p>
-            {filteredSources.length > 0 && (
-              <button
-                type="button"
-                onClick={() => handleSelectAllLibrary(filteredSources)}
-                className="text-xs font-bold text-(--brand) hover:underline cursor-pointer"
-              >
-                {selectedLibraryIds.size === filteredSources.length
-                  ? (language === 'vi' ? 'Bỏ chọn tất cả' : 'Deselect all')
-                  : (language === 'vi' ? 'Chọn tất cả' : 'Select all')}
-              </button>
-            )}
-          </div>
-          <div className="relative">
-            <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--text-tertiary)" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
-            </svg>
-            <input value={libraryQuery} onChange={event => setLibraryQuery(event.target.value)}
-              placeholder={t.searchLibrarySources} aria-label={t.searchLibrarySources}
-              className="w-full rounded-xl border border-(--border) bg-(--surface-secondary) py-2.5 pl-9 pr-3 text-sm text-(--text-primary) transition-colors focus:outline-none focus:ring-2 focus:ring-(--focus)" />
-          </div>
-
-          {libraryError && (
-            <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">
-              {libraryError}
-            </p>
-          )}
-
-          {libraryLoading ? <LoadingSkeleton count={3} height="h-14" /> : libraryError ? null : filteredSources.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-(--border) bg-(--surface-secondary) px-4 py-8 text-center text-xs text-(--text-tertiary)">
-              {librarySources.length === 0
-                ? (sources.length > 0 ? t.allLibrarySourcesAdded : t.noLibrarySources)
-                : t.noLibraryMatches}
-            </div>
-          ) : (
-            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-              {filteredSources.map(source => {
-                const isChecked = selectedLibraryIds.has(source.id);
-                return (
-                  <div
-                    key={source.id}
-                    onClick={() => toggleSelectLibrary(source.id)}
-                    className={`flex items-center gap-3 rounded-xl border p-3 cursor-pointer transition-colors ${
-                      isChecked ? 'border-(--brand) bg-(--brand-soft)' : 'border-(--border) bg-(--surface) hover:bg-(--surface-secondary)'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={() => toggleSelectLibrary(source.id)}
-                      onClick={e => e.stopPropagation()}
-                      className="h-4 w-4 rounded border-gray-300 text-(--brand) focus:ring-(--brand) cursor-pointer"
-                    />
-                    <FileIcon name={source.originalFilename} className="h-5 w-5 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-bold text-(--text-primary)">{source.title || source.originalFilename || t.unnamed}</p>
-                      {source.title && source.originalFilename && (
-                        <p className="truncate text-[10px] text-(--text-tertiary)">{source.originalFilename}</p>
-                      )}
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <span className={`rounded border px-1.5 py-0.5 text-[9px] font-bold ${statusColor(source.processingStatus)}`}>
-                          {ct.statusLabels?.[source.processingStatus] || source.processingStatus}
-                        </span>
-                        {source.fileSizeBytes && (
-                          <span className="text-[10px] text-(--text-tertiary)">{(source.fileSizeBytes / 1024).toFixed(0)} KB</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {filteredSources.length > 0 && (
-            <div className="pt-2 border-t border-(--border-light)">
-              <button
-                type="button"
-                onClick={handleAddSelectedLibrary}
-                disabled={submitting || selectedLibraryIds.size === 0}
-                className="w-full py-2.5 bg-(--brand) text-(--on-brand) rounded-xl font-bold text-xs hover:bg-(--brand-hover) transition-colors disabled:opacity-40 cursor-pointer"
-              >
-                {submitting
-                  ? ct.saving
-                  : `${language === 'vi' ? 'Thêm' : 'Add'} (${selectedLibraryIds.size}) ${language === 'vi' ? 'tài liệu đã chọn' : 'selected sources'}`}
-              </button>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    return null;
-  };
-
-  const renderDocuments = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-      <div className="lg:col-span-2 space-y-4">
-        <button id="add-doc-btn" onClick={() => setAddDocModal(true)}
-          className="w-full py-3 bg-(--brand) text-(--on-brand) font-black text-xs rounded-xl hover:bg-(--brand-hover) transition-colors shadow-sm cursor-pointer">
-          + {t.addDocument}
-        </button>
-        {srcLoading ? <LoadingSkeleton count={4} height="h-12" /> : srcError ? (
-          <div className="p-4 rounded-xl bg-rose-50 text-rose-700 text-xs font-bold">{srcError}</div>
-        ) : sources.length === 0 ? (
-          <EmptyState title={t.noDocuments} description={t.uploadDocsToCollection} />
-        ) : (
-          <div className="space-y-1.5 max-h-[500px] overflow-y-auto pr-1">
-            {sources.map(doc => (
-              <button key={doc.id} onClick={() => setSelectedSource(doc)}
-                className={`w-full text-left p-3 rounded-xl border text-xs transition flex items-center gap-3 cursor-pointer ${selectedSource?.id === doc.id
-                  ? 'bg-(--brand-soft) border-indigo-300 shadow-sm'
-                  : 'bg-(--surface) border-(--border) hover:border-indigo-300 hover:bg-(--surface-secondary)'
-                  }`}>
-                <FileIcon name={doc.originalFilename} />
-                <div className="min-w-0 flex-1">
-                  <p className="font-bold text-(--text-primary) truncate">{doc.title || doc.originalFilename || t.unnamed}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold ${statusColor(doc.processingStatus)}`}>{ct.statusLabels?.[doc.processingStatus] || doc.processingStatus}</span>
-                    {doc.fileSizeBytes && <span className="text-[10px] text-(--text-tertiary)">{(doc.fileSizeBytes / 1024).toFixed(0)} KB</span>}
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="lg:col-span-3 bg-(--surface) rounded-2xl border border-(--border) shadow-sm min-h-[400px]">
-        {!selectedSource ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-8 text-(--text-tertiary)">
-            <svg className="w-10 h-10 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" /></svg>
-            <p className="text-xs font-semibold">{t.selectDocument}</p>
-          </div>
-        ) : (
-          <div className="p-6 space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <FileIcon name={selectedSource.originalFilename} className="w-7 h-7 mt-0.5" />
-                <div>
-                  <h3 className="text-base font-black text-(--text-primary)">{selectedSource.title || selectedSource.originalFilename || t.unnamed}</h3>
-                  {selectedSource.title && selectedSource.originalFilename && (
-                    <p className="text-[11px] text-(--text-tertiary) mt-0.5">{selectedSource.originalFilename}</p>
-                  )}
-                  {/* Action buttons directly below title */}
-                  <div className="flex flex-wrap items-center gap-2 mt-3">
-                    <button
-                      type="button"
-                      onClick={() => setViewerFile({ fileUrl: `/api/documents/${selectedSource.id}/download`, fileName: selectedSource.originalFilename || selectedSource.title, documentId: selectedSource.id })}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-(--brand) text-(--on-brand) rounded-xl text-xs font-bold hover:bg-(--brand-hover) transition-colors cursor-pointer"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                      {ct.preview || 'Preview'}
-                    </button>
-                    {(selectedSource.processingStatus === 'READY' || selectedSource.processingStatus === 'COMPLETED') && (
-                      <button
-                        type="button"
-                        onClick={() => handleDownloadSource(selectedSource)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-colors cursor-pointer"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                        {t.downloadPdf} ↗
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <DeleteConfirm
-                  message={t.removeSourceFromCollectionConfirm}
-                  onConfirm={() => handleRemoveSource(selectedSource.id)}
-                  triggerLabel={t.removeFromCollection}
-                  confirmLabel={t.removeFromCollection}
-                  cancelLabel={ct.cancel}
-                  className="cursor-pointer rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 transition-colors hover:bg-amber-100"
-                >
-                  {t.removeFromCollection}
-                </DeleteConfirm>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              {[
-                { label: t.sourceStatus, value: selectedSource.processingStatus, badge: statusColor(selectedSource.processingStatus) },
-                { label: t.sourceSize, value: selectedSource.fileSizeBytes ? `${(selectedSource.fileSizeBytes / 1024).toFixed(1)} KB` : '-' },
-                { label: t.sourceType, value: selectedSource.contentType || '-' },
-                { label: t.sourceCreated, value: selectedSource.createdAt ? new Date(selectedSource.createdAt).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US') : '-' },
-              ].map(s => (
-                <div key={s.label} className="p-3 bg-(--surface-secondary) rounded-xl border border-(--border-light)">
-                  <p className="text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider">{s.label}</p>
-                  {s.badge ? (
-                    <span className={`inline-block mt-1 px-2 py-0.5 rounded border text-[10px] font-bold ${s.badge}`}>{s.value}</span>
-                  ) : (
-                    <p className="mt-1 font-medium text-(--text-primary) break-words">{s.value}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {selectedSource.openAlexTopic || selectedSource.openAlexSubfield || selectedSource.openAlexField || selectedSource.openAlexDomain ? (
-              <div className="space-y-3">
-                {selectedSource.openAlexTopic ? (
-                  <div className="p-3 bg-(--brand-soft) rounded-xl border border-indigo-100 dark:border-indigo-900">
-                    <p className="text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider">{t.openAlexTopic}</p>
-                    <p className="mt-1 font-semibold text-(--text-primary)">{selectedSource.openAlexTopic}</p>
-                  </div>
-                ) : null}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-                  {[
-                    { label: t.openAlexSubfield, value: selectedSource.openAlexSubfield },
-                    { label: t.openAlexField, value: selectedSource.openAlexField },
-                    { label: t.openAlexDomain, value: selectedSource.openAlexDomain },
-                  ].map(s => s.value ? (
-                    <div key={s.label} className="p-3 bg-(--surface-secondary) rounded-xl border border-(--border-light)">
-                      <p className="text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider">{s.label}</p>
-                      <p className="mt-1 font-medium text-(--text-primary) break-words">{s.value}</p>
-                    </div>
-                  ) : null)}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  const renderConnectedMap = () => {
-    const allShared = sources.filter(s => (s.projectIds || []).length > 0);
-
-    const filteredShared = allShared.filter(s => {
-      if (sharedProjectFilter && !(s.projectIds || []).some(pid => String(pid) === String(sharedProjectFilter))) {
-        return false;
-      }
-      if (sharedSearch.trim()) {
-        const q = sharedSearch.trim().toLowerCase();
-        const matchesTitle = (s.title || '').toLowerCase().includes(q);
-        const matchesFilename = (s.originalFilename || '').toLowerCase().includes(q);
-        if (!matchesTitle && !matchesFilename) return false;
-      }
-      return true;
-    });
-
-    const SHARED_PAGE_SIZE = 6;
-    const totalSharedPages = Math.ceil(filteredShared.length / SHARED_PAGE_SIZE) || 1;
-    const pagedShared = filteredShared.slice(sharedPage * SHARED_PAGE_SIZE, (sharedPage + 1) * SHARED_PAGE_SIZE);
-
-    return (
-      <div className="space-y-4">
-        {/* Toolbar: Search, Project Filter, Grid/List Switcher */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-(--surface) p-4 rounded-2xl border border-(--border)">
-          <div className="flex flex-wrap items-center gap-2 flex-1">
-            <div className="relative min-w-48 flex-1 sm:max-w-xs">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-(--text-tertiary)" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-              <input
-                type="search"
-                value={sharedSearch}
-                onChange={(e) => { setSharedSearch(e.target.value); setSharedPage(0); }}
-                placeholder={ct.search || 'Search sources...'}
-                className="w-full pl-9 pr-3 py-2 bg-(--surface-secondary) border border-(--border) rounded-xl text-xs font-medium text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--focus)"
-              />
-            </div>
-            <select
-              value={sharedProjectFilter}
-              onChange={(e) => { setSharedProjectFilter(e.target.value); setSharedPage(0); }}
-              className="px-3 py-2 bg-(--surface-secondary) border border-(--border) rounded-xl text-xs font-medium text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--focus) [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            >
-              <option value="">{language === 'vi' ? 'Tất cả đồ án' : 'All Projects'}</option>
-              {projects.map(p => (
-                <option key={p.id} value={p.id}>{p.title}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs text-(--text-tertiary) font-mono">{filteredShared.length} {language === 'vi' ? 'tài liệu' : 'shared sources'}</span>
-            <div className="flex items-center bg-(--surface-secondary) border border-(--border) rounded-xl p-0.5">
-              <button
-                type="button"
-                onClick={() => setIsSharedGridView(true)}
-                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${isSharedGridView ? 'bg-(--surface) text-(--brand-foreground) shadow-xs' : 'text-(--text-tertiary) hover:text-(--text-primary)'}`}
-                title="Grid View"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsSharedGridView(false)}
-                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${!isSharedGridView ? 'bg-(--surface) text-(--brand-foreground) shadow-xs' : 'text-(--text-tertiary) hover:text-(--text-primary)'}`}
-                title="List View"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {filteredShared.length === 0 ? (
-          <EmptyState title={t.noSharedDocs} description={t.shareDescription} />
-        ) : isSharedGridView ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {pagedShared.map(doc => (
-              <div key={doc.id} className="bg-(--surface) rounded-2xl border border-(--border) p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between space-y-4">
-                <div>
-                  <div className="flex items-start gap-3">
-                    <FileIcon name={doc.originalFilename} className="w-6 h-6 shrink-0 mt-0.5" />
-                    <div className="min-w-0 flex-1">
-                      <h4 className="font-bold text-sm text-(--text-primary) truncate">{doc.title || doc.originalFilename || t.unnamed}</h4>
-                      {doc.title && doc.originalFilename && (
-                        <p className="text-[10px] text-(--text-tertiary) truncate mt-0.5">{doc.originalFilename}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {(doc.projectIds || []).map(pid => {
-                      const proj = projects.find(p => String(p.id) === String(pid));
-                      return (
-                        <Link
-                          key={pid}
-                          to={`/instructor/projects/${pid}`}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[11px] font-bold hover:bg-indigo-100 transition-colors"
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                          <span className="truncate max-w-[140px]">{proj?.title || 'Project'}</span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-(--border-light) flex items-center justify-between">
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusColor(doc.processingStatus)}`}>
-                    {ct.statusLabels?.[doc.processingStatus] || doc.processingStatus}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setViewerFile({ fileUrl: `/api/documents/${doc.id}/download`, fileName: doc.originalFilename || doc.title, documentId: doc.id })}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-(--brand) hover:bg-(--brand-soft) rounded-lg transition-colors cursor-pointer"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                    {ct.preview || 'Preview'}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="bg-(--surface) rounded-2xl border border-(--border) divide-y divide-(--border-light) shadow-xs overflow-hidden">
-            {pagedShared.map(doc => (
-              <div key={doc.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-(--surface-secondary) transition-colors">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <FileIcon name={doc.originalFilename} className="w-6 h-6 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <h4 className="font-bold text-sm text-(--text-primary) truncate">{doc.title || doc.originalFilename || t.unnamed}</h4>
-                    <div className="flex flex-wrap items-center gap-2 mt-1">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusColor(doc.processingStatus)}`}>
-                        {ct.statusLabels?.[doc.processingStatus] || doc.processingStatus}
-                      </span>
-                      {(doc.projectIds || []).map(pid => {
-                        const proj = projects.find(p => String(p.id) === String(pid));
-                        return (
-                          <Link
-                            key={pid}
-                            to={`/instructor/projects/${pid}`}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[10px] font-bold hover:bg-indigo-100 transition-colors"
-                          >
-                            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                            <span className="truncate max-w-[120px]">{proj?.title || 'Project'}</span>
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setViewerFile({ fileUrl: `/api/documents/${doc.id}/download`, fileName: doc.originalFilename || doc.title, documentId: doc.id })}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-(--surface) border border-(--border) rounded-xl text-xs font-bold text-(--text-secondary) hover:text-(--brand-foreground) hover:border-(--brand) transition-colors shrink-0 cursor-pointer"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                  {ct.preview || 'Preview'}
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {totalSharedPages > 1 && (
-          <div className="mt-6 flex items-center justify-center gap-2 text-xs">
-            <button
-              disabled={sharedPage === 0}
-              onClick={() => setSharedPage(p => p - 1)}
-              className="px-3 py-1.5 bg-(--surface) border border-(--border) rounded-lg font-bold text-(--text-secondary) hover:bg-(--surface-secondary) transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {t.prev}
-            </button>
-            <span className="px-3 py-1.5 font-mono font-bold text-(--text-secondary)">
-              {t.page} {sharedPage + 1} {t.of} {totalSharedPages}
-            </span>
-            <button
-              disabled={sharedPage >= totalSharedPages - 1}
-              onClick={() => setSharedPage(p => p + 1)}
-              className="px-3 py-1.5 bg-(--surface) border border-(--border) rounded-lg font-bold text-(--text-secondary) hover:bg-(--surface-secondary) transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {t.next}
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
-
   const fetchGraph = useCallback(async () => {
     setGraphLoading(true);
     try {
-      const res = await api.get(`/api/collections/${id}/citation-graph`);
+      const res = await api.get(API_ROUTES.COLLECTIONS.CITATION_GRAPH(collectionId));
       setGraphData(res.data);
-    } catch { setGraphData(null); }
-    finally { setGraphLoading(false); }
-  }, [id]);
+    } catch {
+      setGraphData(null);
+    } finally {
+      setGraphLoading(false);
+    }
+  }, [collectionId]);
+
+  useEffect(() => {
+    fetchGraph();
+  }, [fetchGraph]);
 
   const applyGraphFilters = useCallback((query, settings = graphSettingsRef.current) => {
     const runtime = graphRuntimeRef.current;
@@ -873,13 +146,9 @@ export default function CollectionDetail() {
   };
 
   useEffect(() => {
-    if (activeTab === 2) fetchGraph();
-  }, [activeTab, fetchGraph]);
+    if (!graphData || !graphRef.current || graphData.nodes.length === 0) return undefined;
 
-  useEffect(() => {
-    if (!graphData || !graphRef.current || graphData.nodes.length === 0) return;
-
-    if (networkRef.current) networkRef.current.destroy();
+    const container = graphRef.current;
 
     function nodeLabel(n) {
       if (!n.title && !n.doi) return '';
@@ -961,46 +230,46 @@ export default function CollectionDetail() {
 
     const settings = graphSettingsRef.current;
     const nodes = new DataSet(baseNodes.map(node => ({
-        id: node.id,
-        label: !node.unresolved && (node.nodeData.inCollection || node.inboundCount >= 3) ? node.label : '',
-        title: nodeTooltip(node.nodeData),
-        color: {
-          background: node.tone[0],
-          border: node.tone[1],
-          highlight: { background: node.tone[2], border: node.tone[3] },
-          hover: { background: node.tone[2], border: node.tone[3] },
-        },
-        font: {
-          color: isDark ? '#e4e4e7' : '#334155',
-          size: 12,
-          face: 'Inter, system-ui, sans-serif',
-          strokeWidth: 3,
-          strokeColor: isDark ? '#18181b' : '#f8fafc',
-          vadjust: 14,
-        },
-        shape: 'dot',
-        size: node.baseSize * settings.nodeSize,
-        borderWidth: node.nodeData.inCollection ? 2 : 1,
-        borderWidthSelected: 3,
-        opacity: 1,
-      })));
+      id: node.id,
+      label: !node.unresolved && (node.nodeData.inCollection || node.inboundCount >= 3) ? node.label : '',
+      title: nodeTooltip(node.nodeData),
+      color: {
+        background: node.tone[0],
+        border: node.tone[1],
+        highlight: { background: node.tone[2], border: node.tone[3] },
+        hover: { background: node.tone[2], border: node.tone[3] },
+      },
+      font: {
+        color: isDark ? '#e4e4e7' : '#334155',
+        size: 12,
+        face: 'Inter, system-ui, sans-serif',
+        strokeWidth: 3,
+        strokeColor: isDark ? '#18181b' : '#f8fafc',
+        vadjust: 14,
+      },
+      shape: 'dot',
+      size: node.baseSize * settings.nodeSize,
+      borderWidth: node.nodeData.inCollection ? 2 : 1,
+      borderWidthSelected: 3,
+      opacity: 1,
+    })));
 
     const baseEdgeColor = isDark ? '#71717a' : '#94a3b8';
     const activeEdgeColor = isDark ? '#c4b5fd' : '#7c3aed';
     const baseEdgeOpacity = isDark ? 0.24 : 0.2;
     const baseEdges = normalizedEdges.map(edge => ({ ...edge, color: baseEdgeColor, activeColor: activeEdgeColor }));
     const edges = new DataSet(baseEdges.map(edge => ({
-        id: edge.id,
-        from: edge.from,
-        to: edge.to,
-        color: {
-          color: edge.color,
-          highlight: edge.activeColor,
-          hover: edge.activeColor,
-          opacity: baseEdgeOpacity,
-        },
-        width: 0.7 * settings.linkThickness,
-      })));
+      id: edge.id,
+      from: edge.from,
+      to: edge.to,
+      color: {
+        color: edge.color,
+        highlight: edge.activeColor,
+        hover: edge.activeColor,
+        opacity: baseEdgeOpacity,
+      },
+      width: 0.7 * settings.linkThickness,
+    })));
 
     const options = {
       layout: { improvedLayout: true, randomSeed: 42 },
@@ -1038,7 +307,7 @@ export default function CollectionDetail() {
       },
     };
 
-    const network = new Network(graphRef.current, { nodes, edges }, options);
+    const network = new Network(container, { nodes, edges }, options);
     networkRef.current = network;
     const nodeById = new Map(baseNodes.map(node => [node.id, node]));
     let runtime;
@@ -1132,13 +401,18 @@ export default function CollectionDetail() {
     });
 
     return () => {
-      network.destroy();
-      if (networkRef.current === network) networkRef.current = null;
-      if (graphRuntimeRef.current?.network === network) graphRuntimeRef.current = null;
+      try {
+        network.destroy();
+      } catch { }
+      if (container) {
+        container.innerHTML = '';
+      }
+      networkRef.current = null;
+      graphRuntimeRef.current = null;
     };
   }, [graphData, t, isDark, applyGraphFilters]);
 
-  const renderVisualizeMap = () => (
+  return (
     <div className="flex flex-col w-full h-[calc(100vh-3.5rem)] overflow-hidden bg-(--surface) rounded-2xl border border-(--border)">
       {/* Disclaimer banner */}
       <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900 px-4 py-2.5 text-xs text-amber-800 dark:text-amber-200 flex items-center gap-2 shrink-0">
@@ -1270,7 +544,7 @@ export default function CollectionDetail() {
           <div className="w-80 max-w-[80vw] shrink-0 border-l border-(--border) bg-(--surface) p-5 space-y-3 overflow-y-auto">
             <div className="flex items-start justify-between">
               <span className="text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider">{ct.name}</span>
-              <button onClick={() => setSelectedGraphNode(null)} className="text-(--text-tertiary) hover:text-(--text-primary) p-1" aria-label={ct.close}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+              <button onClick={() => setSelectedGraphNode(null)} className="text-(--text-tertiary) hover:text-(--text-primary) p-1 cursor-pointer" aria-label={ct.close}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
             <p className="text-sm font-semibold text-(--text-primary) break-words">{selectedGraphNode.title || (selectedGraphNode.inCollection ? t.unnamed : t.unresolvedReference)}</p>
             {selectedGraphNode.doi && (
@@ -1322,8 +596,459 @@ export default function CollectionDetail() {
       </div>
     </div>
   );
+}
 
-  const tabContent = [renderDocuments, renderConnectedMap, renderVisualizeMap];
+export default function CollectionDetail() {
+  const { id } = useParams();
+  const { language } = useLanguage();
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  const t = instructorText[language];
+  const ct = commonText[language];
+  const { pending: pendingDelete, start: startDelete, undo: undoDelete, dismiss: dismissDelete } = useUndoDelete();
+  const undoStrings = {
+    header: t.undoHeader,
+    bodyTemplate: t.undoBodyTemplate,
+    caution: t.undoCaution,
+    undoLabel: t.undoLabel,
+    undoRemaining: t.undoRemaining,
+    dismissLabel: t.dismissLabel,
+  };
+
+  const [activeTab, setActiveTab] = useState(0);
+  const { content: sourcesRaw, loading: srcLoading, error: srcError, refetch: refetchSources } = useCollectionSources(id);
+  const [removedIds, setRemovedIds] = useState(() => new Set());
+  const sources = useMemo(() => sourcesRaw.filter(s => !removedIds.has(String(s.id))), [sourcesRaw, removedIds]);
+  const [selectedSource, setSelectedSource] = useState(null);
+  const [viewerFile, setViewerFile] = useState(null);
+  const [showGuide, setShowGuide] = useState(false);
+
+  const [sharedSearch, setSharedSearch] = useState('');
+  const [sharedProjectFilter, setSharedProjectFilter] = useState('');
+  const [sharedPage, setSharedPage] = useState(0);
+  const [isSharedGridView, setIsSharedGridView] = useState(true);
+
+  const [collection, setCollection] = useState(null);
+  const [collectionLoading, setCollectionLoading] = useState(true);
+
+  const [addDocModal, setAddDocModal] = useState(false);
+
+  const [categories, setCategories] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [editModal, setEditModal] = useState({ open: false, name: '', description: '', categoryId: '', submitting: false });
+
+  useEffect(() => {
+    api.get(API_ROUTES.COLLECTIONS.CATEGORIES).then(r => setCategories(r.data)).catch(() => { });
+  }, []);
+
+  useEffect(() => {
+    api.get(API_ROUTES.PROJECTS.BASE, { params: { page: DEFAULT_PAGE, size: MAX_BATCH_FETCH_SIZE } }).then(r => setProjects(r.data?.content || [])).catch(() => { });
+  }, []);
+
+  useEffect(() => {
+    api.get(API_ROUTES.COLLECTIONS.BY_ID(id)).then(r => setCollection(r.data)).catch(() => { }).finally(() => setCollectionLoading(false));
+  }, [id]);
+
+  const handleUploadBatch = async (files) => {
+    if (!files || files.length === 0) return false;
+    const fd = new FormData();
+    const fileList = Array.from(files);
+    for (const f of fileList) {
+      fd.append('files', f);
+    }
+    fd.append('collectionId', id);
+    try {
+      const res = await api.post(API_ROUTES.SOURCES.BATCH, fd);
+      await refetchSources();
+      if (res.data?.failed && res.data.failed.length > 0) {
+        alert(`${res.data.succeeded?.length || 0} uploaded, ${res.data.failed.length} failed.`);
+      }
+      return true;
+    } catch {
+      alert(t.uploadFailed);
+      return false;
+    }
+  };
+
+  const handleRemoveSource = async (sourceId) => {
+    const sid = String(sourceId);
+    setRemovedIds(prev => new Set(prev).add(sid));
+    try {
+      await api.delete(API_ROUTES.COLLECTIONS.SOURCE_BY_ID(id, sourceId));
+      if (String(selectedSource?.id) === sid) setSelectedSource(null);
+      await refetchSources();
+    } catch {
+      alert(t.deleteFailed);
+      setRemovedIds(prev => { const n = new Set(prev); n.delete(sid); return n; });
+    }
+  };
+
+  const handleDownloadSource = async (source) => {
+    try {
+      const response = await api.get(API_ROUTES.DOCUMENTS.DOWNLOAD(source.id), { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = source.originalFilename || 'document';
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert(t.downloadFailed);
+    }
+  };
+
+  const handleDeleteCollection = async () => {
+    const shared = sources.filter(s => (s.projectIds || []).length > 0);
+    const msg = shared.length > 0 ? `${t.sharedDocsWarning} ${t.deleteConfirm}` : t.deleteConfirm;
+    startDelete({
+      ...undoStrings,
+      bodyTemplate: undefined,
+      message: msg,
+      entityName: collection?.name || collection?.title || id,
+      entityDetails: id,
+    }, () => {
+      api.delete(API_ROUTES.COLLECTIONS.BY_ID(id)).then(() => { window.location.href = '/instructor/collections'; }).catch(() => alert(t.deleteFailed));
+    });
+  };
+
+  const handleEditOpen = () => {
+    setEditModal({ open: true, name: collection?.name || '', description: collection?.description || '', categoryId: collection?.categoryId || '', submitting: false });
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!editModal.name.trim()) return;
+    setEditModal(p => ({ ...p, submitting: true }));
+    try {
+      const res = await api.put(API_ROUTES.COLLECTIONS.BY_ID(id), {
+        name: editModal.name.trim(),
+        description: editModal.description.trim() || null,
+        categoryId: editModal.categoryId || null,
+      });
+      setCollection(res.data);
+      setEditModal({ open: false, name: '', description: '', categoryId: '', submitting: false });
+    } catch (err) {
+      alert(err.response?.data?.message || t.uploadFailed);
+      setEditModal(p => ({ ...p, submitting: false }));
+    }
+  };
+
+  const renderDocuments = () => (
+    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+      <div className="lg:col-span-2 space-y-4">
+        <button id="add-doc-btn" onClick={() => setAddDocModal(true)}
+          className="w-full py-3 bg-(--brand) text-(--on-brand) font-black text-xs rounded-xl hover:bg-(--brand-hover) transition-colors shadow-sm cursor-pointer">
+          + {t.addDocument}
+        </button>
+        {srcLoading ? <LoadingSkeleton count={4} height="h-12" /> : srcError ? (
+          <div className="p-4 rounded-xl bg-rose-50 text-rose-700 text-xs font-bold">{srcError}</div>
+        ) : sources.length === 0 ? (
+          <EmptyState title={t.noDocuments} description={t.uploadDocsToCollection} />
+        ) : (
+          <div className="space-y-1.5 max-h-[500px] overflow-y-auto pr-1">
+            {sources.map(doc => (
+              <button key={doc.id} onClick={() => setSelectedSource(doc)}
+                className={`w-full text-left p-3 rounded-xl border text-xs transition flex items-center gap-3 cursor-pointer ${selectedSource?.id === doc.id
+                  ? 'bg-(--brand-soft) border-indigo-300 shadow-sm'
+                  : 'bg-(--surface) border-(--border) hover:border-indigo-300 hover:bg-(--surface-secondary)'
+                  }`}>
+                <FileIcon name={doc.originalFilename} />
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-(--text-primary) truncate">{doc.title || doc.originalFilename || t.unnamed}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold ${statusColor(doc.processingStatus)}`}>{ct.statusLabels?.[doc.processingStatus] || doc.processingStatus}</span>
+                    {doc.fileSizeBytes && <span className="text-[10px] text-(--text-tertiary)">{(doc.fileSizeBytes / 1024).toFixed(0)} KB</span>}
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="lg:col-span-3 bg-(--surface) rounded-2xl border border-(--border) shadow-sm min-h-[400px]">
+        {!selectedSource ? (
+          <div className="h-full flex flex-col items-center justify-center text-center p-8 text-(--text-tertiary)">
+            <svg className="w-10 h-10 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" /></svg>
+            <p className="text-xs font-semibold">{t.selectDocument}</p>
+          </div>
+        ) : (
+          <div className="p-6 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <FileIcon name={selectedSource.originalFilename} className="w-7 h-7 mt-0.5" />
+                <div>
+                  <h3 className="text-base font-black text-(--text-primary)">{selectedSource.title || selectedSource.originalFilename || t.unnamed}</h3>
+                  {selectedSource.title && selectedSource.originalFilename && (
+                    <p className="text-[11px] text-(--text-tertiary) mt-0.5">{selectedSource.originalFilename}</p>
+                  )}
+                  {/* Action buttons directly below title */}
+                  <div className="flex flex-wrap items-center gap-2 mt-3">
+                    <button
+                      type="button"
+                      onClick={() => setViewerFile({ fileUrl: API_ROUTES.DOCUMENTS.DOWNLOAD(selectedSource.id), fileName: selectedSource.originalFilename || selectedSource.title, documentId: selectedSource.id })}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-(--brand) text-(--on-brand) rounded-xl text-xs font-bold hover:bg-(--brand-hover) transition-colors cursor-pointer"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                      {ct.preview || 'Preview'}
+                    </button>
+                    {(selectedSource.processingStatus === DOCUMENT_PROCESSING_STATUS.READY || selectedSource.processingStatus === DOCUMENT_PROCESSING_STATUS.COMPLETED) && (
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadSource(selectedSource)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-colors cursor-pointer"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        {t.downloadPdf} ↗
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <DeleteConfirm
+                  message={t.removeSourceFromCollectionConfirm}
+                  onConfirm={() => handleRemoveSource(selectedSource.id)}
+                  triggerLabel={t.removeFromCollection}
+                  confirmLabel={t.removeFromCollection}
+                  cancelLabel={ct.cancel}
+                  className="cursor-pointer rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 transition-colors hover:bg-amber-100"
+                >
+                  {t.removeFromCollection}
+                </DeleteConfirm>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              {[
+                { label: t.sourceStatus, value: selectedSource.processingStatus, badge: statusColor(selectedSource.processingStatus) },
+                { label: t.sourceSize, value: selectedSource.fileSizeBytes ? `${(selectedSource.fileSizeBytes / 1024).toFixed(1)} KB` : '-' },
+                { label: t.sourceType, value: selectedSource.contentType || '-' },
+                { label: t.sourceCreated, value: selectedSource.createdAt ? new Date(selectedSource.createdAt).toLocaleString(language === 'vi' ? DATE_FORMATS.LOCALE_VI : DATE_FORMATS.LOCALE_EN) : '-' },
+              ].map(s => (
+                <div key={s.label} className="p-3 bg-(--surface-secondary) rounded-xl border border-(--border-light)">
+                  <p className="text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider">{s.label}</p>
+                  {s.badge ? (
+                    <span className={`inline-block mt-1 px-2 py-0.5 rounded border text-[10px] font-bold ${s.badge}`}>{s.value}</span>
+                  ) : (
+                    <p className="mt-1 font-medium text-(--text-primary) break-words">{s.value}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {selectedSource.openAlexTopic || selectedSource.openAlexSubfield || selectedSource.openAlexField || selectedSource.openAlexDomain ? (
+              <div className="space-y-3">
+                {selectedSource.openAlexTopic ? (
+                  <div className="p-3 bg-(--brand-soft) rounded-xl border border-indigo-100 dark:border-indigo-900">
+                    <p className="text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider">{t.openAlexTopic}</p>
+                    <p className="mt-1 font-semibold text-(--text-primary)">{selectedSource.openAlexTopic}</p>
+                  </div>
+                ) : null}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                  {[
+                    { label: t.openAlexSubfield, value: selectedSource.openAlexSubfield },
+                    { label: t.openAlexField, value: selectedSource.openAlexField },
+                    { label: t.openAlexDomain, value: selectedSource.openAlexDomain },
+                  ].map(s => s.value ? (
+                    <div key={s.label} className="p-3 bg-(--surface-secondary) rounded-xl border border-(--border-light)">
+                      <p className="text-[10px] font-black text-(--text-tertiary) uppercase tracking-wider">{s.label}</p>
+                      <p className="mt-1 font-medium text-(--text-primary) break-words">{s.value}</p>
+                    </div>
+                  ) : null)}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderConnectedMap = () => {
+    const allShared = sources.filter(s => (s.projectIds || []).length > 0);
+
+    const filteredShared = allShared.filter(s => {
+      if (sharedProjectFilter && !(s.projectIds || []).some(pid => String(pid) === String(sharedProjectFilter))) {
+        return false;
+      }
+      if (sharedSearch.trim()) {
+        const q = sharedSearch.trim().toLowerCase();
+        const matchesTitle = (s.title || '').toLowerCase().includes(q);
+        const matchesFilename = (s.originalFilename || '').toLowerCase().includes(q);
+        if (!matchesTitle && !matchesFilename) return false;
+      }
+      return true;
+    });
+
+    const SHARED_PAGE_SIZE = SHARED_DOCS_PAGE_SIZE;
+    const totalSharedPages = Math.ceil(filteredShared.length / SHARED_PAGE_SIZE) || 1;
+    const pagedShared = filteredShared.slice(sharedPage * SHARED_PAGE_SIZE, (sharedPage + 1) * SHARED_PAGE_SIZE);
+
+    return (
+      <div className="space-y-4">
+        {/* Toolbar: Search, Project Filter, Grid/List Switcher */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-(--surface) p-4 rounded-2xl border border-(--border)">
+          <div className="flex flex-wrap items-center gap-2 flex-1">
+            <div className="relative min-w-48 flex-1 sm:max-w-xs">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-(--text-tertiary)" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              <input
+                type="search"
+                value={sharedSearch}
+                onChange={(e) => { setSharedSearch(e.target.value); setSharedPage(0); }}
+                placeholder={ct.search || 'Search sources...'}
+                className="w-full pl-9 pr-3 py-2 bg-(--surface-secondary) border border-(--border) rounded-xl text-xs font-medium text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--focus)"
+              />
+            </div>
+            <select
+              value={sharedProjectFilter}
+              onChange={(e) => { setSharedProjectFilter(e.target.value); setSharedPage(0); }}
+              className="px-3 py-2 bg-(--surface-secondary) border border-(--border) rounded-xl text-xs font-medium text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-(--focus) [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
+              <option value="">{language === 'vi' ? 'Tất cả đồ án' : 'All Projects'}</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>{p.title}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs text-(--text-tertiary) font-mono">{filteredShared.length} {language === 'vi' ? 'tài liệu' : 'shared sources'}</span>
+            <div className="flex items-center bg-(--surface-secondary) border border-(--border) rounded-xl p-0.5">
+              <button
+                type="button"
+                onClick={() => setIsSharedGridView(true)}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${isSharedGridView ? 'bg-(--surface) text-(--brand-foreground) shadow-xs' : 'text-(--text-tertiary) hover:text-(--text-primary)'}`}
+                title="Grid View"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsSharedGridView(false)}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${!isSharedGridView ? 'bg-(--surface) text-(--brand-foreground) shadow-xs' : 'text-(--text-tertiary) hover:text-(--text-primary)'}`}
+                title="List View"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {filteredShared.length === 0 ? (
+          <EmptyState title={t.noSharedDocs} description={t.shareDescription} />
+        ) : isSharedGridView ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {pagedShared.map(doc => (
+              <div key={doc.id} className="bg-(--surface) rounded-2xl border border-(--border) p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between space-y-4">
+                <div>
+                  <div className="flex items-start gap-3">
+                    <FileIcon name={doc.originalFilename} className="w-6 h-6 shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-bold text-sm text-(--text-primary) truncate">{doc.title || doc.originalFilename || t.unnamed}</h4>
+                      {doc.title && doc.originalFilename && (
+                        <p className="text-[10px] text-(--text-tertiary) truncate mt-0.5">{doc.originalFilename}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {(doc.projectIds || []).map(pid => {
+                      const proj = projects.find(p => String(p.id) === String(pid));
+                      return (
+                        <Link
+                          key={pid}
+                          to={`/instructor/projects/${pid}`}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[11px] font-bold hover:bg-indigo-100 transition-colors"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                          <span className="truncate max-w-[140px]">{proj?.title || 'Project'}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-(--border-light) flex items-center justify-between">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusColor(doc.processingStatus)}`}>
+                    {ct.statusLabels?.[doc.processingStatus] || doc.processingStatus}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setViewerFile({ fileUrl: API_ROUTES.DOCUMENTS.DOWNLOAD(doc.id), fileName: doc.originalFilename || doc.title, documentId: doc.id })}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-(--brand) hover:bg-(--brand-soft) rounded-lg transition-colors cursor-pointer"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    {ct.preview || 'Preview'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-(--surface) rounded-2xl border border-(--border) divide-y divide-(--border-light) shadow-xs overflow-hidden">
+            {pagedShared.map(doc => (
+              <div key={doc.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-(--surface-secondary) transition-colors">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <FileIcon name={doc.originalFilename} className="w-6 h-6 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-bold text-sm text-(--text-primary) truncate">{doc.title || doc.originalFilename || t.unnamed}</h4>
+                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusColor(doc.processingStatus)}`}>
+                        {ct.statusLabels?.[doc.processingStatus] || doc.processingStatus}
+                      </span>
+                      {(doc.projectIds || []).map(pid => {
+                        const proj = projects.find(p => String(p.id) === String(pid));
+                        return (
+                          <Link
+                            key={pid}
+                            to={`/instructor/projects/${pid}`}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[10px] font-bold hover:bg-indigo-100 transition-colors"
+                          >
+                            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                            <span className="truncate max-w-[120px]">{proj?.title || 'Project'}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewerFile({ fileUrl: API_ROUTES.DOCUMENTS.DOWNLOAD(doc.id), fileName: doc.originalFilename || doc.title, documentId: doc.id })}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-(--surface) border border-(--border) rounded-xl text-xs font-bold text-(--text-secondary) hover:text-(--brand-foreground) hover:border-(--brand) transition-colors shrink-0 cursor-pointer"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                  {ct.preview || 'Preview'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {totalSharedPages > 1 && (
+          <div className="mt-6 flex items-center justify-center gap-2 text-xs">
+            <button
+              disabled={sharedPage === 0}
+              onClick={() => setSharedPage(p => p - 1)}
+              className="px-3 py-1.5 bg-(--surface) border border-(--border) rounded-lg font-bold text-(--text-secondary) hover:bg-(--surface-secondary) transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {t.prev}
+            </button>
+            <span className="px-3 py-1.5 font-mono font-bold text-(--text-secondary)">
+              {t.page} {sharedPage + 1} {t.of} {totalSharedPages}
+            </span>
+            <button
+              disabled={sharedPage >= totalSharedPages - 1}
+              onClick={() => setSharedPage(p => p + 1)}
+              className="px-3 py-1.5 bg-(--surface) border border-(--border) rounded-lg font-bold text-(--text-secondary) hover:bg-(--surface-secondary) transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {t.next}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-(--page-bg) text-(--text-primary)">
@@ -1389,32 +1114,27 @@ export default function CollectionDetail() {
           ))}
         </div>
 
-        {tabContent[activeTab]()}
+        {activeTab === 0 && renderDocuments()}
+        {activeTab === 1 && renderConnectedMap()}
+        {activeTab === 2 && (
+          <VisualizeMapPanel
+            collectionId={id}
+            isDark={isDark}
+            t={t}
+            ct={ct}
+          />
+        )}
       </main>
 
-      <Modal open={addDocModal} onClose={() => { setAddDocModal(false); setAddDocOption(null); }} title={t.addDocument} closeLabel={ct.close}>
-        <div className="space-y-4 text-xs">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="tablist" aria-label={t.addDocument}>
-            {[
-              { key: 'doi', label: t.inputDoi, desc: t.inputDoiDescription },
-              { key: 'upload', label: t.uploadDocument, desc: t.uploadDocumentDescription },
-              { key: 'library', label: t.chooseFromLibrary, desc: t.chooseFromLibraryDescription },
-            ].map(opt => (
-              <button key={opt.key} id={`add-doc-tab-${opt.key}`} type="button" role="tab"
-                aria-controls="add-doc-panel" aria-selected={addDocOption === opt.key}
-                onClick={() => setAddDocOption(opt.key)}
-                className={`w-full cursor-pointer rounded-xl border p-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-(--focus) ${addDocOption === opt.key
-                  ? 'bg-(--brand-soft) border-indigo-300 shadow-sm'
-                  : 'bg-(--surface) border-(--border) hover:border-indigo-300 hover:bg-(--surface-secondary)'
-                  }`}>
-                <p className="font-bold text-(--text-primary)">{opt.label}</p>
-                <p className="mt-1 text-[10px] leading-relaxed text-(--text-tertiary)">{opt.desc}</p>
-              </button>
-            ))}
-          </div>
-          <AddDocForm />
-        </div>
-      </Modal>
+      <UniversalDocumentIngestionModal
+        open={addDocModal}
+        onClose={() => setAddDocModal(false)}
+        entityType={ENTITY_TYPES.COLLECTION}
+        entityId={id}
+        existingSourceIds={sources.map(s => s.id)}
+        onSuccess={refetchSources}
+        allowedTabs={DEFAULT_COLLECTION_INGESTION_TABS}
+      />
 
       <Modal open={editModal.open} onClose={() => setEditModal(p => ({ ...p, open: false }))} title={t.editCollection} closeLabel={ct.close}>
         <form onSubmit={handleEditSubmit} className="space-y-4 text-xs">
