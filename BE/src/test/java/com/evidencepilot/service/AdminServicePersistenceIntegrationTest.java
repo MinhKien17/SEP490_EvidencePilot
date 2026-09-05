@@ -23,7 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @DataJpaTest
-@Import({AdminService.class, AdminServicePersistenceIntegrationTest.JsonConfig.class})
+@Import({AdminService.class, com.evidencepilot.service.impl.UserInvitationServiceImpl.class, AdminServicePersistenceIntegrationTest.JsonConfig.class})
 class AdminServicePersistenceIntegrationTest {
 
     @jakarta.annotation.Resource AdminService service;
@@ -34,6 +34,8 @@ class AdminServicePersistenceIntegrationTest {
     @MockBean AuditService audit;
     @MockBean SystemNotificationService notifications;
     @MockBean PasswordEncoder passwords;
+    @MockBean com.evidencepilot.service.UserAvatarService avatars;
+    @MockBean org.springframework.mail.javamail.JavaMailSender mailSender;
 
     @BeforeEach
     void passwordHash() {
@@ -83,7 +85,7 @@ class AdminServicePersistenceIntegrationTest {
     @Test
     void recreatesDeletedStudentWithSameEmailAndCodeAndKeepsDeletedRow() {
         User deleted = save("recreate@example.com", "Old", "Student", UserRole.STUDENT, AccountStatus.DELETED);
-        deleted.setStudentCode("SE-REUSE");
+        deleted.setStudentCode("SE170609");
         users.saveAndFlush(deleted);
 
         User admin = new User();
@@ -93,10 +95,10 @@ class AdminServicePersistenceIntegrationTest {
         when(currentUsers.requireCurrentUser()).thenReturn(admin);
 
         var response = service.createUser(new AdminUserCreateRequest(
-                "recreate@example.com", "New", "Student", UserRole.STUDENT, " se-reuse "));
+                "recreate@example.com", "New", "Student", UserRole.STUDENT, " se170609 ", "password123", false));
 
         assertThat(response.email()).isEqualTo("recreate@example.com");
-        assertThat(response.studentCode()).isEqualTo("SE-REUSE");
+        assertThat(response.studentCode()).isEqualTo("SE170609");
         assertThat(users.findAll().stream()
                 .filter(user -> "recreate@example.com".equals(user.getEmail()))
                 .map(User::getAccountStatus))

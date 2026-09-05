@@ -57,6 +57,7 @@ public class AdminService {
     private static final Set<String> USER_SORT_FIELDS = Set.of(
             "createdAt", "email", "studentCode", "firstName", "lastName", "role", "accountStatus");
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
+    private static final Pattern STUDENT_CODE_PATTERN = Pattern.compile("^[A-Z]{2}\\d{6}$");
 
     private final UserRepository users;
     private final ProjectRepository projects;
@@ -70,6 +71,8 @@ public class AdminService {
     private final SystemNotificationService notifications;
     private final ObjectMapper objectMapper;
     private final PasswordEncoder passwords;
+    private final UserInvitationService invitations;
+    private final UserAvatarService avatars;
 
     @Transactional(readOnly = true)
     public PagedResponse<AdminUserResponse> getUsers(
@@ -90,7 +93,7 @@ public class AdminService {
                     builder.like(builder.lower(root.get("firstName")), pattern),
                     builder.like(builder.lower(root.get("lastName")), pattern)));
         }
-        return PagedResponse.from(users.findAll(filters, pageable).map(AdminUserResponse::from));
+        return PagedResponse.from(users.findAll(filters, pageable).map(u -> AdminUserResponse.from(u, avatars.resolveAvatarUrl(u))));
     }
 
     @Transactional
@@ -109,20 +112,42 @@ public class AdminService {
             throw conflict("Student code already exists");
         }
 
+        // Password and verify-email are mutually exclusive (also enforced by
+        // @AssertTrue on the DTO): either the admin sets the password now, or
+        // the user sets their own via verification link — never both.
+        boolean verifyEmail = request.verifyEmail();
+        if (verifyEmail && request.password() != null && !request.password().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Password must be omitted when verifyEmail is true");
+        }
+        if (!verifyEmail && (request.password() == null || request.password().length() < 8)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Password must be at least 8 characters");
+        }
+
         User user = new User();
         user.setEmail(email);
         user.setFirstName(request.firstName().trim());
         user.setLastName(request.lastName().trim());
         user.setRole(request.role());
         user.setStudentCode(studentCode);
-        user.setAccountStatus(AccountStatus.ACTIVE);
         user.setPasswordChangeNoticePending(true);
-        user.setPasswordHash(passwords.encode(temporaryPassword(email)));
+        if (verifyEmail) {
+            user.setAccountStatus(AccountStatus.VERIFYING_EMAIL);
+            user.setPasswordHash(User.DISABLED_PASSWORD_SENTINEL);
+        } else {
+            user.setAccountStatus(AccountStatus.ACTIVE);
+            user.setPasswordHash(passwords.encode(request.password()));
+        }
         user.setCreatedAt(LocalDateTime.now());
         user = users.save(user);
 
         audit.record("USER_CREATED", "USER", user.getId(), currentUsers.requireCurrentUser(), null, safeUser(user));
-        return AdminUserResponse.from(user);
+        if (verifyEmail) {
+            invitations.issueInvitation(user.getId());
+        }
+        User created = users.findById(user.getId()).orElse(user);
+        return AdminUserResponse.from(created, avatars.resolveAvatarUrl(created));
     }
 
     @Transactional
@@ -172,8 +197,8 @@ public class AdminService {
             if (role == UserRole.STUDENT) {
                 if (studentCode == null) {
                     addImportError(errors, itemNumber, "studentCode", "Student code is required for STUDENT");
-                } else if (studentCode.length() > 50) {
-                    addImportError(errors, itemNumber, "studentCode", "Student code must not exceed 50 characters");
+                } else if (!STUDENT_CODE_PATTERN.matcher(studentCode).matches()) {
+                    addImportError(errors, itemNumber, "studentCode", "Student code must match format AB123456");
                 } else {
                     Integer duplicate = codeItems.putIfAbsent(studentCode, itemNumber);
                     if (duplicate != null) {
@@ -215,9 +240,11 @@ public class AdminService {
             return new AdminUserImportResponse(0, 0, errors);
         }
 
+        boolean verifyEmail = request.verifyEmail();
         int created = 0;
         int updated = 0;
         List<User> changedUsers = new ArrayList<>();
+        List<UUID> invitedIds = new ArrayList<>();
         Map<UUID, Map<String, Object>> previousValues = new HashMap<>();
         for (ImportRow row : rows) {
             User user = existingByEmail.get(row.email());
@@ -225,9 +252,14 @@ public class AdminService {
                 user = new User();
                 user.setEmail(row.email());
                 user.setRole(role);
-                user.setAccountStatus(AccountStatus.ACTIVE);
                 user.setPasswordChangeNoticePending(true);
-                user.setPasswordHash(passwords.encode(temporaryPassword(row.email())));
+                if (verifyEmail) {
+                    user.setAccountStatus(AccountStatus.VERIFYING_EMAIL);
+                    user.setPasswordHash(User.DISABLED_PASSWORD_SENTINEL);
+                } else {
+                    user.setAccountStatus(AccountStatus.ACTIVE);
+                    user.setPasswordHash(passwords.encode(temporaryPassword(row.email())));
+                }
                 user.setCreatedAt(LocalDateTime.now());
                 created++;
             } else {
@@ -245,6 +277,12 @@ public class AdminService {
         for (User user : changedUsers) {
             audit.record("USER_IMPORTED", "USER", user.getId(), actor,
                     previousValues.get(user.getId()), safeUser(user));
+            if (verifyEmail && !previousValues.containsKey(user.getId())) {
+                invitedIds.add(user.getId());
+            }
+        }
+        for (UUID invitedId : invitedIds) {
+            invitations.issueInvitation(invitedId);
         }
         return new AdminUserImportResponse(created, updated, List.of());
     }
@@ -263,7 +301,7 @@ public class AdminService {
         users.save(user);
         audit.record("USER_STATUS_UPDATED", "USER", id, currentUsers.requireCurrentUser(),
                 Map.of("accountStatus", oldStatus), Map.of("accountStatus", user.getAccountStatus()));
-        return AdminUserResponse.from(user);
+        return AdminUserResponse.from(user, avatars.resolveAvatarUrl(user));
     }
 
     @Transactional
@@ -281,6 +319,19 @@ public class AdminService {
         users.save(user);
         audit.record("USER_DELETED", "USER", id, currentUsers.requireCurrentUser(),
                 Map.of("accountStatus", oldStatus), Map.of("accountStatus", AccountStatus.DELETED));
+    }
+
+    @Transactional
+    public void resendInvitation(UUID id) {
+        User user = requireUser(id);
+        if (user.getRole() == UserRole.ADMIN || user.getAccountStatus() == AccountStatus.DELETED) {
+            throw conflict("Account is not eligible for invitation");
+        }
+        if (user.getAccountStatus() != AccountStatus.PENDING
+                && user.getAccountStatus() != AccountStatus.VERIFYING_EMAIL) {
+            throw conflict("Only pending or verifying accounts can be re-invited");
+        }
+        invitations.issueInvitation(id);
     }
 
     @Transactional
@@ -510,6 +561,11 @@ public class AdminService {
     private void validateStudentCode(UserRole role, String rawCode, String studentCode) {
         if (role == UserRole.STUDENT && studentCode == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Student code is required for STUDENT");
+        }
+        if (role == UserRole.STUDENT && studentCode != null
+                && !STUDENT_CODE_PATTERN.matcher(studentCode).matches()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Student code must match format AB123456");
         }
         if (role == UserRole.INSTRUCTOR && rawCode != null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "INSTRUCTOR must omit studentCode");

@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -64,9 +65,18 @@ class AdminControllerTest {
     void createUserBindsRequestAndReturnsCreated() throws Exception {
         mockMvc.perform(post("/api/admin/users")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"new@example.com\",\"firstName\":\"New\",\"lastName\":\"User\",\"role\":\"INSTRUCTOR\"}"))
+                        .content("{\"email\":\"new@example.com\",\"firstName\":\"New\",\"lastName\":\"User\",\"role\":\"INSTRUCTOR\",\"password\":\"s3cretPass\",\"verifyEmail\":false}"))
                 .andExpect(status().isCreated());
         verify(service).createUser(any(AdminUserCreateRequest.class));
+    }
+
+    @Test
+    void createUserRejectsPasswordTogetherWithVerifyEmail() throws Exception {
+        mockMvc.perform(post("/api/admin/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"new@example.com\",\"firstName\":\"New\",\"lastName\":\"User\",\"role\":\"INSTRUCTOR\",\"password\":\"s3cretPass\",\"verifyEmail\":true}"))
+                .andExpect(status().isBadRequest());
+        verify(service, never()).createUser(any(AdminUserCreateRequest.class));
     }
 
     @Test

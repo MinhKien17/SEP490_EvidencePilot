@@ -58,12 +58,14 @@ class AdminServiceTest {
     @Mock CurrentUserService currentUsers;
     @Mock PasswordResetService passwordResets;
     @Mock AuditService audit;
+    @Mock UserInvitationService invitations;
+    @Mock com.evidencepilot.service.UserAvatarService avatars;
     @Mock SystemNotificationService notifications;
     @Mock PasswordEncoder passwords;
     @InjectMocks AdminService service;
 
     @Test
-    void createsActiveUserWithEmailLocalPartPasswordAndAuditsSafeFields() {
+    void createsActiveUserWithExplicitPasswordAndAuditsSafeFields() {
         User admin = user(UserRole.ADMIN, AccountStatus.ACTIVE);
         when(currentUsers.requireCurrentUser()).thenReturn(admin);
         when(users.existsByEmailIgnoreCase("new@example.com")).thenReturn(false);
@@ -75,7 +77,7 @@ class AdminServiceTest {
         });
 
         var response = service.createUser(new AdminUserCreateRequest(
-                " New@Example.com ", "New", "User", UserRole.INSTRUCTOR, null));
+                " New@Example.com ", "New", "User", UserRole.INSTRUCTOR, null, "s3cretPass", false));
 
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
         verify(users).save(captor.capture());
@@ -84,8 +86,8 @@ class AdminServiceTest {
         assertThat(saved.isPasswordChangeNoticePending()).isTrue();
         assertThat(saved.getStudentCode()).isNull();
         assertThat(saved.getPasswordHash()).startsWith("$2a$");
-        verify(passwords).encode("new");
-        verifyNoInteractions(passwordResets);
+        verify(passwords).encode("s3cretPass");
+        verifyNoInteractions(passwordResets, invitations);
         ArgumentCaptor<Object> auditValue = ArgumentCaptor.forClass(Object.class);
         verify(audit).record(eq("USER_CREATED"), eq("USER"), eq(saved.getId()), eq(admin),
                 isNull(), auditValue.capture());
@@ -105,7 +107,7 @@ class AdminServiceTest {
     void createsStudentWithNormalizedStudentCode() {
         when(currentUsers.requireCurrentUser()).thenReturn(user(UserRole.ADMIN, AccountStatus.ACTIVE));
         when(users.findByStudentCode("SE170608")).thenReturn(Optional.empty());
-        when(passwords.encode("student")).thenReturn("hash");
+        when(passwords.encode("password123")).thenReturn("hash");
         when(users.save(any(User.class))).thenAnswer(invocation -> {
             User saved = invocation.getArgument(0);
             saved.setId(UUID.randomUUID());
@@ -113,23 +115,81 @@ class AdminServiceTest {
         });
 
         var response = service.createUser(new AdminUserCreateRequest(
-                "student@example.com", "Test", "Student", UserRole.STUDENT, " se170608 "));
+                "student@example.com", "Test", "Student", UserRole.STUDENT, " se170608 ", "password123", false));
 
         assertThat(response.studentCode()).isEqualTo("SE170608");
         verify(users).save(argThat(user -> user.getStudentCode().equals("SE170608")));
     }
 
     @Test
+    void createsVerifyingUserWithSentinelHashAndInvitation() {
+        when(currentUsers.requireCurrentUser()).thenReturn(user(UserRole.ADMIN, AccountStatus.ACTIVE));
+        when(users.save(any(User.class))).thenAnswer(invocation -> {
+            User saved = invocation.getArgument(0);
+            saved.setId(UUID.randomUUID());
+            return saved;
+        });
+
+        var response = service.createUser(new AdminUserCreateRequest(
+                "invite@example.com", "Inv", "Ited", UserRole.STUDENT, "SE170609", null, true));
+
+        assertThat(response.email()).isEqualTo("invite@example.com");
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(users).save(captor.capture());
+        assertThat(captor.getValue().getAccountStatus()).isEqualTo(AccountStatus.VERIFYING_EMAIL);
+        assertThat(captor.getValue().getPasswordHash()).isEqualTo(User.DISABLED_PASSWORD_SENTINEL);
+        verify(passwords, never()).encode(any());
+        verify(invitations).issueInvitation(captor.getValue().getId());
+    }
+
+    @Test
+    void rejectsPasswordTogetherWithVerifyEmail() {
+        assertBadRequest(() -> service.createUser(new AdminUserCreateRequest(
+                "both@example.com", "B", "T", UserRole.INSTRUCTOR, null, "password123", true)));
+        verifyNoInteractions(passwords);
+    }
+
+    @Test
+    void rejectsShortPassword() {
+        assertBadRequest(() -> service.createUser(new AdminUserCreateRequest(
+                "short@example.com", "S", "T", UserRole.INSTRUCTOR, null, "short", false)));
+        verifyNoInteractions(passwords);
+    }
+
+    @Test
+    void rejectsMalformedStudentCode() {
+        assertBadRequest(() -> service.createUser(new AdminUserCreateRequest(
+                "badcode@example.com", "B", "C", UserRole.STUDENT, "SE1", "password123", false)));
+        verify(users, never()).save(any());
+    }
+
+    @Test
+    void resendInvitationOnlyForPendingOrVerifying() {
+        User verifying = user(UserRole.STUDENT, AccountStatus.VERIFYING_EMAIL);
+        verifying.setId(UUID.randomUUID());
+        when(users.findById(verifying.getId())).thenReturn(Optional.of(verifying));
+
+        service.resendInvitation(verifying.getId());
+
+        verify(invitations).issueInvitation(verifying.getId());
+
+        User active = user(UserRole.STUDENT, AccountStatus.ACTIVE);
+        active.setId(UUID.randomUUID());
+        when(users.findById(active.getId())).thenReturn(Optional.of(active));
+        assertConflict(() -> service.resendInvitation(active.getId()));
+    }
+
+    @Test
     void rejectsDuplicateAndInvalidCreationRoles() {
         when(users.existsByEmailIgnoreCase("duplicate@example.com")).thenReturn(true);
         assertConflict(() -> service.createUser(new AdminUserCreateRequest(
-                "duplicate@example.com", "D", "U", UserRole.STUDENT, "SE1")));
+                "duplicate@example.com", "D", "U", UserRole.STUDENT, "SE170610", "password123", false)));
         assertBadRequest(() -> service.createUser(new AdminUserCreateRequest(
-                "admin@example.com", "A", "D", UserRole.ADMIN, null)));
+                "admin@example.com", "A", "D", UserRole.ADMIN, null, "password123", false)));
         assertBadRequest(() -> service.createUser(new AdminUserCreateRequest(
-                "student@example.com", "S", "T", UserRole.STUDENT, null)));
+                "student@example.com", "S", "T", UserRole.STUDENT, null, "password123", false)));
         assertBadRequest(() -> service.createUser(new AdminUserCreateRequest(
-                "teacher@example.com", "T", "E", UserRole.INSTRUCTOR, "SE2")));
+                "teacher@example.com", "T", "E", UserRole.INSTRUCTOR, "SE2", "password123", false)));
         verifyNoInteractions(passwordResets, audit);
     }
 
@@ -209,6 +269,32 @@ class AdminServiceTest {
     }
 
     @Test
+    void importWithVerifyEmailCreatesVerifyingUsersAndInvites() {
+        when(currentUsers.requireCurrentUser()).thenReturn(user(UserRole.ADMIN, AccountStatus.ACTIVE));
+        when(users.findAllByEmailIn(any())).thenReturn(List.of());
+        when(users.findAllByStudentCodeIn(any())).thenReturn(List.of());
+        when(users.saveAll(any())).thenAnswer(invocation -> {
+            List<User> saved = invocation.getArgument(0);
+            saved.forEach(user -> user.setId(UUID.randomUUID()));
+            return saved;
+        });
+
+        var response = service.importUsers(new AdminUserImportRequest("STUDENT", List.of(
+                new AdminUserImportRequest.UserItem("fresh@example.com", "Fresh", "Student", "SE170612")), true));
+
+        assertThat(response.created()).isOne();
+        assertThat(response.errors()).isEmpty();
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<User>> savedUsers = ArgumentCaptor.forClass(List.class);
+        verify(users).saveAll(savedUsers.capture());
+        User created = savedUsers.getValue().getFirst();
+        assertThat(created.getAccountStatus()).isEqualTo(AccountStatus.VERIFYING_EMAIL);
+        assertThat(created.getPasswordHash()).isEqualTo(User.DISABLED_PASSWORD_SENTINEL);
+        verify(invitations).issueInvitation(created.getId());
+        verify(passwords, never()).encode(any());
+    }
+
+    @Test
     void rejectsInvalidImportStructureAndDuplicatesBeforeWriting() {
         var valid = new AdminUserImportRequest.UserItem(
                 "student@example.com", "Test", "Student", "SE1");
@@ -249,19 +335,19 @@ class AdminServiceTest {
         User existing = user(UserRole.STUDENT, AccountStatus.ACTIVE);
         existing.setEmail("existing@example.com");
         existing.setFirstName("Original");
-        existing.setStudentCode("SE1");
+        existing.setStudentCode("SE170610");
         User owner = user(UserRole.STUDENT, AccountStatus.ACTIVE);
-        owner.setStudentCode("SE2");
+        owner.setStudentCode("SE170611");
         when(users.findAllByEmailIn(any())).thenReturn(List.of(existing));
         when(users.findAllByStudentCodeIn(any())).thenReturn(List.of(owner));
 
         var response = service.importUsers(new AdminUserImportRequest("STUDENT", List.of(
                 new AdminUserImportRequest.UserItem(
-                        "existing@example.com", "Changed", "Name", "SE2"))));
+                        "existing@example.com", "Changed", "Name", "SE170611"))));
 
         assertThat(response.errors()).extracting("field").containsExactly("studentCode");
         assertThat(existing.getFirstName()).isEqualTo("Original");
-        assertThat(existing.getStudentCode()).isEqualTo("SE1");
+        assertThat(existing.getStudentCode()).isEqualTo("SE170610");
         verify(users, never()).saveAll(any());
     }
 
