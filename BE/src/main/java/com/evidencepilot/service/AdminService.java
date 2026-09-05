@@ -28,6 +28,7 @@ import com.evidencepilot.repository.CollectionCategoryRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -73,6 +74,8 @@ public class AdminService {
     private final PasswordEncoder passwords;
     private final UserInvitationService invitations;
     private final UserAvatarService avatars;
+    // Empty unless the dev profile is active — DevBypassPolicy is @Profile("dev").
+    private final ObjectProvider<DevBypassPolicy> devBypassPolicies;
 
     @Transactional(readOnly = true)
     public PagedResponse<AdminUserResponse> getUsers(
@@ -112,17 +115,13 @@ public class AdminService {
             throw conflict("Student code already exists");
         }
 
-        // Password and verify-email are mutually exclusive (also enforced by
-        // @AssertTrue on the DTO): either the admin sets the password now, or
-        // the user sets their own via verification link — never both.
-        boolean verifyEmail = request.verifyEmail();
-        if (verifyEmail && request.password() != null && !request.password().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Password must be omitted when verifyEmail is true");
-        }
-        if (!verifyEmail && (request.password() == null || request.password().length() < 8)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Password must be at least 8 characters");
+        // No admin-supplied passwords: every account is born VERIFYING_EMAIL with
+        // the un-hashable sentinel and sets its own password via the emailed
+        // set-password link — except the quarantined dev bypass (fixed password,
+        // ACTIVE immediately, no email), which 403s unless explicitly enabled.
+        boolean devBypass = request.devBypass();
+        if (devBypass) {
+            requireDevBypass();
         }
 
         User user = new User();
@@ -132,18 +131,22 @@ public class AdminService {
         user.setRole(request.role());
         user.setStudentCode(studentCode);
         user.setPasswordChangeNoticePending(true);
-        if (verifyEmail) {
+        if (devBypass) {
+            user.setAccountStatus(AccountStatus.ACTIVE);
+            user.setPasswordHash(passwords.encode(DevBypassPolicy.FIXED_PASSWORD));
+        } else {
             user.setAccountStatus(AccountStatus.VERIFYING_EMAIL);
             user.setPasswordHash(User.DISABLED_PASSWORD_SENTINEL);
-        } else {
-            user.setAccountStatus(AccountStatus.ACTIVE);
-            user.setPasswordHash(passwords.encode(request.password()));
+        }
+        Map<String, Object> auditValue = safeUser(user);
+        if (devBypass) {
+            auditValue.put("devBypass", true);
         }
         user.setCreatedAt(LocalDateTime.now());
         user = users.save(user);
 
-        audit.record("USER_CREATED", "USER", user.getId(), currentUsers.requireCurrentUser(), null, safeUser(user));
-        if (verifyEmail) {
+        audit.record("USER_CREATED", "USER", user.getId(), currentUsers.requireCurrentUser(), null, auditValue);
+        if (!devBypass) {
             invitations.issueInvitation(user.getId());
         }
         User created = users.findById(user.getId()).orElse(user);
@@ -240,7 +243,10 @@ public class AdminService {
             return new AdminUserImportResponse(0, 0, errors);
         }
 
-        boolean verifyEmail = request.verifyEmail();
+        boolean devBypass = request.devBypass();
+        if (devBypass) {
+            requireDevBypass();
+        }
         int created = 0;
         int updated = 0;
         List<User> changedUsers = new ArrayList<>();
@@ -253,12 +259,12 @@ public class AdminService {
                 user.setEmail(row.email());
                 user.setRole(role);
                 user.setPasswordChangeNoticePending(true);
-                if (verifyEmail) {
+                if (devBypass) {
+                    user.setAccountStatus(AccountStatus.ACTIVE);
+                    user.setPasswordHash(passwords.encode(DevBypassPolicy.FIXED_PASSWORD));
+                } else {
                     user.setAccountStatus(AccountStatus.VERIFYING_EMAIL);
                     user.setPasswordHash(User.DISABLED_PASSWORD_SENTINEL);
-                } else {
-                    user.setAccountStatus(AccountStatus.ACTIVE);
-                    user.setPasswordHash(passwords.encode(temporaryPassword(row.email())));
                 }
                 user.setCreatedAt(LocalDateTime.now());
                 created++;
@@ -275,9 +281,13 @@ public class AdminService {
         users.saveAll(changedUsers);
         User actor = currentUsers.requireCurrentUser();
         for (User user : changedUsers) {
+            Map<String, Object> newValue = safeUser(user);
+            if (devBypass) {
+                newValue.put("devBypass", true);
+            }
             audit.record("USER_IMPORTED", "USER", user.getId(), actor,
-                    previousValues.get(user.getId()), safeUser(user));
-            if (verifyEmail && !previousValues.containsKey(user.getId())) {
+                    previousValues.get(user.getId()), newValue);
+            if (!devBypass && !previousValues.containsKey(user.getId())) {
                 invitedIds.add(user.getId());
             }
         }
@@ -618,8 +628,12 @@ public class AdminService {
         return value.trim();
     }
 
-    private String temporaryPassword(String email) {
-        return email.substring(0, email.indexOf('@')).toLowerCase(Locale.ROOT);
+    private void requireDevBypass() {
+        DevBypassPolicy policy = devBypassPolicies.getIfAvailable();
+        if (policy == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Dev bypass is not available");
+        }
+        policy.allowOrThrow();
     }
 
     private ResponseStatusException conflict(String message) {

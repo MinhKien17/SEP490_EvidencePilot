@@ -2,7 +2,7 @@ package com.evidencepilot.dto.request;
 
 import java.util.List;
 
-public record AdminUserImportRequest(String role, List<UserItem> users, boolean verifyEmail) {
+public record AdminUserImportRequest(String role, List<UserItem> users, boolean devBypass) {
 
     public AdminUserImportRequest(String role, List<UserItem> users) {
         this(role, users, false);

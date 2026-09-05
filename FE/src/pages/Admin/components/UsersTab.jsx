@@ -15,7 +15,7 @@ function UsersSection({ lang, api }) {
   const [detailUser, setDetailUser] = useState(null);
   const [loadingAction, setLoadingAction] = useState({});
   const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState({ email: '', firstName: '', lastName: '', studentCode: '', role: 'STUDENT', password: '', confirmPassword: '', verifyEmail: false });
+  const [createForm, setCreateForm] = useState({ email: '', firstName: '', lastName: '', studentCode: '', role: 'STUDENT', devBypass: false });
   const [createErr, setCreateErr] = useState('');
   const [resending, setResending] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -53,19 +53,21 @@ function UsersSection({ lang, api }) {
 
   const startProcessGuide = () => {
     setTimeout(() => {
+      // ponytail: drop steps whose element is absent (e.g. the DEV-only bypass
+      // checkbox in production builds) so the tour never breaks on them.
+      const steps = [
+        { popover: { title: lang.processGuide, description: lang.guideUsersDesc, side: 'center' } },
+        { element: '[data-guide="create-btn"]', popover: { title: lang.createUser, description: lang.guideUsersCreate, side: 'bottom' } },
+        { element: '[data-guide="create-verify"]', popover: { title: lang.devBypass, description: lang.guideUsersVerify, side: 'bottom' } },
+        { element: '[data-guide="import-btn"]', popover: { title: lang.importUsers, description: lang.guideUsersImport, side: 'bottom' } },
+        { element: '[data-guide="preflight"]', popover: { title: lang.preflightTitle, description: lang.guideUsersPreflight, side: 'left' } },
+        { element: '[data-guide="table"]', popover: { title: lang.userAccounts, description: lang.guideUsersTable, side: 'left' } },
+        { element: '[data-guide="action-ban"]', popover: { title: lang.actions, description: lang.guideUsersActions, side: 'left' } },
+        { popover: { title: lang.done, description: lang.guideUsersDone, side: 'center' } },
+      ].filter((s) => !s.element || document.querySelector(s.element));
       const d = driver({
         animate: true, showProgress: true,
-        steps: [
-          { popover: { title: lang.processGuide, description: lang.guideUsersDesc, side: 'center' } },
-          { element: '[data-guide="create-btn"]', popover: { title: lang.createUser, description: lang.guideUsersCreate, side: 'bottom' } },
-          { element: '[data-guide="create-password"]', popover: { title: lang.password, description: lang.guideUsersPassword, side: 'bottom' } },
-          { element: '[data-guide="create-verify"]', popover: { title: lang.verifyEmail, description: lang.guideUsersVerify, side: 'bottom' } },
-          { element: '[data-guide="import-btn"]', popover: { title: lang.importUsers, description: lang.guideUsersImport, side: 'bottom' } },
-          { element: '[data-guide="preflight"]', popover: { title: lang.preflightTitle, description: lang.guideUsersPreflight, side: 'left' } },
-          { element: '[data-guide="table"]', popover: { title: lang.userAccounts, description: lang.guideUsersTable, side: 'left' } },
-          { element: '[data-guide="action-ban"]', popover: { title: lang.actions, description: lang.guideUsersActions, side: 'left' } },
-          { popover: { title: lang.done, description: lang.guideUsersDone, side: 'center' } },
-        ],
+        steps,
       }).drive();
     }, 300);
   };
@@ -105,20 +107,15 @@ function UsersSection({ lang, api }) {
 
   const doCreate = async (e) => {
     e.preventDefault(); setCreateErr('');
-    // ponytail: password and verify-email are mutually exclusive — the backend
-    // rejects a payload containing both.
-    if (!createForm.verifyEmail) {
-      if (!createForm.password || createForm.password.length < 8) { setCreateErr(lang.passwordMin); return; }
-      if (createForm.password !== createForm.confirmPassword) { setCreateErr(lang.passwordsNoMatch); return; }
-    }
+    // ponytail: no admin-set passwords — BE always issues a set-password
+    // invitation, except the quarantined dev bypass (BE-gated, 403 otherwise).
     try {
-      const { studentCode, confirmPassword, password, verifyEmail, ...base } = createForm;
+      const { studentCode, devBypass, ...base } = createForm;
       const payload = createForm.role === 'STUDENT' ? { ...base, studentCode } : base;
-      payload.verifyEmail = verifyEmail;
-      if (!verifyEmail) payload.password = password;
+      payload.devBypass = devBypass;
       await api.post('/api/admin/users', payload);
       setShowCreate(false);
-      setCreateForm({ email: '', firstName: '', lastName: '', studentCode: '', role: 'STUDENT', password: '', confirmPassword: '', verifyEmail: false });
+      setCreateForm({ email: '', firstName: '', lastName: '', studentCode: '', role: 'STUDENT', devBypass: false });
       fetch(0);
     }
     catch (err) { setCreateErr(err.response?.data?.message || err.message); }
@@ -259,25 +256,16 @@ function UsersSection({ lang, api }) {
                   <input name="studentCode" maxLength={50} placeholder="SE170608" value={createForm.studentCode} onChange={e => setCreateForm(p => ({ ...p, studentCode: e.target.value }))} required className="w-full border border-gray-300 rounded-xl px-3.5 py-2 text-xs uppercase focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                 </div>
               )}
+              {/* ponytail: dev-only bypass — stripped from production builds by Vite */}
+              {import.meta.env.DEV && (
               <label data-guide="create-verify" className="flex items-start gap-2.5 rounded-xl border border-(--border) bg-(--surface-secondary) p-3 cursor-pointer">
-                <input type="checkbox" checked={createForm.verifyEmail} onChange={e => setCreateForm(p => ({ ...p, verifyEmail: e.target.checked, password: '', confirmPassword: '' }))} className="mt-0.5 accent-[#1e3a8a]" />
+                <input type="checkbox" checked={createForm.devBypass} onChange={e => setCreateForm(p => ({ ...p, devBypass: e.target.checked }))} className="mt-0.5 accent-[#1e3a8a]" />
                 <span>
-                  <span className="block text-xs font-bold text-(--text-primary)">{lang.verifyEmail}</span>
-                  <span className="block text-[11px] text-(--text-secondary) mt-0.5">{lang.verifyEmailHint}</span>
+                  <span className="block text-xs font-bold text-(--text-primary)">{lang.devBypass}</span>
+                  <span className="block text-[11px] text-(--text-secondary) mt-0.5">{lang.devBypassHint}</span>
                 </span>
               </label>
-              {!createForm.verifyEmail ? (
-                <div data-guide="create-password" className="flex gap-3">
-                  <div className="flex-1">
-                    <label className="block text-xs font-bold text-(--text-tertiary) uppercase tracking-wider mb-1">{lang.password}</label>
-                    <input name="password" type="password" placeholder="••••••••" value={createForm.password} onChange={e => setCreateForm(p => ({ ...p, password: e.target.value }))} required className="w-full border border-gray-300 rounded-xl px-3.5 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-                  </div>
-                  <div className="flex-1">
-                    <label className="block text-xs font-bold text-(--text-tertiary) uppercase tracking-wider mb-1">{lang.confirmPassword}</label>
-                    <input name="confirmPassword" type="password" placeholder="••••••••" value={createForm.confirmPassword} onChange={e => setCreateForm(p => ({ ...p, confirmPassword: e.target.value }))} required className="w-full border border-gray-300 rounded-xl px-3.5 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-                  </div>
-                </div>
-              ) : null}
+              )}
               {createErr && <div className="text-xs text-rose-600 bg-rose-50 p-2.5 rounded-lg border border-rose-100 font-semibold">{createErr}</div>}
               <div className="flex gap-2.5 justify-end pt-2">
                 <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 text-xs font-bold text-(--text-secondary) border border-(--border) rounded-xl hover:bg-(--surface-secondary) transition">{lang.cancel}</button>

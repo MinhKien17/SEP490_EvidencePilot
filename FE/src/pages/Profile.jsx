@@ -337,10 +337,10 @@ export function ProfileContent({ embedded = false }) {
     const q = activityQuery.trim().toLowerCase();
     const filtered = q
       ? activity.filter((item) =>
-          [item.title, item.subtitle, item.status, item.type]
-            .filter(Boolean)
-            .some((v) => String(v).toLowerCase().includes(q)),
-        )
+        [item.title, item.subtitle, item.status, item.type]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(q)),
+      )
       : [...activity];
     filtered.sort((a, b) => {
       const ta = a?.occurredAt ? new Date(a.occurredAt).getTime() : 0;
@@ -649,12 +649,12 @@ export function ProfileContent({ embedded = false }) {
       <main className={embedded ? '' : 'mx-auto max-w-4xl p-4 sm:p-6 lg:p-8'}>
 
         {!embedded && (
-        <Breadcrumb
-          items={[
-            { label: role === 'INSTRUCTOR' ? 'Dashboard' : (role === 'ADMIN' ? 'Admin' : 'Projects'), path: role === 'INSTRUCTOR' ? '/instructor/dashboard' : (role === 'ADMIN' ? '/admin/dashboard' : '/student/projects') },
-            { label: t.profile }
-          ]}
-        />
+          <Breadcrumb
+            items={[
+              { label: role === 'INSTRUCTOR' ? 'Dashboard' : (role === 'ADMIN' ? 'Admin' : 'Projects'), path: role === 'INSTRUCTOR' ? '/instructor/dashboard' : (role === 'ADMIN' ? '/admin/dashboard' : '/student/projects') },
+              { label: t.profile }
+            ]}
+          />
         )}
 
         {/* Profile Header Flexbox (Left: Avatar & Identity, Right: Tabs) */}
@@ -687,6 +687,9 @@ export function ProfileContent({ embedded = false }) {
             <div className="min-w-0">
               <h1 className="text-xl font-black text-(--brand-foreground) truncate">
                 {user.firstName || user.lastName ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : user.email}
+                {user.role === 'STUDENT' && user.studentCode && (
+                  <span className="ml-2 font-mono text-sm font-bold text-(--text-secondary)">[{user.studentCode}]</span>
+                )}
               </h1>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wide bg-(--brand-soft) text-(--brand-foreground) border border-(--brand)/20 shrink-0">
@@ -858,17 +861,6 @@ export function ProfileContent({ embedded = false }) {
                         className="w-full rounded-xl border border-(--border) bg-(--surface-secondary) px-4 py-2.5 text-xs font-medium text-(--text-tertiary) cursor-not-allowed opacity-75"
                       />
                     </div>
-                    {user.role === 'STUDENT' && (
-                      <div>
-                        <label className="block text-xs font-bold text-(--text-secondary) mb-1.5">{t.studentCode || (language === 'vi' ? 'Mã sinh viên' : 'Student Code')}</label>
-                        <input
-                          type="text"
-                          value={user.studentCode || '—'}
-                          disabled
-                          className="w-full rounded-xl border border-(--border) bg-(--surface-secondary) px-4 py-2.5 text-xs font-medium text-(--text-tertiary) cursor-not-allowed opacity-75"
-                        />
-                      </div>
-                    )}
                   </div>
 
                   {/* Password Modification Fields */}
@@ -1097,7 +1089,7 @@ export function ProfileContent({ embedded = false }) {
       {/* OTP Email Verification Modal */}
       <Modal
         open={otpModalOpen}
-        onClose={otpVerifying ? () => {} : closeOtpModal}
+        onClose={otpVerifying ? () => { } : closeOtpModal}
         title={language === 'vi' ? 'Xác thực email mới' : 'Verify Your New Email'}
         closeLabel={language === 'vi' ? 'Đóng' : 'Close'}
       >

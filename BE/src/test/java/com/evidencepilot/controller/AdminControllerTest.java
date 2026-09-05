@@ -21,6 +21,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -65,18 +66,18 @@ class AdminControllerTest {
     void createUserBindsRequestAndReturnsCreated() throws Exception {
         mockMvc.perform(post("/api/admin/users")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"new@example.com\",\"firstName\":\"New\",\"lastName\":\"User\",\"role\":\"INSTRUCTOR\",\"password\":\"s3cretPass\",\"verifyEmail\":false}"))
+                        .content("{\"email\":\"new@example.com\",\"firstName\":\"New\",\"lastName\":\"User\",\"role\":\"INSTRUCTOR\",\"devBypass\":false}"))
                 .andExpect(status().isCreated());
         verify(service).createUser(any(AdminUserCreateRequest.class));
     }
 
     @Test
-    void createUserRejectsPasswordTogetherWithVerifyEmail() throws Exception {
+    void createUserBindsDevBypassFlag() throws Exception {
         mockMvc.perform(post("/api/admin/users")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"new@example.com\",\"firstName\":\"New\",\"lastName\":\"User\",\"role\":\"INSTRUCTOR\",\"password\":\"s3cretPass\",\"verifyEmail\":true}"))
-                .andExpect(status().isBadRequest());
-        verify(service, never()).createUser(any(AdminUserCreateRequest.class));
+                        .content("{\"email\":\"new@example.com\",\"firstName\":\"New\",\"lastName\":\"User\",\"role\":\"INSTRUCTOR\",\"devBypass\":true}"))
+                .andExpect(status().isCreated());
+        verify(service).createUser(argThat(req -> req.devBypass()));
     }
 
     @Test

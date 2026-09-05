@@ -27,7 +27,7 @@ export default function UserImportModal({ lang, api, onClose, onDone }) {
   const [preflightErrors, setPreflightErrors] = useState([]);
   const [serverResult, setServerResult] = useState(null);
   const [error, setError] = useState('');
-  const [verifyEmail, setVerifyEmail] = useState(false);
+  const [devBypass, setDevBypass] = useState(false);
 
   const downloadTemplate = () => {
     const ws = XLSX.utils.json_to_sheet([
@@ -50,7 +50,7 @@ export default function UserImportModal({ lang, api, onClose, onDone }) {
       if (!EMAIL_RE.test(r.email)) rowErrors.push(lang.errEmail);
       if (!r.firstName || !r.lastName) rowErrors.push(lang.errName);
       if (r.role !== 'STUDENT' && r.role !== 'INSTRUCTOR') {
-        rowErrors.push(r.role === 'ADMIN' ? lang.errAdminRole : lang.errAdminRole);
+        rowErrors.push(lang.errAdminRole);
       } else if (r.role === 'STUDENT') {
         if (!r.studentCode) rowErrors.push(lang.errMissingCode);
         else if (!CODE_RE.test(r.studentCode)) rowErrors.push(lang.errInvalidCode);
@@ -99,7 +99,7 @@ export default function UserImportModal({ lang, api, onClose, onDone }) {
       for (const [role, items] of Object.entries(groups)) {
         const payload = {
           role,
-          verifyEmail,
+          devBypass,
           users: items.map((r) => ({
             email: r.email,
             firstName: r.firstName,
@@ -144,18 +144,21 @@ export default function UserImportModal({ lang, api, onClose, onDone }) {
           {lang.downloadTemplate}
         </button>
 
+        {/* ponytail: dev-only bypass — stripped from production builds by Vite */}
+        {import.meta.env.DEV && (
         <label className="mt-3 flex items-start gap-2.5 rounded-xl border border-(--border) bg-(--surface-secondary) p-3 cursor-pointer">
           <input
             type="checkbox"
-            checked={verifyEmail}
-            onChange={(e) => setVerifyEmail(e.target.checked)}
+            checked={devBypass}
+            onChange={(e) => setDevBypass(e.target.checked)}
             className="mt-0.5 accent-[#1e3a8a]"
           />
           <span>
-            <span className="block text-xs font-bold text-(--text-primary)">{lang.verifyEmail}</span>
-            <span className="block text-[11px] text-(--text-secondary) mt-0.5">{lang.verifyEmailHint}</span>
+            <span className="block text-xs font-bold text-(--text-primary)">{lang.devBypass}</span>
+            <span className="block text-[11px] text-(--text-secondary) mt-0.5">{lang.devBypassHint}</span>
           </span>
         </label>
+        )}
 
         <label className="mt-4 block text-xs font-bold text-(--text-secondary)">
           <span>{lang.xlsxFile}</span>
