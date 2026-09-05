@@ -117,7 +117,7 @@ function PapersSection({ lang, api }) {
       {/* Header Area */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-200 pb-5">
         <div>
-          <h1 className="text-3xl font-extrabold text-[#1e3a8a] tracking-tight">{lang.papersOverview}</h1>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1e3a8a] tracking-tight">{lang.papersOverview}</h1>
           <p className="text-gray-500 text-xs mt-1">{lang.papersSub}</p>
         </div>
       </div>

@@ -318,7 +318,7 @@ export default function AdminDashboard() {
         </header>
 
         {/* Content */}
-        <main data-tour="content" className="flex-1 overflow-y-auto">
+        <main data-tour="content" className="flex-1 overflow-y-auto w-full max-w-[1600px] mx-auto">
           <SectionBoundary>
             <Section lang={L} api={api} />
           </SectionBoundary>

@@ -117,7 +117,7 @@ function SettingsSection({ lang, api }) {
       {/* Title Area */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-200 pb-5">
         <div>
-          <h1 className="text-3xl font-extrabold text-[#1e3a8a] tracking-tight">{lang.settings}</h1>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1e3a8a] tracking-tight">{lang.settings}</h1>
           <p className="text-gray-550 text-xs mt-1">{lang.settingsSub}</p>
         </div>
       </div>
@@ -212,6 +212,7 @@ function SettingsSection({ lang, api }) {
           ) : !config ? (
             <div className="text-sm text-gray-400 text-center py-8">—</div>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50 text-slate-400 font-bold uppercase border-b border-gray-100">
@@ -246,6 +247,7 @@ function SettingsSection({ lang, api }) {
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>

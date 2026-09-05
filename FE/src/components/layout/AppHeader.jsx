@@ -93,7 +93,7 @@ export default function AppHeader({ variant = 'app', labels }) {
 
   return (
     <header className={`${isPublic ? 'fixed left-0 right-0' : 'sticky shrink-0'} top-0 z-50 h-16 border-b border-(--header-border) bg-(--header-bg) text-(--text-primary) shadow-sm backdrop-blur-md`}>
-      <div className="h-full max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between gap-4">
+      <div className="h-full max-w-[1400px] 2xl:max-w-[1600px] mx-auto px-4 sm:px-6 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <Link to="/" onClick={() => setMenuOpen(false)} className="flex items-center gap-2.5 shrink-0 rounded-lg">
             <span className="w-8 h-8 bg-(--brand) text-(--on-brand) rounded-lg text-xs flex items-center justify-center font-bold shadow-xs">EP</span>
