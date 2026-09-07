@@ -9,6 +9,7 @@ import com.evidencepilot.dto.response.InstructorFeedbackResponseDto;
 import com.evidencepilot.dto.response.ReviewSubmissionSnapshotResponse;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.transaction.annotation.Transactional;
 
 public interface FeedbackService {
     List<FeedbackRequestResponseDto> findAllForCurrentUser();
@@ -19,6 +20,7 @@ public interface FeedbackService {
     void deleteFeedbackItem(UUID feedbackItemId);
     FeedbackRequestResponseDto updateStatus(UUID feedbackRequestId, String status);
     InstructorFeedbackResponseDto answerFeedback(UUID feedbackItemId, String answerContent, UUID idempotencyKey);
+    @Transactional
     default InstructorFeedbackResponseDto answerFeedback(UUID feedbackItemId, String answerContent) {
         return answerFeedback(feedbackItemId, answerContent, UUID.randomUUID());
     }
