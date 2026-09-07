@@ -1,6 +1,8 @@
 package com.evidencepilot.service;
 
 import com.evidencepilot.dto.request.InstructorFeedbackRequest;
+import com.evidencepilot.dto.request.FeedbackReplyRequest;
+import com.evidencepilot.dto.request.FeedbackStateRequest;
 import com.evidencepilot.dto.request.SubmitReviewRequest;
 import com.evidencepilot.dto.response.FeedbackRequestResponseDto;
 import com.evidencepilot.dto.response.InstructorFeedbackResponseDto;
@@ -16,6 +18,13 @@ public interface FeedbackService {
     InstructorFeedbackResponseDto updateFeedbackItem(UUID feedbackItemId, InstructorFeedbackRequest request);
     void deleteFeedbackItem(UUID feedbackItemId);
     FeedbackRequestResponseDto updateStatus(UUID feedbackRequestId, String status);
-    InstructorFeedbackResponseDto answerFeedback(UUID feedbackItemId, String answerContent);
+    InstructorFeedbackResponseDto answerFeedback(UUID feedbackItemId, String answerContent, UUID idempotencyKey);
+    default InstructorFeedbackResponseDto answerFeedback(UUID feedbackItemId, String answerContent) {
+        return answerFeedback(feedbackItemId, answerContent, UUID.randomUUID());
+    }
+    InstructorFeedbackResponseDto createInstructorReply(UUID feedbackItemId, FeedbackReplyRequest request);
+    InstructorFeedbackResponseDto updateInstructorReply(UUID feedbackItemId, UUID replyId, FeedbackReplyRequest request);
+    void deleteInstructorReply(UUID feedbackItemId, UUID replyId);
+    InstructorFeedbackResponseDto prepareFeedbackState(UUID feedbackItemId, FeedbackStateRequest request);
     ReviewSubmissionSnapshotResponse getSubmissionSnapshot(UUID feedbackRequestId);
 }
