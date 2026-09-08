@@ -29,7 +29,7 @@ async function setup(page) {
     feedback: [{
       id: 'feedback-old', requestId: 'round-old', paperId: 'paper-one', sectionId: 'section-two', sectionTitle: 'Methods',
       content: 'Existing feedback', publishedAt: '2026-09-06T10:30:00', threadState: 'OPEN', revision: 1,
-      replyState: 'ANSWERED', canDraftReply: true, canMarkDone: true, canReopen: false, canEdit: false, canDelete: false,
+      replyState: 'ANSWERED', canDraftReply: false, canMarkDone: true, canReopen: false, canEdit: false, canDelete: false,
       anchor: anchor(submittedTarget, 'target source', 1),
       messages: [
         { id: 'feedback-old', kind: 'ROOT', authorId: 'instructor', authorRole: 'INSTRUCTOR', authorName: 'Test Instructor', content: 'Existing feedback', createdAt: '2026-09-06T10:30:00', publishedAt: '2026-09-06T10:30:00', draft: false },
@@ -38,7 +38,7 @@ async function setup(page) {
     }],
   };
   const project = { id: 'instructor-feedback-project', title: 'Instructor feedback fixture', status: 'IN_REVIEW' };
-  const snapshot = { state: 'AVAILABLE', snapshot: { papers: [{ id: 'paper-one', title: 'Paper', sections: [
+  const snapshot = { state: 'AVAILABLE', snapshot: { schemaVersion: 1, projectId: 'instructor-feedback-project', papers: [{ id: 'paper-one', title: 'Paper', sections: [
     { id: 'section-one', title: 'Introduction', order: 0, contentTex: 'Submitted introduction.', contentVersion: 1 },
     { id: 'section-two', title: 'Methods', order: 1, contentTex: submittedTarget, contentVersion: 1 },
   ] }] } };
@@ -70,6 +70,7 @@ async function setup(page) {
     else if (path === '/api/projects/instructor-feedback-project/sources') json = { content: [], last: true };
     else if (path === '/api/media/projects/instructor-feedback-project') json = [];
     else if (path === '/api/feedback-requests') json = state.requests;
+    else if (path === '/api/feedback-requests/round-old/submission-snapshot') json = snapshot;
     else if (path === '/api/feedback-requests/round-one/submission-snapshot') json = snapshot;
     else if (path === '/api/papers/paper-one/sections') json = liveSections;
     else if (/^\/api\/feedback-requests\/[^/]+\/feedback$/.test(path) && method === 'GET') {
@@ -86,12 +87,6 @@ async function setup(page) {
       };
       state.feedback.push(rootFeedback);
       json = rootFeedback;
-    } else if (path === '/api/instructor-feedback/feedback-old/replies' && method === 'POST') {
-      const body = request.postDataJSON();
-      expect(body.content).toBe('Draft instructor reply');
-      const reply = { id: 'reply-draft', kind: 'REPLY', authorId: 'instructor', authorRole: 'INSTRUCTOR', authorName: 'Test Instructor', content: body.content, createdAt: '2026-09-07T10:45:00', publishedAt: null, draft: true };
-      state.feedback[0].messages.push(reply);
-      json = reply;
     } else if (path === '/api/feedback-requests/round-one/status' && method === 'PATCH') {
       state.returnCalls += 1;
       state.requests[0] = { ...state.requests[0], status: 'RETURNED' };
@@ -105,10 +100,43 @@ async function setup(page) {
       }
       json = state.requests[0];
     }
+    else { state.errors.push(`Unexpected API: ${method} ${path}`); return route.fulfill({ status: 501, json: { message: 'Unexpected fixture endpoint' } }); }
     await route.fulfill({ json });
   });
   return state;
 }
+
+test('a query-only review link opens its project and selected round', async ({ page }) => {
+  const state = await setup(page);
+  await page.route('**/api/projects?*', route => route.fulfill({ json: { content: [{ id: 'instructor-feedback-project', title: 'Instructor feedback fixture' }] } }));
+  await page.goto('http://localhost:5173/instructor/requests/?review=round-old&feedback=feedback-old');
+  await expect(page.getByRole('region', { name: 'Project workspace', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Returned/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('Existing feedback', { exact: true })).toBeVisible();
+  expect(state.errors).toEqual([]);
+});
+
+test('the previously generated project query opens the latest review for that project', async ({ page }) => {
+  const state = await setup(page);
+  state.requests.reverse();
+  await page.route('**/api/projects?*', route => route.fulfill({ json: { content: [{ id: 'instructor-feedback-project', title: 'Instructor feedback fixture' }] } }));
+  await page.goto('http://localhost:5173/instructor/requests/?review=instructor-feedback-project');
+  await expect(page.getByRole('region', { name: 'Project workspace', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Pending/ })).toHaveAttribute('aria-pressed', 'true');
+  expect(state.errors).toEqual([]);
+});
+
+test('review queue links preserve the project and the selected round', async ({ page }) => {
+  const state = await setup(page);
+  await page.route('**/api/projects?*', route => route.fulfill({ json: { content: [{ id: 'instructor-feedback-project', title: 'Instructor feedback fixture' }] } }));
+  await page.goto('http://localhost:5173/instructor/requests');
+  const row = page.getByRole('row').filter({ hasText: 'Returned' });
+  await expect(row.getByRole('link', { name: 'Review', exact: true })).toHaveAttribute('href', '/instructor/requests/instructor-feedback-project?review=round-old');
+  await row.getByRole('link', { name: 'Review', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Project workspace', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Returned/ })).toHaveAttribute('aria-pressed', 'true');
+  expect(state.errors).toEqual([]);
+});
 
 test('instructor views both versions, drafts a thread, returns it, and follows a feedback notification', async ({ page }) => {
   const state = await setup(page);
@@ -128,15 +156,10 @@ test('instructor views both versions, drafts a thread, returns it, and follows a
   await page.getByRole('button', { name: 'Add feedback', exact: true }).click();
   await expect(page.getByText('Draft root feedback', { exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: 'Reply as draft', exact: true }).click();
-  await page.getByPlaceholder('Draft reply for the student…').fill('Draft instructor reply');
-  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
-  await expect(page.getByText('Draft instructor reply', { exact: true })).toBeVisible();
-  await expect(page.getByText('Draft', { exact: true })).toHaveCount(2);
-
+  await expect(page.getByRole('button', { name: 'Reply as draft', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Return for Revision', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm', exact: true }).click();
-  await expect(page.getByText('Draft', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Return for Revision', exact: true })).toHaveCount(0);
   expect(state.returnCalls).toBe(1);
 
   await page.goto(`${root}?review=round-one&feedback=feedback-old`);
@@ -153,11 +176,12 @@ test('root drafts and their selected source stay with their section and round', 
     await route.fulfill({ json: { id: 'captured', ...posted } });
   });
   await page.route('**/api/feedback-requests/round-old/submission-snapshot', route => route.fulfill({ json: {
-    state: 'AVAILABLE', snapshot: { papers: [{ id: 'paper-one', title: 'Paper', sections: [
+    state: 'AVAILABLE', snapshot: { schemaVersion: 1, projectId: 'instructor-feedback-project', papers: [{ id: 'paper-one', title: 'Paper', sections: [
       { id: 'section-one', title: 'Introduction', order: 0, contentTex: 'Old introduction.', contentVersion: 0 },
     ] }] },
   } }));
   await page.goto(root);
+  await page.getByRole('button', { name: /Comment on a passage/ }).first().click();
   await expect(page.locator('.cm-content')).toContainText('Submitted introduction.');
   await page.evaluate(async () => {
     const { EditorView } = await import('/node_modules/.vite/deps/codemirror.js');
@@ -165,10 +189,10 @@ test('root drafts and their selected source stay with their section and round', 
   });
   await page.getByRole('button', { name: 'Comment selected text', exact: true }).click();
   await page.getByPlaceholder('Feedback for this section...').fill('Comment for Introduction');
-  await page.getByRole('button', { name: 'Methods', exact: true }).click();
+  await page.locator('[data-tour="file-panel"]').getByRole('button', { name: 'Methods', exact: true }).click();
   await expect(page.getByPlaceholder('Feedback for this section...')).toHaveValue('');
   await expect(page.getByRole('button', { name: 'Add feedback', exact: true })).toBeDisabled();
-  await page.getByRole('button', { name: 'Introduction', exact: true }).click();
+  await page.locator('[data-tour="file-panel"]').getByRole('button', { name: 'Introduction', exact: true }).click();
   await expect(page.getByPlaceholder('Feedback for this section...')).toHaveValue('Comment for Introduction');
   await page.getByRole('button', { name: 'Saved working copy', exact: true }).click();
   await expect(page.locator('.cm-content')).toContainText('Working introduction.');
@@ -189,7 +213,7 @@ test('old feedback selects its passage in each viewed snapshot without using liv
   const newer = 'A newly inserted preface. ' + submittedTarget;
   const original = state.feedback[0].anchor;
   state.feedback[0].anchor = { original: original.original, current: anchor(newer, 'target source', 2).current };
-  const snapshot = (text, version) => ({ state: 'AVAILABLE', snapshot: { papers: [{ id: 'paper-one', title: 'Paper', sections: [
+  const snapshot = (text, version) => ({ state: 'AVAILABLE', snapshot: { schemaVersion: 1, projectId: 'instructor-feedback-project', papers: [{ id: 'paper-one', title: 'Paper', sections: [
     { id: 'section-two', title: 'Methods', order: 0, contentTex: text, contentVersion: version },
   ] }] } });
   await page.route('**/api/feedback-requests/round-one/submission-snapshot', route => route.fulfill({ json: snapshot(newer, 2) }));
@@ -201,6 +225,7 @@ test('old feedback selects its passage in each viewed snapshot without using liv
     return { from, text: view.state.sliceDoc(from, to) };
   });
   await page.goto(root);
+  await page.getByRole('button', { name: /Comment on a passage/ }).first().click();
   await expect(page.locator('.cm-content')).toContainText(newer);
   await page.getByText('Existing feedback', { exact: true }).click();
   await expect.poll(selection).toEqual({ from: newer.indexOf('target source'), text: 'target source' });
@@ -213,6 +238,19 @@ test('old feedback selects its passage in each viewed snapshot without using liv
   await expect(page.locator('.cm-feedback-active')).toHaveCount(0);
 });
 
+test('history opens a DONE root in its original round and retains legacy replies', async ({ page }) => {
+  const state = await setup(page);
+  state.feedback[0].threadState = 'DONE';
+  await page.goto(root);
+  await page.getByRole('button', { name: /History/i, exact: true }).click();
+  await page.getByRole('button', { name: /Existing feedback.*Student response/ }).click();
+  await expect(page.getByRole('button', { name: /Returned/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('Existing feedback', { exact: true })).toBeVisible();
+  await page.getByText('Published reply history / legacy drafts', { exact: true }).click();
+  await expect(page.getByText('Student response', { exact: true })).toBeVisible();
+  expect(state.errors).toEqual([]);
+});
+
 test('a returned unchanged submission offers Approve without a second Return', async ({ page }) => {
   const state = await setup(page);
   state.requests[0].status = 'RETURNED';
@@ -221,7 +259,99 @@ test('a returned unchanged submission offers Approve without a second Return', a
     id: 'instructor-feedback-project', title: 'Unchanged returned fixture', status: 'RETURNED',
   } }));
   await page.goto(root);
-  await expect(page.locator('.cm-content')).toContainText('Submitted introduction.');
+  await expect(page.getByRole('region', { name: 'Submitted paper' })).toContainText('Submitted introduction.');
   await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Return for Revision', exact: true })).toHaveCount(0);
+});
+
+test('instructor reads the full submitted paper in the shared workspace', async ({ page }) => {
+  await setup(page);
+  await page.goto(root);
+  const workspace = page.getByRole('region', { name: 'Project workspace', exact: true });
+  await expect(workspace).toBeVisible();
+  const paper = workspace.getByRole('region', { name: 'Submitted paper', exact: true });
+  await expect(paper).toContainText('Submitted introduction.');
+  await expect(paper).toContainText(submittedTarget);
+  await expect(workspace.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Reply as draft', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Return for Revision', exact: true })).toBeVisible();
+  await page.screenshot({ path: '../../artifacts/codex/mentor-feedback-plan-2026-09-08/verification/instructor-full-paper.png' });
+  await page.setViewportSize({ width: 390, height: 850 });
+  await expect(paper).toBeVisible();
+  await page.getByRole('button', { name: /toggle context panel/i }).click();
+  await expect(page.getByRole('button', { name: 'Return for Revision', exact: true })).toBeVisible();
+  await page.screenshot({ path: '../../artifacts/codex/mentor-feedback-plan-2026-09-08/verification/instructor-mobile-panel.png' });
+});
+
+test('snapshot errors and legacy rounds never fall back to live content under Submitted', async ({ page }) => {
+  const state = await setup(page);
+  let failure = true;
+  await page.route('**/api/feedback-requests/round-one/submission-snapshot', route => failure
+    ? route.fulfill({ status: 503, json: { message: 'Snapshot unavailable' } })
+    : route.fulfill({ json: { state: 'LEGACY_NO_SNAPSHOT' } }));
+  await page.goto(root);
+  await expect(page.getByRole('alert')).toContainText('snapshot');
+  await expect(page.getByRole('region', { name: 'Submitted paper', exact: true })).not.toContainText('Working introduction.');
+  await expect(page.getByPlaceholder('Feedback for this section...')).toHaveCount(0);
+  failure = false;
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('no submission snapshot');
+  await page.getByRole('button', { name: 'Saved working copy', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Saved working copy', exact: true })).toContainText('Working introduction.');
+  await expect(page.getByPlaceholder('Feedback for this section...')).toHaveCount(0);
+  expect(state.errors).toEqual([]);
+});
+
+test('a template paper with a null title still displays its submitted snapshot', async ({ page }) => {
+  await setup(page);
+  await page.route('**/api/feedback-requests/round-one/submission-snapshot', route => route.fulfill({ json: {
+    state: 'AVAILABLE', snapshot: { schemaVersion: 1, projectId: 'instructor-feedback-project', papers: [
+      { id: 'paper-one', title: null, sections: [{ id: 'section-one', title: 'Introduction', order: 0, contentTex: 'Template snapshot body.', contentVersion: 1 }] },
+    ] },
+  } }));
+  await page.goto(root);
+  await expect(page.getByRole('region', { name: 'Submitted paper', exact: true })).toContainText('Template snapshot body.');
+});
+
+test('review ignores student local drafts and makes no paper writes in either view', async ({ page }) => {
+  const state = await setup(page);
+  const writes = [];
+  page.on('request', request => { if (['PUT', 'PATCH', 'POST', 'DELETE'].includes(request.method()) && /\/api\/papers\//.test(request.url())) writes.push(request.url()); });
+  await page.addInitScript(() => localStorage.setItem('workspace_draft_instructor-feedback-project_section-one', 'PRIVATE UNSAVED STUDENT TEXT'));
+  await page.goto(root);
+  await page.getByRole('button', { name: /Comment on a passage/ }).first().click();
+  await expect(page.locator('.cm-content')).toContainText('Submitted introduction.');
+  await expect(page.locator('.cm-content')).toHaveAttribute('contenteditable', 'false');
+  await expect(page.getByText('Read-only (unassigned)', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Citation Review', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Saved working copy', exact: true }).click();
+  await expect(page.locator('.cm-content')).toContainText('Working introduction.');
+  await expect(page.locator('.cm-content')).not.toContainText('PRIVATE UNSAVED');
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Control+s');
+  await page.keyboard.insertText('MUST NOT WRITE');
+  await expect(page.locator('.cm-content')).not.toContainText('MUST NOT WRITE');
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-tour="header-history"]')).toHaveCount(0);
+  expect(writes).toEqual([]);
+  expect(state.errors).toEqual([]);
+});
+
+test('a late snapshot response cannot replace the newly selected round', async ({ page }) => {
+  const state = await setup(page);
+  let release;
+  const delayed = new Promise(resolve => { release = resolve; });
+  let requested = false;
+  await page.route('**/api/feedback-requests/round-one/submission-snapshot', async route => {
+    requested = true;
+    await delayed;
+    await route.fulfill({ json: { state: 'AVAILABLE', snapshot: { schemaVersion: 1, projectId: 'instructor-feedback-project', papers: [{ id: 'paper-one', title: 'Paper', sections: [{ id: 'section-one', title: 'Introduction', order: 0, contentTex: 'Late newest snapshot', contentVersion: 2 }] }] } } });
+  });
+  await page.goto(root);
+  await expect.poll(() => requested).toBe(true);
+  await page.getByRole('button', { name: /Returned/ }).click();
+  await expect(page.getByRole('region', { name: 'Submitted paper', exact: true })).toContainText('Submitted introduction.');
+  release();
+  await expect(page.getByRole('region', { name: 'Submitted paper', exact: true })).not.toContainText('Late newest snapshot');
+  expect(state.errors).toEqual([]);
 });

@@ -58,8 +58,8 @@ export default function FilePanel({ compact, isOpen, width, onResizeStart, secti
               const isAssigned = assignedSections.some(s => String(s.id) === String(sec.id));
               const isSelected = String(sec.id) === String(selectedSectionId);
               return (
-                <div key={sec.id} onClick={() => onSelectSection(sec)} className={`flex items-center justify-between text-xs font-medium p-2 rounded-md cursor-pointer transition-all mt-1 group ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 border border-indigo-100 dark:border-indigo-800 shadow-sm' : isAssigned ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-(--text-primary)' : 'text-(--text-secondary) hover:bg-(--surface-tertiary)'}`}>
-                  <div className="flex items-center gap-2 truncate">
+                <div key={sec.id} className={`flex items-center justify-between text-xs font-medium p-2 rounded-md transition-all mt-1 group ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 border border-indigo-100 dark:border-indigo-800 shadow-sm' : isAssigned ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-(--text-primary)' : 'text-(--text-secondary) hover:bg-(--surface-tertiary)'}`}>
+                  <button type="button" aria-label={sec.sectionTitle || t('untitled')} aria-pressed={isSelected} onClick={() => onSelectSection(sec)} className="flex flex-1 items-center gap-2 truncate text-left cursor-pointer">
                     {isAssigned ? (
                       <svg className="w-3.5 h-3.5 shrink-0 text-emerald-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
                     ) : (
@@ -67,7 +67,7 @@ export default function FilePanel({ compact, isOpen, width, onResizeStart, secti
                     )}
                     <span className="truncate max-w-[120px]" title={sec.sectionTitle}>{sec.sectionTitle || t('untitled')}</span>
                     <span className="text-[9px] text-(--text-tertiary) font-mono">#{(sec.sectionOrder ?? 0) + 1}</span>
-                  </div>
+                  </button>
                   {isAssigned && (
                     <span
                       title={t(sec.handoffConfirmedById ? 'handoffStateConfirmed' : 'handoffStateUnconfirmed')}
