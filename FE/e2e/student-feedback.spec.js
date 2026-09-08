@@ -274,8 +274,20 @@ test('small screens retain editing and feedback without horizontal overflow', as
     expect(metrics.scroll).toBeLessThanOrEqual(metrics.width + 1);
     const editorHeight = await page.locator('.cm-scroller').evaluate(el => el.clientHeight);
     expect(editorHeight).toBeGreaterThan(100);
-    await page.screenshot({ path: `../../artifacts/codex/mentor-feedback-plan-2026-09-08/verification/feedback-width-${width}.png` });
+    await page.screenshot({ path: `../../artifacts/codex/review-ui-rework-01a080e9/student-width-${width}.png` });
   }
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('Control+Home');
+  await page.keyboard.insertText('Unsaved preview check. ');
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect(page.locator('#editor-preview-container').getByRole('heading', { name: 'Introduction', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'LaTeX', exact: true }).click();
+  await expect(page.locator('.cm-content')).toContainText('Unsaved preview check.');
+  await page.getByRole('button', { name: 'View full paper', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'View full paper', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.cm-content')).toContainText('Unsaved preview check.');
+  expect(state.saves).toHaveLength(0);
   expect(state.errors).toEqual([]);
 });
 

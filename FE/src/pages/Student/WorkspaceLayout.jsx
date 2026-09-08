@@ -16,7 +16,7 @@ import FullPaperPreview from '../../components/Student/FullPaperPreview.jsx';
 import SubmissionReadinessModal from '../../components/Student/SubmissionReadinessModal.jsx';
 import { hasActiveExtraction } from '../../utils/student/extractionPolling.js';
 import useInstructorReview from '../../hooks/useInstructorReview.js';
-import InstructorFeedbackPanel from '../../components/Instructor/InstructorFeedbackPanel.jsx';
+import InstructorFeedbackPanel, { InstructorReviewGuide } from '../../components/Instructor/InstructorFeedbackPanel.jsx';
 import useProjectFeedback from '../../hooks/useProjectFeedback.js';
 import { normalizeSource } from '../../utils/student/feedbackAnchors.js';
 import useUndoDelete, { UndoToast } from '../../components/ui/UndoDelete.jsx';
@@ -290,7 +290,6 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
   const handleSelectSection = async (sec) => {
     if (isReview) {
       review.setSelectedSectionId(sec.id);
-      if (!review.annotating) document.getElementById(`paper-section-${sec.id}`)?.scrollIntoView({ block: 'start' });
       if (isCompactWorkspace) setIsFileTreeOpen(false);
       return true;
     }
@@ -319,6 +318,13 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
 
   const reviewLink = new URLSearchParams(location.search).get('review');
   const feedbackLink = new URLSearchParams(location.search).get('feedback');
+  useEffect(() => {
+    if (isReview && feedbackLink) {
+      setActiveTab('Review');
+      setIsDrawerOpen(true);
+      if (isCompactWorkspace) setIsFileTreeOpen(false);
+    }
+  }, [isReview, feedbackLink, isCompactWorkspace]);
   useEffect(() => {
     if (isReview || !reviewLink || feedback.loading || !feedback.requests.some(round => round.id === reviewLink)) return;
     if (feedbackLink && !feedback.items.some(item => String(item.id) === String(feedbackLink))) return;
@@ -1461,20 +1467,20 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
           </button>
         </div>
 
-        <FilePanel compact={isCompactWorkspace} isOpen={isFileTreeOpen} width={fileTreeWidth} onResizeStart={handleLeftDividerMouseDown} sections={sections} assignedSections={assignedSections} selectedSectionId={selectedSectionId} onSelectSection={handleSelectSection} selectedPaper={selectedPaper} onSelectPaper={handleSelectPaper} onViewFullPaper={isReview ? () => review.setAnnotating(false) : setShowFullPaperPreview} papers={papers} onUploadPaper={isLocked ? undefined : handleUploadPaper} sources={sources} onUploadSource={isLocked ? undefined : handleUploadSource} onDeleteSource={isReview ? undefined : handleDeleteSource} mediaAssets={mediaAssets} onUploadMedia={isLocked ? undefined : handleUploadMedia} onDeleteMedia={isReview ? undefined : handleDeleteMedia} onInsertMedia={canEditCurrentSection ? handleInsertMedia : undefined} showToast={showToast} isLocked={isLocked} onSaveDraft={isReview ? undefined : handleSaveDraft} saveStatus={saveStatus} />
+        <FilePanel compact={isCompactWorkspace} isOpen={isFileTreeOpen} width={fileTreeWidth} onResizeStart={handleLeftDividerMouseDown} sections={sections} assignedSections={assignedSections} selectedSectionId={selectedSectionId} onSelectSection={handleSelectSection} selectedPaper={selectedPaper} onSelectPaper={handleSelectPaper} onViewFullPaper={() => setShowFullPaperPreview(true)} papers={papers} onUploadPaper={isLocked ? undefined : handleUploadPaper} sources={sources} onUploadSource={isLocked ? undefined : handleUploadSource} onDeleteSource={isReview ? undefined : handleDeleteSource} mediaAssets={mediaAssets} onUploadMedia={isLocked ? undefined : handleUploadMedia} onDeleteMedia={isReview ? undefined : handleDeleteMedia} onInsertMedia={canEditCurrentSection ? handleInsertMedia : undefined} showToast={showToast} isLocked={isLocked} onSaveDraft={isReview ? undefined : handleSaveDraft} saveStatus={saveStatus} />
 
-        <EditorPanel review={isReview ? review : null} compact={isCompactWorkspace} editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSections={assignedSections} canEditCurrentSection={canEditCurrentSection} currentSection={currentSection} displayContent={displayContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={isReview ? undefined : handleSaveDraft} insertLatexTag={isReview ? undefined : insertLatexTag} insertSymbol={isReview ? undefined : insertSymbol} handleFindReplace={isReview ? undefined : handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} isLocked={isLocked} findings={editorFindings} onFindingClick={handleFindingClick} onOpenSourceMap={openSourceMap} onRunCitationReview={isReview ? undefined : handleRunAiReview} onOpenCitationReview={handleOpenCitationReview} reviewBusy={loadingAiReview} reviewProgress={aiReviewProgress} reviewFindingsCount={(aiReviewResult?.findings || []).length} reviewError={aiReviewError?.message} canRunCitationReview={canRunCitationReview} onEditorUserScroll={closeReviewOverlay} isReviewVisible={isReviewVisible} onToggleReviewVisible={toggleReviewVisible} citationIndex={citationIndex}
-          feedback={isReview ? undefined : feedback} feedbackOpen={feedbackOpen} setFeedbackOpen={setFeedbackOpen} activeFeedbackId={activeFeedbackId} onSelectFeedback={handleSelectFeedback}
+        <EditorPanel onViewFullPaper={() => setShowFullPaperPreview(true)} review={isReview ? review : null} compact={isCompactWorkspace} editorRef={editorRef} selectedPaper={selectedPaper} selectedSectionId={selectedSectionId} assignedSections={assignedSections} canEditCurrentSection={canEditCurrentSection} currentSection={currentSection} displayContent={displayContent} updateCode={isLocked ? undefined : updateCode} editorWidth={editorWidth} onEditorResizeStart={handleMouseDown} saveStatus={saveStatus} lastSaved={lastSaved} handleSaveDraft={isReview ? undefined : handleSaveDraft} insertLatexTag={isReview ? undefined : insertLatexTag} insertSymbol={isReview ? undefined : insertSymbol} handleFindReplace={isReview ? undefined : handleFindReplace} handleDownloadTex={handleDownloadTex} showSymbolMenu={showSymbolMenu} setShowSymbolMenu={setShowSymbolMenu} showTextSizeMenu={showTextSizeMenu} setShowTextSizeMenu={setShowTextSizeMenu} showSearchPanel={showSearchPanel} setShowSearchPanel={setShowSearchPanel} searchQuery={searchQuery} setSearchQuery={setSearchQuery} replaceQuery={replaceQuery} setReplaceQuery={setReplaceQuery} textSize={textSize} setTextSize={setTextSize} showToast={showToast} mediaAssets={mediaAssets} isLocked={isLocked} findings={editorFindings} onFindingClick={handleFindingClick} onOpenSourceMap={openSourceMap} onRunCitationReview={isReview ? undefined : handleRunAiReview} onOpenCitationReview={handleOpenCitationReview} reviewBusy={loadingAiReview} reviewProgress={aiReviewProgress} reviewFindingsCount={(aiReviewResult?.findings || []).length} reviewError={aiReviewError?.message} canRunCitationReview={canRunCitationReview} onEditorUserScroll={closeReviewOverlay} isReviewVisible={isReviewVisible} onToggleReviewVisible={toggleReviewVisible} citationIndex={citationIndex}
+          feedback={isReview ? undefined : feedback} feedbackOpen={feedbackOpen} setFeedbackOpen={setFeedbackOpen} activeFeedbackId={activeFeedbackId} onSelectFeedback={isReview ? item => { review.selectFeedback(item); setActiveTab('Review'); setIsDrawerOpen(true); if (isCompactWorkspace) setIsFileTreeOpen(false); } : handleSelectFeedback}
           feedbackRequestId={feedbackRequestId} setFeedbackRequestId={setFeedbackRequestId} feedbackScope={feedbackScope} setFeedbackScope={setFeedbackScope} />
 
-        {isReview ? (isDrawerOpen && <aside style={{ width: isCompactWorkspace ? 'min(24rem, calc(100vw - 3.5rem))' : rightDrawerWidth }} className={`shrink-0 border-l border-(--border) bg-(--surface) ${isCompactWorkspace ? 'absolute inset-y-0 right-0 z-30 shadow-xl' : ''}`}>
-          <InstructorFeedbackPanel review={review} selectedSection={currentSection} onSelectFeedback={review.selectFeedback} />
-        </aside>) : <ContextPanel compact={isCompactWorkspace} isOpen={isDrawerOpen} width={rightDrawerWidth} activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); localStorage.setItem('student_workspace_active_tab', tab); }} showToast={showToast}
+        <ContextPanel compact={isCompactWorkspace} isOpen={isDrawerOpen} width={rightDrawerWidth} activeTab={activeTab} setActiveTab={setActiveTab} showToast={showToast}
+          reviewContent={isReview ? <InstructorFeedbackPanel review={review} selectedSection={currentSection} onSelectFeedback={review.selectFeedback} /> : undefined}
+          requirementsContent={isReview ? <InstructorReviewGuide review={review} selectedSection={currentSection} /> : undefined}
           sources={sources} isUploading={isUploading} setIsUploading={setIsUploading} project={project} setViewerFile={setViewerFile} fetchSources={fetchSources} onOpenSourceMap={openSourceMap} isLocked={isLocked}
           selectedPaper={selectedPaper} selectedSection={currentSection} isAssignedSection={Boolean(currentSection && String(currentSection.assignedUserId) === String(user?.id))}
             isSectionDirty={dirtySectionsRef.current.has(selectedSectionId)} onHandoffChanged={handleHandoffChanged} pollAiJob={pollAiJob}
           feedbacks={feedback.requests} feedbackLoading={feedback.loading} feedbackError={feedback.error} onRetryFeedback={feedback.refresh} onViewFeedback={openFeedback}
-          setShowSubmitReviewModal={setShowSubmitReviewModal} userProjectRole={project?.currentUserRole} />}
+          setShowSubmitReviewModal={isReview ? undefined : setShowSubmitReviewModal} userProjectRole={project?.currentUserRole} />
       </div>
 
       {/* Restore Previous Save Modal */}
@@ -1669,9 +1675,10 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
       {showFullPaperPreview && (
         <FullPaperPreview
           sections={sections}
-          paperTitle={selectedPaper?.originalFilename || 'Paper'}
+          paperTitle={selectedPaper?.originalFilename || selectedPaper?.title || t('paper')}
           mediaAssets={mediaAssets}
           onClose={() => setShowFullPaperPreview(false)}
+          onAnnotateSection={isReview && review.canCreateRoot ? id => { review.setSelectedSectionId(id); setShowFullPaperPreview(false); setActiveTab('Review'); setIsDrawerOpen(true); } : undefined}
         />
       )}
     </div>

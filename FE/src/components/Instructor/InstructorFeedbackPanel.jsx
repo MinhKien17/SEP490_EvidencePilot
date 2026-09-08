@@ -6,16 +6,38 @@ import { commonText, instructorText } from '../../locales';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { formatDateTime } from '../../utils/formatters/date.js';
-import FileViewerModal from '../features/FileViewerModal';
 
 const ACTION_LABELS = { REVIEWED: { key: 'approve' }, RETURNED: { key: 'returnForRevision' } };
+
+export function InstructorReviewGuide({ review, selectedSection }) {
+  const { language } = useLanguage();
+  const t = instructorText[language];
+  const { activeGuide, checkedItems, setCheckedItems, selectedSectionId } = review;
+  return <section className="space-y-4 rounded-xl border border-(--border) bg-(--surface) p-4 text-xs shadow-sm">
+    <h3 className="font-bold text-(--text-primary)">{t.reviewGuide}</h3>
+    {!selectedSection || !activeGuide ? <p className="text-(--text-tertiary) italic">{t.selectSectionGuide}</p> : <>
+      <span className="inline-block rounded bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">{activeGuide.sectionType}</span>
+      <p className="text-(--text-secondary) leading-relaxed">{activeGuide.guidance}</p>
+      <ul className="space-y-2">
+        {activeGuide.checklist.map((item, i) => {
+          const key = `${selectedSectionId}-${i}`;
+          const checked = !!checkedItems[key];
+          return <li key={key}><label className="flex items-start gap-2 cursor-pointer text-(--text-secondary)">
+            <input type="checkbox" checked={checked} onChange={() => setCheckedItems(prev => ({ ...prev, [key]: !checked }))} className="mt-0.5 accent-indigo-600" />
+            <span className={checked ? 'line-through opacity-60' : ''}>{item}</span>
+          </label></li>;
+        })}
+      </ul>
+    </>}
+  </section>;
+}
 
 export default function InstructorFeedbackPanel({ review, selectedSection, onSelectFeedback }) {
   const { language } = useLanguage();
   const { user } = useAuth();
   const t = instructorText[language];
   const ct = commonText[language];
-  const { selectedSectionId, orderedRequests, activeRequest, activeRequestId, setActiveRequestId, feedbackItems, errorMessage, successMessage, diffEnabled, setDiffEnabled, diffOps, feedbackDraft, selectedAnchor, editingFeedbackId, updateFeedbackDraft, savingFeedback, feedbackFilter, setFeedbackFilter, activeFeedbackId, transitioningRequestId, pendingTransition, setPendingTransition, checkedItems, setCheckedItems, suggestions, suggestionLoading, suggestionError, suggestionRan, viewerFile, setViewerFile, showGuide, setShowGuide, panelTab, setPanelTab, activeGuide, requestLocked, canReturn, canCreateRoot, handleSubmitFeedback, captureSourceSelection, handleEditFeedback, handleCancelEdit, handleDeleteFeedback, deleteReply, prepareState, handleTransitionStatus, handleGenerateSuggestions, injectIntoFeedback, pendingDelete, undoDelete, dismissDelete } = review;
+  const { selectedSectionId, orderedRequests, activeRequest, activeRequestId, setActiveRequestId, feedbackItems, errorMessage, successMessage, diffEnabled, setDiffEnabled, diffOps, feedbackDraft, selectedAnchor, editingFeedbackId, updateFeedbackDraft, savingFeedback, feedbackFilter, setFeedbackFilter, activeFeedbackId, transitioningRequestId, pendingTransition, setPendingTransition, suggestions, suggestionLoading, suggestionError, suggestionRan, panelTab, setPanelTab, activeGuide, requestLocked, canReturn, canCreateRoot, handleSubmitFeedback, captureSourceSelection, handleEditFeedback, handleCancelEdit, handleDeleteFeedback, deleteReply, prepareState, handleTransitionStatus, handleGenerateSuggestions, injectIntoFeedback, pendingDelete, undoDelete, dismissDelete } = review;
   const [sectionOnly, setSectionOnly] = useState(false);
   const draftCount = feedbackItems.filter(item => String(item.requestId) === String(activeRequestId) && !item.publishedAt).length;
   const sectionFeedback = feedbackItems.filter(item => (!sectionOnly || String(item.sectionId) === String(selectedSectionId))
@@ -23,14 +45,13 @@ export default function InstructorFeedbackPanel({ review, selectedSection, onSel
     && (String(item.requestId) === String(activeRequestId) || (item.threadState || 'OPEN') === 'OPEN')
     && (feedbackFilter === 'ALL' || (item.pendingState || item.threadState || 'OPEN') === feedbackFilter));
   const historyFeedback = [...feedbackItems].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  return <div className="h-full overflow-y-auto space-y-3 p-3 text-xs">
-    <div className="flex flex-wrap gap-2">
-      {orderedRequests.map(req => <button type="button" key={req.id} onClick={() => setActiveRequestId(req.id)} aria-pressed={req.id === activeRequestId} className="rounded-lg border p-2">
+  return <div className="space-y-3 text-xs">
+    <div className="space-y-2 rounded-xl border border-(--border) bg-(--surface) p-3 shadow-sm">
+      {orderedRequests.map(req => <button type="button" key={req.id} onClick={() => setActiveRequestId(req.id)} aria-pressed={req.id === activeRequestId} className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left focus-visible:ring-2 focus-visible:ring-(--brand) ${req.id === activeRequestId ? 'border-indigo-200 bg-(--brand-soft) text-(--brand-foreground)' : 'border-(--border-light) text-(--text-secondary) hover:bg-(--surface-secondary)'}`}>
         {formatDateTime(req.requestedAt, language)} · <StatusBadge status={req.status} />
       </button>)}
     </div>
     <div className="flex flex-wrap gap-2">
-      <button type="button" onClick={() => setShowGuide(true)} className="rounded-lg border p-2">{t.reviewGuide}</button>
       {!requestLocked && <>
         {canReturn && <button type="button" disabled={savingFeedback || !!transitioningRequestId || !!pendingDelete} onClick={() => setPendingTransition({ requestId: activeRequest.id, targetStatus: 'RETURNED' })} className="rounded-lg bg-amber-500 px-3 py-2 font-bold text-white disabled:opacity-50">{t.returnForRevision}</button>}
         <button type="button" disabled={savingFeedback || !!transitioningRequestId || !!pendingDelete} onClick={() => setPendingTransition({ requestId: activeRequest.id, targetStatus: 'REVIEWED' })} className="rounded-lg bg-emerald-600 px-3 py-2 font-bold text-white disabled:opacity-50">{t.approve}</button>
@@ -233,35 +254,6 @@ export default function InstructorFeedbackPanel({ review, selectedSection, onSel
           </div>
         </div>
       </Modal>
-      <Modal open={showGuide} onClose={() => setShowGuide(false)} title={t.reviewGuide} closeLabel={ct.close}>
-        {!selectedSection || !activeGuide ? (
-          <p className="text-xs text-(--text-tertiary) italic">{t.selectSectionGuide}</p>
-        ) : (
-          <div className="space-y-4 text-xs">
-            <span className="inline-block text-[9px] font-black text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">{activeGuide.sectionType}</span>
-            <p className="text-(--text-secondary) leading-relaxed">{activeGuide.guidance}</p>
-            <ul className="space-y-1.5">
-              {activeGuide.checklist.map((item, i) => {
-                const key = `${selectedSectionId}-${i}`;
-                const checked = !!checkedItems[key];
-                return (
-                  <li key={key}>
-                    <label className="flex items-start gap-2 cursor-pointer text-xs text-(--text-secondary)">
-                      <input type="checkbox" checked={checked} onChange={() => setCheckedItems(prev => ({ ...prev, [key]: !checked }))}
-                        className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-[#1e3a8a] focus:ring-[#1e3a8a]" />
-                      <span className={checked ? 'line-through opacity-60' : ''}>{item}</span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-      </Modal>
-    <details><summary className="cursor-pointer font-semibold">{t.sources} ({review.sources.length})</summary>
-      {review.sources.map(source => <button key={source.id} type="button" onClick={() => setViewerFile({ fileUrl: `/api/documents/${source.id}/download`, fileName: source.title || source.originalFilename })} className="block w-full rounded border p-2 text-left">{source.title || source.originalFilename}</button>)}
-    </details>
-    {viewerFile && <FileViewerModal fileUrl={viewerFile.fileUrl} fileName={viewerFile.fileName} onClose={() => setViewerFile(null)} />}
     {pendingDelete && <UndoToast pending={pendingDelete} onUndo={undoDelete} onDismiss={dismissDelete} />}
   </div>;
 }

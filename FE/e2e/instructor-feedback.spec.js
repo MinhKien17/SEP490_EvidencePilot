@@ -181,7 +181,6 @@ test('root drafts and their selected source stay with their section and round', 
     ] }] },
   } }));
   await page.goto(root);
-  await page.getByRole('button', { name: /Comment on a passage/ }).first().click();
   await expect(page.locator('.cm-content')).toContainText('Submitted introduction.');
   await page.evaluate(async () => {
     const { EditorView } = await import('/node_modules/.vite/deps/codemirror.js');
@@ -225,7 +224,6 @@ test('old feedback selects its passage in each viewed snapshot without using liv
     return { from, text: view.state.sliceDoc(from, to) };
   });
   await page.goto(root);
-  await page.getByRole('button', { name: /Comment on a passage/ }).first().click();
   await expect(page.locator('.cm-content')).toContainText(newer);
   await page.getByText('Existing feedback', { exact: true }).click();
   await expect.poll(selection).toEqual({ from: newer.indexOf('target source'), text: 'target source' });
@@ -269,18 +267,28 @@ test('instructor reads the full submitted paper in the shared workspace', async 
   await page.goto(root);
   const workspace = page.getByRole('region', { name: 'Project workspace', exact: true });
   await expect(workspace).toBeVisible();
-  const paper = workspace.getByRole('region', { name: 'Submitted paper', exact: true });
+  await page.locator('#editor-preview-container').getByRole('button', { name: 'View full paper', exact: true }).click();
+  const paper = page.getByRole('dialog', { name: 'View full paper', exact: true });
   await expect(paper).toContainText('Submitted introduction.');
   await expect(paper).toContainText(submittedTarget);
   await expect(workspace.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Reply as draft', exact: true })).toHaveCount(0);
+  await page.screenshot({ path: '../../artifacts/codex/review-ui-rework-01a080e9/instructor-full-paper.png' });
+  await paper.getByRole('button', { name: 'Comment on a passage · Methods', exact: true }).click();
+  await expect(paper).toHaveCount(0);
+  await expect(page.locator('.cm-content')).toContainText(submittedTarget);
   await expect(page.getByRole('button', { name: 'Return for Revision', exact: true })).toBeVisible();
-  await page.screenshot({ path: '../../artifacts/codex/mentor-feedback-plan-2026-09-08/verification/instructor-full-paper.png' });
   await page.setViewportSize({ width: 390, height: 850 });
-  await expect(paper).toBeVisible();
+  await expect(page.locator('.cm-content')).toBeVisible();
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect(page.locator('#editor-preview-container').getByRole('heading', { name: 'Methods', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'View full paper', exact: true }).click();
+  await expect(paper).toContainText(submittedTarget);
+  await page.keyboard.press('Escape');
+  await expect(paper).toHaveCount(0);
   await page.getByRole('button', { name: /toggle context panel/i }).click();
   await expect(page.getByRole('button', { name: 'Return for Revision', exact: true })).toBeVisible();
-  await page.screenshot({ path: '../../artifacts/codex/mentor-feedback-plan-2026-09-08/verification/instructor-mobile-panel.png' });
+  await page.screenshot({ path: '../../artifacts/codex/review-ui-rework-01a080e9/instructor-mobile-panel.png' });
 });
 
 test('snapshot errors and legacy rounds never fall back to live content under Submitted', async ({ page }) => {
@@ -319,7 +327,6 @@ test('review ignores student local drafts and makes no paper writes in either vi
   page.on('request', request => { if (['PUT', 'PATCH', 'POST', 'DELETE'].includes(request.method()) && /\/api\/papers\//.test(request.url())) writes.push(request.url()); });
   await page.addInitScript(() => localStorage.setItem('workspace_draft_instructor-feedback-project_section-one', 'PRIVATE UNSAVED STUDENT TEXT'));
   await page.goto(root);
-  await page.getByRole('button', { name: /Comment on a passage/ }).first().click();
   await expect(page.locator('.cm-content')).toContainText('Submitted introduction.');
   await expect(page.locator('.cm-content')).toHaveAttribute('contenteditable', 'false');
   await expect(page.getByText('Read-only (unassigned)', { exact: true })).toHaveCount(0);
@@ -353,5 +360,49 @@ test('a late snapshot response cannot replace the newly selected round', async (
   await expect(page.getByRole('region', { name: 'Submitted paper', exact: true })).toContainText('Submitted introduction.');
   release();
   await expect(page.getByRole('region', { name: 'Submitted paper', exact: true })).not.toContainText('Late newest snapshot');
+  expect(state.errors).toEqual([]);
+});
+
+test('review uses the Student editor and context tabs while keeping drafts across tabs', async ({ page }) => {
+  const state = await setup(page);
+  await page.route('**/api/review-guides', route => route.fulfill({ json: [{ sectionType: 'Introduction', guidance: 'Check that the research problem is clear.', checklist: ['The problem is stated.'] }] }));
+  await page.route('**/api/projects/instructor-feedback-project/sources?*', route => route.fulfill({ json: { content: [{ id: 'source-one', originalFilename: 'Research source.pdf', fileUrl: 'stored', processingStatus: 'READY' }], last: true } }));
+  await page.route('**/api/media/projects/instructor-feedback-project', route => route.fulfill({ json: [{ id: 'media-one', texFilename: 'chart.png' }] }));
+  await page.route('**/api/media/urls', route => route.fulfill({ json: {} }));
+  await page.goto(root);
+  await expect(page.getByRole('region', { name: 'Project workspace', exact: true })).toBeVisible();
+  const context = page.locator('[data-tour="context-panel"]');
+  await expect(context).toBeVisible();
+  await expect(page.locator('.cm-content')).toBeVisible();
+  await expect(page.locator('.cm-content')).toHaveAttribute('contenteditable', 'false');
+  await expect(page.getByRole('button', { name: 'Delete media', exact: true })).toHaveCount(0);
+  await page.getByPlaceholder('Feedback for this section...').fill('Keep this review draft');
+  await context.getByRole('button', { name: 'Sources', exact: true }).click();
+  await expect(context).toContainText('Research source.pdf');
+  await expect(context.getByRole('button', { name: 'Insert source', exact: true })).toHaveCount(0);
+  await context.getByRole('button', { name: 'Requirements', exact: true }).click();
+  await expect(context).toContainText('Check that the research problem is clear.');
+  await context.getByRole('checkbox', { name: 'The problem is stated.', exact: true }).check();
+  await context.getByRole('button', { name: 'Review', exact: true }).click();
+  await expect(page.getByPlaceholder('Feedback for this section...')).toHaveValue('Keep this review draft');
+  await page.screenshot({ path: '../../artifacts/codex/review-ui-rework-01a080e9/instructor-shared-workspace.png' });
+  await page.setViewportSize({ width: 1680, height: 1000 });
+  await expect(page.locator('.cm-content')).toBeVisible();
+  await expect(page.locator('#editor-preview-container').getByRole('heading', { name: 'Introduction', exact: true })).toBeVisible();
+  await page.screenshot({ path: '../../artifacts/codex/review-ui-rework-01a080e9/instructor-editor-preview.png' });
+  await context.getByRole('button', { name: 'Requirements', exact: true }).click();
+  await expect(context.getByRole('checkbox', { name: 'The problem is stated.', exact: true })).toBeChecked();
+  await page.getByRole('button', { name: 'VN', exact: true }).click();
+  await expect(context.getByRole('button', { name: 'Yêu cầu', exact: true })).toBeVisible();
+  await page.locator('[data-tour="header-dark-mode"]').click();
+  await expect(page.locator('#editor-preview-container').getByRole('heading', { name: 'Introduction', exact: true })).toBeInViewport();
+  await page.locator('#editor-preview-container h2').screenshot({ path: '../../artifacts/codex/review-ui-rework-01a080e9/preview-heading.png', animations: 'disabled' });
+  await page.screenshot({ path: '../../artifacts/codex/review-ui-rework-01a080e9/instructor-guide-vi-dark.png', animations: 'disabled' });
+  await page.locator('[data-tour="context-review-tab"]').click();
+  await page.setViewportSize({ width: 390, height: 850 });
+  await page.locator('[data-tour="sidebar-left"] button').nth(1).click();
+  await expect(page.getByRole('button', { name: 'Thêm phản hồi', exact: true })).toBeVisible();
+  expect(await context.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  await page.screenshot({ path: '../../artifacts/codex/review-ui-rework-01a080e9/instructor-review-vi-mobile.png' });
   expect(state.errors).toEqual([]);
 });

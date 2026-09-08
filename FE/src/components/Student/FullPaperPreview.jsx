@@ -1,20 +1,26 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import PreviewPane from '../features/PreviewPane';
 import { isReferenceSectionTitle } from '../../utils/formatters/latexHtml.js';
 
-export default function FullPaperPreview({ sections, paperTitle, mediaAssets, onClose, embedded = false, onAnnotateSection, label }) {
+export default function FullPaperPreview({ sections, paperTitle, mediaAssets, onClose, onAnnotateSection }) {
   const { t } = useTranslation();
+  const dialogRef = useRef(null);
   const sectionRefs = useRef({});
   const generatedReferences = [];
   const hasReferenceSection = sections.some(section =>
     isReferenceSectionTitle(section.sectionTitle));
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
 
   return (
-    <div role={embedded ? "region" : undefined} aria-label={embedded ? label || t('feedbackSubmittedPaper') : undefined} className={embedded ? "flex flex-1 min-h-0 overflow-hidden" : "fixed inset-0 z-50 flex bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"}>
-      <div className={`flex w-full h-full bg-(--surface) rounded-2xl border border-(--border) overflow-hidden ${embedded ? "" : "max-w-[90vw] max-h-[90vh] m-auto shadow-2xl"}`}>
+    <dialog ref={dialogRef} onCancel={onClose} aria-label={t('viewFullPaper')} className="fixed inset-0 m-auto h-[90vh] w-[90vw] max-h-none max-w-none rounded-2xl border-0 p-0 bg-transparent shadow-2xl backdrop:bg-slate-900/60 backdrop:backdrop-blur-sm">
+      <div className="flex w-full h-full bg-(--surface) rounded-2xl border border-(--border) overflow-hidden">
         {/* Left: Pages */}
-        {!embedded && <div className="hidden md:flex w-56 bg-(--surface-secondary) border-r border-(--border) flex-col shrink-0">
+        <div className="hidden md:flex w-56 bg-(--surface-secondary) border-r border-(--border) flex-col shrink-0">
           <div className="px-4 py-3 border-b border-(--border) flex items-center justify-between shrink-0">
             <h3 className="text-xs font-bold text-(--text-primary) uppercase tracking-wider">{t('pages')} ({sections.length})</h3>
             <span className="text-[9px] text-(--text-tertiary) font-mono">{paperTitle}</span>
@@ -35,13 +41,13 @@ export default function FullPaperPreview({ sections, paperTitle, mediaAssets, on
               {t('close')}
             </button>
           </div>
-        </div>}
+        </div>
 
         {/* Right: Full compiled preview */}
         <div className="flex-1 bg-white overflow-y-auto p-4 sm:p-8 relative">
-          {!embedded && <button onClick={onClose} className="md:hidden sticky top-0 ml-auto mb-2 p-2 rounded-lg bg-white border border-slate-200 text-slate-600 shadow-sm" aria-label={t('close')}>
+          <button onClick={onClose} className="md:hidden sticky top-0 ml-auto mb-2 p-2 rounded-lg bg-white border border-slate-200 text-slate-600 shadow-sm" aria-label={t('close')}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>}
+          </button>
           {sections.length === 0 ? (
             <p className="text-sm text-slate-400 italic text-center py-16">{t('noSections')}</p>
           ) : (
@@ -74,6 +80,6 @@ export default function FullPaperPreview({ sections, paperTitle, mediaAssets, on
           )}
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }

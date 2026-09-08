@@ -46,7 +46,6 @@ export default function useInstructorReview({ projectId, enabled }) {
   const [feedbackItems, setFeedbackItems] = useState([]);
   const [sources, setSources] = useState([]);
   const [mediaAssets, setMediaAssets] = useState([]);
-  const [annotating, setAnnotating] = useState(false);
   const feedbackLoadRef = useRef(0);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
@@ -75,8 +74,6 @@ export default function useInstructorReview({ projectId, enabled }) {
   const [suggestionLoading, setSuggestionLoading] = useState(false);
   const [suggestionError, setSuggestionError] = useState('');
   const [suggestionRan, setSuggestionRan] = useState(false);
-  const [viewerFile, setViewerFile] = useState(null);
-  const [showGuide, setShowGuide] = useState(false);
   const [submissionSnapshot, setSubmissionSnapshot] = useState(null);
   const [snapshotState, setSnapshotState] = useState('LOADING');
   const [snapshotRetry, setSnapshotRetry] = useState(0);
@@ -416,7 +413,6 @@ export default function useInstructorReview({ projectId, enabled }) {
     }
     if (feedback.sectionId) setSelectedSectionId(feedback.sectionId);
     setActiveFeedbackId(feedback.id);
-    setAnnotating(true);
   };
 
   useEffect(() => {
@@ -431,7 +427,7 @@ export default function useInstructorReview({ projectId, enabled }) {
       if (anchor?.from != null && anchor?.to != null) sourceEditorRef.current?.selectRange?.(anchor.from, anchor.to);
     });
     return () => { cancelled = true; };
-  }, [activeFeedbackId, feedbackItems, selectedSection, activeRequestId, viewMode, annotating]);
+  }, [activeFeedbackId, feedbackItems, selectedSection, activeRequestId, viewMode]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -537,5 +533,5 @@ export default function useInstructorReview({ projectId, enabled }) {
       ...(lineRef ? { lineReference: lineRef } : {}) });
   };
 
-  return { project, papers, sections, selectedPaperId, setSelectedPaperId, selectedSectionId, setSelectedSectionId, selectedSection, requests, orderedRequests, activeRequest, activeRequestId, setActiveRequestId, feedbackItems, sources, mediaAssets, loading, errorMessage, successMessage, diffEnabled, setDiffEnabled, baseline, diffOps, feedbackDraft, feedbackLineRef, selectedAnchor, editingFeedbackId, updateFeedbackDraft, savingFeedback, feedbackFilter, setFeedbackFilter, activeFeedbackId, viewMode, setViewMode, sourceEditorRef, transitioningRequestId, pendingTransition, setPendingTransition, checkedItems, setCheckedItems, suggestions, suggestionLoading, suggestionError, suggestionRan, viewerFile, setViewerFile, showGuide, setShowGuide, snapshotState, setSnapshotRetry, panelTab, setPanelTab, activeGuide, requestLocked, canReturn, canCreateRoot, handleSubmitFeedback, captureSourceSelection, handleEditFeedback, handleCancelEdit, handleDeleteFeedback, deleteReply, prepareState, selectFeedback, handleTransitionStatus, handleGenerateSuggestions, injectIntoFeedback, pendingDelete, undoDelete, dismissDelete, annotating, setAnnotating };
+  return { project, papers, sections, selectedPaperId, setSelectedPaperId, selectedSectionId, setSelectedSectionId, selectedSection, requests, orderedRequests, activeRequest, activeRequestId, setActiveRequestId, feedbackItems, sources, mediaAssets, loading, errorMessage, successMessage, diffEnabled, setDiffEnabled, baseline, diffOps, feedbackDraft, feedbackLineRef, selectedAnchor, editingFeedbackId, updateFeedbackDraft, savingFeedback, feedbackFilter, setFeedbackFilter, activeFeedbackId, viewMode, setViewMode, sourceEditorRef, transitioningRequestId, pendingTransition, setPendingTransition, checkedItems, setCheckedItems, suggestions, suggestionLoading, suggestionError, suggestionRan, snapshotState, setSnapshotRetry, panelTab, setPanelTab, activeGuide, requestLocked, canReturn, canCreateRoot, handleSubmitFeedback, captureSourceSelection, handleEditFeedback, handleCancelEdit, handleDeleteFeedback, deleteReply, prepareState, selectFeedback, handleTransitionStatus, handleGenerateSuggestions, injectIntoFeedback, pendingDelete, undoDelete, dismissDelete };
 }
