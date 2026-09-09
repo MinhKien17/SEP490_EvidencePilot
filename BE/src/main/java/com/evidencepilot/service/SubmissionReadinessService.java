@@ -21,6 +21,7 @@ import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -99,7 +100,7 @@ public class SubmissionReadinessService {
                 && Objects.equals(section.getVersion(), section.getHandoffContentVersion());
         if (!alreadyConfirmed) {
             section.setHandoffConfirmedBy(currentUser);
-            section.setHandoffConfirmedAt(LocalDateTime.now());
+            section.setHandoffConfirmedAt(LocalDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS));
             section.setHandoffContentVersion(section.getVersion());
             section.setHandoffInputFingerprint(currentFingerprint);
             paperSectionRepository.saveAndFlush(section);
@@ -126,12 +127,29 @@ public class SubmissionReadinessService {
 
     public Assessment requireReadyForSubmit(
             Project project, User currentUser, String expectedSubmissionFingerprint) {
+        return requireReadyForSubmit(project, currentUser, expectedSubmissionFingerprint, false);
+    }
+
+    public Assessment requireReadyForSubmit(
+            Project project, User currentUser, String expectedSubmissionFingerprint,
+            boolean bypassSectionConfirmation) {
         Assessment assessment = assess(project, currentUser);
         if (!assessment.response().canSubmit()) {
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN, "Only the project Leader can submit a review.");
         }
-        if (!"READY".equals(assessment.response().state())) {
+        switch (assessment.response().revision().state()) {
+            case "UNCHANGED" -> throw new SubmissionReadinessException(
+                    "REVISION_UNCHANGED", "The paper has not changed since the returned submission.");
+            case "UNVERIFIABLE" -> throw new SubmissionReadinessException(
+                    "REVISION_BASELINE_UNAVAILABLE", "The returned submission snapshot is unavailable.");
+            default -> { }
+        }
+        // ponytail: CF-TEST-BYPASS — remove this Leader-only confirmation bypass before final acceptance.
+        boolean ready = assessment.response().checks().stream()
+                .filter(check -> !bypassSectionConfirmation || !"SECTION_CONFIRMED".equals(check.code()))
+                .allMatch(check -> "SATISFIED".equals(check.status()));
+        if (!ready) {
             throw new SubmissionReadinessException(
                     "REVIEW_NOT_READY", "The project is not ready for review.");
         }
@@ -266,6 +284,7 @@ public class SubmissionReadinessService {
                     List.copyOf(sectionResponses)));
         }
 
+        ReviewReadinessResponse.Revision revision = revision(project, papers, sectionsByPaper);
         List<ReviewReadinessResponse.Check> checks = List.of(
                 check("PROJECT_EDITABLE", projectEditable,
                         "Project can accept a review submission.", List.of(project.getId().toString())),
@@ -282,16 +301,71 @@ public class SubmissionReadinessService {
                 check("ASSIGNEE_VALID", assigneesValid,
                         "Every active section has a current student assignee.", invalidAssigneeSectionIds),
                 check("SECTION_CONFIRMED", sectionsConfirmed,
-                        "Every assignee handed off the current saved version.", unconfirmedSectionIds));
+                        "Every assignee handed off the current saved version.", unconfirmedSectionIds),
+                check("REVISION_CHANGED", Set.of("FIRST_SUBMISSION", "CHANGED").contains(revision.state()),
+                        "A resubmission must change the returned paper content.", List.of()));
         boolean ready = checks.stream().allMatch(check -> "SATISFIED".equals(check.status()));
         boolean canSubmit = currentUser != null && currentUser.getRole() == UserRole.STUDENT
                 && studentMembers.containsKey(currentUser.getId())
                 && studentMembers.get(currentUser.getId()).getRole() == ProjectRole.LEADER;
+        fingerprintParts.add("revision:" + revision.baselineRequestId() + ":" + revision.state());
         String submissionFingerprint = sha256(serialize(fingerprintParts));
         ReviewReadinessResponse response = new ReviewReadinessResponse(
                 ready ? "READY" : "NOT_READY", canSubmit, submissionFingerprint,
-                checks, List.copyOf(paperResponses));
+                checks, List.copyOf(paperResponses), revision);
         return new Assessment(response, papers, sectionsByPaper);
+    }
+
+    private ReviewReadinessResponse.Revision revision(
+            Project project, List<Document> papers, Map<UUID, List<PaperSection>> sectionsByPaper) {
+        var returned = feedbackRequestRepository.findByProjectIdOrderByRequestedAtDesc(project.getId()).stream()
+                .filter(request -> request.getStatus() == FeedbackStatus.RETURNED)
+                .findFirst().orElse(null);
+        if (returned == null) {
+            return new ReviewReadinessResponse.Revision(null,
+                    project.getStatus() == ProjectStatus.RETURNED ? "UNVERIFIABLE" : "FIRST_SUBMISSION");
+        }
+        try {
+            String json = returned.getSubmissionSnapshotJson();
+            JsonNode root = json == null ? null : objectMapper.readTree(json);
+            if (root == null || root.path("schemaVersion").asInt() != 1
+                    || !project.getId().toString().equals(root.path("projectId").asText())
+                    || !root.path("papers").isArray() || root.path("papers").isEmpty()) {
+                return new ReviewReadinessResponse.Revision(returned.getId(), "UNVERIFIABLE");
+            }
+            List<String> previous = new ArrayList<>();
+            for (JsonNode paper : root.get("papers")) {
+                if (!paper.has("title") || !(paper.path("title").isTextual() || paper.path("title").isNull())
+                        || !paper.path("sections").isArray()
+                        || paper.path("sections").isEmpty()) {
+                    return new ReviewReadinessResponse.Revision(returned.getId(), "UNVERIFIABLE");
+                }
+                List<JsonNode> sections = new ArrayList<>();
+                for (JsonNode section : paper.get("sections")) {
+                    if (!section.path("title").isTextual() || !section.path("contentTex").isTextual()
+                            || !section.path("order").isIntegralNumber()) {
+                        return new ReviewReadinessResponse.Revision(returned.getId(), "UNVERIFIABLE");
+                    }
+                    sections.add(section);
+                }
+                sections.sort(Comparator.comparingInt(section -> section.get("order").asInt()));
+                previous.add(serialize(List.of(FeedbackAnchorService.normalize(paper.get("title").asText(null)),
+                        sections.stream().map(section -> List.of(
+                                FeedbackAnchorService.normalize(section.get("title").asText()),
+                                FeedbackAnchorService.normalize(section.get("contentTex").asText()))).toList())));
+            }
+            List<String> current = papers.stream().map(paper -> serialize(List.of(
+                    FeedbackAnchorService.normalize(paper.getTitle()),
+                    sectionsByPaper.getOrDefault(paper.getId(), List.of()).stream().map(section -> List.of(
+                            FeedbackAnchorService.normalize(section.getSectionTitle()),
+                            FeedbackAnchorService.normalize(section.getContentTex()))).toList())))
+                    .sorted().toList();
+            previous.sort(Comparator.naturalOrder());
+            return new ReviewReadinessResponse.Revision(returned.getId(),
+                    previous.equals(current) ? "UNCHANGED" : "CHANGED");
+        } catch (JsonProcessingException exception) {
+            return new ReviewReadinessResponse.Revision(returned.getId(), "UNVERIFIABLE");
+        }
     }
 
     public String snapshot(
@@ -306,6 +380,9 @@ public class SubmissionReadinessService {
         root.put("submittedByName", displayName(submittedBy));
         root.put("instructorId", instructor.getId());
 
+        Map<UUID, String> handoffStates = new HashMap<>();
+        assessment.response().papers().forEach(paper -> paper.sections().forEach(section ->
+                handoffStates.put(section.id(), section.handoffState())));
         List<Map<String, Object>> papers = new ArrayList<>();
         for (Document paper : assessment.papers()) {
             Map<String, Object> paperSnapshot = new LinkedHashMap<>();
@@ -323,7 +400,9 @@ public class SubmissionReadinessService {
                 sectionSnapshot.put("contentVersion", section.getVersion());
                 sectionSnapshot.put("assignedUserId", section.getAssignedUser().getId());
                 sectionSnapshot.put("assignedUserName", displayName(section.getAssignedUser()));
-                sectionSnapshot.put("confirmedById", section.getHandoffConfirmedBy().getId());
+                sectionSnapshot.put("handoffState", handoffStates.get(section.getId()));
+                sectionSnapshot.put("confirmedById", section.getHandoffConfirmedBy() == null
+                        ? null : section.getHandoffConfirmedBy().getId());
                 sectionSnapshot.put("confirmedByName", displayName(section.getHandoffConfirmedBy()));
                 sectionSnapshot.put("confirmedAt", section.getHandoffConfirmedAt());
                 sectionSnapshot.put("confirmedContentVersion", section.getHandoffContentVersion());
