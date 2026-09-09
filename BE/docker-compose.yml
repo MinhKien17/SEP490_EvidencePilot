@@ -149,7 +149,7 @@ services:
       PASSWORD_RESET_TOKEN_TTL_MINUTES: ${PASSWORD_RESET_TOKEN_TTL_MINUTES:-60}
       PASSWORD_RESET_REQUEST_COOLDOWN_SECONDS: ${PASSWORD_RESET_REQUEST_COOLDOWN_SECONDS:-60}
       MAIL_HOST: ${MAIL_HOST:-}
-      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_PORT: ${MAIL_PORT:-}
       MAIL_USERNAME: ${MAIL_USERNAME:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
       MAIL_SMTP_AUTH: ${MAIL_SMTP_AUTH:-true}
@@ -167,6 +167,10 @@ services:
 
       # ── Application base URL (public-facing, e.g. ngrok) ──────────────────
       APP_BASE_URL: ${APP_BASE_URL}
+
+      # ── Upload caps (seed bundles can be hundreds of MB) ────────────────────
+      UPLOAD_MAX_FILE_SIZE: ${UPLOAD_MAX_FILE_SIZE:-1GB}
+      UPLOAD_MAX_REQUEST_SIZE: ${UPLOAD_MAX_REQUEST_SIZE:-1GB}
 
       SERVER_PORT: 8080
     networks:
