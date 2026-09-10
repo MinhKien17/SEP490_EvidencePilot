@@ -80,6 +80,10 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
             extracted = extract(document);
             writeCheckpoint(checkpointKey, extracted);
         }
+        // MinerU false-positive headings are demoted before any consumer
+        // (chunks, stored markdown aside, sections) sees the AST. Idempotent,
+        // so documents checkpointed before V-normalization stay consistent.
+        extracted = normalizeExtraction(extracted);
 
         List<String> chunks = DocumentChunker.chunk(extracted.blocks());
         if (chunks.isEmpty()) {
@@ -115,6 +119,14 @@ public class DocumentExtractionWorkerImpl implements DocumentExtractionWorker {
         }
         documentPersistenceService.markReady(document.getId(), payloadChunks.size());
         log.info("Completed extraction for document {} with {} chunks", document.getId(), payloadChunks.size());
+    }
+
+    private static AiModelClient.ExtractedDocument normalizeExtraction(
+            AiModelClient.ExtractedDocument extracted) {
+        return new AiModelClient.ExtractedDocument(
+                extracted.markdown(),
+                BlockNormalizer.normalizeBlocks(extracted.blocks()),
+                extracted.images());
     }
 
     private AiModelClient.ExtractedDocument extract(Document document) {

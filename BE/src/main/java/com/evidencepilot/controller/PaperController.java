@@ -3,6 +3,7 @@ package com.evidencepilot.controller;
 import com.evidencepilot.dto.response.CitationValidationResponse;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.PaperSectionResponse;
+import com.evidencepilot.dto.response.PaperMetadataResponse;
 import com.evidencepilot.dto.response.PaperStandardSuggestionResponse;
 import com.evidencepilot.dto.response.PaperValidationResponse;
 import com.evidencepilot.dto.response.JobSubmitResponse;
@@ -184,6 +185,21 @@ public class PaperController {
             @Parameter(description = "Paper document UUID") @PathVariable UUID documentId,
             @Parameter(description = "Section UUID") @PathVariable UUID sectionId) {
         return paperProcessingService.getSectionHistory(documentId, sectionId);
+    }
+
+    @Operation(summary = "Get paper metadata",
+            description = "Returns extracted title, authors and keywords plus DOI, publisher "
+                    + "and year for the View Full Paper display.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Metadata returned"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "404", description = "Paper not found")
+    })
+    @GetMapping("/papers/{id}/metadata")
+    public PaperMetadataResponse metadata(
+            @Parameter(description = "Paper document UUID") @PathVariable UUID id) {
+        return paperProcessingService.getPaperMetadata(id);
     }
 
     @Operation(summary = "Validate paper against standard",

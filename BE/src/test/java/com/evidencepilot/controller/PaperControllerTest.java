@@ -3,6 +3,7 @@ package com.evidencepilot.controller;
 import com.evidencepilot.dto.response.DocumentResponse;
 import com.evidencepilot.dto.response.JobSubmitResponse;
 import com.evidencepilot.dto.response.PaperSectionResponse;
+import com.evidencepilot.dto.response.PaperMetadataResponse;
 import com.evidencepilot.dto.response.PaperStandardSuggestionResponse;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.FeedbackRequest;
@@ -118,6 +119,17 @@ class PaperControllerTest {
         UUID id = UUID.randomUUID();
         mockMvc.perform(get("/api/papers/{id}/sections", id)).andExpect(status().isOk());
         verify(paperService).getPaperSections(id);
+    }
+
+    @Test
+    void metadata_delegatesPaperId() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(paperService.getPaperMetadata(id)).thenReturn(
+                new PaperMetadataResponse(id, "Title", List.of(), "k1", null, null, null));
+        mockMvc.perform(get("/api/papers/{id}/metadata", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Title"));
+        verify(paperService).getPaperMetadata(id);
     }
 
     @Test
@@ -467,6 +479,8 @@ class PaperControllerTest {
                 null,
                 1,
                 "Section",
+                null,
+                2,
                 content,
                 null,
                 2,

@@ -55,7 +55,7 @@ class FlywayMigrationMySqlTest {
         Integer successfulMigrations = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1",
                 Integer.class);
-        assertThat(successfulMigrations).isEqualTo(29);
+        assertThat(successfulMigrations).isEqualTo(30);
 
         assertThat(jdbcTemplate.queryForList("""
                         SELECT constraint_name
@@ -67,6 +67,7 @@ class FlywayMigrationMySqlTest {
                         "uq_review_snapshots_lookup",
                         "uq_project_media_storage",
                         "uq_document_references_order",
+                        "chk_document_metadata_authors",
                         "chk_document_references_edge_type",
                         "chk_export_jobs_status",
                         "uq_evidence_revision_traces_round_finding",
@@ -78,6 +79,7 @@ class FlywayMigrationMySqlTest {
                 String.class))
                 .contains(
                         "citation_review_rounds",
+                        "document_metadata",
                         "evidence_revision_traces",
                         "ai_model_gate_state",
                         "ai_model_call_leases",
@@ -102,6 +104,15 @@ class FlywayMigrationMySqlTest {
                 .contains(
                         "handoff_confirmed_by", "handoff_confirmed_at",
                         "handoff_content_version", "handoff_input_fingerprint");
+        assertThat(jdbcTemplate.queryForList("""
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_schema = DATABASE()
+                          AND table_name = 'paper_sections'
+                        """, String.class))
+                .contains(
+                        "parent_section_id", "heading_level",
+                        "source_block_start", "source_block_end");
         assertThat(jdbcTemplate.queryForList("""
                         SELECT column_name
                         FROM information_schema.columns
@@ -264,10 +275,10 @@ class FlywayMigrationMySqlTest {
                 .migrate()
                 .migrationsExecuted;
 
-        assertThat(migrationsExecuted).isEqualTo(28);
+        assertThat(migrationsExecuted).isEqualTo(29);
         assertThat(rehearsalJdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1",
-                Integer.class)).isEqualTo(29);
+                Integer.class)).isEqualTo(30);
         assertThat(rehearsalJdbcTemplate.queryForObject(
                 "SELECT type FROM flyway_schema_history WHERE installed_rank = 1",
                 String.class)).isEqualTo("BASELINE");
