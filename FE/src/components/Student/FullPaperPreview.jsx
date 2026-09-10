@@ -135,7 +135,7 @@ export default function FullPaperPreview({ sections, paperId, paperTitle, mediaA
               {sections.map((sec, i) => {
                 const referenceSection = isReferenceSectionTitle(sec.sectionTitle);
                 return (
-                  <div id={`paper-section-${sec.id}`} key={sec.id} ref={el => { sectionRefs.current[sec.id] = el; }}>
+                    <div id={`paper-section-${sec.id}`} key={sec.id} ref={el => { sectionRefs.current[sec.id] = el; }} className="[content-visibility:auto] [contain-intrinsic-size:auto_400px]">
                     {onAnnotateSection && <button type="button" onClick={() => onAnnotateSection(sec.id)} className="mb-2 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700">{t('feedbackAnnotatePassage')} · {sec.sectionTitle}</button>}
                     <PreviewPane
                       sectionTitle={sec.sectionTitle}

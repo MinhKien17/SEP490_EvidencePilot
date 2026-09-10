@@ -62,12 +62,12 @@ class Seed2FixtureValidationTest {
             }
         }
         assertThat(parsed.errors()).as(String.join("; ", parsed.errors())).isEmpty();
-        assertThat(parsed.sheets().get("users")).hasSize(30);
+        assertThat(parsed.sheets().get("users")).hasSize(31);
         assertThat(parsed.sheets().get("projects")).hasSize(62);
-        assertThat(parsed.sheets().get("members")).hasSize(248);
+        assertThat(parsed.sheets().get("members")).hasSize(262);
         assertThat(parsed.sheets().get("sources")).hasSize(60);
         assertThat(parsed.sheets().get("papers")).hasSize(62);
-        assertThat(parsed.sheets().get("collections")).hasSize(30);
+        assertThat(parsed.sheets().get("collections")).hasSize(33);
         assertThat(parsed.sheets()).doesNotContainKey("sections");
     }
 }

@@ -741,18 +741,22 @@ public class AdminExcelSeedService {
             ResolvedSourceDoi resolved = cache.get(doi);
             if (resolved == null) {
                 OpenAlexWorkResponse work;
-                try {
-                    work = openAlexClient.fetchWork(doi);
-                } catch (Exception e) {
-                    // ponytail: arXiv DataCite DOIs (10.48550/arXiv.*) are locations,
-                    // not primary DOIs in OpenAlex, so /works/doi: 404s — resolve by
-                    // exact title match, else fall back to the sheet's own metadata
-                    // columns + direct arXiv PDF instead of dropping the row
+                if (isDataCiteArxivDoi(doi)) {
+                    // ponytail: 10.48550/arXiv.* are DataCite location DOIs —
+                    // /works/doi: always 404s, so skip the doomed lookup and go
+                    // straight to title match / sheet metadata.
+                    log.info("Skipping direct OpenAlex lookup for DataCite DOI {}", doi);
                     work = resolveWithoutDoi(r, doi);
-                    if (work == null) {
-                        if (job != null) job.errors.add("sources row " + r.get("_row") + ": DOI not resolvable: " + doi);
-                        continue;
+                } else {
+                    try {
+                        work = openAlexClient.fetchWork(doi);
+                    } catch (Exception e) {
+                        work = resolveWithoutDoi(r, doi);
                     }
+                }
+                if (work == null) {
+                    if (job != null) job.errors.add("sources row " + r.get("_row") + ": DOI not resolvable: " + doi);
+                    continue;
                 }
                 byte[] pdf = null;
                 String downloadNote = null;
@@ -941,6 +945,10 @@ public class AdminExcelSeedService {
         if (suffix.regionMatches(true, 0, "arXiv.", 0, 6)) return suffix.substring(6).trim();
         if (suffix.regionMatches(true, 0, "arXiv:", 0, 6)) return suffix.substring(6).trim();
         return null;
+    }
+
+    private static boolean isDataCiteArxivDoi(String doi) {
+        return doi != null && doi.toLowerCase(Locale.ROOT).startsWith("10.48550/arxiv");
     }
 
     private static boolean hasPdfSignature(byte[] content) {

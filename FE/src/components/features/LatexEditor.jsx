@@ -7,7 +7,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { latex } from 'codemirror-lang-latex';
 import { undo, redo } from '@codemirror/commands';
 import { changeSpans, createChangeTracker, normalizeSource, remapAnchor, resolveAnchor, sourceFingerprint } from '../../utils/student/feedbackAnchors.js';
-import api from '../../services/api.js';
+import { useMediaUrlMap } from '../../hooks/useMediaUrls.js';
 import { blockLineNumbers, findBlockAt } from '../../utils/formatters/editorAssetBlocks.js';
 import { resolveAssetUrl } from '../../utils/formatters/markdownBlocks.js';
 
@@ -251,7 +251,8 @@ const LatexEditor = forwardRef(function LatexEditor({ content, savedContent = co
   const citationIndexRef = useRef({});
   const citationIndexVersionRef = useRef(0);
   const prevCitationIndexRef = useRef(citationIndex);
-  const [mediaUrlMap, setMediaUrlMap] = useState({});
+  // Signed URLs for the asset peek — shared hook dedupes concurrent mounts.
+  const mediaUrlMap = useMediaUrlMap(mediaAssets);
   const mediaUrlMapRef = useRef({});
   mediaUrlMapRef.current = mediaUrlMap;
   // Asset peek: { url, kind, x, y, pinned } — original cropped image for the
@@ -632,31 +633,6 @@ const LatexEditor = forwardRef(function LatexEditor({ content, savedContent = co
     };
   }, [readOnly, fontSize, isDark]);
 
-  // Signed URLs for the asset peek, same pattern as PreviewPane.
-  useEffect(() => {
-    if (!mediaAssets || mediaAssets.length === 0) {
-      setMediaUrlMap({});
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await api.post('/api/media/urls', { ids: mediaAssets.map(a => a.id) });
-        const urls = r.data || {};
-        if (cancelled) return;
-        const map = {};
-        for (const asset of mediaAssets) {
-          const url = urls[asset.id];
-          if (url) map[asset.texFilename] = url;
-        }
-        setMediaUrlMap(map);
-      } catch {
-        if (!cancelled) setMediaUrlMap({});
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [mediaAssets]);
-
   useEffect(() => {
     const saved = normalizeSource(savedContent);
     if (trackerRef.current.baseContent !== saved) {
@@ -742,7 +718,7 @@ const LatexEditor = forwardRef(function LatexEditor({ content, savedContent = co
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
-          <img src={assetPeek.url} alt="Original cropped figure" className="w-full max-h-64 object-contain bg-white" />
+          <img src={assetPeek.url} alt="Original cropped figure" loading="lazy" decoding="async" className="w-full max-h-64 object-contain bg-white" />
         </div>
       )}
     </div>

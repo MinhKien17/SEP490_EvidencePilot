@@ -455,7 +455,7 @@ class AdminExcelSeedServiceTest {
                 });
         var job = new AdminExcelSeedService.SeedJob();
         int n = t.service().commitSources(
-                List.of(doiRow("P", "10.48550/arXiv.2004.04906", "2")), job);
+                List.of(doiRow("P", "10.1234/no-oa-pdf", "2")), job);
         assertThat(n).isOne();
         assertThat(job.getErrors()).isEmpty();
         var captor = org.mockito.ArgumentCaptor.forClass(com.evidencepilot.model.Document.class);
@@ -476,8 +476,7 @@ class AdminExcelSeedServiceTest {
         when(t.members().findByProjectId(project.getId()))
                 .thenReturn(List.of(doiMembership(project, instructor)));
         when(t.documents().countActiveProjectSourcesByDoi(any(), any(), anyString())).thenReturn(0L);
-        when(t.openAlex().fetchWork(anyString())).thenThrow(
-                new com.evidencepilot.client.openalex.OpenAlexClient.OpenAlexApiException("not found", 404));
+        // DataCite arXiv DOIs skip the doomed direct lookup entirely.
         when(t.openAlex().downloadPdf(anyString())).thenAnswer(inv ->
                 new java.io.ByteArrayInputStream("%PDF-1.4 fake-bytes".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         when(t.storage().writeWithSha256(anyString(), any(byte[].class), anyString())).thenReturn("hash");
@@ -510,6 +509,37 @@ class AdminExcelSeedServiceTest {
     }
 
     @Test
+    void commitSourcesSkipsDirectLookupForDataCiteArxivDoi() {
+        var t = doiService();
+        var project = doiProject("P");
+        var instructor = doiInstructor();
+        when(t.projects().findAll()).thenReturn(List.of(project));
+        when(t.members().findByProjectId(project.getId()))
+                .thenReturn(List.of(doiMembership(project, instructor)));
+        when(t.documents().countActiveProjectSourcesByDoi(any(), any(), anyString())).thenReturn(0L);
+        when(t.openAlex().downloadPdf(anyString())).thenAnswer(inv ->
+                new java.io.ByteArrayInputStream("%PDF-1.4 fake-bytes".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        when(t.storage().writeWithSha256(anyString(), any(byte[].class), anyString())).thenReturn("hash");
+        when(t.documents().save(any(com.evidencepilot.model.Document.class))).thenAnswer(inv -> {
+            var d = (com.evidencepilot.model.Document) inv.getArgument(0);
+            if (d.getId() == null) d.setId(java.util.UUID.randomUUID());
+            return d;
+        });
+        when(t.persistence().markDocumentAsUploaded(any(), any(), any()))
+                .thenReturn(new com.evidencepilot.model.Document());
+        var job = new AdminExcelSeedService.SeedJob();
+        int n = t.service().commitSources(List.of(
+                row("project_title", "P", "doi", "10.48550/arXiv.1706.03762",
+                        "title", "Attention Is All You Need",
+                        "authors", "Vaswani, A.", "publication_year", "2017",
+                        "publisher", "NeurIPS", "cited_by_count", "102400",
+                        "abstract_or_text", "Transformer.", "_row", "2")), job);
+        assertThat(n).isOne();
+        assertThat(job.getErrors()).isEmpty();
+        verify(t.openAlex(), never()).fetchWork(anyString());
+    }
+
+    @Test
     void commitSourcesUsesTitleMatchAndPersistsCitationGraph() {
         var t = doiService();
         var project = doiProject("P");
@@ -518,8 +548,6 @@ class AdminExcelSeedServiceTest {
         when(t.members().findByProjectId(project.getId()))
                 .thenReturn(List.of(doiMembership(project, instructor)));
         when(t.documents().countActiveProjectSourcesByDoi(any(), any(), anyString())).thenReturn(0L);
-        when(t.openAlex().fetchWork(anyString())).thenThrow(
-                new com.evidencepilot.client.openalex.OpenAlexClient.OpenAlexApiException("not found", 404));
         var live = doiWork(null);
         when(t.openAlex().findWorkByTitle(anyString())).thenReturn(live);
         when(t.documents().save(any(com.evidencepilot.model.Document.class))).thenAnswer(inv -> {
@@ -568,8 +596,8 @@ class AdminExcelSeedServiceTest {
                 .thenReturn(new com.evidencepilot.model.Document());
         var job = new AdminExcelSeedService.SeedJob();
         int n = t.service().commitSources(List.of(
-                doiRow("P1", "10.48550/arXiv.2004.04906", "2"),
-                doiRow("P2", "10.48550/arXiv.2004.04906", "3")), job);
+                doiRow("P1", "10.1234/shared-doi", "2"),
+                doiRow("P2", "10.1234/shared-doi", "3")), job);
         assertThat(n).isEqualTo(2);
         verify(t.openAlex(), times(1)).fetchWork(anyString());
         verify(t.openAlex(), times(1)).downloadPdf(anyString());

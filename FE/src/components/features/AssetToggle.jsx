@@ -41,7 +41,7 @@ export default function AssetToggle({
         </div>
       )}
       {view === 'image' && assetUrl ? (
-        <img src={assetUrl} alt={t('originalImage')} className="max-w-full my-2 rounded border" />
+        <img src={assetUrl} alt={t('originalImage')} loading="lazy" decoding="async" className="max-w-full my-2 rounded border" />
       ) : (
         <div className="overflow-x-auto">{children}</div>
       )}

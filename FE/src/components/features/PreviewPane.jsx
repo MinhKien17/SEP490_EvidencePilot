@@ -1,9 +1,9 @@
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useDeferredValue } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import api from '../../services/api.js';
+import { useMediaUrlMap } from '../../hooks/useMediaUrls.js';
 import { renderLatexToHtml } from '../../utils/formatters/latexHtml.js';
 import {
   isLatexDialect,
@@ -29,40 +29,20 @@ export default function PreviewPane({
   scrollRef,
   zoom = 100,
 }) {
-  const [mediaUrlMap, setMediaUrlMap] = useState({});
+  // ponytail: shared hook — concurrent mounts reuse one in-flight /api/media/urls.
+  const mediaUrlMap = useMediaUrlMap(mediaAssets);
 
-  useEffect(() => {
-    if (!mediaAssets || mediaAssets.length === 0) {
-      setMediaUrlMap({});
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const r = await api.post('/api/media/urls', { ids: mediaAssets.map(a => a.id) });
-        const urls = r.data || {};
-        if (cancelled) return;
-        const map = {};
-        for (const asset of mediaAssets) {
-          const url = urls[asset.id];
-          if (url) map[asset.texFilename] = url;
-        }
-        setMediaUrlMap(map);
-      } catch {
-        if (!cancelled) setMediaUrlMap({});
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [mediaAssets]);
-
-  const useLegacy = isLatexDialect(latex);
+  // ponytail: keystrokes stay at 60fps — the full remark+KaTeX parse runs
+  // against the deferred value while the editor updates instantly.
+  const deferredLatex = useDeferredValue(latex);
+  const useLegacy = isLatexDialect(deferredLatex);
   const html = useMemo(
-    () => (useLegacy && (!latex && generatedReferences.length > 0
+    () => (useLegacy && (!deferredLatex && generatedReferences.length > 0
       ? ''
-      : renderLatexToHtml(latex, mediaUrlMap, citationNumbers))),
-    [citationNumbers, generatedReferences.length, latex, mediaUrlMap, useLegacy],
+      : renderLatexToHtml(deferredLatex, mediaUrlMap, citationNumbers))),
+    [citationNumbers, generatedReferences.length, deferredLatex, mediaUrlMap, useLegacy],
   );
-  const markdown = useMemo(() => (!useLegacy ? String(latex || '') : ''), [latex, useLegacy]);
+  const markdown = useMemo(() => (!useLegacy ? String(deferredLatex || '') : ''), [deferredLatex, useLegacy]);
   const remarkPlugins = useMemo(
     () => [
       remarkGfm,
@@ -89,7 +69,7 @@ export default function PreviewPane({
       img: ({ src, alt }) => {
         const url = resolveImageSrc(src, mediaUrlMap);
         if (!url) return <MissingImage alt={alt} />;
-        return <img src={url} alt={alt} className="max-w-full my-2 rounded border" />;
+        return <img src={url} alt={alt} loading="lazy" decoding="async" className="max-w-full my-2 rounded border" />;
       },
     }),
     [mediaUrlMap],
@@ -115,7 +95,7 @@ export default function PreviewPane({
             </div>
           )
         )}
-        {(!latex && generatedReferences.length === 0 && !useLegacy && markdown.trim() === '') && (
+        {(!deferredLatex && generatedReferences.length === 0 && !useLegacy && markdown.trim() === '') && (
           <p className="max-w-prose mx-auto text-slate-400 italic">No content to preview.</p>
         )}
         {generatedReferences.length > 0 && (
