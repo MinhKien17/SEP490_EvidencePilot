@@ -1078,6 +1078,8 @@
     "dataManagementSub": "CSV backup streaming + demo seed trigger.",
     "backupData": "Backup Data",
     "backupHint": "Stream core tables to CSV (no passwords).",
+    "backupSeedBundle": "Backup seed bundle",
+    "backupSeedHint": "Download seed.xlsx + paper files as a re-insertable ZIP.",
     "insertData": "Insert Data",
     "seedHint": "Fill the bundle template, preview, then insert. Admin only.",
     "backupDone": "Backup downloaded.",

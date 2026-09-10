@@ -593,4 +593,102 @@ class AdminExcelSeedServiceTest {
         assertThat(job.getErrors()).anyMatch(m -> m.contains("already in project"));
         verify(t.openAlex(), never()).fetchWork(anyString());
     }
+
+    private static Map<String, String> collectionRow(String title, String owner, String dois, String rowNum) {
+        return row("collection_title", title, "description", "", "owner_email", owner,
+                "source_dois", dois, "_row", rowNum);
+    }
+
+    @Test
+    void collectionsSheetValidation() {
+        var sheets = new HashMap<String, List<Map<String, String>>>();
+        sheets.put("users", List.of(
+                row("email", "prof@example.test", "role", "INSTRUCTOR", "_row", "2")));
+        sheets.put("projects", List.of(row("project_title", "P", "_row", "2")));
+        sheets.put("sources", List.of(
+                row("project_title", "P", "doi", "10.1234/abc", "_row", "2")));
+        sheets.put("collections", List.of(
+                collectionRow("C1", "prof@example.test", "10.1234/abc", "2"),
+                collectionRow("C1", "ghost@example.test", "10.9999/nope; not-a-doi", "3"),
+                collectionRow("", "prof@example.test", "", "4")));
+        var errors = service().validate(sheets);
+        assertThat(errors).anyMatch(m -> m.contains("duplicate collection_title"));
+        assertThat(errors).anyMatch(m -> m.contains("owner_email must be"));
+        assertThat(errors).anyMatch(m -> m.contains("unknown sources-sheet doi"));
+        assertThat(errors).anyMatch(m -> m.contains("invalid DOI format"));
+        assertThat(errors).anyMatch(m -> m.contains("collection_title required"));
+        assertThat(errors).anyMatch(m -> m.contains("at least one DOI"));
+    }
+
+    @Test
+    void commitCollectionsCreatesAndLinksByDoi() {
+        var users = mock(com.evidencepilot.repository.UserRepository.class);
+        var documents = mock(com.evidencepilot.repository.DocumentRepository.class);
+        var collections = mock(com.evidencepilot.service.impl.ProjectCollectionService.class);
+        var service = new AdminExcelSeedService(
+                mock(AdminService.class),
+                users,
+                mock(com.evidencepilot.repository.ProjectRepository.class),
+                mock(com.evidencepilot.repository.ProjectMemberRepository.class),
+                documents,
+                mock(com.evidencepilot.repository.DocumentTextRepository.class),
+                mock(com.evidencepilot.repository.DocumentChunkRepository.class),
+                mock(DocumentService.class),
+                mock(MediaAssetService.class),
+                mock(PaperProcessingService.class),
+                mock(com.evidencepilot.client.openalex.OpenAlexClient.class),
+                mock(OpenAlexIngestionService.class),
+                mock(DocumentObjectStorage.class),
+                mock(com.evidencepilot.service.impl.DocumentPersistenceService.class),
+                collections,
+                mock(com.fasterxml.jackson.databind.ObjectMapper.class));
+        var owner = doiInstructor();
+        when(users.findByEmail("prof@example.test"))
+                .thenReturn(java.util.Optional.of(owner));
+        var doc = new com.evidencepilot.model.Document();
+        doc.setId(java.util.UUID.randomUUID());
+        when(documents.findActiveSourcesByDoi(
+                eq(com.evidencepilot.model.enums.DocumentType.SOURCE), eq("10.1234/abc")))
+                .thenReturn(List.of(doc));
+        var collection = new com.evidencepilot.model.Collection();
+        collection.setId(java.util.UUID.randomUUID());
+        when(collections.createSeedCollection(eq(owner), eq("C1"), any()))
+                .thenReturn(collection);
+        var job = new AdminExcelSeedService.SeedJob();
+        int n = service.commitCollections(
+                List.of(collectionRow("C1", "prof@example.test", "10.1234/abc; 10.1234/abc", "2")), job);
+        assertThat(n).isEqualTo(1);
+        verify(collections, times(1)).addSource(doc, collection, owner);
+        assertThat(job.getErrors()).isEmpty();
+    }
+
+    @Test
+    void commitCollectionsSkipsUnknownOwner() {
+        var users = mock(com.evidencepilot.repository.UserRepository.class);
+        var collections = mock(com.evidencepilot.service.impl.ProjectCollectionService.class);
+        var service = new AdminExcelSeedService(
+                mock(AdminService.class),
+                users,
+                mock(com.evidencepilot.repository.ProjectRepository.class),
+                mock(com.evidencepilot.repository.ProjectMemberRepository.class),
+                mock(com.evidencepilot.repository.DocumentRepository.class),
+                mock(com.evidencepilot.repository.DocumentTextRepository.class),
+                mock(com.evidencepilot.repository.DocumentChunkRepository.class),
+                mock(DocumentService.class),
+                mock(MediaAssetService.class),
+                mock(PaperProcessingService.class),
+                mock(com.evidencepilot.client.openalex.OpenAlexClient.class),
+                mock(OpenAlexIngestionService.class),
+                mock(DocumentObjectStorage.class),
+                mock(com.evidencepilot.service.impl.DocumentPersistenceService.class),
+                collections,
+                mock(com.fasterxml.jackson.databind.ObjectMapper.class));
+        when(users.findByEmail(anyString())).thenReturn(java.util.Optional.empty());
+        var job = new AdminExcelSeedService.SeedJob();
+        int n = service.commitCollections(
+                List.of(collectionRow("C1", "ghost@example.test", "10.1234/abc", "2")), job);
+        assertThat(n).isZero();
+        assertThat(job.getErrors()).anyMatch(m -> m.contains("unresolvable owner"));
+        verify(collections, never()).createSeedCollection(any(), any(), any());
+    }
 }

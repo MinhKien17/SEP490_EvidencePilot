@@ -2,6 +2,7 @@ package com.evidencepilot.service;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -17,13 +18,8 @@ import static org.mockito.Mockito.mock;
  */
 class Seed2FixtureValidationTest {
 
-    @Test
-    void seed2PassesDryRunValidation() throws Exception {
-        Path file = Paths.get("src/main/resources/DataDemo/seed.xlsx");
-        if (!Files.exists(file)) {
-            file = Paths.get("BE/src/main/resources/DataDemo/seed.xlsx");
-        }
-        AdminExcelSeedService service = new AdminExcelSeedService(
+    private static AdminExcelSeedService service() {
+        return new AdminExcelSeedService(
                 mock(AdminService.class),
                 mock(com.evidencepilot.repository.UserRepository.class),
                 mock(com.evidencepilot.repository.ProjectRepository.class),
@@ -40,16 +36,38 @@ class Seed2FixtureValidationTest {
                 mock(com.evidencepilot.service.impl.DocumentPersistenceService.class),
                 mock(com.evidencepilot.service.impl.ProjectCollectionService.class),
                 mock(com.fasterxml.jackson.databind.ObjectMapper.class));
+    }
+
+    @Test
+    void seed2PassesDryRunValidation() throws Exception {
+        // ponytail: classpath lookup first — relative Paths break when
+        // surefire's working directory shifts depending on which tests ran.
         AdminExcelSeedService.ParsedSeed parsed;
-        try (InputStream in = new FileInputStream(file.toFile())) {
-            parsed = service.parse(in, Files.size(file));
+        InputStream resource = getClass().getResourceAsStream("/DataDemo/seed.xlsx");
+        if (resource != null) {
+            byte[] bytes;
+            try (InputStream in = resource) {
+                bytes = in.readAllBytes();
+            }
+            try (InputStream in = new ByteArrayInputStream(bytes)) {
+                parsed = service().parse(in, bytes.length);
+            }
+        } else {
+            Path file = Paths.get("src/main/resources/DataDemo/seed.xlsx");
+            if (!Files.exists(file)) {
+                file = Paths.get("BE/src/main/resources/DataDemo/seed.xlsx");
+            }
+            try (InputStream in = new FileInputStream(file.toFile())) {
+                parsed = service().parse(in, Files.size(file));
+            }
         }
         assertThat(parsed.errors()).as(String.join("; ", parsed.errors())).isEmpty();
         assertThat(parsed.sheets().get("users")).hasSize(30);
         assertThat(parsed.sheets().get("projects")).hasSize(62);
         assertThat(parsed.sheets().get("members")).hasSize(248);
-        assertThat(parsed.sheets().get("sources")).hasSize(136);
+        assertThat(parsed.sheets().get("sources")).hasSize(60);
         assertThat(parsed.sheets().get("papers")).hasSize(62);
+        assertThat(parsed.sheets().get("collections")).hasSize(30);
         assertThat(parsed.sheets()).doesNotContainKey("sections");
     }
 }

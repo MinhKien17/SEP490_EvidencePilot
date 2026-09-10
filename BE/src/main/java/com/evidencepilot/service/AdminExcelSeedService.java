@@ -70,7 +70,7 @@ import java.util.zip.ZipInputStream;
 
 /**
  * Excel + folder-per-paper ZIP seed. Streaming-light: caps enforced
- * (5 sheets, 200 rows/sheet with members at 500, 10MB xlsx). ZIP bundles are uncapped and
+ * (6 sheets, 200 rows/sheet with members at 500, 10MB xlsx). ZIP bundles are uncapped and
  * spooled entry-by-entry to temp files (never heap) with per-job cleanup.
  * Reuses AdminService user validation, DocumentService extraction pipeline,
  * MediaAssetService for images. Async jobs with in-memory progress (pollable).
@@ -87,7 +87,7 @@ public class AdminExcelSeedService {
     private static final long MAX_XLSX_BYTES = 10L * 1024 * 1024;
     // ponytail: no "sections" sheet — file-backed papers get sections from extraction,
     // standard papers from createSectionsFromStandard; a legacy sheet is ignored by parse
-    private static final List<String> SHEETS = List.of("users", "projects", "members", "sources", "papers");
+    private static final List<String> SHEETS = List.of("users", "projects", "members", "sources", "papers", "collections");
     private static final Set<String> INVITE_TRUE_TOKENS = Set.of("TRUE", "1", "YES", "Y");
     private static final Set<String> INVITE_FALSE_TOKENS = Set.of("FALSE", "0", "NO", "N");
     // ponytail: mirrors OpenAlexIngestionServiceImpl — per-PDF cap + header scan
@@ -151,7 +151,7 @@ public class AdminExcelSeedService {
         try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             sheet(wb, "README", List.of("note"),
                     List.of(
-                            List.of("Bundle = seed.xlsx + papers/<slug>/ folders only. Fill users→projects→members→sources→papers. Reference by email/project_title. Sections come from extraction (file papers) or the standard (paper_standard papers) — no sections sheet."),
+                            List.of("Bundle = seed.xlsx + papers/<slug>/ folders only. Fill users→projects→members→sources→papers→collections. Reference by email/project_title/doi. Sections come from extraction (file papers) or the standard (paper_standard papers) — no sections sheet."),
                             List.of("papers.paper_folder must equal the <slug> in papers.paper_file (^[a-z0-9-]{1,80}$). Main file must be named <slug>.pdf|.docx|.tex after its folder; images/ goes beside it."),
                             List.of("Precedence: paper_file, then paper_standard, then content_tex. Max 1 paper per project. xlsx<=10MB, zip size uncapped (spooled to disk), 200 rows/sheet (members: 500)."),
                             List.of("paper_standard (IEEE|ACM|...) creates a standard-template paper like Instructor Page choose-standard: leave paper_file and content_tex blank, sections are generated."),
@@ -169,6 +169,8 @@ public class AdminExcelSeedService {
                     List.of(List.of("EP-DEMO-Retrieval", "10.48550/arXiv.2004.04906", "Dense Passage Retrieval for Open-Domain Question Answering", "Karpukhin, V.; et al.", "2020", "arXiv", "5600", "Reference only — live OpenAlex metadata wins at import.")));
             sheet(wb, "papers", List.of("project_title", "paper_folder", "paper_file", "title", "content_tex", "paper_standard"),
                     List.of(List.of("EP-DEMO-Retrieval", "attention-retrieval", "papers/attention-retrieval/attention-retrieval.tex", "Attention demo", "", "")));
+            sheet(wb, "collections", List.of("collection_title", "description", "owner_email", "source_dois"),
+                    List.of(List.of("EP-DEMO-Retrieval Methods", "Shared method papers", "prof@example.test", "10.48550/arXiv.2004.04906")));
             wb.write(out);
             return out.toByteArray();
         }
@@ -271,7 +273,7 @@ public class AdminExcelSeedService {
         }
         Map<String, List<Map<String, String>>> sheets = new LinkedHashMap<>();
         try (Workbook wb = new XSSFWorkbook(in)) {
-            if (wb.getNumberOfSheets() > 6) errors.add("too many sheets (max README + 5 data sheets)");
+            if (wb.getNumberOfSheets() > 7) errors.add("too many sheets (max README + 6 data sheets)");
             for (String name : SHEETS) {
                 Sheet s = wb.getSheet(name);
                 if (s == null) continue;
@@ -442,7 +444,45 @@ public class AdminExcelSeedService {
         paperCount.forEach((t, n) -> {
             if (n > 1) errors.add("papers: project '" + t + "' has " + n + " rows (max 1, mirrors PaperController one-paper rule)");
         });
+        var instructorEmails = new java.util.HashSet<String>();
+        for (var r : sheets.getOrDefault("users", List.of())) {
+            if ("INSTRUCTOR".equals(r.getOrDefault("role", "").toUpperCase(Locale.ROOT))) {
+                instructorEmails.add(r.getOrDefault("email", "").toLowerCase(Locale.ROOT));
+            }
+        }
+        var sourceDois = new java.util.HashSet<String>();
+        for (var r : sheets.getOrDefault("sources", List.of())) {
+            String doi = DoiUtils.normalize(r.getOrDefault("doi", ""));
+            if (doi != null && !doi.isBlank()) sourceDois.add(doi.toLowerCase(Locale.ROOT));
+        }
+        var collectionTitles = new java.util.HashSet<String>();
+        for (var r : sheets.getOrDefault("collections", List.of())) {
+            String at = "collections row " + r.get("_row") + ": ";
+            if (r.getOrDefault("collection_title", "").isBlank()) errors.add(at + "collection_title required");
+            else if (!collectionTitles.add(r.get("collection_title"))) errors.add(at + "duplicate collection_title");
+            String owner = r.getOrDefault("owner_email", "").toLowerCase(Locale.ROOT);
+            if (!instructorEmails.contains(owner)) errors.add(at + "owner_email must be a users-sheet INSTRUCTOR");
+            List<String> dois = splitSemiDois(r.getOrDefault("source_dois", ""));
+            if (dois.isEmpty()) errors.add(at + "source_dois requires at least one DOI");
+            for (String doi : dois) {
+                String normalized = DoiUtils.normalize(doi);
+                if (!DoiUtils.isValid(normalized)) errors.add(at + "invalid DOI format: " + doi);
+                else if (!sourceDois.contains(normalized.toLowerCase(Locale.ROOT))) {
+                    errors.add(at + "unknown sources-sheet doi: " + doi);
+                }
+            }
+        }
         return errors;
+    }
+
+    static List<String> splitSemiDois(String raw) {
+        List<String> dois = new ArrayList<>();
+        if (raw == null) return dois;
+        for (String part : raw.split(";")) {
+            String doi = part.trim();
+            if (!doi.isBlank()) dois.add(doi);
+        }
+        return dois;
     }
 
     // ---------- async jobs ----------
@@ -500,6 +540,7 @@ public class AdminExcelSeedService {
             counts.put("members", commitMembers(parsed.sheets().getOrDefault("members", List.of()), job));
             counts.put("sources", commitSources(parsed.sheets().getOrDefault("sources", List.of()), job));
             counts.put("papers", commitPapers(parsed.sheets().getOrDefault("papers", List.of()), bundle.files(), job));
+            counts.put("collections", commitCollections(parsed.sheets().getOrDefault("collections", List.of()), job));
             job.result = counts;
             job.status = job.errors.isEmpty() ? "DONE" : "DONE";
         } catch (Exception e) {
@@ -812,6 +853,45 @@ public class AdminExcelSeedService {
     }
 
     private record ResolvedSourceDoi(OpenAlexWorkResponse work, byte[] pdfBytes, String note) {
+    }
+
+    /**
+     * Collections sheet: creates instructor-owned collections and links the
+     * referenced sources-sheet DOIs as member documents (visual-map ready).
+     * Runs after sources so member documents already exist.
+     */
+    public int commitCollections(List<Map<String, String>> rows, SeedJob job) {
+        int n = 0;
+        int links = 0;
+        for (var r : rows) {
+            var owner = userRepository.findByEmail(
+                    r.getOrDefault("owner_email", "").toLowerCase(Locale.ROOT)).orElse(null);
+            if (owner == null || owner.getRole() != UserRole.INSTRUCTOR) {
+                if (job != null) job.errors.add("collections row " + r.get("_row") + ": unresolvable owner");
+                continue;
+            }
+            var collection = projectCollectionService.createSeedCollection(
+                    owner,
+                    r.getOrDefault("collection_title", "").trim(),
+                    nullIfBlank(r.getOrDefault("description", "")));
+            var seenDocs = new java.util.HashSet<UUID>();
+            for (String doi : splitSemiDois(r.getOrDefault("source_dois", ""))) {
+                String normalized = DoiUtils.normalize(doi);
+                if (!DoiUtils.isValid(normalized)) continue;
+                for (Document doc : documentRepository.findActiveSourcesByDoi(DocumentType.SOURCE, normalized)) {
+                    if (!seenDocs.add(doc.getId())) continue;
+                    projectCollectionService.addSource(doc, collection, owner);
+                    links++;
+                }
+            }
+            n++;
+            if (job != null) {
+                job.processed++;
+                job.currentStep = "collections";
+            }
+        }
+        log.info("Seed collections committed: {} collections, {} source links", n, links);
+        return n;
     }
 
     /**

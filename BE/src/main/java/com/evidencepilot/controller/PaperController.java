@@ -38,6 +38,7 @@ import com.evidencepilot.service.CurrentUserService;
 import com.evidencepilot.service.DocumentService;
 import com.evidencepilot.service.AiEvaluationService;
 import com.evidencepilot.service.PaperProcessingService;
+import com.evidencepilot.service.PaperStandardService;
 import com.evidencepilot.service.SubmissionReadinessService;
 import com.evidencepilot.service.impl.EvidenceTraceService;
 import com.evidencepilot.service.impl.SectionCitationReviewService;
@@ -91,6 +92,7 @@ public class PaperController {
     private final SectionCitationReviewService sectionCitationReviewService;
     private final EvidenceTraceService evidenceTraceService;
     private final SubmissionReadinessService submissionReadinessService;
+    private final PaperStandardService paperStandardService;
 
     @Operation(summary = "List all papers",
             description = "Returns all active paper documents. "
@@ -635,8 +637,10 @@ public class PaperController {
     }
 
     private void requirePaperReplaceable(UUID projectId, List<PaperSection> sections) {
+        // Template boilerplate (% comments) is not student work — same rule as
+        // deleteSection/resetSections, which use hasStudentContent.
         boolean hasWork = sections.stream().anyMatch(s ->
-                (s.getContentTex() != null && !s.getContentTex().isBlank())
+                paperStandardService.hasStudentContent(s.getContentTex())
                 || s.getAssignedUser() != null);
         if (hasWork) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,

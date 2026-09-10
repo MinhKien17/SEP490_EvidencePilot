@@ -1078,6 +1078,8 @@
     "dataManagementSub": "Sao lưu CSV + kích hoạt seed demo.",
     "backupData": "Sao lưu",
     "backupHint": "Xuất bảng chính ra CSV (không mật khẩu).",
+    "backupSeedBundle": "Sao lưu bundle seed",
+    "backupSeedHint": "Tải seed.xlsx + file bài báo dưới dạng ZIP để chèn lại.",
     "insertData": "Chèn dữ liệu",
     "seedHint": "Điền bundle mẫu, xem trước, rồi chèn. Chỉ Admin.",
     "backupDone": "Đã tải sao lưu.",
