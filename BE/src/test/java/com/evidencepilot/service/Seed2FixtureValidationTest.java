@@ -5,15 +5,12 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 /**
- * Permanent guard: the checked-in DataDemo/seed.xlsx must pass the real
+ * Permanent guard: the synthetic classpath fixture must pass the real
  * AdminExcelSeedService dry-run validation with zero errors.
  */
 class Seed2FixtureValidationTest {
@@ -27,6 +24,7 @@ class Seed2FixtureValidationTest {
                 mock(com.evidencepilot.repository.DocumentRepository.class),
                 mock(com.evidencepilot.repository.DocumentTextRepository.class),
                 mock(com.evidencepilot.repository.DocumentChunkRepository.class),
+                mock(com.evidencepilot.repository.PaperSectionRepository.class),
                 mock(DocumentService.class),
                 mock(MediaAssetService.class),
                 mock(PaperProcessingService.class),

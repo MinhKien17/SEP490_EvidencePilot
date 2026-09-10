@@ -1,10 +1,6 @@
 package com.evidencepilot.controller;
 
-import com.evidencepilot.model.Document;
-import com.evidencepilot.model.EvidenceRevisionTrace;
-import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.Project;
-import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.repository.AuditLogRepository;
 import com.evidencepilot.repository.DocumentRepository;
 import com.evidencepilot.repository.EvidenceRevisionTraceRepository;
@@ -18,28 +14,35 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.BufferedWriter;
 import java.io.OutputStreamWriter;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.UUID;
+import java.util.function.Function;
 
 /**
- * Streaming CSV backup — no POI, no heap StringBuilder.
- * Reuses ExportServiceImpl row-escaping pattern, streams directly to response.
+ * Administrative CSV data export. Not a complete backup or restore format.
  */
 @RestController
 @RequestMapping("/api/admin/backup")
 @PreAuthorize("hasRole('ADMIN')")
 @RequiredArgsConstructor
-@Tag(name = "Administration", description = "CSV backup streaming")
+@Tag(name = "Administration", description = "CSV data export")
 public class AdminBackupController {
 
     private final UserRepository userRepository;
@@ -53,35 +56,26 @@ public class AdminBackupController {
 
     @GetMapping(value = "/csv", produces = "text/csv")
     public ResponseEntity<StreamingResponseBody> backupCsv(@RequestParam(required = false) UUID projectId) {
+        Project selected = projectId == null ? null : projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found"));
         String filename = "backup-" + LocalDate.now() + (projectId == null ? "-all" : "-" + projectId) + ".csv";
         StreamingResponseBody body = out -> {
             try (BufferedWriter w = new BufferedWriter(new OutputStreamWriter(out, StandardCharsets.UTF_8))) {
                 w.write('\uFEFF');
                 w.write("TABLE,ID,EXTRA\n");
-                userRepository.findAll().forEach(u -> write(w, "users", u.getId().toString(), u.getEmail() + "," + u.getRole()));
-                projectRepository.findAll().forEach(p -> {
-                    if (projectId != null && !p.getId().equals(projectId)) return;
-                    write(w, "projects", p.getId().toString(), esc(p.getTitle()) + "," + p.getStatus());
-                });
-                documentRepository.findAll().forEach(d -> {
-                    if (projectId != null && d.getProject() != null && !d.getProject().getId().equals(projectId)) return;
-                    write(w, "documents", d.getId().toString(), d.getDocType() + "," + esc(d.getOriginalFilename()));
-                });
-                if (projectId == null) {
-                    paperSectionRepository.findAll().forEach(s -> write(w, "paper_sections", s.getId().toString(), esc(s.getSectionTitle())));
-                    traceRepository.findAll().forEach(t -> write(w, "evidence_traces", t.getId().toString(), String.valueOf(t.getFindingIndex())));
-                    auditLogRepository.findAll().forEach(a -> write(w, "audit_logs", a.getId().toString(), String.valueOf(a.getAction())));
-                } else {
-                    for (Document paper : documentRepository.findByProjectIdAndDocTypeAndActiveTrue(projectId, DocumentType.PAPER)) {
-                        for (PaperSection s : paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paper.getId())) {
-                            write(w, "paper_sections", s.getId().toString(), esc(s.getSectionTitle()));
-                        }
-                    }
-                    for (EvidenceRevisionTrace t : traceRepository.findByProjectIdOrderByCreatedAtDesc(projectId)) {
-                        write(w, "evidence_traces", t.getId().toString(), String.valueOf(t.getFindingIndex()));
-                    }
-                }
-                // ponytail: password_hash, tokens, MAIL_* never exported
+                writePages(w, "users", page -> projectId == null ? userRepository.findAll(page) : userRepository.findForExport(projectId, page),
+                        u -> new String[]{u.getId().toString(), u.getEmail() + "," + u.getRole()});
+                if (selected == null) writePages(w, "projects", projectRepository::findAll,
+                        p -> new String[]{p.getId().toString(), p.getTitle() + "," + p.getStatus()});
+                else write(w, "projects", selected.getId().toString(), selected.getTitle() + "," + selected.getStatus());
+                writePages(w, "documents", page -> projectId == null ? documentRepository.findAll(page) : documentRepository.findByProjectId(projectId, page),
+                        d -> new String[]{d.getId().toString(), d.getDocType() + "," + d.getOriginalFilename()});
+                writePages(w, "paper_sections", page -> projectId == null ? paperSectionRepository.findAll(page) : paperSectionRepository.findForExport(projectId, page),
+                        s -> new String[]{s.getId().toString(), s.getSectionTitle()});
+                writePages(w, "evidence_traces", page -> projectId == null ? traceRepository.findAll(page) : traceRepository.findForExport(projectId, page),
+                        t -> new String[]{t.getId().toString(), String.valueOf(t.getFindingIndex())});
+                writePages(w, "audit_logs", page -> projectId == null ? auditLogRepository.findAll(page) : auditLogRepository.findForExport(projectId, page),
+                        a -> new String[]{a.getId().toString(), a.getAction()});
                 w.flush();
             }
         };
