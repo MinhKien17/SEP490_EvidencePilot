@@ -5,6 +5,9 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -33,7 +36,10 @@ class Seed2FixtureValidationTest {
                 mock(DocumentObjectStorage.class),
                 mock(com.evidencepilot.service.impl.DocumentPersistenceService.class),
                 mock(com.evidencepilot.service.impl.ProjectCollectionService.class),
-                mock(com.fasterxml.jackson.databind.ObjectMapper.class));
+                mock(com.fasterxml.jackson.databind.ObjectMapper.class),
+                new DevBypassPolicy(true, new org.springframework.mock.env.MockEnvironment()
+                        .withProperty("spring.profiles.active", "test")),
+                mock(org.springframework.transaction.PlatformTransactionManager.class));
     }
 
     @Test
