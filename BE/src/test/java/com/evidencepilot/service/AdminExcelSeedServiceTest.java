@@ -739,8 +739,8 @@ class AdminExcelSeedServiceTest {
                 List.of(doiRow("P", "10.1234/bogus-doi-xyz", "2")), job, Map.of("P", project));
         assertThat(n).isZero();
         assertThat(job.getErrors()).anyMatch(m -> m.contains("DOI not resolvable"));
-        assertThat(job.getFailedRows()).isEqualTo(1);
-        assertThat(job.getProcessed()).isEqualTo(1);
+        assertThat(job.getFailedRows()).isZero();
+        assertThat(job.getProcessed()).isZero();
         verify(t.documents(), never()).save(any(com.evidencepilot.model.Document.class));
     }
 
