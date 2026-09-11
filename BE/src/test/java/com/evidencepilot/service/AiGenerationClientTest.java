@@ -256,7 +256,7 @@ class AiGenerationClientTest {
         long started = System.nanoTime();
         assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(client, "requestGeneration",
                 Map.<String, Object>of("system", "test", "prompt", "test"),
-                started + TimeUnit.MILLISECONDS.toNanos(250), CATALOG))
+                started + TimeUnit.MILLISECONDS.toNanos(250), SELECTION))
                 .hasMessageContaining("GENERATION_DEADLINE_EXCEEDED");
         assertThat(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)).isLessThan(2_000);
     }
