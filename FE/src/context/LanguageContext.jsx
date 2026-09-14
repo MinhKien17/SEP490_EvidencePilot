@@ -13,7 +13,11 @@ export function LanguageProvider({ children }) {
       i18n.changeLanguage(language);
       return;
     }
-    localStorage.setItem('app_lang', language);
+    try {
+      localStorage.setItem('app_lang', language);
+    } catch {
+      // Persistence is best-effort; runtime language still belongs to i18next.
+    }
     document.documentElement.lang = language;
   }, [i18n, language]);
 

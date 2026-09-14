@@ -7,11 +7,19 @@ export function normalizeLanguage(language) {
   return String(language || '').trim().toLowerCase().split('-')[0] === 'vi' ? 'vi' : 'en';
 }
 
+function getStoredLanguage() {
+  try {
+    return localStorage.getItem('app_lang');
+  } catch {
+    return 'en';
+  }
+}
+
 i18n
   .use(initReactI18next)
   .init({
     resources: { en: { translation: en }, vi: { translation: vi } },
-    lng: normalizeLanguage(localStorage.getItem('app_lang')),
+    lng: normalizeLanguage(getStoredLanguage()),
     fallbackLng: 'en',
     interpolation: { escapeValue: false },
   });
