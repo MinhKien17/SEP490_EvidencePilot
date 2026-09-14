@@ -15,7 +15,7 @@ import ContextPanel from '../../components/Student/ContextPanel.jsx';
 import FullPaperPreview from '../../components/Student/FullPaperPreview.jsx';
 import SubmissionReadinessModal from '../../components/Student/SubmissionReadinessModal.jsx';
 import { hasActiveExtraction } from '../../utils/student/extractionPolling.js';
-import useInstructorReview from '../../hooks/useInstructorReview.js';
+import useInstructorReview, { loadAllProjectSources } from '../../hooks/useInstructorReview.js';
 import InstructorFeedbackPanel, { InstructorReviewGuide } from '../../components/Instructor/InstructorFeedbackPanel.jsx';
 import useProjectFeedback from '../../hooks/useProjectFeedback.js';
 import { usePaperReferences } from '../../hooks/usePaperReferences.js';
@@ -25,24 +25,6 @@ import useUndoDelete, { UndoToast } from '../../components/ui/UndoDelete.jsx';
 const VisualSourceMap = React.lazy(() => import('../../components/features/VisualSourceMap.jsx'));
 
 const SOURCE_MATCH_BATCH_SIZE = 10;
-
-async function loadAllProjectSources(projectId) {
-  const sources = [];
-  let page = 0;
-  let last = false;
-  while (!last) {
-    const response = await api.get(`/api/projects/${projectId}/sources`, {
-      params: { page, size: 100, active: true },
-    });
-    sources.push(...(response.data?.content || []));
-    last = response.data?.last ?? true;
-    page += 1;
-  }
-  return sources;
-}
-
-// Mirrors BE SourceMatchingService.citationKey(UUID).
-const citationKeyFor = (documentId) => `ep${String(documentId).replace(/-/g, '')}`;
 
 function findingClassName(finding) {
   const evidence = finding.evidence || [];
