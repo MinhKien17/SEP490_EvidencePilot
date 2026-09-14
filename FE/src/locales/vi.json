@@ -382,6 +382,8 @@
   "noRelatedSources": "Không tìm thấy nguồn liên quan trong dự án.",
   "sourceSearchFailed": "Citation Review đã hoàn tất nhưng bước tìm nguồn liên quan thất bại.",
   "reviewSectionChanged": "Phần đã lưu hoặc tập nguồn thay đổi trong lúc Citation Review xử lý. Hãy lưu và chạy lại.",
+  "reviewPromptChanged": "Mẫu kiểm tra đã được cập nhật trong lúc Citation Review xử lý. Hãy chạy lại — phần của bạn không thay đổi.",
+  "reviewModelChanged": "Cấu hình mô hình AI đã thay đổi trong lúc Citation Review xử lý. Hãy chạy lại — phần của bạn không thay đổi.",
   "reviewExcerptChanged": "Đoạn văn đã thay đổi hoặc xuất hiện nhiều lần. Hãy chạy Citation Review lại.",
   "citationAlreadyInserted": "Trích dẫn nguồn này đã nằm cạnh đoạn văn.",
   "cachedReviewFailed": "Không thể tải kết quả Citation Review đã lưu của phần này.",

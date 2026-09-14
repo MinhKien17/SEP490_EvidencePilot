@@ -98,13 +98,23 @@ export default function InlineCitationCard({
     return () => window.removeEventListener('scroll', close, { capture: true });
   }, [open, onClose]);
 
-  if (!open || !finding || !anchor) return null;
+  if (!open || !finding) return null;
 
   const dimensions = (() => {
     const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1280;
     const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
     const width = Math.min(CARD_W, Math.max(0, viewportWidth - 24));
     const maxHeight = Math.min(CARD_MAX_H, Math.max(0, viewportHeight - 24));
+    if (!anchor) {
+      // ponytail: no anchor (unrendered line, stale excerpt) — center top
+      // instead of rendering nothing; the badge click must always open.
+      return {
+        left: Math.max(12, (viewportWidth - width) / 2),
+        top: Math.max(12, viewportHeight * 0.12),
+        width,
+        maxHeight,
+      };
+    }
     let left = anchor.left - width / 2;
     left = Math.max(12, Math.min(left, viewportWidth - width - 12));
     let top = anchor.bottom != null ? anchor.bottom + 10 : anchor.top;

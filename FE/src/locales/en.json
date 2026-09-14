@@ -382,6 +382,8 @@
   "noRelatedSources": "No related project sources found.",
   "sourceSearchFailed": "The citation review succeeded, but related-source search failed.",
   "reviewSectionChanged": "The saved section or source corpus changed while Citation Review was running. Save and run it again.",
+  "reviewPromptChanged": "The review template was updated while Citation Review was running. Run it again — your section did not change.",
+  "reviewModelChanged": "The AI model configuration changed while Citation Review was running. Run it again — your section did not change.",
   "reviewExcerptChanged": "This excerpt changed or is ambiguous. Run Citation Review again.",
   "citationAlreadyInserted": "This source citation is already next to the excerpt.",
   "cachedReviewFailed": "Could not load the cached review for this section.",
