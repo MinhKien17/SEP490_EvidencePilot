@@ -53,6 +53,10 @@ export default function InlineCitationCard({
 }) {
   const { t, i18n } = useTranslation();
   const cardRef = useRef(null);
+  // ponytail: Next/Prev re-anchors + scrolls the editor; ignore the resulting scroll
+  // burst or the card closes the instant it opens on off-screen findings.
+  const findingChangeRef = useRef(0);
+  useEffect(() => { findingChangeRef.current = Date.now(); }, [findingIndex]);
   const noEvidence = hasNoEvidence(finding);
   const sourceGroups = buildSourceGroups(finding?.evidence, candidates, sources);
 
@@ -87,6 +91,7 @@ export default function InlineCitationCard({
   useEffect(() => {
     if (!open) return undefined;
     const close = (event) => {
+      if (Date.now() - findingChangeRef.current < 600) return;
       if (!cardRef.current?.contains(event.target)) onClose();
     };
     window.addEventListener('scroll', close, { passive: true, capture: true });

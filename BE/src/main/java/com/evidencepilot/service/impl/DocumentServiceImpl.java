@@ -502,6 +502,48 @@ public class DocumentServiceImpl implements DocumentService {
 
         projectCollectionService.pinSource(project, doc, collection, currentUser);
 
+        return shareResult(doc, project);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> shareLibrarySourceToProject(UUID sourceId, UUID projectId) {
+        var currentUser = currentUserService.requireCurrentUser();
+
+        Document doc = findDocument(sourceId);
+        if (doc.getDocType() != DocumentType.SOURCE || !doc.isActive()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source not found or inactive");
+        }
+        requireDocumentAccess(currentUser, doc);
+        ProcessingStatus status = doc.getProcessingStatus();
+        if (status != ProcessingStatus.READY && status != ProcessingStatus.COMPLETED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Source is not ready to share (current status: " + status + "); only READY or COMPLETED sources can be shared");
+        }
+
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
+        currentUserService.requireProjectWriteAccess(currentUser, project);
+
+        // Preserve collection link when the library source belongs to a collection so the
+        // Collection tab keeps showing it checked via projectIds; standalone docs pin with null link.
+        Collection sourceCollection = null;
+        if (doc.getCollection() != null && doc.getCollection().isActive()) {
+            sourceCollection = doc.getCollection();
+        } else {
+            sourceCollection = collectionDocumentRepository.findByDocumentId(doc.getId()).stream()
+                    .map(CollectionDocument::getCollection)
+                    .filter(Collection::isActive)
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        projectCollectionService.pinSource(project, doc, sourceCollection, currentUser);
+
+        return shareResult(doc, project);
+    }
+
+    private Map<String, Object> shareResult(Document doc, Project project) {
         String score = "MEDIUM";
         String explanation = "Document shared to project \"" + project.getTitle() + "\"";
         List<String> matchedTerms = new ArrayList<>();

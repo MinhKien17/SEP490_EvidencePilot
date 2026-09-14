@@ -548,6 +548,62 @@ class DocumentServiceImplAccessTest {
     }
 
     @Test
+    void shareLibraryStandalonePinsWithNullLink() {
+        User user = user();
+        Project project = project();
+        Document source = document(null);
+        source.setDocType(DocumentType.SOURCE);
+        source.setCollection(null);
+        source.setProcessingStatus(ProcessingStatus.READY);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(collectionDocumentRepository.findByDocumentId(source.getId())).thenReturn(List.of());
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+
+        var result = service().shareLibrarySourceToProject(source.getId(), project.getId());
+
+        assertThat(result.get("document")).isNotNull();
+        verify(projectCollectionService).pinSource(eq(project), eq(source), eq(null), eq(user));
+        verify(currentUserService).requireProjectWriteAccess(user, project);
+    }
+
+    @Test
+    void shareLibraryPreservesCollectionLink() {
+        User user = user();
+        Project project = project();
+        com.evidencepilot.model.Collection collection = collection();
+        Document source = document(null);
+        source.setDocType(DocumentType.SOURCE);
+        source.setCollection(collection);
+        source.setProcessingStatus(ProcessingStatus.READY);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+
+        service().shareLibrarySourceToProject(source.getId(), project.getId());
+
+        verify(projectCollectionService).pinSource(project, source, collection, user);
+    }
+
+    @Test
+    void shareLibraryRejectsSourceNotReady() {
+        User user = user();
+        Project project = project();
+        Document source = document(null);
+        source.setDocType(DocumentType.SOURCE);
+        source.setCollection(null);
+        source.setProcessingStatus(ProcessingStatus.PROCESSING);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
+
+        assertThatThrownBy(() -> service().shareLibrarySourceToProject(source.getId(), project.getId()))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        e -> assertThat(e.getStatusCode().value()).isEqualTo(409))
+                .hasMessageContaining("not ready to share");
+        verify(projectCollectionService, never()).pinSource(any(), any(), any(), any());
+    }
+
+    @Test
     void attachFileRegistersRollbackCleanupBeforeUpdatingMetadata() {
         User user = user();
         Document document = document(project());
