@@ -6,6 +6,12 @@ import { fileURLToPath } from 'node:url';
 
 const FE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SOURCE_ROOT = path.join(FE_ROOT, 'src');
+const TEST_ROOT = path.join(FE_ROOT, 'test');
+const CURRENT_TEST_FILE = fileURLToPath(import.meta.url);
+const LEGACY_CATALOG_FILES = ['home.js', 'common.js', 'student.js', 'instructor.js', 'index.js'];
+const LEGACY_CATALOG_SYMBOLS = /\b(?:homeText|commonText|studentText|instructorText)\b/;
+const LEGACY_CATALOG_IMPORT = /(?:from\s+|import\s*(?:\(\s*)?|require\s*\(\s*)['"][^'"]*locales(?:[\\/](?:index|home|common|student|instructor)(?:\.js)?)?['"]/;
+const APP_LANG_READ = /(?:window\.)?localStorage\.getItem\s*\(\s*['"]app_lang['"]\s*\)/;
 const locales = Object.fromEntries(['en', 'vi'].map(language => [
   language,
   JSON.parse(fs.readFileSync(path.join(SOURCE_ROOT, 'locales', `${language}.json`), 'utf8')),
@@ -277,7 +283,7 @@ function sourceFiles(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const fullPath = path.join(directory, entry.name);
     if (entry.isDirectory()) return sourceFiles(fullPath);
-    return /\.(js|jsx)$/.test(entry.name) ? [fullPath] : [];
+    return /\.(?:[cm]?js|jsx|tsx?)$/.test(entry.name) ? [fullPath] : [];
   });
 }
 
@@ -309,6 +315,39 @@ function dynamicTranslationPrefixes() {
     return [...source.matchAll(/(?<![\w.])(?:t|translate)\(\s*`([^`]*?)\$\{/g)].map(match => match[1]);
   }));
 }
+
+test('i18next JSON catalogs are the only runtime localization source', () => {
+  const legacyFiles = LEGACY_CATALOG_FILES.filter(file => fs.existsSync(path.join(SOURCE_ROOT, 'locales', file)));
+  assert.deepEqual(legacyFiles, [], `legacy localization files still exist: ${legacyFiles.join(', ')}`);
+
+  const scannedFiles = [...sourceFiles(SOURCE_ROOT), ...sourceFiles(TEST_ROOT)]
+    .filter(file => path.resolve(file) !== path.resolve(CURRENT_TEST_FILE));
+  for (const file of scannedFiles) {
+    const source = fs.readFileSync(file, 'utf8');
+    const relativeFile = path.relative(FE_ROOT, file);
+    assert.doesNotMatch(source, LEGACY_CATALOG_SYMBOLS, `${relativeFile} references a legacy catalog symbol`);
+    assert.doesNotMatch(source, LEGACY_CATALOG_IMPORT, `${relativeFile} imports a legacy catalog file or index`);
+  }
+
+  const i18nFile = path.join(SOURCE_ROOT, 'i18n.js');
+  const i18nSource = fs.readFileSync(i18nFile, 'utf8');
+  assert.match(i18nSource, APP_LANG_READ, 'i18n.js must initialize from app_lang');
+  for (const file of sourceFiles(SOURCE_ROOT).filter(file => path.resolve(file) !== path.resolve(i18nFile))) {
+    assert.doesNotMatch(
+      fs.readFileSync(file, 'utf8'),
+      APP_LANG_READ,
+      `${path.relative(FE_ROOT, file)} reads app_lang outside i18n.js`,
+    );
+  }
+
+  const languageContext = fs.readFileSync(path.join(SOURCE_ROOT, 'context', 'LanguageContext.jsx'), 'utf8');
+  assert.match(languageContext, /useTranslation\(\)/, 'LanguageContext must derive language from i18next');
+  assert.match(languageContext, /normalizeLanguage\(i18n\.resolvedLanguage \|\| i18n\.language\)/, 'LanguageContext must normalize i18next language');
+  assert.match(languageContext, /localStorage\.setItem\(\s*['"]app_lang['"]\s*,\s*language\s*\)/, 'LanguageContext must persist app_lang');
+  assert.match(languageContext, /document\.documentElement\.lang = language/, 'LanguageContext must update the document language');
+  assert.match(languageContext, /value=\{\{ language, setLanguage: changeLanguage, toggleLanguage \}\}/, 'LanguageContext must retain its adapter API');
+  assert.doesNotMatch(languageContext, /\buseState\s*\(/, 'LanguageContext must not own independent language state');
+});
 
 test('Home catalogs preserve the complete English and Vietnamese pilot surface', () => {
   for (const [language, expectedCopy] of Object.entries(HOME_SMOKE_COPY)) {
