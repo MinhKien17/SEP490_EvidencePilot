@@ -514,7 +514,7 @@ public class FeedbackServiceImpl implements FeedbackService {
         try {
             Map<UUID, Integer> versions = new HashMap<>();
             JsonNode snapshot = objectMapper.readTree(request.getSubmissionSnapshotJson());
-            if (snapshot == null || snapshot.path("schemaVersion").asInt() != 1
+            if (snapshot == null || (snapshot.path("schemaVersion").asInt() != 1 && snapshot.path("schemaVersion").asInt() != 2)
                     || !request.getProject().getId().toString().equals(snapshot.path("projectId").asText())
                     || !snapshot.path("papers").isArray() || snapshot.path("papers").isEmpty()) {
                 throw new IllegalArgumentException("Invalid snapshot");
