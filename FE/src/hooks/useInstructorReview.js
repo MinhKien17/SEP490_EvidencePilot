@@ -61,14 +61,12 @@ export default function useInstructorReview({ projectId, enabled }) {
   }));
   const clearFeedbackDraft = () => setFeedbackDrafts(previous => ({ ...previous, [draftKey]: {} }));
   const [savingFeedback, setSavingFeedback] = useState(false);
-  const [feedbackFilter, setFeedbackFilter] = useState('OPEN');
   const [activeFeedbackId, setActiveFeedbackId] = useState(null);
   const [viewMode, setViewMode] = useState('submitted');
   const sourceEditorRef = useRef(null);
   const [transitioningRequestId, setTransitioningRequestId] = useState(null);
   const [pendingTransition, setPendingTransition] = useState(null);
   const [guides, setGuides] = useState([]);
-  const [checkedItems, setCheckedItems] = useState({});
   const [suggestions, setSuggestions] = useState([]);
   const [suggestionLoading, setSuggestionLoading] = useState(false);
   const [suggestionError, setSuggestionError] = useState('');
@@ -241,12 +239,14 @@ export default function useInstructorReview({ projectId, enabled }) {
     }
     let cancelled = false;
     api.get(`/api/papers/${selectedPaperId}/sections`)
-      .then(r => { if (!cancelled) {
-        const liveSections = r.data || [];
-        setSections(liveSections);
-        setSelectedSectionId(previous => liveSections.some(section => String(section.id) === String(previous))
-          ? previous : liveSections[0]?.id || null);
-      } })
+      .then(r => {
+        if (!cancelled) {
+          const liveSections = r.data || [];
+          setSections(liveSections);
+          setSelectedSectionId(previous => liveSections.some(section => String(section.id) === String(previous))
+            ? previous : liveSections[0]?.id || null);
+        }
+      })
       .catch(() => { if (!cancelled) setSections([]); });
     return () => { cancelled = true; };
   }, [selectedPaperId, snapshotState, submissionSnapshot, viewMode]);
@@ -352,12 +352,14 @@ export default function useInstructorReview({ projectId, enabled }) {
       return;
     }
     try {
-      updateFeedbackDraft({ anchor: {
-        from: range.from,
-        to: range.to,
-        contentVersion: selectedSection.version,
-        fingerprint: await sourceFingerprint(source),
-      }, lineReference: '' });
+      updateFeedbackDraft({
+        anchor: {
+          from: range.from,
+          to: range.to,
+          contentVersion: selectedSection.version,
+          fingerprint: await sourceFingerprint(source),
+        }, lineReference: ''
+      });
     } catch {
       setErrorMessage(t('instructor.review.selectSourceRange'));
     }
@@ -405,12 +407,13 @@ export default function useInstructorReview({ projectId, enabled }) {
     }
   };
 
-  const selectFeedback = (feedback) => {
+  const selectFeedback = (feedback, { focus = false } = {}) => {
     if (feedback.paperId && String(feedback.paperId) !== String(selectedPaperId)) {
       setSelectedPaperId(feedback.paperId);
     }
     if (feedback.sectionId) setSelectedSectionId(feedback.sectionId);
     setActiveFeedbackId(feedback.id);
+    if (focus) setFeedbackFocusToken(value => value + 1);
   };
 
   useEffect(() => {
@@ -470,7 +473,7 @@ export default function useInstructorReview({ projectId, enabled }) {
     let polls = 0;
     const MAX_POLLS = 1200;
     const startedAt = Date.now();
-    for (;;) {
+    for (; ;) {
       if (shouldAbort?.()) return null;
       const { data: job } = await api.get(`/api/jobs/${jobId}`);
       if (job.status === 'SUCCESS') return job;
@@ -526,8 +529,10 @@ export default function useInstructorReview({ projectId, enabled }) {
     const existing = feedbackDraft.trim();
     const incoming = (content || '').trim();
     if (!incoming) return;
-    updateFeedbackDraft({ content: existing ? `${existing}\n\n${incoming}` : incoming,
-      ...(lineRef ? { lineReference: lineRef } : {}) });
+    updateFeedbackDraft({
+      content: existing ? `${existing}\n\n${incoming}` : incoming,
+      ...(lineRef ? { lineReference: lineRef } : {})
+    });
   };
 
   const reloadEvidence = useCallback(async () => {

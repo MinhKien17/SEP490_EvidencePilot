@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '../index';
 import SectionEvidenceTab from './review/SectionEvidenceTab.jsx';
@@ -8,7 +9,8 @@ const ACTION_LABELS = { REVIEWED: 'instructor.review.approve', RETURNED: 'instru
 
 export function InstructorReviewGuide({ review, selectedSection }) {
   const { t } = useTranslation();
-  const { activeGuide, checkedItems, setCheckedItems, selectedSectionId } = review;
+  const { activeGuide, selectedSectionId } = review;
+  const [checkedItems, setCheckedItems] = useState({});
   return <section className="space-y-4 rounded-xl border border-(--border) bg-(--surface) p-4 text-xs shadow-sm">
     <h3 className="font-bold text-(--text-primary)">{t('instructor.review.reviewGuide')}</h3>
     {!selectedSection || !activeGuide ? <p className="text-(--text-tertiary) italic">{t('instructor.review.selectSectionGuide')}</p> : <>
@@ -28,9 +30,18 @@ export function InstructorReviewGuide({ review, selectedSection }) {
   </section>;
 }
 
-export default function InstructorFeedbackPanel({ review, selectedSection }) {
-  const { t } = useTranslation();
-  const { activeRequest, activeRequestId, isHistoricalRound, feedbackItems, errorMessage, successMessage, savingFeedback, pendingDelete, transitioningRequestId, pendingTransition, setPendingTransition, suggestions, suggestionLoading, suggestionError, suggestionRan, panelTab, setPanelTab, activeGuide, requestLocked, canReturn, handleTransitionStatus, handleGenerateSuggestions } = review;
+export default function InstructorFeedbackPanel({ review, selectedSection, onSelectFeedback }) {
+  const { t, i18n } = useTranslation();
+  const { selectedSectionId, orderedRequests, activeRequest, activeRequestId, setActiveRequestId, feedbackItems, errorMessage, successMessage, diffEnabled, setDiffEnabled, diffOps, feedbackDraft, selectedAnchor, editingFeedbackId, updateFeedbackDraft, savingFeedback, activeFeedbackId, transitioningRequestId, pendingTransition, setPendingTransition, suggestions, suggestionLoading, suggestionError, suggestionRan, activeGuide, requestLocked, canReturn, canCreateRoot, handleSubmitFeedback, captureSourceSelection, handleEditFeedback, handleCancelEdit, handleDeleteFeedback, prepareState, handleTransitionStatus, handleGenerateSuggestions, injectIntoFeedback, pendingDelete, undoDelete, dismissDelete } = review;
+  const [sectionOnly, setSectionOnly] = useState(false);
+  const [feedbackFilter, setFeedbackFilter] = useState('OPEN');
+  const [panelTab, setPanelTab] = useState('manual');
+  useEffect(() => {
+    if (review.feedbackFocusToken > 0) {
+      setFeedbackFilter('ALL');
+      setPanelTab('manual');
+    }
+  }, [review.feedbackFocusToken]);
   const draftCount = feedbackItems.filter(item => String(item.requestId) === String(activeRequestId) && !item.publishedAt).length;
   const actionDisabled = savingFeedback || !!transitioningRequestId || !!pendingDelete;
   const actionBtn = 'min-h-11 rounded-lg px-3 py-2 text-[11px] font-bold leading-tight text-white disabled:opacity-50 flex items-center justify-center text-center';
@@ -50,92 +61,92 @@ export default function InstructorFeedbackPanel({ review, selectedSection }) {
     {errorMessage && <p role="alert" className="text-rose-700">{errorMessage}</p>}
     {successMessage && <p role="status" className="text-emerald-700">{successMessage}</p>}
     {draftCount > 0 && <p>{draftCount} {t('instructor.review.draft')}</p>}
-            <div className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm">
-              <div className="flex border-b border-(--border-light)">
-                {[
-                  { id: 'overview', label: t('instructor.review.overviewTab') },
-                  { id: 'evidence', label: t('instructor.review.evidenceTab') },
-                  { id: 'standards', label: t('instructor.review.standardsTab') },
-                  { id: 'ai', label: t('instructor.review.aiSuggestionTab') },
-                ].map(tab => (
-                  <button key={tab.id} onClick={() => setPanelTab(tab.id)}
-                    className={`flex-1 px-2 py-2.5 text-[10px] font-black text-center transition-colors border-b-2 ${panelTab === tab.id ? 'text-(--brand-foreground) border-(--brand)' : 'text-(--text-tertiary) border-transparent hover:text-(--text-secondary)'}`}>
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+    <div className="bg-(--surface) rounded-2xl border border-(--border) shadow-sm">
+      <div className="flex border-b border-(--border-light)">
+        {[
+          { id: 'overview', label: t('instructor.review.overviewTab') },
+          { id: 'evidence', label: t('instructor.review.evidenceTab') },
+          { id: 'standards', label: t('instructor.review.standardsTab') },
+          { id: 'ai', label: t('instructor.review.aiSuggestionTab') },
+        ].map(tab => (
+          <button key={tab.id} onClick={() => setPanelTab(tab.id)}
+            className={`flex-1 px-2 py-2.5 text-[10px] font-black text-center transition-colors border-b-2 ${panelTab === tab.id ? 'text-(--brand-foreground) border-(--brand)' : 'text-(--text-tertiary) border-transparent hover:text-(--text-secondary)'}`}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-              <div className="p-4 sm:p-5">
-                {panelTab === 'overview' && (
-                  <ReviewOverviewBlock review={review} />
-                )}
+      <div className="p-4 sm:p-5">
+        {panelTab === 'overview' && (
+          <ReviewOverviewBlock review={review} />
+        )}
 
 
-                {panelTab === 'evidence' && (
-                  <SectionEvidenceTab review={review} selectedSection={selectedSection} />
-                )}
+        {panelTab === 'evidence' && (
+          <SectionEvidenceTab review={review} selectedSection={selectedSection} />
+        )}
 
-                {panelTab === 'standards' && (
-                  <SectionStandardsTab review={review} selectedSection={selectedSection} />
-                )}
+        {panelTab === 'standards' && (
+          <SectionStandardsTab review={review} selectedSection={selectedSection} />
+        )}
 
-                {panelTab === 'ai' && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <button onClick={handleGenerateSuggestions} disabled={!activeGuide || suggestionLoading || requestLocked || activeRequest?.status !== 'PENDING'}
-                        className="px-3 py-1.5 rounded-lg text-[10px] font-black bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50">
-                        {suggestionLoading ? t('instructor.review.generatingSuggestions') : t('instructor.review.generateSuggestions')}
-                      </button>
-                      {activeGuide && <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">{activeGuide.sectionType}</span>}
-                    </div>
-                    <p className="text-[10px] text-(--text-tertiary) italic">{t('instructor.review.aiGenerationNote')}</p>
-                    {suggestionError && (
-                      <p className="text-[10px] font-bold text-rose-600">{suggestionError}</p>
-                    )}
-                    {suggestionLoading && (
-                      <div className="space-y-2" aria-busy="true">
-                        <div className="h-14 bg-(--surface-secondary) animate-pulse rounded-xl" />
-                        <div className="h-14 bg-(--surface-secondary) animate-pulse rounded-xl" />
-                      </div>
-                    )}
-                    {suggestionRan && !suggestionLoading && suggestions.length === 0 && (
-                      <p className="text-[10px] text-(--text-secondary) italic">{t('instructor.review.noSuggestionIssues')}</p>
-                    )}
-                    {suggestions.length > 0 && (
-                      <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
-                        {suggestions.map((suggestion, i) => (
-                          <li key={i} className="border border-(--border-light) rounded-xl p-3 text-xs space-y-1">
-                            <p className="font-bold text-(--text-primary) leading-relaxed">{suggestion.issue}</p>
-                            {suggestion.quote && (
-                              <p className="text-[10px] text-gray-400 italic leading-relaxed">"{suggestion.quote}"</p>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
-
-              </div>
+        {panelTab === 'ai' && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <button onClick={handleGenerateSuggestions} disabled={!activeGuide || suggestionLoading || requestLocked || activeRequest?.status !== 'PENDING'}
+                className="px-3 py-1.5 rounded-lg text-[10px] font-black bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50">
+                {suggestionLoading ? t('instructor.review.generatingSuggestions') : t('instructor.review.generateSuggestions')}
+              </button>
+              {activeGuide && <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">{activeGuide.sectionType}</span>}
             </div>
-
-      <Modal open={!!pendingTransition} onClose={() => { if (!transitioningRequestId) setPendingTransition(null); }}
-        title={t(ACTION_LABELS[pendingTransition?.targetStatus] || 'status.UNKNOWN')}
-        closeLabel={t('close')}>
-        <div className="space-y-4 text-xs">
-          <p className="text-(--text-secondary)">
-            {pendingTransition?.targetStatus === 'REVIEWED' ? t('instructor.review.finalizeReviewConfirm')
-              : pendingTransition?.targetStatus === 'REJECTED' ? t('instructor.review.rejectConfirm')
-              : `${t('instructor.review.returnForRevision')} · ${draftCount} ${t('instructor.review.draft')}`}
-          </p>
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={() => setPendingTransition(null)} disabled={!!transitioningRequestId}
-              className="flex-1 py-3 bg-(--surface-secondary) hover:bg-(--surface-tertiary) text-(--text-secondary) rounded-xl transition-colors border border-(--border) disabled:opacity-50">{t('cancel')}</button>
-            <button type="button" onClick={() => handleTransitionStatus(pendingTransition.requestId, pendingTransition.targetStatus)}
-              disabled={!!transitioningRequestId}
-              className="flex-1 py-3 bg-(--brand) text-(--on-brand) rounded-xl hover:bg-(--brand-hover) transition-colors disabled:opacity-50">{transitioningRequestId ? t('saving') : t('confirm')}</button>
+            <p className="text-[10px] text-(--text-tertiary) italic">{t('instructor.review.aiGenerationNote')}</p>
+            {suggestionError && (
+              <p className="text-[10px] font-bold text-rose-600">{suggestionError}</p>
+            )}
+            {suggestionLoading && (
+              <div className="space-y-2" aria-busy="true">
+                <div className="h-14 bg-(--surface-secondary) animate-pulse rounded-xl" />
+                <div className="h-14 bg-(--surface-secondary) animate-pulse rounded-xl" />
+              </div>
+            )}
+            {suggestionRan && !suggestionLoading && suggestions.length === 0 && (
+              <p className="text-[10px] text-(--text-secondary) italic">{t('instructor.review.noSuggestionIssues')}</p>
+            )}
+            {suggestions.length > 0 && (
+              <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                {suggestions.map((suggestion, i) => (
+                  <li key={i} className="border border-(--border-light) rounded-xl p-3 text-xs space-y-1">
+                    <p className="font-bold text-(--text-primary) leading-relaxed">{suggestion.issue}</p>
+                    {suggestion.quote && (
+                      <p className="text-[10px] text-gray-400 italic leading-relaxed">"{suggestion.quote}"</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
+        )}
+
+      </div>
+    </div>
+
+    <Modal open={!!pendingTransition} onClose={() => { if (!transitioningRequestId) setPendingTransition(null); }}
+      title={t(ACTION_LABELS[pendingTransition?.targetStatus] || 'status.UNKNOWN')}
+      closeLabel={t('close')}>
+      <div className="space-y-4 text-xs">
+        <p className="text-(--text-secondary)">
+          {pendingTransition?.targetStatus === 'REVIEWED' ? t('instructor.review.finalizeReviewConfirm')
+            : pendingTransition?.targetStatus === 'REJECTED' ? t('instructor.review.rejectConfirm')
+              : `${t('instructor.review.returnForRevision')} · ${draftCount} ${t('instructor.review.draft')}`}
+        </p>
+        <div className="flex gap-3 pt-2">
+          <button type="button" onClick={() => setPendingTransition(null)} disabled={!!transitioningRequestId}
+            className="flex-1 py-3 bg-(--surface-secondary) hover:bg-(--surface-tertiary) text-(--text-secondary) rounded-xl transition-colors border border-(--border) disabled:opacity-50">{t('cancel')}</button>
+          <button type="button" onClick={() => handleTransitionStatus(pendingTransition.requestId, pendingTransition.targetStatus)}
+            disabled={!!transitioningRequestId}
+            className="flex-1 py-3 bg-(--brand) text-(--on-brand) rounded-xl hover:bg-(--brand-hover) transition-colors disabled:opacity-50">{transitioningRequestId ? t('saving') : t('confirm')}</button>
         </div>
-      </Modal>
+      </div>
+    </Modal>
   </div>;
 }
