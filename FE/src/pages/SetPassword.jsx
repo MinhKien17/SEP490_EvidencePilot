@@ -208,7 +208,7 @@ export default function SetPassword() {
     <AuroraBackground className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6">
       <div className="relative z-10 w-full max-w-6xl mx-auto px-2 sm:px-6 py-8 grid grid-cols-1 lg:grid-cols-5 gap-8 lg:gap-12 items-center">
         {/* Column A — Branding */}
-        <div className="lg:col-span-2 text-center lg:text-left">
+        <div className="lg:col-span-2 text-center lg:text-left animate-[setPasswordEnter_0.5s_cubic-bezier(0.23,1,0.32,1)_both] motion-reduce:animate-none">
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-light text-(--text-primary) leading-tight tracking-tight mb-5">
             {t('auth.setPassword.welcomeTo')}{' '}
             <span className="font-extrabold bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-400 dark:from-indigo-400 dark:via-blue-300 dark:to-indigo-200 bg-clip-text text-transparent">
@@ -239,7 +239,7 @@ export default function SetPassword() {
         </div>
 
         {/* Column B — Onboarding Card */}
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-3 animate-[setPasswordEnter_0.5s_cubic-bezier(0.23,1,0.32,1)_both] [animation-delay:150ms] motion-reduce:animate-none">
           <section className="bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-slate-200 dark:border-zinc-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative">
             <header className="mb-6">
               <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
