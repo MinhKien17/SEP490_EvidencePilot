@@ -167,7 +167,13 @@ async function setupInstructor(page) {
       ];
     } else if (path === `/api/papers/${paperId}/references`) {
       json = [];
-    } else if (path === '/api/feedback-requests/round-one/feedback' || path === '/api/feedback-requests/round-two/feedback') {
+    } else if (path === '/api/feedback-requests/round-one/feedback') {
+      json = [{
+        id: 'feedback-one', requestId: 'round-one', paperId, sectionId,
+        sectionTitle: 'Introduction', content: 'Deep linked feedback.',
+        publishedAt: '2026-09-15T08:05:00Z', threadState: 'DONE', revision: 1,
+      }];
+    } else if (path === '/api/feedback-requests/round-two/feedback') {
       json = [];
     } else {
       state.unhandled.push(`${method} ${path}`);
@@ -256,7 +262,7 @@ test('Student restores and saves its assigned draft, then opens Citation Review 
 test('Instructor opens the selected round read-only and never consumes Student draft storage', async ({ page }) => {
   const { draftKey, privateDraft, projectId, state } = await setupInstructor(page);
 
-  await page.goto(`${baseUrl}/instructor/requests/${projectId}?review=round-one`);
+  await page.goto(`${baseUrl}/instructor/requests/${projectId}?review=round-one&feedback=feedback-one`);
   await expect(page).toHaveURL(`${baseUrl}/instructor/requests/${projectId}`);
   await expect(page.getByRole('region', { name: 'Submitted paper', exact: true })).toContainText('Submitted snapshot content.');
   await expect(page.locator('.cm-content')).not.toContainText(privateDraft);
@@ -275,6 +281,17 @@ test('Instructor opens the selected round read-only and never consumes Student d
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Citation Review', exact: true })).toHaveCount(0);
   await expect.poll(() => page.evaluate(key => localStorage.getItem(key), draftKey)).toBe(privateDraft);
+
+  await expect(page.getByText('Deep linked feedback.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'AI Suggestions', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'All', exact: true })).toHaveCount(0);
+  await page.evaluate(() => {
+    history.pushState({}, '', `${location.pathname}?feedback=feedback-one`);
+    dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await expect(page).toHaveURL(`${baseUrl}/instructor/requests/${projectId}`);
+  await expect(page.getByRole('button', { name: 'All', exact: true })).toBeVisible();
+  await expect(page.getByText('Deep linked feedback.', { exact: true })).toBeVisible();
 
   expect(state.paperWrites).toEqual([]);
   expect(state.errors).toEqual([]);
