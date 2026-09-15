@@ -1642,7 +1642,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
           selectedPaper={selectedPaper} selectedSection={currentSection} isAssignedSection={Boolean(currentSection && String(currentSection.assignedUserId) === String(user?.id))}
           isSectionDirty={dirtySectionsRef.current.has(selectedSectionId)} onHandoffChanged={handleHandoffChanged} pollAiJob={pollAiJob}
           feedbacks={feedback.requests} feedbackLoading={feedback.loading} feedbackError={feedback.error} onRetryFeedback={feedback.refresh} onViewFeedback={openFeedback}
-          setShowSubmitReviewModal={isReview ? undefined : setShowSubmitReviewModal} userProjectRole={project?.currentUserRole} />}
+          setShowSubmitReviewModal={isReview ? undefined : setShowSubmitReviewModal} userProjectRole={project?.currentUserRole} />
       </div>
 
       {/* Restore Previous Save Modal */}

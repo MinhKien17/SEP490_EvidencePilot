@@ -60,13 +60,9 @@ public class SubmissionReadinessService {
     private final PaperSectionRepository paperSectionRepository;
     private final FeedbackRequestRepository feedbackRequestRepository;
     private final SectionStandardService sectionStandardService;
-<<<<<<< HEAD
     private final SectionStandardEvaluationRepository evaluationRepository;
     private final CitationReviewRoundRepository roundRepository;
-    private final CurrentUserService currentUserService;
-=======
     private final CurrentUserServiceImpl currentUserService;
->>>>>>> eb3b3054b518830ce382492aeb7c15f1c8f97f28
     private final ObjectMapper objectMapper;
 
     @Transactional(readOnly = true)

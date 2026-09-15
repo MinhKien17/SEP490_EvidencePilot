@@ -49,7 +49,7 @@ class SubmissionReadinessServiceTest {
     @Mock private SectionStandardService sectionStandardService;
     @Mock private SectionStandardEvaluationRepository evaluationRepository;
     @Mock private CitationReviewRoundRepository roundRepository;
-    @Mock private CurrentUserService currentUserService;
+    @Mock private CurrentUserServiceImpl currentUserService;
 
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     private SubmissionReadinessService service;
