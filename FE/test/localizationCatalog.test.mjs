@@ -167,6 +167,31 @@ const WORKSPACE_SOURCE_FILES = [
   ['components', 'features', 'VisualSourceMap.jsx'],
 ];
 
+const INSTRUCTOR_PHASE2_SOURCE_FILES = [
+  ['components', 'Instructor', 'SourceLibraryPanel.jsx'],
+  ['components', 'features', 'UniversalDocumentIngestionModal.jsx'],
+  ['pages', 'Instructor', 'CollectionList.jsx'],
+  ['pages', 'Instructor', 'CollectionDetail.jsx'],
+  ['pages', 'Instructor', 'Dashboard.jsx'],
+  ['pages', 'Instructor', 'EvidenceTraceReview.jsx'],
+  ['pages', 'Instructor', 'ProjectDetail.jsx'],
+  ['pages', 'Instructor', 'ProjectManagement.jsx'],
+  ['pages', 'Instructor', 'ReviewRequests.jsx'],
+  ['pages', 'Instructor', 'SourceLibrary.jsx'],
+];
+
+const INSTRUCTOR_PHASE2_DOMAINS = [
+  'instructor.dashboard',
+  'instructor.projectManagement',
+  'instructor.projectDetail',
+  'instructor.reviewRequests',
+  'instructor.collections',
+  'instructor.collectionDetail',
+  'instructor.sourceLibrary',
+  'instructor.evidenceTrace',
+  'shared.ingestion',
+];
+
 const STUDENT_WORKSPACE_KEYS = [
   'citationKeyPrompt', 'defaultDocumentFilename', 'defaultImageAlt', 'defaultLinkLabel', 'emptyPreview',
   'labelNamePrompt', 'latexLabel', 'linkLabelPrompt', 'linkUrlPrompt', 'missingImage',
@@ -212,6 +237,15 @@ const DYNAMIC_KEY_DOMAINS = new Map([
   ['home.features.', ['structuredData.title', 'structuredData.desc', 'citationReview.title', 'citationReview.desc', 'feedback.title', 'feedback.desc', 'documentExtraction.title', 'documentExtraction.desc', 'vectorSearch.title', 'vectorSearch.desc', 'realtime.title', 'realtime.desc']],
   ['home.roles.', ['student.title', 'student.desc', 'instructor.title', 'instructor.desc']],
   ['home.workflow.', ['step1.title', 'step1.desc', 'step2.title', 'step2.desc', 'step3.title', 'step3.desc', 'step4.title', 'step4.desc', 'step5.title', 'step5.desc', 'step6.title', 'step6.desc']],
+  ['instructor.evidenceTrace.judgment.', ['EFFECTIVE', 'PARTIAL', 'INEFFECTIVE', 'UNKNOWN']],
+  ['instructor.evidenceTrace.outcome.', ['RESOLVED', 'PARTIALLY_RESOLVED', 'UNRESOLVED', 'STALE', 'UNKNOWN']],
+  ['instructor.evidenceTrace.studentActionValue.', ['ADD_CITATION', 'PARAPHRASE', 'QUALIFY', 'SYNTHESIZE', 'QUOTE', 'REMOVE', 'DISMISS_WITH_REASON', 'UNKNOWN']],
+  ['instructor.collectionDetail.tab.', ['documents', 'connectedMap', 'visualizeMap', 'UNKNOWN']],
+  ['instructor.projectDetail.action.', ['archive', 'unarchive', 'complete', 'UNKNOWN']],
+  ['instructor.projectDetail.documentType.', ['PAPER', 'SOURCE', 'UNKNOWN']],
+  ['instructor.projectDetail.projectRole.', ['MEMBER', 'LEADER', 'INSTRUCTOR', 'UNKNOWN']],
+  ['instructor.projectDetail.userRole.', ['STUDENT', 'INSTRUCTOR', 'ADMIN', 'UNKNOWN']],
+  ['instructor.projectManagement.action.', ['archive', 'unarchive', 'complete', 'UNKNOWN']],
   ['selfCheckVerdict', ['MET', 'PARTIAL', 'NOT_MET', 'UNVERIFIABLE', 'UNKNOWN']],
   ['sourceMap.', ['outgoing', 'incoming', 'accessDenied', 'loadError']],
   ['sourceMap.processing.', ['PENDING_UPLOAD', 'UPLOADED', 'METADATA_FETCHED', 'PDF_DOWNLOADED', 'QUEUED', 'PROCESSING', 'RAW_EXTRACTED', 'READY', 'COMPLETED', 'PARTIAL', 'FAILED', 'UNKNOWN']],
@@ -358,6 +392,41 @@ test('Workspace dynamic copy uses explicit domains and translated unknown fallba
       for (const key of keys) {
         assert.equal(typeof getPath(catalog, key), 'string', `missing ${language} ${domain} state translation: ${key}`);
       }
+    }
+  }
+});
+
+test('remaining Instructor surfaces own interface copy in i18next JSON catalogs', () => {
+  const source = INSTRUCTOR_PHASE2_SOURCE_FILES
+    .map(parts => fs.readFileSync(path.join(SOURCE_ROOT, ...parts), 'utf8'))
+    .join('\n');
+
+  for (const parts of INSTRUCTOR_PHASE2_SOURCE_FILES) {
+    const file = path.join(SOURCE_ROOT, ...parts);
+    const source = fs.readFileSync(file, 'utf8');
+    assert.doesNotMatch(source, /(?:commonText|studentText|instructorText)/, `${file} still uses a legacy JS catalog`);
+    assert.doesNotMatch(source, /app_lang/, `${file} reads the persisted language key directly`);
+    assert.doesNotMatch(source, /language\s*===\s*['"]vi['"]/, `${file} selects interface copy by language`);
+  }
+
+  assert.doesNotMatch(source, /statusLabels|replaceAll\('_', ' '\)|\bt\[/, 'Instructor surfaces expose a raw dynamic label');
+
+  for (const [language, catalog] of Object.entries(locales)) {
+    for (const domain of INSTRUCTOR_PHASE2_DOMAINS) {
+      assert.ok(
+        Object.keys(catalog).some((key) => key.startsWith(`${domain}.`)),
+        `missing ${language} ${domain} catalog`,
+      );
+    }
+    for (const key of [
+      'instructor.sourceLibrary.guideSteps',
+      'instructor.collections.guideSteps',
+      'instructor.collectionDetail.guideSteps',
+      'instructor.dashboard.tourSteps',
+      'instructor.projectDetail.processingSteps',
+      'instructor.projectManagement.guideSteps',
+    ]) {
+      assert.equal(getPath(catalog, key).length, 4, `unexpected ${language} ${key} length`);
     }
   }
 });
