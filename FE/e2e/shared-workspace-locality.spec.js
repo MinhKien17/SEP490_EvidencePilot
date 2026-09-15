@@ -155,10 +155,16 @@ async function setupInstructor(page) {
         papers: [{ id: paperId, title: 'Submitted paper', sections: [{
           id: sectionId, title: 'Introduction', order: 0,
           contentTex: 'Submitted snapshot content.', contentVersion: 4,
+        }, {
+          id: 'instructor-methods', title: 'Methods', order: 1,
+          contentTex: 'Submitted methods snapshot.', contentVersion: 4,
         }] }],
       } };
     } else if (path === `/api/papers/${paperId}/sections`) {
-      json = [{ id: sectionId, sectionTitle: 'Introduction', sectionOrder: 0, contentTex: 'Saved working content.', version: 5, revision: 4 }];
+      json = [
+        { id: sectionId, sectionTitle: 'Introduction', sectionOrder: 0, contentTex: 'Saved working content.', version: 5, revision: 4 },
+        { id: 'instructor-methods', sectionTitle: 'Methods', sectionOrder: 1, contentTex: 'Saved working methods.', version: 5, revision: 4 },
+      ];
     } else if (path === `/api/papers/${paperId}/references`) {
       json = [];
     } else if (path === '/api/feedback-requests/round-one/feedback' || path === '/api/feedback-requests/round-two/feedback') {
@@ -257,9 +263,13 @@ test('Instructor opens the selected round read-only and never consumes Student d
   await expect(page.locator('.cm-content')).toHaveAttribute('contenteditable', 'false');
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Citation Review', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Methods', exact: true }).click();
+  await expect(page.locator('.cm-content')).toContainText('Submitted methods snapshot.');
 
   await page.getByRole('button', { name: 'Saved working copy', exact: true }).click();
-  await expect(page.getByRole('region', { name: 'Saved working copy', exact: true })).toContainText('Saved working content.');
+  await expect(page.getByRole('region', { name: 'Saved working copy', exact: true })).toContainText('Saved working methods.');
+  await page.getByRole('button', { name: 'Methods', exact: true }).click();
+  await expect(page.locator('.cm-content')).toContainText('Saved working methods.');
   await expect(page.locator('.cm-content')).not.toContainText(privateDraft);
   await expect(page.locator('.cm-content')).toHaveAttribute('contenteditable', 'false');
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);

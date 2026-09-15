@@ -521,5 +521,25 @@ export default function useInstructorReview({ projectId, enabled }) {
       ...(lineRef ? { lineReference: lineRef } : {}) });
   };
 
-  return { project, papers, sections, selectedPaperId, setSelectedPaperId, selectedSectionId, setSelectedSectionId, selectedSection, requests, orderedRequests, activeRequest, activeRequestId, setActiveRequestId, feedbackItems, sources, mediaAssets, loading, errorMessage, successMessage, diffEnabled, setDiffEnabled, baseline, diffOps, feedbackDraft, feedbackLineRef, selectedAnchor, editingFeedbackId, updateFeedbackDraft, savingFeedback, feedbackFilter, setFeedbackFilter, activeFeedbackId, viewMode, setViewMode, sourceEditorRef, transitioningRequestId, pendingTransition, setPendingTransition, checkedItems, setCheckedItems, suggestions, suggestionLoading, suggestionError, suggestionRan, submissionSnapshot, snapshotState, setSnapshotRetry, panelTab, setPanelTab, activeGuide, requestLocked, canReturn, canCreateRoot, handleSubmitFeedback, captureSourceSelection, handleEditFeedback, handleCancelEdit, handleDeleteFeedback, prepareState, selectFeedback, handleTransitionStatus, handleGenerateSuggestions, injectIntoFeedback, pendingDelete, undoDelete, dismissDelete };
+  const selectedPaper = papers.find(paper => String(paper.id) === String(selectedPaperId)) || null;
+  const workspace = {
+    phase: loading ? 'loading' : project ? 'ready' : errorMessage ? 'error' : 'ready',
+    error: project ? '' : errorMessage,
+    project,
+    papers,
+    sources,
+    mediaAssets,
+    sections,
+    selectedPaperId,
+    selectedPaper,
+    selectedSectionId,
+    selectedSection,
+    content: normalizeSource(selectedSection?.contentTex || ''),
+    selectPaper: setSelectedPaperId,
+    selectSection: setSelectedSectionId,
+    editorRef: sourceEditorRef,
+    readOnly: true,
+  };
+
+  return { workspace, project, papers, sections, selectedPaperId, setSelectedPaperId, selectedSectionId, setSelectedSectionId, selectedSection, requests, orderedRequests, activeRequest, activeRequestId, setActiveRequestId, feedbackItems, sources, mediaAssets, loading, errorMessage, successMessage, diffEnabled, setDiffEnabled, baseline, diffOps, feedbackDraft, feedbackLineRef, selectedAnchor, editingFeedbackId, updateFeedbackDraft, savingFeedback, feedbackFilter, setFeedbackFilter, activeFeedbackId, viewMode, setViewMode, sourceEditorRef, transitioningRequestId, pendingTransition, setPendingTransition, checkedItems, setCheckedItems, suggestions, suggestionLoading, suggestionError, suggestionRan, submissionSnapshot, snapshotState, setSnapshotRetry, panelTab, setPanelTab, activeGuide, requestLocked, canReturn, canCreateRoot, handleSubmitFeedback, captureSourceSelection, handleEditFeedback, handleCancelEdit, handleDeleteFeedback, prepareState, selectFeedback, handleTransitionStatus, handleGenerateSuggestions, injectIntoFeedback, pendingDelete, undoDelete, dismissDelete };
 }
