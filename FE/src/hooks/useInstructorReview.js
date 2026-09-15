@@ -75,15 +75,10 @@ export default function useInstructorReview({ projectId, enabled }) {
   const [snapshotState, setSnapshotState] = useState('LOADING');
   const [snapshotRetry, setSnapshotRetry] = useState(0);
   const suggestionRequestRef = useRef(0);
+  const [feedbackFocusToken, setFeedbackFocusToken] = useState(0);
   // ponytail: project evidence traces shared by Evidence tab + overview (single fetch, client-side scoping)
   const [evidenceTraces, setEvidenceTraces] = useState([]);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
-
-  const [panelTab, setPanelTab] = useState('overview');
-
-  // A route change creates a new review workspace; section changes within it
-  // leave the instructor's selected tab alone.
-  useEffect(() => { if (enabled) setPanelTab('overview'); }, [projectId, enabled]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -435,8 +430,7 @@ export default function useInstructorReview({ projectId, enabled }) {
     if (!feedbackLink) return;
     const feedback = feedbackItems.find(item => String(item.id) === String(feedbackLink));
     if (!feedback) return;
-    setFeedbackFilter('ALL');
-    selectFeedback(feedback);
+    selectFeedback(feedback, { focus: true });
     const search = new URLSearchParams(location.search);
     search.delete('review');
     search.delete('feedback');
@@ -565,5 +559,86 @@ export default function useInstructorReview({ projectId, enabled }) {
   // ponytail: historical rounds are read-only; only the latest PENDING/RETURNED request accepts input
   const isHistoricalRound = !!activeRequest && !!latestRequest && String(activeRequest.id) !== String(latestRequest.id);
 
-  return { project, papers, sections, selectedPaperId, setSelectedPaperId, selectedSectionId, setSelectedSectionId, selectedSection, requests, orderedRequests, activeRequest, activeRequestId, setActiveRequestId, latestRequest, isHistoricalRound, feedbackItems, sources, mediaAssets, loading, errorMessage, successMessage, diffEnabled, setDiffEnabled, baseline, diffOps, diffTruncated, changeRanges, feedbackDraft, feedbackLineRef, selectedAnchor, editingFeedbackId, updateFeedbackDraft, savingFeedback, feedbackFilter, setFeedbackFilter, activeFeedbackId, viewMode, setViewMode, sourceEditorRef, transitioningRequestId, pendingTransition, setPendingTransition, checkedItems, setCheckedItems, suggestions, suggestionLoading, suggestionError, suggestionRan, submissionSnapshot, snapshotState, setSnapshotRetry, panelTab, setPanelTab, activeGuide, requestLocked, canReturn, canCreateRoot, handleSubmitFeedback, captureSourceSelection, handleEditFeedback, handleCancelEdit, handleDeleteFeedback, prepareState, selectFeedback, handleTransitionStatus, handleGenerateSuggestions, injectIntoFeedback, pendingDelete, undoDelete, dismissDelete, evidenceTraces, evidenceLoading, reloadEvidence, submitTraceJudgment };
+  const selectedPaper = papers.find(paper => String(paper.id) === String(selectedPaperId)) || null;
+  const workspace = {
+    phase: loading ? 'loading' : project ? 'ready' : errorMessage ? 'error' : 'ready',
+    error: project ? '' : errorMessage,
+    project,
+    papers,
+    sources,
+    mediaAssets,
+    sections,
+    selectedPaperId,
+    selectedPaper,
+    selectedSectionId,
+    selectedSection,
+    content: normalizeSource(selectedSection?.contentTex || ''),
+    selectPaper: setSelectedPaperId,
+    selectSection: setSelectedSectionId,
+    editorRef: sourceEditorRef,
+    readOnly: true,
+  };
+
+  const workflow = {
+    selectedPaperId,
+    selectedSectionId,
+    sections,
+    papers,
+    orderedRequests,
+    activeRequest,
+    activeRequestId,
+    setActiveRequestId,
+    isHistoricalRound,
+    feedbackItems,
+    errorMessage,
+    successMessage,
+    diffEnabled,
+    setDiffEnabled,
+    diffOps,
+    diffTruncated,
+    changeRanges,
+    feedbackDraft,
+    feedbackLineRef,
+    selectedAnchor,
+    editingFeedbackId,
+    updateFeedbackDraft,
+    savingFeedback,
+    activeFeedbackId,
+    viewMode,
+    setViewMode,
+    transitioningRequestId,
+    pendingTransition,
+    setPendingTransition,
+    suggestions,
+    suggestionLoading,
+    suggestionError,
+    suggestionRan,
+    submissionSnapshot,
+    snapshotState,
+    setSnapshotRetry,
+    activeGuide,
+    requestLocked,
+    canReturn,
+    canCreateRoot,
+    feedbackFocusToken,
+    handleSubmitFeedback,
+    captureSourceSelection,
+    handleEditFeedback,
+    handleCancelEdit,
+    handleDeleteFeedback,
+    prepareState,
+    selectFeedback,
+    handleTransitionStatus,
+    handleGenerateSuggestions,
+    injectIntoFeedback,
+    pendingDelete,
+    undoDelete,
+    dismissDelete,
+    evidenceTraces,
+    evidenceLoading,
+    reloadEvidence,
+    submitTraceJudgment,
+  };
+
+  return { workspace, workflow };
 }
