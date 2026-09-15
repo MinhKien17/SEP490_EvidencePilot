@@ -174,6 +174,46 @@ async function setupInstructor(page) {
   return { draftKey, privateDraft, projectId, state };
 }
 
+async function setupProjectDetail(page) {
+  const projectId = 'project-detail-handoff';
+  const requestId = 'feedback-request-one';
+
+  await page.addInitScript(() => {
+    localStorage.setItem('token', 'instructor-project-detail-fixture');
+    localStorage.setItem('role', 'INSTRUCTOR');
+    localStorage.setItem('app_lang', 'en');
+    localStorage.setItem('app_theme', 'light');
+  });
+
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname;
+    let json;
+
+    if (path === '/api/users/profile') {
+      json = { id: 'instructor-one', role: 'INSTRUCTOR', firstName: 'Test', lastName: 'Instructor' };
+    } else if (path === '/api/notifications') {
+      json = [];
+    } else if (path === '/api/notifications/unread-count') {
+      json = { count: 0 };
+    } else if (path === `/api/projects/${projectId}`) {
+      json = { id: projectId, title: 'Project detail handoff', status: 'IN_REVIEW', targetStandard: 'APA' };
+    } else if (path === `/api/projects/${projectId}/members`
+      || path === `/api/projects/${projectId}/papers`
+      || path === `/api/sources/projects/${projectId}`
+      || path === '/api/users') {
+      json = [];
+    } else if (path === '/api/feedback-requests') {
+      json = [{ id: requestId, projectId, status: 'PENDING', studentName: 'Test Student', requestedAt: '2026-09-15T08:00:00Z' }];
+    } else {
+      return route.fulfill({ status: 404, json: { message: `Unhandled fixture request: ${path}` } });
+    }
+
+    return route.fulfill({ json });
+  });
+
+  return { projectId, requestId };
+}
+
 test('Student restores and saves its assigned draft, then opens Citation Review evidence', async ({ page }) => {
   const { draft, draftKey, projectId, state } = await setupStudent(page);
 
@@ -229,4 +269,17 @@ test('Instructor opens the selected round read-only and never consumes Student d
   expect(state.paperWrites).toEqual([]);
   expect(state.errors).toEqual([]);
   expect(state.unhandled).toEqual([]);
+});
+
+test('ProjectDetail hands a review request to the canonical shared workspace route', async ({ page }) => {
+  const { projectId, requestId } = await setupProjectDetail(page);
+  const target = `/instructor/requests/${projectId}?review=${requestId}`;
+
+  await page.goto(`${baseUrl}/instructor/projects/${projectId}`);
+  await page.getByRole('button', { name: 'Review', exact: true }).click();
+
+  const requestCard = page.getByTestId(`feedback-${requestId}`);
+  await expect(requestCard).toHaveAttribute('href', target);
+  await requestCard.click();
+  await expect(page).toHaveURL(`${baseUrl}${target}`);
 });
