@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '../index';
 import SectionEvidenceTab from './review/SectionEvidenceTab.jsx';
-import SectionStandardsTab from './review/SectionStandardsTab.jsx';
+import FeedbackThreadsTab from './review/FeedbackThreadsTab.jsx';
 import ReviewOverviewBlock from './review/ReviewOverviewBlock.jsx';
+import { formatDateTime } from '../../utils/formatters/date.js';
 
 const ACTION_LABELS = { REVIEWED: 'instructor.review.approve', RETURNED: 'instructor.review.returnForRevision', REJECTED: 'instructor.review.rejectSubmission' };
 
@@ -30,10 +31,13 @@ export function InstructorReviewGuide({ review, selectedSection }) {
   </section>;
 }
 
-export default function InstructorFeedbackPanel({ review, selectedSection }) {
-  const { t } = useTranslation();
-  const { activeRequest, isHistoricalRound, errorMessage, successMessage, transitioningRequestId, pendingTransition, setPendingTransition, suggestions, suggestionLoading, suggestionError, suggestionRan, activeGuide, requestLocked, canReturn, handleTransitionStatus, handleGenerateSuggestions } = review;
-  const [panelTab, setPanelTab] = useState('overview');
+export default function InstructorFeedbackPanel({ review, selectedSection, projectId, focusSignal = 0, composerFocusToken = 0 }) {
+  const { t, i18n } = useTranslation();
+  const { activeRequest, isHistoricalRound, errorMessage, successMessage, transitioningRequestId, pendingTransition, setPendingTransition, requestLocked, canReturn, handleTransitionStatus } = review;
+  const [panelTab, setPanelTab] = useState('feedback');
+  useEffect(() => {
+    if (focusSignal > 0) setPanelTab('feedback');
+  }, [focusSignal]);
   const draftCount = (review.feedbackItems || []).filter(item => String(item.requestId) === String(review.activeRequestId) && !item.publishedAt).length;
   const actionDisabled = !!transitioningRequestId;
   const actionBtn = 'min-h-11 rounded-lg px-3 py-2 text-[11px] font-bold leading-tight text-white disabled:opacity-50 flex items-center justify-center text-center';
@@ -56,9 +60,9 @@ export default function InstructorFeedbackPanel({ review, selectedSection }) {
       <div className="flex border-b border-(--border-light)">
         {[
           { id: 'overview', label: t('instructor.review.overviewTab') },
-          { id: 'evidence', label: t('instructor.review.evidenceTab') },
-          { id: 'standards', label: t('instructor.review.standardsTab') },
-          { id: 'ai', label: t('instructor.review.aiSuggestionTab') },
+          { id: 'feedback', label: t('instructor.review.feedbackTab') },
+          { id: 'findings', label: t('instructor.review.findingsTab') },
+          { id: 'history', label: t('instructor.review.historyTab') },
         ].map(tab => (
           <button key={tab.id} onClick={() => setPanelTab(tab.id)}
             className={`flex-1 px-2 py-2.5 text-[10px] font-black text-center transition-colors border-b-2 ${panelTab === tab.id ? 'text-(--brand-foreground) border-(--brand)' : 'text-(--text-tertiary) border-transparent hover:text-(--text-secondary)'}`}>
@@ -68,54 +72,33 @@ export default function InstructorFeedbackPanel({ review, selectedSection }) {
       </div>
 
       <div className="p-4 sm:p-5">
+        {panelTab === 'feedback' && (
+          <FeedbackThreadsTab review={review} selectedSection={selectedSection} projectId={projectId} composerFocusToken={composerFocusToken} />
+        )}
+
         {panelTab === 'overview' && (
           <ReviewOverviewBlock review={review} />
         )}
 
 
-        {panelTab === 'evidence' && (
+        {panelTab === 'findings' && (
           <SectionEvidenceTab review={review} selectedSection={selectedSection} />
         )}
 
-        {panelTab === 'standards' && (
-          <SectionStandardsTab review={review} selectedSection={selectedSection} />
-        )}
-
-        {panelTab === 'ai' && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <button onClick={handleGenerateSuggestions} disabled={!activeGuide || suggestionLoading || requestLocked || activeRequest?.status !== 'PENDING'}
-                className="px-3 py-1.5 rounded-lg text-[10px] font-black bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-50">
-                {suggestionLoading ? t('instructor.review.generatingSuggestions') : t('instructor.review.generateSuggestions')}
-              </button>
-              {activeGuide && <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">{activeGuide.sectionType}</span>}
-            </div>
-            <p className="text-[10px] text-(--text-tertiary) italic">{t('instructor.review.aiGenerationNote')}</p>
-            {suggestionError && (
-              <p className="text-[10px] font-bold text-rose-600">{suggestionError}</p>
+        {panelTab === 'history' && (
+          <ul className="space-y-1.5">
+            {(review.orderedRequests || []).map(request => (
+              <li key={request.id} className="flex items-center justify-between gap-2 rounded-lg border border-(--border-light) px-2.5 py-2 text-[11px]">
+                <span className="font-semibold text-(--text-secondary)">
+                  {request.requestedAt ? formatDateTime(request.requestedAt, i18n.language) : t('status.UNKNOWN')}
+                </span>
+                <span className="font-black uppercase text-(--text-tertiary)">{request.status}</span>
+              </li>
+            ))}
+            {(review.orderedRequests || []).length === 0 && (
+              <p className="py-2 text-center text-[11px] italic text-(--text-tertiary)">{t('studentFeedback.empty')}</p>
             )}
-            {suggestionLoading && (
-              <div className="space-y-2" aria-busy="true">
-                <div className="h-14 bg-(--surface-secondary) animate-pulse rounded-xl" />
-                <div className="h-14 bg-(--surface-secondary) animate-pulse rounded-xl" />
-              </div>
-            )}
-            {suggestionRan && !suggestionLoading && suggestions.length === 0 && (
-              <p className="text-[10px] text-(--text-secondary) italic">{t('instructor.review.noSuggestionIssues')}</p>
-            )}
-            {suggestions.length > 0 && (
-              <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
-                {suggestions.map((suggestion, i) => (
-                  <li key={i} className="border border-(--border-light) rounded-xl p-3 text-xs space-y-1">
-                    <p className="font-bold text-(--text-primary) leading-relaxed">{suggestion.issue}</p>
-                    {suggestion.quote && (
-                      <p className="text-[10px] text-gray-400 italic leading-relaxed">"{suggestion.quote}"</p>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          </ul>
         )}
 
       </div>
