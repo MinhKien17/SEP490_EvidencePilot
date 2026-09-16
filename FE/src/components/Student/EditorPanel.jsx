@@ -204,10 +204,16 @@ export default function EditorPanel({
           <div className="flex items-center gap-2 sm:gap-3">
             {review && (
               <>
-                <button type="button" onClick={() => review.setDiffEnabled(!review.diffEnabled)} aria-pressed={review.diffEnabled} title={t('instructor.review.showChanges')}
-                  className={`shrink-0 rounded-md border border-(--border) px-2.5 py-1 text-[11px] font-bold focus-visible:ring-2 focus-visible:ring-(--brand) transition-colors ${review.diffEnabled ? 'bg-(--brand-soft) text-(--brand-foreground)' : 'bg-(--surface-tertiary) text-(--text-primary) hover:bg-(--border)'}`}>
-                  {t('instructor.review.showChanges')}
-                </button>
+                <label className="flex shrink-0 items-center gap-1.5 text-[11px] font-bold text-(--text-secondary) cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={review.diffEnabled}
+                    onChange={event => review.setDiffEnabled(event.target.checked)}
+                    aria-label={t('instructor.review.showChanges')}
+                    className="h-3.5 w-3.5 accent-emerald-600 focus-visible:ring-2 focus-visible:ring-(--brand)"
+                  />
+                  <span>{t('instructor.review.showChanges')}</span>
+                </label>
                 <button type="button" onClick={() => switchReviewMode(!showPreview)} aria-pressed={showPreview}
                 className="shrink-0 rounded-md border border-(--border) bg-(--surface-tertiary) px-2.5 py-1 text-[11px] font-bold text-(--text-primary) hover:bg-(--border) focus-visible:ring-2 focus-visible:ring-(--brand) transition-colors">
                 {showPreview ? t('student.workspace.latexLabel') : t('preview')}
@@ -384,6 +390,18 @@ export default function EditorPanel({
             {t('preview')}
           </div>
           <div className="flex items-center gap-1">
+            {review && (
+              <label className="flex shrink-0 items-center gap-1.5 text-[11px] font-bold text-(--text-secondary) cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={review.diffEnabled}
+                  onChange={event => review.setDiffEnabled(event.target.checked)}
+                  aria-label={t('instructor.review.showChanges')}
+                  className="h-3.5 w-3.5 accent-emerald-600 focus-visible:ring-2 focus-visible:ring-(--brand)"
+                />
+                <span>{t('instructor.review.showChanges')}</span>
+              </label>
+            )}
             {review && showPreview && (
               <button type="button" onClick={() => switchReviewMode(false)}
                 className="rounded-md border border-(--border) bg-(--surface-tertiary) px-2.5 py-1 text-[11px] font-bold text-(--text-primary) hover:bg-(--border) focus-visible:ring-2 focus-visible:ring-(--brand) transition-colors">

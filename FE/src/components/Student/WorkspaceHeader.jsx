@@ -44,19 +44,16 @@ export default function WorkspaceHeader({ workspaceMode = 'student', project, no
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
         </Link>
         <div data-tour="header-logo" className="w-7 h-7 bg-(--brand) text-(--on-brand) rounded-lg text-xs flex items-center justify-center font-bold shadow-sm shrink-0">EP</div>
-      </div>
-
-      <div className="min-w-0 flex-1 flex justify-center items-center gap-1.5 px-2">
-        <span data-tour="header-project-name" className="text-xs sm:text-sm font-bold text-(--text-primary) truncate max-w-full sm:max-w-[260px] lg:max-w-[360px]">{project?.title || t('project')}</span>
         {isReview && reviewRound?.orderedRequests?.length > 0 && (
           <div className="relative shrink-0">
             <button type="button" onClick={() => { setShowRoundMenu(!showRoundMenu); setShowGuide(false); setShowMoreMenu(false); }} aria-expanded={showRoundMenu} aria-label={t('instructor.review.reviewRound')}
-              className="flex items-center gap-1 rounded-lg border border-(--border) bg-(--surface-secondary) px-2 py-1 text-[11px] font-bold text-(--text-secondary) hover:text-(--text-primary) focus-visible:ring-2 focus-visible:ring-(--brand)">
-              <span>{activeRound ? formatDateTime(activeRound.requestedAt, language) : ''}</span>
-              <svg className={`w-3 h-3 transition-transform ${showRoundMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+              title={activeRound ? formatDateTime(activeRound.requestedAt, language) : undefined}
+              className="flex h-7 max-w-[110px] sm:max-w-[160px] items-center gap-1 rounded-lg border border-(--border) bg-(--surface-secondary) px-2 text-[11px] font-bold text-(--text-secondary) hover:text-(--text-primary) focus-visible:ring-2 focus-visible:ring-(--brand)">
+              <span className="truncate">{activeRound ? formatDateTime(activeRound.requestedAt, language) : ''}</span>
+              <svg className={`w-3 h-3 shrink-0 transition-transform ${showRoundMenu ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
             </button>
             {showRoundMenu && (
-              <div className="absolute left-1/2 -translate-x-1/2 sm:left-auto sm:translate-x-0 sm:right-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] bg-(--surface) border border-(--border) rounded-xl shadow-xl z-[99999] max-h-80 overflow-y-auto py-1">
+              <div className="absolute left-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] bg-(--surface) border border-(--border) rounded-xl shadow-xl z-[99999] max-h-80 overflow-y-auto py-1">
                 {reviewRound.orderedRequests.map(req => (
                   <button key={req.id} type="button" onClick={() => { reviewRound.setActiveRequestId(req.id); setShowRoundMenu(false); }}
                     aria-pressed={String(req.id) === String(reviewRound.activeRequestId)}
@@ -69,6 +66,10 @@ export default function WorkspaceHeader({ workspaceMode = 'student', project, no
             )}
           </div>
         )}
+      </div>
+
+      <div className="min-w-0 flex-1 flex justify-center items-center gap-1.5 px-2">
+        <span data-tour="header-project-name" className="text-xs sm:text-sm font-bold text-(--text-primary) truncate max-w-full sm:max-w-[260px] lg:max-w-[360px]">{project?.title || t('project')}</span>
       </div>
 
       <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
