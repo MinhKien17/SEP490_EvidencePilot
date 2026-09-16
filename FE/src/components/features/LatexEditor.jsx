@@ -574,7 +574,7 @@ const LatexEditor = forwardRef(function LatexEditor({ content, savedContent = co
           '.cm-content *, .cm-line *': { color: isDark ? '#f8fafc !important' : '#000000 !important' },
           '.cm-activeLine': { backgroundColor: isDark ? '#0f172a !important' : '#ffffff !important' },
           '.cm-activeLineGutter': { backgroundColor: isDark ? '#0f172a !important' : '#ffffff !important' },
-          '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': { backgroundColor: isDark ? 'rgba(99, 102, 241, 0.35) !important' : 'rgba(224, 231, 255, 0.6) !important' },
+          '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': { backgroundColor: 'rgba(99, 102, 241, 0.35) !important' },
           '.cm-lintRange': { wordBreak: 'break-word', overflowWrap: 'anywhere', maxWidth: '100%' },
           '.cm-lintRange-warning': { backgroundColor: 'transparent', borderBottom: '2px solid #eab308' },
           '.cm-lintRange-error': { backgroundColor: 'transparent', borderBottom: '2px solid #ef4444' },
