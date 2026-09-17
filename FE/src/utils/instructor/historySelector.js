@@ -1,19 +1,17 @@
-// ponytail: History shows one card — the latest created published root of the
-// immediately previous round for this section. Previous round = array position
-// after active in the canonical desc list (no second timestamp sort).
-// createdAt orders (ISO); updatedAt never does. Drafts are excluded.
+// ponytail: History shows ALL published root cards of the immediately
+// previous round for this section — never a single latest, never older
+// rounds. Previous round = array position after active in the canonical desc
+// list (no second timestamp sort). createdAt ASC matches the threads tab.
+// updatedAt never orders. Drafts are excluded.
 
-export function selectPreviousCard(feedbackItems, orderedRequests, activeRequestId, sectionId) {
+export function selectPreviousCards(feedbackItems, orderedRequests, activeRequestId, sectionId) {
   const requests = orderedRequests || [];
   const activeIndex = requests.findIndex(request => String(request.id) === String(activeRequestId));
-  if (activeIndex < 0 || activeIndex + 1 >= requests.length) return null;
+  if (activeIndex < 0 || activeIndex + 1 >= requests.length) return [];
   const previousId = requests[activeIndex + 1].id;
-  let best = null;
-  for (const item of feedbackItems || []) {
-    if (String(item.requestId) !== String(previousId)) continue;
-    if (String(item.sectionId) !== String(sectionId)) continue;
-    if (!item.publishedAt) continue;
-    if (!best || String(item.createdAt || '') > String(best.createdAt || '')) best = item;
-  }
-  return best;
+  return (feedbackItems || [])
+    .filter(item => String(item.requestId) === String(previousId))
+    .filter(item => String(item.sectionId) === String(sectionId))
+    .filter(item => item.publishedAt != null)
+    .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
 }

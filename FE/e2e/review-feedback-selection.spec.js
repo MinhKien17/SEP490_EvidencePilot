@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { createHash } from 'node:crypto';
 
 test.use({ channel: 'chrome', viewport: { width: 1440, height: 1000 } });
 
@@ -744,17 +745,120 @@ async function setupHistory(page) {
   return { projectId, state };
 }
 
-test('History shows the previous round latest card read-only', async ({ page }) => {
+test('History shows all previous round cards read-only', async ({ page }) => {
   const { projectId, state } = await setupHistory(page);
   await page.goto(`http://localhost:5173/instructor/requests/${projectId}`);
   await expect(page.locator('.cm-content')).toContainText(PREVIEW_SENTENCE);
 
   await page.getByRole('button', { name: 'History', exact: true }).click();
   await expect(page.getByText('Newer previous feedback.')).toBeVisible();
+  await expect(page.getByText('Older previous feedback.')).toBeVisible();
   await expect(page.getByText('Legacy reply on prev-new.')).toBeVisible();
-  await expect(page.getByText('Older previous feedback.')).toHaveCount(0);
   await expect(page.getByText('Unpublished previous draft.')).toHaveCount(0);
   // Read-only: the History tab mounts no composer and the shared card has no inputs.
   await expect(page.getByPlaceholder('Write feedback on the selected passage')).toHaveCount(0);
+  expect(state.errors).toEqual([]);
+});
+
+const SCOPE_SENTENCE = 'Alpha beta gamma delta.';
+const SCOPE_CONTENT = [SCOPE_SENTENCE, ...Array.from({ length: 60 }, (_, i) => `Filler line ${i}.`)].join('\n\n');
+const scopeHash = createHash('sha256').update(SCOPE_CONTENT).digest('hex');
+
+async function setupHighlightScope(page) {
+  const projectId = 'highlight-scope-project';
+  const paperId = 'highlight-paper';
+  const sectionId = 'highlight-section';
+  const state = { errors: [], feedbackCalls: [] };
+  const thread = (id, requestId, from, to, word, extra = {}) => ({
+    id, requestId, sectionId,
+    content: `Feedback ${id}.`,
+    createdAt: '2026-09-16T09:00:00Z', updatedAt: '2026-09-16T09:00:00Z',
+    threadState: 'OPEN', pendingState: null,
+    publishedAt: '2026-09-16T09:05:00Z', lineReference: null,
+    anchor: {
+      original: { representation: 'latex-source-lf-v1', offsetUnit: 'utf16', contentVersion: 1,
+        fingerprint: scopeHash, from, to, exact: word, prefix: SCOPE_CONTENT.slice(0, from), suffix: '' },
+      current: { status: 'ATTACHED', contentVersion: 1, fingerprint: scopeHash, from, to },
+    },
+    studentStatus: null, studentNote: null, attachments: [], replies: [],
+    canMarkDone: false, canReopen: false, canEdit: false, canDelete: false,
+    ...extra,
+  });
+
+  page.on('pageerror', error => state.errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem('token', 'highlight-scope-fixture');
+    localStorage.setItem('role', 'INSTRUCTOR');
+    localStorage.setItem('app_lang', 'en');
+    localStorage.setItem('app_theme', 'light');
+  });
+
+  await page.route('**/api/**', async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    let json;
+
+    if (path === '/api/users/profile') {
+      json = { id: 'instructor-one', role: 'INSTRUCTOR', firstName: 'Test', lastName: 'Instructor' };
+    } else if (path === '/api/notifications' || path === '/api/review-guides'
+      || path === `/api/projects/${projectId}/evidence-traces`
+      || path === `/api/media/projects/${projectId}`) {
+      json = [];
+    } else if (path === '/api/notifications/unread-count') {
+      json = { count: 0 };
+    } else if (path === `/api/projects/${projectId}`) {
+      json = { id: projectId, title: 'Highlight scope fixture', status: 'SUBMITTED_FOR_REVIEW' };
+    } else if (path === `/api/projects/${projectId}/papers`) {
+      json = [{ id: paperId, title: 'Highlight paper', originalFilename: 'scope.tex', processingStatus: 'READY' }];
+    } else if (path === `/api/projects/${projectId}/sources`) {
+      json = { content: [], last: true };
+    } else if (path === '/api/feedback-requests') {
+      json = [
+        { id: 'round-3', projectId, status: 'PENDING', requestedAt: '2026-09-18T08:00:00Z' },
+        { id: 'round-2', projectId, status: 'RETURNED', requestedAt: '2026-09-17T08:00:00Z' },
+        { id: 'round-1', projectId, status: 'RETURNED', requestedAt: '2026-09-16T08:00:00Z' },
+      ];
+    } else if (path === `/api/feedback-requests/round-3/submission-snapshot`) {
+      json = { state: 'AVAILABLE', snapshot: {
+        schemaVersion: 1,
+        projectId,
+        papers: [{ id: paperId, title: 'Highlight paper', sections: [{
+          id: sectionId, title: 'Introduction', order: 0,
+          contentTex: SCOPE_CONTENT, contentVersion: 1,
+        }] }],
+      } };
+    } else if (path === '/api/feedback-requests/round-3/feedback') {
+      state.feedbackCalls.push('round-3');
+      json = [thread('thread-d', 'round-3', 17, 22, 'delta', { publishedAt: null, canEdit: true, canDelete: true })];
+    } else if (path === '/api/feedback-requests/round-2/feedback') {
+      state.feedbackCalls.push('round-2');
+      json = [thread('thread-b', 'round-2', 6, 10, 'beta'), thread('thread-c', 'round-2', 11, 16, 'gamma')];
+    } else if (path === '/api/feedback-requests/round-1/feedback') {
+      state.feedbackCalls.push('round-1');
+      json = [thread('thread-a', 'round-1', 0, 5, 'Alpha')];
+    } else if (path === `/api/papers/${paperId}/references`
+      || path === `/api/papers/${paperId}/references/check`) {
+      json = [];
+    } else {
+      return route.fulfill({ status: 404, json: { message: 'Unhandled fixture request' } });
+    }
+
+    return route.fulfill({ json });
+  });
+
+  return { projectId, state };
+}
+
+test('Editor highlights carry-over plus active feedback, never older rounds', async ({ page }) => {
+  const { projectId, state } = await setupHighlightScope(page);
+  await page.goto(`http://localhost:5173/instructor/requests/${projectId}`);
+  await expect(page.locator('.cm-content')).toContainText(SCOPE_SENTENCE, { timeout: 15000 });
+
+  const marks = page.locator('.cm-editor .cm-feedback-range');
+  await expect(marks).toHaveCount(3);
+  const ids = await marks.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-feedback-id')).sort());
+  expect(ids).toEqual(['thread-b', 'thread-c', 'thread-d']);
+  // The N-2 round is never even fetched.
+  expect(state.feedbackCalls).not.toContain('round-1');
   expect(state.errors).toEqual([]);
 });

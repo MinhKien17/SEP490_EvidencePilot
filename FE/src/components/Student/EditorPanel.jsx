@@ -9,6 +9,7 @@ import { buildCitationNumbers, buildReferenceEntries } from '../../utils/paperRe
 import { isReferenceSectionTitle } from '../../utils/formatters/latexHtml.js';
 import { useTranslation } from 'react-i18next';
 import { mapScrollPosition } from '../../utils/student/scrollSync.js';
+import { previousRequest, selectFeedbackForRound } from '../../utils/reviewRounds.js';
 
 const getScrollAnchors = (container, editor) => {
   const origin = container.getBoundingClientRect().top + container.clientTop - container.scrollTop;
@@ -104,7 +105,19 @@ export default function EditorPanel({
   const previewVisible = (narrow ? showPreview : true) && (!feedbackOpen || threePanes);
   useEffect(() => { scrollFractionRef.current = { editor: 0, preview: 0 }; pendingRestoreRef.current = null; setShowPreview(false); }, [selectedSectionId, review?.activeFeedbackId]);
   useEffect(() => { if (feedbackOpen) setShowPreview(false); }, [feedbackOpen]);
-  const sectionFeedback = useMemo(() => (review?.feedbackItems || feedback?.items || []).filter(item => String(item.sectionId) === String(selectedSectionId)), [review?.feedbackItems, feedback?.items, selectedSectionId]);
+  // ponytail: highlights never flatten history. Instructor sees the active
+  // request (drafts included) plus the immediately previous returned round's
+  // carry-over for this section — never N-2. Student sees the loaded round.
+  const sectionFeedback = useMemo(() => {
+    const pool = review?.feedbackItems || feedback?.items || [];
+    if (!review) return pool.filter(item => String(item.sectionId) === String(selectedSectionId));
+    const scope = { sectionId: selectedSectionId };
+    const active = selectFeedbackForRound(pool, { ...scope, requestId: review.activeRequestId, publishedOnly: false });
+    const prev = previousRequest(review.orderedRequests, review.activeRequestId);
+    if (!prev) return active;
+    const seen = new Set(active.map(item => String(item.id)));
+    return [...active, ...selectFeedbackForRound(pool, { ...scope, requestId: prev.id }).filter(item => !seen.has(String(item.id)))];
+  }, [review?.feedbackItems, feedback?.items, selectedSectionId, review?.activeRequestId, review?.orderedRequests]);
   const measureFeedback = useCallback(() => {
     if (measureFrameRef.current != null) return;
     measureFrameRef.current = requestAnimationFrame(() => {

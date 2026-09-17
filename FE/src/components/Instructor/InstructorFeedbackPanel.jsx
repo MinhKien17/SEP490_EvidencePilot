@@ -5,7 +5,7 @@ import SectionEvidenceTab from './review/SectionEvidenceTab.jsx';
 import FeedbackThreadsTab from './review/FeedbackThreadsTab.jsx';
 import FeedbackCard from './review/FeedbackCard.jsx';
 import ReviewOverviewBlock from './review/ReviewOverviewBlock.jsx';
-import { selectPreviousCard } from '../../utils/instructor/historySelector.js';
+import { selectPreviousCards } from '../../utils/instructor/historySelector.js';
 
 const ACTION_LABELS = { REVIEWED: 'instructor.review.approve', RETURNED: 'instructor.review.returnForRevision', REJECTED: 'instructor.review.rejectSubmission' };
 
@@ -87,19 +87,19 @@ export default function InstructorFeedbackPanel({ review, selectedSection, proje
         )}
 
         {panelTab === 'history' && (() => {
-          // ponytail: one card — the latest created published root of the
-          // immediately previous round for this section. Same component as
-          // the Feedback tab, read-only. updatedAt never orders.
-          const previous = selectPreviousCard(
+          // ponytail: every published root card of the immediately previous
+          // round for this section. Same component as the Feedback tab,
+          // read-only. updatedAt never orders.
+          const previous = selectPreviousCards(
             review.feedbackItems, review.orderedRequests, review.activeRequestId, selectedSection?.id);
-          if (!previous) {
+          if (previous.length === 0) {
             return (
               <p className="py-2 text-center text-[11px] italic text-(--text-tertiary)">{t('studentFeedback.empty')}</p>
             );
           }
           return (
             <ul className="space-y-2">
-              <FeedbackCard item={previous} readOnly />
+              {previous.map(item => <FeedbackCard key={item.id} item={item} readOnly />)}
             </ul>
           );
         })()}
