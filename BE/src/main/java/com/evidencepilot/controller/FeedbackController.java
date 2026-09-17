@@ -5,6 +5,7 @@ import com.evidencepilot.dto.request.FeedbackReplyRequest;
 import com.evidencepilot.dto.request.FeedbackStateRequest;
 import com.evidencepilot.dto.request.InstructorFeedbackRequest;
 import com.evidencepilot.dto.request.SubmitReviewRequest;
+import com.evidencepilot.dto.response.ComparisonSourceDto;
 import com.evidencepilot.dto.response.FeedbackRequestResponseDto;
 import com.evidencepilot.dto.response.InstructorFeedbackResponseDto;
 import com.evidencepilot.dto.response.PostReplyResult;
@@ -99,6 +100,27 @@ public class FeedbackController {
             @Parameter(description = "Feedback request UUID") @PathVariable UUID id,
             @Parameter(description = "Optional paper section UUID") @RequestParam(required = false) UUID sectionId) {
         return feedbackService.getSectionSnapshots(id, sectionId);
+    }
+
+    @Operation(summary = "Get revision comparison source",
+            description = "Returns the active request's SUBMITTED section content together with "
+                    + "its comparison baseline: the latest earlier RETURNED request's BASELINE "
+                    + "row for the section, else the initial assignment baseline, else null "
+                    + "(honest unavailable — never invented). The diff view consumes this "
+                    + "instead of comparing rows within a single request.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Comparison source returned"),
+            @ApiResponse(responseCode = "400", description = "Section does not belong to the project"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
+            @ApiResponse(responseCode = "403", description = "Not the request's instructor or student"),
+            @ApiResponse(responseCode = "404", description = "Feedback request not found"),
+            @ApiResponse(responseCode = "409", description = "Active review has no submitted snapshot")
+    })
+    @GetMapping("/feedback-requests/{id}/comparison-source")
+    public ComparisonSourceDto getComparisonSource(
+            @Parameter(description = "Feedback request UUID") @PathVariable UUID id,
+            @Parameter(description = "Paper section UUID") @RequestParam UUID sectionId) {
+        return feedbackService.getComparisonSource(id, sectionId);
     }
 
     @Operation(summary = "Submit instructor feedback",

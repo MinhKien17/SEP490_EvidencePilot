@@ -5,6 +5,7 @@ import com.evidencepilot.dto.request.FeedbackReplyRequest;
 import com.evidencepilot.dto.request.FeedbackStateRequest;
 import com.evidencepilot.dto.request.InstructorFeedbackRequest;
 import com.evidencepilot.dto.request.SubmitReviewRequest;
+import com.evidencepilot.dto.response.ComparisonSourceDto;
 import com.evidencepilot.dto.response.FeedbackAttachmentResponseDto;
 import com.evidencepilot.dto.response.FeedbackReplyResponseDto;
 import com.evidencepilot.dto.response.FeedbackRequestResponseDto;
@@ -12,6 +13,7 @@ import com.evidencepilot.dto.response.InstructorFeedbackResponseDto;
 import com.evidencepilot.dto.response.PostReplyResult;
 import com.evidencepilot.dto.response.ReviewSubmissionSnapshotResponse;
 import com.evidencepilot.dto.response.ReviewSectionSnapshotDto;
+import com.evidencepilot.model.AssignmentSectionBaseline;
 import com.evidencepilot.model.ReviewSectionSnapshot;
 import com.evidencepilot.model.FeedbackReply;
 import com.evidencepilot.model.FeedbackRequest;
@@ -29,6 +31,7 @@ import com.evidencepilot.model.enums.ReplyAuthorRole;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
+import com.evidencepilot.repository.AssignmentSectionBaselineRepository;
 import com.evidencepilot.repository.FeedbackReplyRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
@@ -76,6 +79,7 @@ public class FeedbackServiceImpl {
     private final ProjectCollectionService projectCollectionService;
     private final SubmissionReadinessService submissionReadinessService;
     private final ObjectMapper objectMapper;
+    private final AssignmentSectionBaselineRepository assignmentSectionBaselineRepository;
     private final FeedbackAnchorService feedbackAnchorService;
     private final FeedbackAttachmentService feedbackAttachmentService;
 
@@ -361,6 +365,63 @@ public class FeedbackServiceImpl {
                 ? reviewSectionSnapshotRepository.findByRequestId(feedbackRequestId)
                 : reviewSectionSnapshotRepository.findByRequestIdAndSectionId(feedbackRequestId, sectionId);
         return snapshots.stream().map(ReviewSectionSnapshotDto::from).toList();
+    }
+
+    /**
+     * Canonical revision-comparison source for one section in one active review.
+     * Submitted state always comes from the active request; the baseline is the
+     * latest earlier RETURNED request's BASELINE row, else the initial
+     * assignment baseline, else null (honest unavailable — never invented).
+     * RETURNED-only: neither Approve nor request-Reject writes a baseline, and
+     * the status guard neutralizes seeded copies on never-returned requests.
+     */
+    @Transactional(readOnly = true)
+    public ComparisonSourceDto getComparisonSource(UUID feedbackRequestId, UUID sectionId) {
+        User currentUser = currentUserService.requireCurrentUser();
+        FeedbackRequest active = requireFeedbackAccess(feedbackRequestId, currentUser, false);
+        Project project = active.getProject();
+        PaperSection section = requireSectionInProject(sectionId, project);
+        ReviewSectionSnapshot submitted = reviewSectionSnapshotRepository
+                .findByRequestIdAndSectionId(active.getId(), section.getId()).stream()
+                .filter(snapshot -> snapshot.getSnapshotType() == SnapshotType.SUBMITTED)
+                .findFirst()
+                .orElseThrow(() -> conflict(
+                        "NO_SUBMITTED_SNAPSHOT: active review has no submitted snapshot for this section."));
+        return new ComparisonSourceDto(
+                new ComparisonSourceDto.Submitted(submitted.getContentTex(), submitted.getContentVersion()),
+                resolveComparisonBaseline(project, active, section));
+    }
+
+    private ComparisonSourceDto.Baseline resolveComparisonBaseline(
+            Project project, FeedbackRequest active, PaperSection section) {
+        List<FeedbackRequest> rounds =
+                feedbackRequestRepository.findByProjectIdOrderByRequestedAtDesc(project.getId());
+        int activeIndex = -1;
+        for (int i = 0; i < rounds.size(); i++) {
+            if (Objects.equals(rounds.get(i).getId(), active.getId())) {
+                activeIndex = i;
+                break;
+            }
+        }
+        for (int i = activeIndex + 1; activeIndex >= 0 && i < rounds.size(); i++) {
+            FeedbackRequest prior = rounds.get(i);
+            if (prior.getStatus() != FeedbackStatus.RETURNED) continue;
+            Optional<ReviewSectionSnapshot> baseline = reviewSectionSnapshotRepository
+                    .findByRequestIdAndSectionId(prior.getId(), section.getId()).stream()
+                    .filter(snapshot -> snapshot.getSnapshotType() == SnapshotType.BASELINE)
+                    .findFirst();
+            if (baseline.isPresent()) {
+                return new ComparisonSourceDto.Baseline(baseline.get().getContentTex(),
+                        baseline.get().getContentVersion(),
+                        ComparisonSourceDto.Baseline.RETURN_FOR_REVISION);
+            }
+        }
+        return assignmentSectionBaselineRepository
+                .findByProjectIdAndSectionId(project.getId(), section.getId())
+                .map(initial -> new ComparisonSourceDto.Baseline(initial.getContentTex(),
+                        initial.getContentVersion(),
+                        ComparisonSourceDto.Baseline.INITIAL_ASSIGNMENT))
+                .orElse(null);
     }
 
     private void writeSnapshots(FeedbackRequest request, List<PaperSection> sections,

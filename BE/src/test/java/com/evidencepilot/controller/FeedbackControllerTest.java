@@ -170,4 +170,27 @@ class FeedbackControllerTest {
                 .andExpect(status().isOk());
         verify(service).prepareFeedbackState(itemId, new FeedbackStateRequest(FeedbackThreadState.RESOLVED, 2L));
     }
+
+    @Test
+    void comparisonSource_bindsRequestAndSection() throws Exception {
+        UUID requestId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        when(service.getComparisonSource(eq(requestId), eq(sectionId)))
+                .thenReturn(new com.evidencepilot.dto.response.ComparisonSourceDto(
+                        new com.evidencepilot.dto.response.ComparisonSourceDto.Submitted("new", 2),
+                        new com.evidencepilot.dto.response.ComparisonSourceDto.Baseline(
+                                "old", 1,
+                                com.evidencepilot.dto.response.ComparisonSourceDto.Baseline.INITIAL_ASSIGNMENT)));
+        mockMvc.perform(get("/api/feedback-requests/{id}/comparison-source", requestId)
+                        .param("sectionId", sectionId.toString()))
+                .andExpect(status().isOk());
+        verify(service).getComparisonSource(requestId, sectionId);
+    }
+
+    @Test
+    void comparisonSource_requiresSectionId() throws Exception {
+        mockMvc.perform(get("/api/feedback-requests/{id}/comparison-source", UUID.randomUUID()))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(service);
+    }
 }

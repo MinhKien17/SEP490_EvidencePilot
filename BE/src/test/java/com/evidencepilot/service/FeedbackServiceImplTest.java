@@ -718,6 +718,7 @@ class FeedbackServiceImplTest {
                 projectCollectionService,
                 submissionReadinessService,
                 mapper,
+                org.mockito.Mockito.mock(com.evidencepilot.repository.AssignmentSectionBaselineRepository.class),
                 new FeedbackAnchorService(instructorFeedbackRepository, mapper),
                 org.mockito.Mockito.mock(com.evidencepilot.service.FeedbackAttachmentService.class));
     }
