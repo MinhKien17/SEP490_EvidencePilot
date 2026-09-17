@@ -158,7 +158,6 @@ class ProjectRouteMappingTest {
                 "POST /api/projects/{projectId}/reviews",
                 "POST /api/feedback-requests/{id}/feedback",
                 "PATCH /api/feedback-requests/{id}/status",
-                "PATCH /api/instructor-feedback/{id}/anchor",
                 "GET /api/instructor-feedback/{id}",
                 "PATCH /api/instructor-feedback/{id}",
                 "DELETE /api/instructor-feedback/{id}",

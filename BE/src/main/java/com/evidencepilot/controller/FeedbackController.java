@@ -1,6 +1,5 @@
 package com.evidencepilot.controller;
 
-import com.evidencepilot.dto.request.FeedbackAnchorRequest;
 import com.evidencepilot.dto.request.InstructorFeedbackRequest;
 import com.evidencepilot.dto.request.SubmitReviewRequest;
 import com.evidencepilot.dto.response.ComparisonSourceDto;
@@ -195,24 +194,6 @@ public class FeedbackController {
     public InstructorFeedbackResponseDto getThread(
             @Parameter(description = "Instructor feedback thread UUID") @PathVariable UUID id) {
         return feedbackService.getThread(id);
-    }
-
-    @Operation(summary = "Re-anchor a draft thread",
-            description = "Moves a draft thread's anchor to a new range in the same section. "
-                    + "Drafts only: threads on closed (RETURNED or later) cycles are immutable "
-                    + "history and return 409 — create a new thread on the current text instead.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Anchor updated, full thread returned"),
-            @ApiResponse(responseCode = "400", description = "Range does not match the reviewed source"),
-            @ApiResponse(responseCode = "403", description = "Not the author instructor"),
-            @ApiResponse(responseCode = "404", description = "Feedback thread not found"),
-            @ApiResponse(responseCode = "409", description = "Review cycle is closed")
-    })
-    @PatchMapping("/instructor-feedback/{id}/anchor")
-    public InstructorFeedbackResponseDto reanchor(
-            @Parameter(description = "Instructor feedback thread UUID") @PathVariable UUID id,
-            @Valid @RequestBody FeedbackAnchorRequest request) {
-        return feedbackService.reanchor(id, request);
     }
 
     @Operation(summary = "Update feedback request status",

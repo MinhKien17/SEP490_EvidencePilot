@@ -1,6 +1,5 @@
 package com.evidencepilot.service.impl;
 
-import com.evidencepilot.dto.request.FeedbackAnchorRequest;
 import com.evidencepilot.dto.request.InstructorFeedbackRequest;
 import com.evidencepilot.dto.request.SubmitReviewRequest;
 import com.evidencepilot.dto.response.ComparisonSourceDto;
@@ -229,22 +228,6 @@ public class FeedbackServiceImpl {
         if (!isPublished(feedback) && !isInstructorViewer(currentUser, feedback.getRequest())) {
             throw notFound("Instructor feedback", feedbackItemId);
         }
-        return response(feedback, currentUser);
-    }
-
-    @Transactional
-    public InstructorFeedbackResponseDto reanchor(UUID feedbackItemId, FeedbackAnchorRequest request) {
-        User currentUser = currentUserService.requireCurrentUser();
-        InstructorFeedback feedback = requireOwnedFeedback(feedbackItemId, currentUser);
-        if (isPublished(feedback) || feedback.getRequest().getStatus() != FeedbackStatus.PENDING) {
-            throw conflict("Review cycle is closed; create a new thread on the current text.");
-        }
-        requirePendingReview(feedback.getRequest());
-        feedback.setLineReference(null);
-        feedbackAnchorService.initialize(feedback, request);
-        feedback.setUpdatedAt(LocalDateTime.now());
-        feedback.setUpdatedBy(currentUser);
-        instructorFeedbackRepository.saveAndFlush(feedback);
         return response(feedback, currentUser);
     }
 

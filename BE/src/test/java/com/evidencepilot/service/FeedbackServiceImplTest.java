@@ -3,6 +3,7 @@ package com.evidencepilot.service;
 import com.evidencepilot.service.impl.CheckpointServiceImpl;
 import com.evidencepilot.service.impl.CurrentUserServiceImpl;
 import com.evidencepilot.dto.request.InstructorFeedbackRequest;
+import com.evidencepilot.dto.request.FeedbackAnchorRequest;
 import com.evidencepilot.dto.response.InstructorFeedbackResponseDto;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.FeedbackRequest;
@@ -169,6 +170,67 @@ class FeedbackServiceImplTest {
     }
 
     @Test
+    void draftUpdateReplacesPassageWithSameId() throws Exception {
+        Fixture f = draftFixture();
+        FeedbackAnchorRequest replacement = new FeedbackAnchorRequest(
+                9, 17, f.section.getVersion(), sha256("Evidence sentence."),
+                "latex-source-lf-v1", "utf16");
+
+        InstructorFeedbackResponseDto view = service().updateFeedbackItem(f.root.getId(),
+                new InstructorFeedbackRequest(f.section.getId(), null, "Sharpen this.", replacement));
+
+        assertThat(view.content()).isEqualTo("Sharpen this.");
+        assertThat(view.anchor().original().from()).isEqualTo(9);
+        assertThat(view.anchor().original().to()).isEqualTo(17);
+        assertThat(view.anchor().original().exact()).isEqualTo("sentence");
+        verify(instructorFeedbackRepository).saveAndFlush(f.root);
+    }
+
+    @Test
+    void draftTextOnlyUpdateKeepsStoredPassage() throws Exception {
+        Fixture f = draftFixture();
+        when(instructorFeedbackRepository.findById(f.root.getId())).thenReturn(Optional.of(f.root));
+
+        InstructorFeedbackResponseDto view = service().updateFeedbackItem(f.root.getId(),
+                new InstructorFeedbackRequest(f.section.getId(), null, "Reworded only.",
+                        new FeedbackAnchorRequest(0, 8, f.section.getVersion(),
+                                sha256("Evidence sentence."), "latex-source-lf-v1", "utf16")));
+
+        assertThat(view.content()).isEqualTo("Reworded only.");
+        assertThat(view.anchor().original().from()).isEqualTo(0);
+        assertThat(view.anchor().original().to()).isEqualTo(8);
+    }
+
+    @Test
+    void draftUpdateWithStaleAnchorFailsWithoutPersisting() {
+        Fixture f = draftFixture();
+        when(instructorFeedbackRepository.findById(f.root.getId())).thenReturn(Optional.of(f.root));
+
+        assertThatThrownBy(() -> service().updateFeedbackItem(f.root.getId(),
+                new InstructorFeedbackRequest(f.section.getId(), null, "Half update.",
+                        new FeedbackAnchorRequest(0, 8, 999, "0".repeat(64),
+                                "latex-source-lf-v1", "utf16"))))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("does not match");
+        verify(instructorFeedbackRepository, never()).saveAndFlush(any());
+    }
+
+    private record Fixture(PaperSection section, InstructorFeedback root) {
+    }
+
+    private Fixture draftFixture() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student, ProjectStatus.SUBMITTED_FOR_REVIEW);
+        FeedbackRequest request = request(project, instructor, student, FeedbackStatus.PENDING);
+        PaperSection section = section(project, student);
+        InstructorFeedback root = feedback(request, section, instructor, false);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(instructorFeedbackRepository.findById(root.getId())).thenReturn(Optional.of(root));
+        return new Fixture(section, root);
+    }
+
+    @Test
     void studentCanReadPublishedFeedbackButCannotCreateEditOrDeleteIt() {
         User instructor = user(UserRole.INSTRUCTOR);
         User student = user(UserRole.STUDENT);
@@ -297,66 +359,6 @@ class FeedbackServiceImplTest {
         assertThat(request.getStatus()).isEqualTo(com.evidencepilot.model.FeedbackStatus.REVIEWED);
         assertThat(root.getThreadState()).isEqualTo(FeedbackThreadState.OPEN);
         assertThat(root.getPendingState()).isNull();
-    }
-
-    @Test
-    void reanchorMovesDraftAnchor() throws Exception {
-        User instructor = user(UserRole.INSTRUCTOR);
-        User student = user(UserRole.STUDENT);
-        Project project = project(instructor, student, ProjectStatus.SUBMITTED_FOR_REVIEW);
-        FeedbackRequest request = request(project, instructor, student, FeedbackStatus.PENDING);
-        PaperSection section = section(project, student);
-        InstructorFeedback draft = feedback(request, section, instructor, false);
-
-        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
-        when(instructorFeedbackRepository.findById(draft.getId())).thenReturn(Optional.of(draft));
-
-        var anchor = new com.evidencepilot.dto.request.FeedbackAnchorRequest(
-                0, 8, section.getVersion(), sha256("Evidence sentence."),
-                "latex-source-lf-v1", "utf16");
-        InstructorFeedbackResponseDto view = service().reanchor(draft.getId(), anchor);
-
-        assertThat(view.anchor().current().from()).isEqualTo(0);
-        assertThat(view.anchor().current().to()).isEqualTo(8);
-        assertThat(view.anchor().current().status()).isEqualTo("ATTACHED");
-        verify(instructorFeedbackRepository).saveAndFlush(draft);
-    }
-
-    @Test
-    void reanchorFrozenCycleConflicts() {
-        User instructor = user(UserRole.INSTRUCTOR);
-        User student = user(UserRole.STUDENT);
-        Project project = project(instructor, student, ProjectStatus.RETURNED);
-        FeedbackRequest request = request(project, instructor, student, FeedbackStatus.RETURNED);
-        InstructorFeedback root = feedback(request, section(project, student), instructor, true);
-
-        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
-        when(instructorFeedbackRepository.findById(root.getId())).thenReturn(Optional.of(root));
-
-        var anchor = new com.evidencepilot.dto.request.FeedbackAnchorRequest(
-                0, 8, 1, "0".repeat(64), "latex-source-lf-v1", "utf16");
-        assertThatThrownBy(() -> service().reanchor(root.getId(), anchor))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("closed");
-        verify(instructorFeedbackRepository, never()).saveAndFlush(any());
-    }
-
-    @Test
-    void reanchorMismatchRejects() {
-        User instructor = user(UserRole.INSTRUCTOR);
-        User student = user(UserRole.STUDENT);
-        Project project = project(instructor, student, ProjectStatus.SUBMITTED_FOR_REVIEW);
-        FeedbackRequest request = request(project, instructor, student, FeedbackStatus.PENDING);
-        InstructorFeedback draft = feedback(request, section(project, student), instructor, false);
-
-        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
-        when(instructorFeedbackRepository.findById(draft.getId())).thenReturn(Optional.of(draft));
-
-        var anchor = new com.evidencepilot.dto.request.FeedbackAnchorRequest(
-                0, 8, 1, "0".repeat(64), "latex-source-lf-v1", "utf16");
-        assertThatThrownBy(() -> service().reanchor(draft.getId(), anchor))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("does not match");
     }
 
     private static String sha256(String text) throws Exception {

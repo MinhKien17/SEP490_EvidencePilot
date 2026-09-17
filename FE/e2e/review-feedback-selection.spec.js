@@ -199,3 +199,144 @@ test('Thread shows legacy replies read-only with no conversation controls', asyn
   await expect(page.getByRole('button', { name: 'Reject', exact: true })).toHaveCount(1);
   expect(state.errors).toEqual([]);
 });
+
+const EDIT_SENTENCE = 'Alpha comparisons beta comparisons gamma.';
+const EDIT_CONTENT = [EDIT_SENTENCE, ...Array.from({ length: 60 }, (_, i) => `Filler line ${i}.`)].join('\n\n');
+
+async function setupEdit(page) {
+  const projectId = 'edit-passage-project';
+  const paperId = 'edit-paper';
+  const sectionId = 'edit-section';
+  const roundId = 'edit-round';
+  const state = { errors: [], patches: [] };
+  const draft = {
+    id: 'draft-one', requestId: roundId, sectionId,
+    content: 'Tighten this wording.',
+    createdAt: '2026-09-16T09:00:00Z', threadState: 'OPEN', pendingState: null,
+    publishedAt: null, lineReference: null,
+    anchor: {
+      original: { representation: 'latex-source-lf-v1', offsetUnit: 'utf16', contentVersion: 1,
+        fingerprint: '0'.repeat(64), from: 6, to: 17, exact: 'comparisons',
+        prefix: 'Alpha ', suffix: ' beta comparisons gamma.' },
+      current: { status: 'DETACHED', contentVersion: 2, fingerprint: '1'.repeat(64), from: null, to: null },
+    },
+    studentStatus: null, studentNote: null, attachments: [], replies: [],
+    canMarkDone: false, canReopen: false, canEdit: true, canDelete: true,
+  };
+
+  page.on('pageerror', error => state.errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem('token', 'edit-passage-fixture');
+    localStorage.setItem('role', 'INSTRUCTOR');
+    localStorage.setItem('app_lang', 'en');
+    localStorage.setItem('app_theme', 'light');
+  });
+
+  await page.route('**/api/**', async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const method = request.method();
+    let json;
+
+    if (path === '/api/users/profile') {
+      json = { id: 'instructor-one', role: 'INSTRUCTOR', firstName: 'Test', lastName: 'Instructor' };
+    } else if (path === '/api/notifications' || path === '/api/review-guides'
+      || path === `/api/projects/${projectId}/evidence-traces`
+      || path === `/api/media/projects/${projectId}`) {
+      json = [];
+    } else if (path === '/api/notifications/unread-count') {
+      json = { count: 0 };
+    } else if (path === `/api/projects/${projectId}`) {
+      json = { id: projectId, title: 'Edit passage fixture', status: 'SUBMITTED_FOR_REVIEW' };
+    } else if (path === `/api/projects/${projectId}/papers`) {
+      json = [{ id: paperId, title: 'Edit paper', originalFilename: 'edit.tex', processingStatus: 'READY' }];
+    } else if (path === `/api/projects/${projectId}/sources`) {
+      json = { content: [], last: true };
+    } else if (path === '/api/feedback-requests') {
+      json = [{ id: roundId, projectId, status: 'PENDING', requestedAt: '2026-09-16T08:00:00Z' }];
+    } else if (path === `/api/feedback-requests/${roundId}/submission-snapshot`) {
+      json = { state: 'AVAILABLE', snapshot: {
+        schemaVersion: 1,
+        projectId,
+        papers: [{ id: paperId, title: 'Edit paper', sections: [{
+          id: sectionId, title: 'Introduction', order: 0,
+          contentTex: EDIT_CONTENT, contentVersion: 1,
+        }] }],
+      } };
+    } else if (path === `/api/feedback-requests/${roundId}/feedback`) {
+      json = [draft];
+    } else if (path === `/api/papers/${paperId}/references`
+      || path === `/api/papers/${paperId}/references/check`) {
+      json = [];
+    } else if (method === 'PATCH' && path === '/api/instructor-feedback/draft-one') {
+      state.patches.push(JSON.parse(request.postData() || '{}'));
+      json = { ...draft, content: JSON.parse(request.postData() || '{}').content || draft.content };
+    } else {
+      return route.fulfill({ status: 404, json: { message: 'Unhandled fixture request' } });
+    }
+
+    return route.fulfill({ json });
+  });
+
+  return { projectId, state };
+}
+
+async function openEditEditor(page, projectId) {
+  await page.goto(`http://localhost:5173/instructor/requests/${projectId}`);
+  await expect(page.locator('.cm-content')).toContainText(EDIT_SENTENCE);
+  await expect.poll(() => page.evaluate(
+    () => document.querySelector('.cm-editor')?.__cmView?.state.doc.length)).toBe(EDIT_CONTENT.length);
+}
+
+async function beginEdit(page) {
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Update feedback', exact: true })).toBeVisible();
+}
+
+test('Text-only edit preserves the stored passage', async ({ page }) => {
+  const { projectId, state } = await setupEdit(page);
+  await openEditEditor(page, projectId);
+  await beginEdit(page);
+
+  // Seeded passage is shown, not whole-section.
+  await expect(page.getByText('Selected source range 6–17', { exact: true })).toBeVisible();
+  await page.getByPlaceholder('Write feedback on the selected passage').fill('Tighten this wording please.');
+  await page.getByRole('button', { name: 'Update feedback', exact: true }).click();
+
+  await expect.poll(() => state.patches.length).toBe(1);
+  expect(state.patches[0].content).toBe('Tighten this wording please.');
+  expect(state.patches[0].anchor.from).toBe(6);
+  expect(state.patches[0].anchor.to).toBe(17);
+  expect(state.errors).toEqual([]);
+});
+
+test('Edit reselect replaces the passage on the same feedback', async ({ page }) => {
+  const { projectId, state } = await setupEdit(page);
+  await openEditEditor(page, projectId);
+  await beginEdit(page);
+
+  await page.evaluate(() => {
+    document.querySelector('.cm-editor').__cmView.dispatch({ selection: { anchor: 23, head: 34 } });
+  });
+  await page.getByRole('button', { name: 'Use editor selection', exact: true }).click();
+  await expect(page.getByText('Selected source range 23–34', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Update feedback', exact: true }).click();
+
+  await expect.poll(() => state.patches.length).toBe(1);
+  expect(state.patches[0].anchor.from).toBe(23);
+  expect(state.patches[0].anchor.to).toBe(34);
+  expect(state.errors).toEqual([]);
+});
+
+test('Edit remove passage converts to whole-section feedback', async ({ page }) => {
+  const { projectId, state } = await setupEdit(page);
+  await openEditEditor(page, projectId);
+  await beginEdit(page);
+
+  await page.getByRole('button', { name: 'Remove passage', exact: true }).click();
+  await page.getByRole('button', { name: 'Update feedback', exact: true }).click();
+
+  await expect.poll(() => state.patches.length).toBe(1);
+  expect(state.patches[0].anchor).toBeNull();
+  expect(state.errors).toEqual([]);
+});

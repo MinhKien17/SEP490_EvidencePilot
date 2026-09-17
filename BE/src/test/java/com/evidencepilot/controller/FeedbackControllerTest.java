@@ -123,27 +123,14 @@ class FeedbackControllerTest {
                 patch("/api/instructor-feedback/{id}/replies/{replyId}", itemId, replyId),
                 delete("/api/instructor-feedback/{id}/replies/{replyId}", itemId, replyId),
                 post("/api/instructor-feedback/{id}/replies", itemId),
-                patch("/api/instructor-feedback/{id}/state", itemId))) {
+                patch("/api/instructor-feedback/{id}/state", itemId),
+                patch("/api/instructor-feedback/{id}/anchor", itemId))) {
             mockMvc.perform(request.contentType(MediaType.APPLICATION_JSON)
                             .content("{\"requestId\":\"" + cycleId
                                     + "\",\"content\":\"Old reply\",\"state\":\"RESOLVED\",\"expectedRevision\":0}"))
                     .andExpect(status().isNotFound());
         }
         verifyNoInteractions(service);
-    }
-
-    @Test
-    void reanchor_bindsRange() throws Exception {
-        UUID itemId = UUID.randomUUID();
-        String fingerprint = "a".repeat(64);
-        mockMvc.perform(patch("/api/instructor-feedback/{id}/anchor", itemId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"from\":0,\"to\":8,\"contentVersion\":1,\"fingerprint\":\""
-                                + fingerprint
-                                + "\",\"representation\":\"latex-source-lf-v1\",\"offsetUnit\":\"utf16\"}"))
-                .andExpect(status().isOk());
-        verify(service).reanchor(eq(itemId),
-                any(com.evidencepilot.dto.request.FeedbackAnchorRequest.class));
     }
 
     @Test

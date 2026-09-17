@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatDateTime } from '../../../utils/formatters/date.js';
 import MediaAssetPicker from '../../features/MediaAssetPicker.jsx';
-import { requestReanchor, usePendingReanchor } from '../../../stores/reanchorStore.js';
 
 const LOCATION_KEYS = new Set(['ATTACHED', 'MODIFIED', 'DETACHED', 'SECTION', 'UNLOCATED']);
 
@@ -15,7 +14,7 @@ function stateChip(state) {
 export default function FeedbackThreadsTab({ review, selectedSection, projectId, composerFocusToken = 0 }) {
   const { t, i18n } = useTranslation();
   const {
-    feedbackItems, activeRequestId, activeRequest, canCreateRoot,
+    feedbackItems, activeRequestId, canCreateRoot,
     feedbackDraft, selectedAnchor, editingFeedbackId, updateFeedbackDraft,
     savingFeedback, activeFeedbackId, handleSubmitFeedback, captureSourceSelection,
     handleEditFeedback, handleCancelEdit, handleDeleteFeedback,
@@ -23,7 +22,6 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
   } = review;
   const [pendingAttachments, setPendingAttachments] = useState({});
   const [busyId] = useState(null);
-  const pendingReanchor = usePendingReanchor();
   const composerRef = useRef(null);
   useEffect(() => {
     if (composerFocusToken > 0) composerRef.current?.focus();
@@ -71,6 +69,16 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
                 ? t('instructor.review.selectionReady', { from: selectedAnchor.from, to: selectedAnchor.to })
                 : t('instructor.review.wholeSection')}
             </span>
+            {editingFeedbackId && selectedAnchor && (
+              <button
+                type="button"
+                onClick={() => updateFeedbackDraft({ anchor: null })}
+                disabled={savingFeedback}
+                className="rounded-lg border border-(--border) bg-(--surface) px-2.5 py-1.5 text-[10px] font-bold text-(--text-secondary) hover:bg-(--surface-secondary) disabled:opacity-50"
+              >
+                {t('instructor.review.removePassage')}
+              </button>
+            )}
           </div>
           <textarea
             ref={composerRef}
@@ -206,23 +214,6 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
                     className="rounded-lg border border-rose-200 px-2.5 py-1.5 text-[10px] font-bold text-rose-600 disabled:opacity-50"
                   >
                     {t('delete')}
-                  </button>
-                )}
-                {!item.publishedAt && item.canEdit && location !== 'ATTACHED' && (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      selectFeedback(item);
-                      requestReanchor({ threadId: item.id, sectionId: item.sectionId });
-                    }}
-                    className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-bold disabled:opacity-50 ${
-                      String(pendingReanchor?.threadId) === String(item.id)
-                        ? 'border-teal-600 bg-teal-50 text-teal-700 dark:bg-teal-950 dark:text-teal-300'
-                        : 'border-(--border) text-(--text-secondary)'
-                    }`}
-                  >
-                    {t('instructor.review.reanchorThread')}
                   </button>
                 )}
               </div>

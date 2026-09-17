@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import api from '../services/api.js';
 import useUndoDelete from '../components/ui/UndoDelete.jsx';
 import { normalizeSource, resolveAnchor, sourceFingerprint } from '../utils/student/feedbackAnchors.js';
-import { clearReanchor, getPendingReanchor } from '../stores/reanchorStore.js';
 import { wordDiff } from '../utils/instructor/wordDiff.js';
 
 export async function loadAllProjectSources(projectId) {
@@ -397,48 +396,23 @@ export default function useInstructorReview({ projectId, enabled }) {
   const handleEditFeedback = (item) => {
     selectFeedback(item);
     const key = JSON.stringify([projectId, activeRequestId, item.sectionId]);
-    setFeedbackDrafts(previous => ({ ...previous, [key]: { editingId: item.id, content: item.content || '', lineReference: item.lineReference || '', anchor: null } }));
+    // ponytail: seed the draft from the stored original passage (immutable
+    // review-time Target) — never from the live-resolved current, which may be
+    // remapped or DETACHED after later section edits.
+    const original = item.anchor?.original;
+    setFeedbackDrafts(previous => ({ ...previous, [key]: {
+      editingId: item.id,
+      content: item.content || '',
+      lineReference: item.lineReference || '',
+      anchor: original && original.from != null && original.to != null
+        ? { from: original.from, to: original.to,
+            contentVersion: original.contentVersion, fingerprint: original.fingerprint }
+        : null,
+    } }));
   };
 
   const handleCancelEdit = () => {
     clearFeedbackDraft();
-  };
-
-  // Relocates a draft thread's anchor to the current editor selection.
-  // Same-section only: the thread row stays bound to its section, so locking
-  // onto another section's text would corrupt the section-scoped model —
-  // cross-section moves are new threads. Frozen cycles are rejected by the
-  // server (409); the button that starts this flow only renders on drafts.
-  const reanchorThread = async () => {
-    const pending = getPendingReanchor();
-    if (!enabled || !pending || !selectedSection) return false;
-    if (String(pending.sectionId) !== String(selectedSection.id)) {
-      setErrorMessage(t('instructor.review.reanchorSameSection'));
-      return false;
-    }
-    const range = sourceEditorRef.current?.getSelectionRange?.();
-    const source = normalizeSource(selectedSection.contentTex || '');
-    if (!range || range.to <= range.from || range.to > source.length) {
-      setErrorMessage(t('instructor.review.selectSourceRange'));
-      return false;
-    }
-    setErrorMessage('');
-    try {
-      const { data } = await api.patch(`/api/instructor-feedback/${pending.threadId}/anchor`, {
-        from: range.from,
-        to: range.to,
-        contentVersion: selectedSection.version,
-        fingerprint: await sourceFingerprint(source),
-        representation: 'latex-source-lf-v1',
-        offsetUnit: 'utf16',
-      });
-      mergeThread(data);
-      clearReanchor();
-      return true;
-    } catch (err) {
-      setErrorMessage(err?.response?.data?.message || t('instructor.review.saveFeedbackFailed'));
-      return false;
-    }
   };
 
   const handleDeleteFeedback = async (itemId) => {
@@ -684,7 +658,6 @@ export default function useInstructorReview({ projectId, enabled }) {
     captureSourceSelection,
     handleEditFeedback,
     handleCancelEdit,
-    reanchorThread,
     handleDeleteFeedback,
     selectFeedback,
     handleTransitionStatus,

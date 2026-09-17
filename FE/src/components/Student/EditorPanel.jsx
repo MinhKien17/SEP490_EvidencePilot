@@ -9,7 +9,6 @@ import { buildCitationNumbers, buildReferenceEntries } from '../../utils/paperRe
 import { isReferenceSectionTitle } from '../../utils/formatters/latexHtml.js';
 import { useTranslation } from 'react-i18next';
 import { mapScrollPosition } from '../../utils/student/scrollSync.js';
-import { clearReanchor, getPendingReanchor, usePendingReanchor } from '../../stores/reanchorStore.js';
 
 const getScrollAnchors = (container, editor) => {
   const origin = container.getBoundingClientRect().top + container.clientTop - container.scrollTop;
@@ -118,7 +117,6 @@ export default function EditorPanel({
     return () => { observer.disconnect(); cancelAnimationFrame(measureFrameRef.current); measureFrameRef.current = null; };
   }, [measureFeedback]);
   useEffect(() => { setOverlapIds([]); measureFeedback(); }, [selectedSectionId, feedbackOpen, measureFeedback]);
-  const pendingReanchor = usePendingReanchor();
   const [complexSelection, setComplexSelection] = useState(null);
   // Transient comment FAB: coordinates are single-frame truth — any scroll,
   // doc change, collapse, section switch, or Escape unmounts it immediately.
@@ -152,8 +150,7 @@ export default function EditorPanel({
   }, [fab]);
   const openComposerFromFab = useCallback(() => {
     if (!review) return;
-    if (getPendingReanchor()) review.reanchorThread?.();
-    else review.captureSourceSelection?.();
+    review.captureSourceSelection?.();
     setFab(null);
     setComposerFocusToken(token => token + 1);
   }, [review]);
@@ -230,27 +227,6 @@ export default function EditorPanel({
         {review.snapshotState === 'LEGACY_NO_SNAPSHOT' && <p role="alert">{t('instructor.review.legacySnapshotNotice')}</p>}
         {review.snapshotState === 'LOAD_ERROR' && <p role="alert">{t('instructor.review.snapshotLoadError')} <button type="button" onClick={() => review.setSnapshotRetry(value => value + 1)}>{t('retry')}</button></p>}
       </div>}
-      {review && pendingReanchor && (
-        <div role="status" className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-[11px] font-semibold text-teal-800 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-200">
-          <span>{t('instructor.review.reanchorBanner')}</span>
-          <span className="ml-auto flex gap-1.5">
-            <button
-              type="button"
-              onClick={() => review.reanchorThread?.()}
-              className="rounded-md bg-teal-600 px-2.5 py-1 text-[10px] font-black text-white hover:bg-teal-700"
-            >
-              {t('instructor.review.lockAnchor')}
-            </button>
-            <button
-              type="button"
-              onClick={clearReanchor}
-              className="rounded-md border border-teal-300 px-2.5 py-1 text-[10px] font-bold"
-            >
-              {t('cancel')}
-            </button>
-          </span>
-        </div>
-      )}
       <div className={`flex-1 min-h-0 min-w-0 flex gap-2 ${narrow ? 'flex-col' : ''}`}>
       <div style={{ flex: narrow ? '1 1 0' : threePanes ? '1 1 480px' : `${editorWidth} 1 0` }} className={`bg-(--surface) rounded-lg shadow-sm border border-(--border) ${(narrow && previewVisible) || (review && showPreview) ? 'hidden' : 'flex'} flex-col overflow-hidden min-w-0 min-h-0`}>
         <div data-tour="editor-toolbar" className="h-10 border-b border-(--border-light) flex items-center justify-between px-3 bg-(--surface) shadow-sm shrink-0 z-10">
@@ -544,8 +520,8 @@ export default function EditorPanel({
       {review && fab?.coords && createPortal(
         <button
           type="button"
-          aria-label={getPendingReanchor() ? t('instructor.review.lockAnchorHere') : t('instructor.review.addComment')}
-          title={getPendingReanchor() ? t('instructor.review.lockAnchorHere') : t('instructor.review.addComment')}
+          aria-label={t('instructor.review.addComment')}
+          title={t('instructor.review.addComment')}
           onMouseDown={event => event.preventDefault()}
           onClick={openComposerFromFab}
           style={{
