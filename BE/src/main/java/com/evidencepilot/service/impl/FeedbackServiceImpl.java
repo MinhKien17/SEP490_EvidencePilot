@@ -1,8 +1,6 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.request.FeedbackAnchorRequest;
-import com.evidencepilot.dto.request.FeedbackReplyRequest;
-import com.evidencepilot.dto.request.FeedbackStateRequest;
 import com.evidencepilot.dto.request.InstructorFeedbackRequest;
 import com.evidencepilot.dto.request.SubmitReviewRequest;
 import com.evidencepilot.dto.response.ComparisonSourceDto;
@@ -10,12 +8,10 @@ import com.evidencepilot.dto.response.FeedbackAttachmentResponseDto;
 import com.evidencepilot.dto.response.FeedbackReplyResponseDto;
 import com.evidencepilot.dto.response.FeedbackRequestResponseDto;
 import com.evidencepilot.dto.response.InstructorFeedbackResponseDto;
-import com.evidencepilot.dto.response.PostReplyResult;
 import com.evidencepilot.dto.response.ReviewSubmissionSnapshotResponse;
 import com.evidencepilot.dto.response.ReviewSectionSnapshotDto;
 import com.evidencepilot.model.AssignmentSectionBaseline;
 import com.evidencepilot.model.ReviewSectionSnapshot;
-import com.evidencepilot.model.FeedbackReply;
 import com.evidencepilot.model.FeedbackRequest;
 import com.evidencepilot.model.FeedbackStatus;
 import com.evidencepilot.model.InstructorFeedback;
@@ -26,13 +22,10 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.FeedbackThreadState;
 import com.evidencepilot.model.enums.SnapshotType;
-import com.evidencepilot.model.enums.StudentStatus;
-import com.evidencepilot.model.enums.ReplyAuthorRole;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.AssignmentSectionBaselineRepository;
-import com.evidencepilot.repository.FeedbackReplyRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
@@ -70,7 +63,6 @@ public class FeedbackServiceImpl {
     private final FeedbackRequestRepository feedbackRequestRepository;
     private final InstructorFeedbackRepository instructorFeedbackRepository;
     private final ReviewSectionSnapshotRepository reviewSectionSnapshotRepository;
-    private final FeedbackReplyRepository feedbackReplyRepository;
     private final PaperSectionRepository paperSectionRepository;
     private final ProjectRepository projectRepository;
     private final CurrentUserServiceImpl currentUserService;
@@ -256,107 +248,6 @@ public class FeedbackServiceImpl {
         return response(feedback, currentUser);
     }
 
-    @Transactional
-    public PostReplyResult postReply(UUID feedbackItemId, FeedbackReplyRequest request) {
-        User currentUser = currentUserService.requireCurrentUser();
-        InstructorFeedback feedback = instructorFeedbackRepository.findById(feedbackItemId)
-                .orElseThrow(() -> notFound("Instructor feedback", feedbackItemId));
-        if (!isPublished(feedback)) throw conflict("Review thread is not published yet.");
-        Project project = feedback.getRequest().getProject();
-        FeedbackRequest cycle = feedbackRequestRepository.findById(request.requestId())
-                .orElseThrow(() -> notFound("Feedback request", request.requestId()));
-        if (cycle.getProject() == null || !Objects.equals(cycle.getProject().getId(), project.getId())) {
-            throw badRequest("Reply cycle does not belong to this project.");
-        }
-        if (cycle.getStatus() != FeedbackStatus.RETURNED) {
-            throw conflict("Replies are only accepted on returned review cycles.");
-        }
-        boolean studentView = isStudentMember(currentUser, project);
-        boolean instructorView = isAdmin(currentUser)
-                || (isInstructor(currentUser) && isRequestInstructor(feedback.getRequest(), currentUser));
-        if (!studentView && !instructorView) throw forbidden("Feedback access denied.");
-        if (project.getStatus().isReadOnly()) throw conflict("Project is read-only.");
-
-        String content = request.content() == null ? "" : request.content().trim();
-        if (request.idempotencyKey() != null) {
-            Optional<FeedbackReply> prior = feedbackReplyRepository
-                    .findByFeedbackIdAndAuthorIdAndIdempotencyKey(feedbackItemId, currentUser.getId(), request.idempotencyKey());
-            if (prior.isPresent()) {
-                if (!Objects.equals(prior.get().getContent(), content)) {
-                    throw conflict("Idempotency key was already used with different content.");
-                }
-                return new PostReplyResult(FeedbackReplyResponseDto.from(prior.get()), false);
-            }
-        }
-
-        LocalDateTime now = LocalDateTime.now();
-        FeedbackReply reply = new FeedbackReply();
-        reply.setFeedback(feedback);
-        reply.setAuthor(currentUser);
-        reply.setAuthorRole(authorRoleOf(currentUser));
-        reply.setContent(content);
-        reply.setCreatedAt(now);
-        reply.setPublishedAt(now);
-        reply.setPublishedRequest(cycle);
-        reply.setRequest(cycle);
-        reply.setIdempotencyKey(request.idempotencyKey());
-        FeedbackReply saved = feedbackReplyRepository.save(reply);
-        feedbackAttachmentService.linkMediaAssets(request.mediaAssetIds(), project, currentUser, feedback, saved);
-        notifyReply(project, feedback, cycle, currentUser, studentView);
-        return new PostReplyResult(FeedbackReplyResponseDto.from(saved), true);
-    }
-
-    @Transactional
-    public InstructorFeedbackResponseDto prepareFeedbackState(UUID feedbackItemId, FeedbackStateRequest request) {
-        User currentUser = currentUserService.requireCurrentUser();
-        InstructorFeedback feedback = requireFeedbackForUpdate(feedbackItemId);
-        if (isStudentMember(currentUser, feedback.getRequest().getProject())) {
-            return applyStudentState(feedback, request, currentUser);
-        }
-        requireFeedbackStateAccess(feedback, currentUser);
-        long revision = revision(feedback);
-        if (!Objects.equals(request.expectedRevision(), revision)) {
-            throw conflict("Feedback changed; reload it before changing its state.");
-        }
-        if (request.state() == feedback.getThreadState()) {
-            feedback.setPendingState(null);
-            feedback.setPendingStateOptVersion(null);
-        } else {
-            if (request.state() == FeedbackThreadState.REJECTED) requireRejectionNote(feedback, request, currentUser);
-            feedback.setPendingState(request.state());
-            // Hibernate increments @Version for this pending write. Return/approve must see that exact version.
-            feedback.setPendingStateOptVersion(revision + 1);
-        }
-        instructorFeedbackRepository.saveAndFlush(feedback);
-        return response(feedback, currentUser);
-    }
-
-    /**
-     * Student ack toggle (Task B). Students never touch thread_state — they only
-     * claim IMPLEMENTED or refuse with WONT_FIX + a mandatory justification note.
-     */
-    private InstructorFeedbackResponseDto applyStudentState(InstructorFeedback feedback,
-                                                            FeedbackStateRequest request, User currentUser) {
-        if (!isPublished(feedback)) throw conflict("Review thread is not published yet.");
-        if (feedback.getRequest().getProject().getStatus().isReadOnly()) throw conflict("Project is read-only.");
-        long revision = revision(feedback);
-        if (!Objects.equals(request.expectedRevision(), revision)) {
-            throw conflict("Feedback changed; reload it before changing its state.");
-        }
-        StudentStatus studentStatus = request.studentStatus();
-        String studentNote = request.studentNote() == null ? null : request.studentNote().trim();
-        if (studentStatus == null && (studentNote == null || studentNote.isEmpty())) {
-            throw badRequest("studentStatus or studentNote is required.");
-        }
-        if (studentStatus == StudentStatus.WONT_FIX && (studentNote == null || studentNote.isEmpty())) {
-            throw conflict("Refusing a fix requires a note explaining why.");
-        }
-        if (studentStatus != null) feedback.setStudentStatus(studentStatus);
-        if (studentNote != null && !studentNote.isEmpty()) feedback.setStudentNote(studentNote);
-        instructorFeedbackRepository.saveAndFlush(feedback);
-        return response(feedback, currentUser);
-    }
-
     @Transactional(readOnly = true)
     public List<ReviewSectionSnapshotDto> getSectionSnapshots(UUID feedbackRequestId, UUID sectionId) {
         User currentUser = currentUserService.requireCurrentUser();
@@ -441,34 +332,6 @@ public class FeedbackServiceImpl {
         }
     }
 
-    /**
-     * Silent dismissals destroy the audit trail: rejecting a thread requires a
-     * visible rationale. An explicit note is stored as an immediate published
-     * reply; otherwise the actor must already have replied on the thread.
-     */
-    private void requireRejectionNote(InstructorFeedback feedback, FeedbackStateRequest request, User actor) {
-        String note = request.note() == null ? "" : request.note().trim();
-        if (!note.isEmpty()) {
-            FeedbackRequest cycle = feedback.getRequest();
-            LocalDateTime now = LocalDateTime.now();
-            FeedbackReply reply = new FeedbackReply();
-            reply.setFeedback(feedback);
-            reply.setAuthor(actor);
-            reply.setAuthorRole(authorRoleOf(actor));
-            reply.setContent(note);
-            reply.setCreatedAt(now);
-            reply.setPublishedAt(now);
-            reply.setPublishedRequest(cycle);
-            reply.setRequest(cycle);
-            feedbackReplyRepository.save(reply);
-            if (feedback.getReplies() != null) feedback.getReplies().add(reply);
-            return;
-        }
-        boolean actorReplied = feedback.getReplies() != null && feedback.getReplies().stream()
-                .anyMatch(reply -> reply.getAuthor() != null && sameUser(reply.getAuthor(), actor));
-        if (!actorReplied) throw conflict("Rejecting feedback requires a note explaining why.");
-    }
-
     @Transactional
     public FeedbackRequestResponseDto updateStatus(UUID feedbackRequestId, String status) {
         FeedbackStatus next = parseStatus(status);
@@ -491,7 +354,6 @@ public class FeedbackServiceImpl {
         if (project.getStatus().isReadOnly()) throw conflict("Project is read-only.");
 
         List<InstructorFeedback> roots = instructorFeedbackRepository.findByRequestProjectIdForUpdate(project.getId());
-        requireFreshPendingStates(roots);
         LocalDateTime now = LocalDateTime.now();
         Set<UUID> feedbackWithNewInstructorContent = new LinkedHashSet<>();
 
@@ -503,7 +365,6 @@ public class FeedbackServiceImpl {
                 feedbackWithNewInstructorContent.add(root.getId());
             }
         }
-        applyPendingStates(roots, currentUser, now);
         for (InstructorFeedback root : roots) {
             instructorFeedbackRepository.save(root);
         }
@@ -530,13 +391,8 @@ public class FeedbackServiceImpl {
         if (hasInstructorDrafts(roots)) {
             throw conflict("Publish or delete instructor drafts before approving.");
         }
-        requireFreshPendingStates(roots);
         validateCurrentSubmissionSnapshot(request, project, currentUser);
         LocalDateTime now = LocalDateTime.now();
-        applyPendingStates(roots, currentUser, now);
-        if (roots.stream().anyMatch(root -> !isThreadClosed(root))) {
-            throw conflict("Every feedback item must be resolved before approving.");
-        }
         for (InstructorFeedback root : roots) {
             instructorFeedbackRepository.save(root);
         }
@@ -602,11 +458,6 @@ public class FeedbackServiceImpl {
         }
     }
 
-    private InstructorFeedback requireFeedbackForUpdate(UUID feedbackId) {
-        return instructorFeedbackRepository.findByIdForUpdate(feedbackId)
-                .orElseThrow(() -> notFound("Instructor feedback", feedbackId));
-    }
-
     private FeedbackRequest requireFeedbackAccessForUpdate(UUID id, User currentUser, boolean instructorOnly) {
         FeedbackRequest request = feedbackRequestRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> notFound("Feedback request", id));
@@ -661,12 +512,6 @@ public class FeedbackServiceImpl {
         if (request.getProject().getStatus().isReadOnly()) throw conflict("Project is read-only.");
     }
 
-    private void requireFeedbackStateAccess(InstructorFeedback feedback, User currentUser) {
-        requireFeedbackAccess(feedback.getRequest(), currentUser, true);
-        if (!isPublished(feedback)) throw conflict("Feedback is not published yet.");
-        if (feedback.getRequest().getProject().getStatus().isReadOnly()) throw conflict("Project is read-only.");
-    }
-
     private void requireLatestRequest(FeedbackRequest request, Project project) {
         List<FeedbackRequest> requests = feedbackRequestRepository.findByProjectIdOrderByRequestedAtDesc(project.getId());
         if (requests.isEmpty() || !Objects.equals(requests.getFirst().getId(), request.getId())) {
@@ -679,29 +524,6 @@ public class FeedbackServiceImpl {
                 .orElseThrow(() -> notFound("Project", request.getProject().getId()));
         request.setProject(project);
         return project;
-    }
-
-    private void requireFreshPendingStates(Collection<InstructorFeedback> roots) {
-        for (InstructorFeedback root : roots) {
-            if (root.getPendingState() != null
-                    && !Objects.equals(root.getPendingStateOptVersion(), revision(root))) {
-                throw conflict("Feedback changed after its pending state was prepared; reload before returning or approving.");
-            }
-        }
-    }
-
-    private void applyPendingStates(Collection<InstructorFeedback> roots, User actor, LocalDateTime now) {
-        for (InstructorFeedback root : roots) {
-            if (root.getPendingState() == null) continue;
-            FeedbackThreadState pending = root.getPendingState();
-            root.setPendingState(null);
-            root.setPendingStateOptVersion(null);
-            if (pending != root.getThreadState()) {
-                root.setThreadState(pending);
-                root.setStateChangedAt(now);
-                root.setStateChangedBy(actor);
-            }
-        }
     }
 
     private boolean hasInstructorDrafts(Collection<InstructorFeedback> roots) {
@@ -811,19 +633,13 @@ public class FeedbackServiceImpl {
         Project project = feedback.getRequest().getProject();
         boolean instructorView = isInstructorViewer(viewer, feedback.getRequest());
         boolean published = isPublished(feedback);
-        FeedbackThreadState visibleState = instructorView ? effectiveState(feedback)
-                : Objects.requireNonNullElse(feedback.getThreadState(), FeedbackThreadState.OPEN);
-        boolean canManageState = instructorView && published && !project.getStatus().isReadOnly();
-        boolean canMarkDone = canManageState && visibleState == FeedbackThreadState.OPEN;
-        boolean canReopen = canManageState
-                && (visibleState == FeedbackThreadState.RESOLVED || visibleState == FeedbackThreadState.REJECTED);
         boolean canEdit = !published && !project.getStatus().isReadOnly()
                 && feedback.getRequest().getStatus() == FeedbackStatus.PENDING
                 && (isAdmin(viewer) || sameUser(feedback.getInstructor(), viewer));
         return InstructorFeedbackResponseDto.fromFeedback(
                 feedback, section, section == null ? null : section.getVersion(),
                 section == null ? null : feedbackAnchorService.resolve(feedback, section.getContentTex(), section.getVersion()),
-                canMarkDone, canReopen, canEdit, canEdit,
+                canEdit, canEdit,
                 instructorView ? feedback.getPendingState() : null,
                 feedback.getReplies() == null ? List.of() : feedback.getReplies().stream()
                         .map(FeedbackReplyResponseDto::from).toList(),
@@ -873,45 +689,6 @@ public class FeedbackServiceImpl {
 
     private static boolean isPublished(InstructorFeedback feedback) {
         return feedback.getPublishedAt() != null;
-    }
-
-    private static boolean isThreadClosed(InstructorFeedback feedback) {
-        return feedback.getThreadState() == FeedbackThreadState.RESOLVED
-                || feedback.getThreadState() == FeedbackThreadState.REJECTED;
-    }
-
-    private static ReplyAuthorRole authorRoleOf(User user) {
-        if (user == null || user.getRole() == null) return ReplyAuthorRole.UNKNOWN;
-        return switch (user.getRole()) {
-            case STUDENT -> ReplyAuthorRole.STUDENT;
-            case INSTRUCTOR -> ReplyAuthorRole.INSTRUCTOR;
-            case ADMIN -> ReplyAuthorRole.ADMIN;
-        };
-    }
-
-    private void notifyReply(Project project, InstructorFeedback feedback, FeedbackRequest cycle,
-                             User actor, boolean studentAuthor) {
-        String sectionTitle = feedback.getSection() == null ? "a section"
-                : "\"" + feedback.getSection().getSectionTitle() + "\"";
-        if (studentAuthor) {
-            User instructor = project.getInstructor() != null
-                    ? project.getInstructor() : feedback.getRequest().getInstructor();
-            if (instructor == null) return;
-            systemNotificationService.createNotification(
-                    instructor, actor, "FEEDBACK_REPLY", cycle.getId(), feedback.getId(),
-                    actor.getEmail() + " replied on feedback for " + sectionTitle + ".");
-            return;
-        }
-        for (User student : activeStudentMembers(project)) {
-            systemNotificationService.createNotification(
-                    student, actor, "FEEDBACK_REPLY", cycle.getId(), feedback.getId(),
-                    "Instructor replied on feedback for " + sectionTitle + ".");
-        }
-    }
-
-    private static FeedbackThreadState effectiveState(InstructorFeedback feedback) {
-        return feedback.getPendingState() == null ? Objects.requireNonNullElse(feedback.getThreadState(), FeedbackThreadState.OPEN)
-                : feedback.getPendingState();
     }
 
     private static long revision(InstructorFeedback feedback) {

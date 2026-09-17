@@ -16,7 +16,6 @@ import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.SnapshotType;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.AssignmentSectionBaselineRepository;
-import com.evidencepilot.repository.FeedbackReplyRepository;
 import com.evidencepilot.repository.FeedbackRequestRepository;
 import com.evidencepilot.repository.InstructorFeedbackRepository;
 import com.evidencepilot.repository.PaperSectionRepository;
@@ -54,7 +53,6 @@ class ComparisonSourceTest {
     @Mock private FeedbackRequestRepository feedbackRequestRepository;
     @Mock private InstructorFeedbackRepository instructorFeedbackRepository;
     @Mock private ReviewSectionSnapshotRepository reviewSectionSnapshotRepository;
-    @Mock private FeedbackReplyRepository feedbackReplyRepository;
     @Mock private PaperSectionRepository paperSectionRepository;
     @Mock private ProjectRepository projectRepository;
     @Mock private CurrentUserServiceImpl currentUserService;
@@ -269,7 +267,6 @@ class ComparisonSourceTest {
                 feedbackRequestRepository,
                 instructorFeedbackRepository,
                 reviewSectionSnapshotRepository,
-                feedbackReplyRepository,
                 paperSectionRepository,
                 projectRepository,
                 currentUserService,

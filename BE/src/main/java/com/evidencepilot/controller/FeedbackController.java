@@ -1,14 +1,11 @@
 package com.evidencepilot.controller;
 
 import com.evidencepilot.dto.request.FeedbackAnchorRequest;
-import com.evidencepilot.dto.request.FeedbackReplyRequest;
-import com.evidencepilot.dto.request.FeedbackStateRequest;
 import com.evidencepilot.dto.request.InstructorFeedbackRequest;
 import com.evidencepilot.dto.request.SubmitReviewRequest;
 import com.evidencepilot.dto.response.ComparisonSourceDto;
 import com.evidencepilot.dto.response.FeedbackRequestResponseDto;
 import com.evidencepilot.dto.response.InstructorFeedbackResponseDto;
-import com.evidencepilot.dto.response.PostReplyResult;
 import com.evidencepilot.service.impl.FeedbackServiceImpl;
 import com.evidencepilot.dto.response.ReviewReadinessResponse;
 import com.evidencepilot.dto.response.ReviewSubmissionSnapshotResponse;
@@ -186,12 +183,6 @@ public class FeedbackController {
         return ResponseEntity.noContent().build();
     }
 
-    @PatchMapping("/instructor-feedback/{id}/state")
-    public InstructorFeedbackResponseDto prepareFeedbackState(
-            @PathVariable UUID id, @Valid @RequestBody FeedbackStateRequest request) {
-        return feedbackService.prepareFeedbackState(id, request);
-    }
-
     @Operation(summary = "Get a single feedback thread",
             description = "Returns one thread with its replies and attachments. "
                     + "Students cannot see unpublished drafts.")
@@ -222,26 +213,6 @@ public class FeedbackController {
             @Parameter(description = "Instructor feedback thread UUID") @PathVariable UUID id,
             @Valid @RequestBody FeedbackAnchorRequest request) {
         return feedbackService.reanchor(id, request);
-    }
-
-    @Operation(summary = "Reply to a feedback thread",
-            description = "Posts a reply on a published thread, pinned to an explicit RETURNED "
-                    + "review cycle. Replies are published immediately. Resending the same "
-                    + "idempotency key with identical content returns the original reply.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Reply created"),
-            @ApiResponse(responseCode = "200", description = "Idempotent replay, original reply returned"),
-            @ApiResponse(responseCode = "403", description = "No access to this feedback"),
-            @ApiResponse(responseCode = "404", description = "Feedback thread not found"),
-            @ApiResponse(responseCode = "409", description = "Thread unpublished, cycle not returned, or key reuse with different content")
-    })
-    @PostMapping("/instructor-feedback/{id}/replies")
-    public ResponseEntity<InstructorFeedbackResponseDto> postReply(
-            @Parameter(description = "Instructor feedback thread UUID") @PathVariable UUID id,
-            @Valid @RequestBody FeedbackReplyRequest request) {
-        PostReplyResult result = feedbackService.postReply(id, request);
-        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
-                .body(feedbackService.getThread(id));
     }
 
     @Operation(summary = "Update feedback request status",

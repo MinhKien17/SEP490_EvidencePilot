@@ -186,18 +186,13 @@ class FeedbackRevisionMySqlTest {
                 assertThat(contract.has(retired)).as(retired).isFalse();
             }
             if (actor.getRole() == UserRole.STUDENT) {
-                assertThat(item.canEdit() || item.canDelete() || item.canMarkDone() || item.canReopen()).isFalse();
-                assertThatThrownBy(() -> feedback.prepareFeedbackState(root.id(),
-                        new com.evidencepilot.dto.request.FeedbackStateRequest(com.evidencepilot.model.enums.FeedbackThreadState.RESOLVED, item.revision())))
-                        .hasMessageContaining("400");
+                assertThat(item.canEdit() || item.canDelete()).isFalse();
             }
         }
         login(f.instructor());
-        var published = feedback.getFeedbackItems(round.id()).getFirst();
         assertThatThrownBy(() -> feedback.updateFeedbackItem(root.id(),
                 new InstructorFeedbackRequest(f.first(), null, "Overwrite"))).hasMessageContaining("immutable");
-        feedback.prepareFeedbackState(root.id(), new com.evidencepilot.dto.request.FeedbackStateRequest(
-                com.evidencepilot.model.enums.FeedbackThreadState.RESOLVED, published.revision()));
+        // One-way review: approval needs no thread closure — the OPEN thread stays OPEN.
         feedback.updateStatus(round.id(), "REVIEWED");
         assertThat(projectStatus(f.project())).isEqualTo("APPROVED");
         assertThat(jdbc.queryForList(legacySql, root.id().toString())).isEqualTo(legacyRows);
