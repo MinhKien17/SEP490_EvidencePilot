@@ -226,7 +226,7 @@ const INSTRUCTOR_REVIEW_KEYS = [
   'reviewGuide', 'reviewOverview', 'reviewRejected', 'reviewReturned', 'reviewRound',
   'saveFeedback', 'saveFeedbackFailed', 'sectionChanged', 'sectionFeedback', 'sectionFeedbackPlaceholder', 'sectionOverview', 'selectionReady', 'selectSectionFeedback', 'selectSectionGuide',
   'selectSourceRange', 'selectSubmittedSource', 'showChanges', 'snapshotLoadError', 'stateOpen', 'stateRejected', 'stateResolved',
-  'addComment', 'previewUnavailableAction', 'previewUnavailableTitle',
+  'addComment', 'previewArmedPassage', 'previewUnavailableAction', 'previewUnavailableTitle',
   'submittedVersion',
   'standardCapturedAtSubmission', 'standardCurrentNotice', 'standardLoadError', 'standardMissing', 'standardNoItems',
   'standardStale', 'standardSuggestion', 'standardsTab', 'submittedAt', 'submittedBy', 'submittedDate',

@@ -161,7 +161,7 @@ test('Preview selection routes to the Editor and creates no anchor', async ({ pa
   });
   await page.locator('.preview-content').first().dispatchEvent('mouseup');
 
-  await expect(page.getByText("Preview highlighting isn't available.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Select the passage in the editor to attach precise feedback.", { exact: false })).toBeVisible();
   await page.getByRole('button', { name: 'Click here to switch to the Editor and lock this highlight.', exact: true }).click();
   await expect(page.locator('.cm-content')).toBeVisible();
   // No draft was armed from the preview: composer shows whole-section, never a range.

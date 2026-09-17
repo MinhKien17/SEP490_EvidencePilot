@@ -497,7 +497,13 @@ export default function EditorPanel({
           }}
           className="z-50 w-72 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 shadow-xl dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
         >
-          <p className="font-bold">{t('instructor.review.previewUnavailableTitle')}</p>
+          <p className="font-bold">
+            {review.selectedAnchor
+              ? t('instructor.review.previewArmedPassage', {
+                  from: review.selectedAnchor.from, to: review.selectedAnchor.to,
+                })
+              : t('instructor.review.previewUnavailableTitle')}
+          </p>
           <div className="mt-2 flex gap-1.5">
             <button
               type="button"
