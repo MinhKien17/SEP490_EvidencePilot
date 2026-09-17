@@ -89,7 +89,17 @@ class FeedbackControllerTest {
         UUID requestId = UUID.randomUUID();
         mockMvc.perform(get("/api/feedback-requests/{id}/feedback", requestId))
                 .andExpect(status().isOk());
-        verify(service).getFeedbackItems(requestId);
+        verify(service).getFeedbackItems(requestId, null);
+    }
+
+    @Test
+    void getFeedbackItems_bindsOptionalSectionId() throws Exception {
+        UUID requestId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+        mockMvc.perform(get("/api/feedback-requests/{id}/feedback", requestId)
+                        .param("sectionId", sectionId.toString()))
+                .andExpect(status().isOk());
+        verify(service).getFeedbackItems(requestId, sectionId);
     }
 
     @Test

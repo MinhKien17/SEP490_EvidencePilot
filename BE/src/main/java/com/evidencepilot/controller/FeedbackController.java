@@ -138,17 +138,20 @@ public class FeedbackController {
     @Operation(summary = "List feedback items for a request",
             description = "Returns the per-section feedback items of one feedback request, "
                     + "each with section title/order, the section version it was written against, "
-                    + "and a stale flag when the section has been edited since.")
+                    + "and a stale flag when the section has been edited since. "
+                    + "Student members only receive sections assigned to them; leaders, "
+                    + "instructors and admins may additionally filter by section.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Feedback items returned"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
-            @ApiResponse(responseCode = "403", description = "Not the request's instructor or student"),
+            @ApiResponse(responseCode = "403", description = "Not the request's instructor or student, or section not assigned to the member"),
             @ApiResponse(responseCode = "404", description = "Feedback request not found")
     })
     @GetMapping("/feedback-requests/{id}/feedback")
     public List<InstructorFeedbackResponseDto> getFeedbackItems(
-            @Parameter(description = "Feedback request UUID") @PathVariable UUID id) {
-        return feedbackService.getFeedbackItems(id);
+            @Parameter(description = "Feedback request UUID") @PathVariable UUID id,
+            @Parameter(description = "Optional paper section UUID") @RequestParam(required = false) UUID sectionId) {
+        return feedbackService.getFeedbackItems(id, sectionId);
     }
 
     @Operation(summary = "Edit a feedback item",

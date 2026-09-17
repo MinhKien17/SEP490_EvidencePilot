@@ -115,11 +115,14 @@ class FeedbackRevisionMySqlTest {
         login(f.instructor());
         var root = feedback.comment(first.id(), new InstructorFeedbackRequest(f.first(), null, "Clarify evidence"));
         login(f.member());
-        assertThat(feedback.getFeedbackItems(first.id())).isEmpty();
+        assertThat(feedback.getFeedbackItems(first.id(), null)).isEmpty();
         login(f.instructor());
         feedback.updateStatus(first.id(), "RETURNED");
+        // The thread sits on the leader's section: the member still sees none of it.
         login(f.member());
-        assertThat(feedback.getFeedbackItems(first.id())).extracting(item -> item.id()).containsExactly(root.id());
+        assertThat(feedback.getFeedbackItems(first.id(), null)).isEmpty();
+        login(f.leader());
+        assertThat(feedback.getFeedbackItems(first.id(), null)).extracting(item -> item.id()).containsExactly(root.id());
         login(f.leader());
         var unchanged = readiness.readiness(f.project());
         assertThat(unchanged.revision().state()).isEqualTo("UNCHANGED");
@@ -179,24 +182,24 @@ class FeedbackRevisionMySqlTest {
         assertThatThrownBy(() -> feedback.updateStatus(round.id(), "REVIEWED"))
                 .hasMessageContaining("Publish or delete instructor drafts");
         login(f.member());
-        assertThat(feedback.getFeedbackItems(round.id())).isEmpty();
+        assertThat(feedback.getFeedbackItems(round.id(), null)).isEmpty();
         login(f.instructor());
         feedback.updateStatus(round.id(), "RETURNED");
         assertThat(projectStatus(f.project())).isEqualTo("RETURNED");
         assertThatThrownBy(() -> feedback.updateStatus(round.id(), "RETURNED"))
                 .hasMessageContaining("Only a PENDING review request");
-        for (User actor : List.of(f.instructor(), f.leader(), f.member())) {
+        for (User actor : List.of(f.instructor(), f.leader())) {
             login(actor);
-            var item = feedback.getFeedbackItems(round.id()).getFirst();
+            var item = feedback.getFeedbackItems(round.id(), null).getFirst();
             assertThat(item.content()).isEqualTo("One-way feedback");
             var contract = json.valueToTree(item);
             for (String retired : List.of("messages", "answerContent", "answered", "answeredAt", "replyState", "canAnswer", "canDraftReply")) {
                 assertThat(contract.has(retired)).as(retired).isFalse();
             }
-            if (actor.getRole() == UserRole.STUDENT) {
-                assertThat(item.canEdit() || item.canDelete()).isFalse();
-            }
         }
+        // The thread sits on the leader's section: an ordinary member sees none of it.
+        login(f.member());
+        assertThat(feedback.getFeedbackItems(round.id(), null)).isEmpty();
         login(f.instructor());
         assertThatThrownBy(() -> feedback.updateFeedbackItem(root.id(),
                 new InstructorFeedbackRequest(f.first(), null, "Overwrite"))).hasMessageContaining("immutable");
@@ -285,10 +288,9 @@ class FeedbackRevisionMySqlTest {
         feedback.updateStatus(first.id(), "RETURNED");
         assertThat(projectStatus(f.project())).isEqualTo("RETURNED");
 
-        // 7-8. Student reads the published thread, edits, confirms, resubmits Request B.
-        login(f.member());
-        assertThat(feedback.getFeedbackItems(first.id())).extracting(item -> item.id()).containsExactly(root.id());
+        // 7-8. The assignee reads the published thread, edits, confirms, resubmits Request B.
         login(f.leader());
+        assertThat(feedback.getFeedbackItems(first.id(), null)).extracting(item -> item.id()).containsExactly(root.id());
         edit(f.first(), "Final evidence.");
         confirm(f, f.leader(), f.first());
         // requested_at is second-precision DATETIME: separate the rounds so

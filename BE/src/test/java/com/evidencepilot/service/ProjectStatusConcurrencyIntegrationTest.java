@@ -152,26 +152,26 @@ class ProjectStatusConcurrencyIntegrationTest {
                 FeedbackAnchorService.fingerprint(section.getContentTex()), "latex-source-lf-v1", "utf16")));
         feedbackService.updateStatus(round.id(), "RETURNED");
         authenticate(submitter);
-        assertThat(feedbackService.getFeedbackItems(round.id()).getFirst().canEdit()).isFalse();
+        assertThat(feedbackService.getFeedbackItems(round.id(), null).getFirst().canEdit()).isFalse();
         projectMembers.deleteAll(projectMembers.findByProjectIdAndUserId(project.getId(), submitter.getId()));
         assertThat(feedbackService.findAllForCurrentUser()).noneMatch(item -> item.id().equals(round.id()));
         assertThatThrownBy(() -> feedbackService.getSubmissionSnapshot(round.id()))
                 .isInstanceOf(ResponseStatusException.class).hasMessageContaining("403");
         authenticate(outsider);
-        assertThatThrownBy(() -> feedbackService.getFeedbackItems(round.id()))
+        assertThatThrownBy(() -> feedbackService.getFeedbackItems(round.id(), null))
                 .isInstanceOf(ResponseStatusException.class).hasMessageContaining("403");
         authenticate(member);
         assertThat(feedbackService.findAllForCurrentUser()).anyMatch(item -> item.id().equals(round.id()));
         assertThat(feedbackService.getSubmissionSnapshot(round.id())).isNotNull();
-        assertThat(feedbackService.getFeedbackItems(round.id()).getFirst().canEdit()).isFalse();
+        assertThat(feedbackService.getFeedbackItems(round.id(), null).getFirst().canEdit()).isFalse();
         authenticate(instructor);
-        var stored = feedbackService.getFeedbackItems(round.id()).getFirst();
+        var stored = feedbackService.getFeedbackItems(round.id(), null).getFirst();
         assertThat(stored.content()).isEqualTo("Explain the target");
         assertThat(stored.anchor().original().exact()).isEqualTo("target");
         projectMembers.deleteAll(projectMembers.findByProjectIdAndUserId(project.getId(), member.getId()));
         authenticate(member);
         assertThat(feedbackService.findAllForCurrentUser()).noneMatch(item -> item.id().equals(round.id()));
-        assertThatThrownBy(() -> feedbackService.getFeedbackItems(round.id()))
+        assertThatThrownBy(() -> feedbackService.getFeedbackItems(round.id(), null))
                 .isInstanceOf(ResponseStatusException.class).hasMessageContaining("403");
         assertThatThrownBy(() -> feedbackService.getSubmissionSnapshot(round.id()))
                 .isInstanceOf(ResponseStatusException.class).hasMessageContaining("403");
@@ -439,3 +439,4 @@ class ProjectStatusConcurrencyIntegrationTest {
         }
     }
 }
+

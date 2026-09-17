@@ -143,7 +143,7 @@ class FeedbackServiceImplTest {
         when(feedbackRequestRepository.findById(request.getId())).thenReturn(Optional.of(request));
         when(instructorFeedbackRepository.findByRequestId(request.getId())).thenReturn(List.of(root));
 
-        assertThat(service().getFeedbackItems(request.getId())).isEmpty();
+        assertThat(service().getFeedbackItems(request.getId(), null)).isEmpty();
     }
 
     @Test
@@ -244,7 +244,7 @@ class FeedbackServiceImplTest {
         when(instructorFeedbackRepository.findByRequestId(request.getId())).thenReturn(List.of(root));
         when(instructorFeedbackRepository.findById(root.getId())).thenReturn(Optional.of(root));
 
-        var view = service().getFeedbackItems(request.getId()).getFirst();
+        var view = service().getFeedbackItems(request.getId(), null).getFirst();
         assertThat(view.content()).isEqualTo("Original feedback.");
         assertThat(view.canEdit() || view.canDelete()).isFalse();
         InstructorFeedbackRequest input = new InstructorFeedbackRequest(section.getId(), null, "Student text");
@@ -369,6 +369,102 @@ class FeedbackServiceImplTest {
         return hex.toString();
     }
 
+    @Test
+    void memberListSeesOnlyOwnAssignedSections() {
+        Team team = team();
+        PaperSection secA = section(team.project, team.memberA);
+        PaperSection secB = section(team.project, team.memberB);
+        InstructorFeedback fbA = feedback(team.request, secA, team.instructor, true);
+        InstructorFeedback fbB = feedback(team.request, secB, team.instructor, true);
+        InstructorFeedback draft = feedback(team.request, secA, team.instructor, false);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(team.memberA);
+        when(feedbackRequestRepository.findById(team.request.getId())).thenReturn(Optional.of(team.request));
+        when(instructorFeedbackRepository.findByRequestId(team.request.getId()))
+                .thenReturn(List.of(fbA, fbB, draft));
+
+        assertThat(service().getFeedbackItems(team.request.getId(), null))
+                .extracting(InstructorFeedbackResponseDto::id).containsExactly(fbA.getId());
+    }
+
+    @Test
+    void memberExplicitForeignSectionIsForbidden() {
+        Team team = team();
+        PaperSection secB = section(team.project, team.memberB);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(team.memberA);
+        when(feedbackRequestRepository.findById(team.request.getId())).thenReturn(Optional.of(team.request));
+        when(paperSectionRepository.findById(secB.getId())).thenReturn(Optional.of(secB));
+
+        assertThatThrownBy(() -> service().getFeedbackItems(team.request.getId(), secB.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("403");
+    }
+
+    @Test
+    void memberThreadOnForeignSectionIsHidden() {
+        Team team = team();
+        PaperSection secB = section(team.project, team.memberB);
+        InstructorFeedback fbB = feedback(team.request, secB, team.instructor, true);
+        InstructorFeedback fbA = feedback(team.request, section(team.project, team.memberA), team.instructor, true);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(team.memberA);
+        when(instructorFeedbackRepository.findById(fbB.getId())).thenReturn(Optional.of(fbB));
+        when(instructorFeedbackRepository.findById(fbA.getId())).thenReturn(Optional.of(fbA));
+
+        assertThatThrownBy(() -> service().getThread(fbB.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
+        assertThat(service().getThread(fbA.getId()).id()).isEqualTo(fbA.getId());
+    }
+
+    @Test
+    void leaderSeesWholeRequestUnfiltered() {
+        Team team = team();
+        PaperSection secA = section(team.project, team.memberA);
+        PaperSection secB = section(team.project, team.memberB);
+        InstructorFeedback fbA = feedback(team.request, secA, team.instructor, true);
+        InstructorFeedback fbB = feedback(team.request, secB, team.instructor, true);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(team.leader);
+        when(feedbackRequestRepository.findById(team.request.getId())).thenReturn(Optional.of(team.request));
+        when(instructorFeedbackRepository.findByRequestId(team.request.getId()))
+                .thenReturn(List.of(fbA, fbB));
+
+        assertThat(service().getFeedbackItems(team.request.getId(), null))
+                .extracting(InstructorFeedbackResponseDto::id)
+                .containsExactly(fbA.getId(), fbB.getId());
+        assertThat(service().getFeedbackItems(team.request.getId(), secB.getId()))
+                .extracting(InstructorFeedbackResponseDto::id).containsExactly(fbB.getId());
+    }
+
+    private record Team(User instructor, User leader, User memberA, User memberB,
+                        Project project, FeedbackRequest request) {
+    }
+
+    private Team team() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User leader = user(UserRole.STUDENT);
+        User memberA = user(UserRole.STUDENT);
+        User memberB = user(UserRole.STUDENT);
+        Project project = project(instructor, leader, ProjectStatus.SUBMITTED_FOR_REVIEW);
+        project.setProjectMembers(List.of(
+                member(project, instructor, ProjectRole.INSTRUCTOR),
+                member(project, leader, ProjectRole.LEADER),
+                member(project, memberA, ProjectRole.MEMBER),
+                member(project, memberB, ProjectRole.MEMBER)));
+        FeedbackRequest request = request(project, instructor, leader, FeedbackStatus.PENDING);
+        return new Team(instructor, leader, memberA, memberB, project, request);
+    }
+
+    private ProjectMember member(Project project, User user, ProjectRole role) {
+        ProjectMember membership = new ProjectMember();
+        membership.setProject(project);
+        membership.setUser(user);
+        membership.setRole(role);
+        return membership;
+    }
+
     private FeedbackServiceImpl service() {
         ObjectMapper mapper = new ObjectMapper();
         return new FeedbackServiceImpl(
@@ -464,3 +560,4 @@ class FeedbackServiceImplTest {
     }
 
 }
+

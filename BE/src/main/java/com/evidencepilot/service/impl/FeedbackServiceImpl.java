@@ -176,12 +176,32 @@ public class FeedbackServiceImpl {
     }
 
     @Transactional(readOnly = true)
-    public List<InstructorFeedbackResponseDto> getFeedbackItems(UUID feedbackRequestId) {
+    public List<InstructorFeedbackResponseDto> getFeedbackItems(UUID feedbackRequestId, UUID sectionId) {
         User currentUser = currentUserService.requireCurrentUser();
         FeedbackRequest request = requireFeedbackAccess(feedbackRequestId, currentUser, false);
         boolean instructorView = isInstructorViewer(currentUser, request);
         List<InstructorFeedback> roots = instructorFeedbackRepository.findByRequestId(feedbackRequestId);
         if (!instructorView) roots = roots.stream().filter(FeedbackServiceImpl::isPublished).toList();
+        // Members read only sections assigned to them (current assignee —
+        // feedback stores no historical ownership); leaders bypass this filter.
+        if (!instructorView && !isProjectLeader(currentUser, request.getProject())) {
+            if (sectionId != null) {
+                PaperSection scope = requireSectionInProject(sectionId, request.getProject());
+                if (!sameUser(scope.getAssignedUser(), currentUser)) {
+                    throw forbidden("Feedback access denied.");
+                }
+            }
+            roots = roots.stream()
+                    .filter(root -> root.getSection() != null
+                            && sameUser(root.getSection().getAssignedUser(), currentUser)
+                            && (sectionId == null || Objects.equals(root.getSection().getId(), sectionId)))
+                    .toList();
+        } else if (sectionId != null) {
+            roots = roots.stream()
+                    .filter(root -> root.getSection() != null
+                            && Objects.equals(root.getSection().getId(), sectionId))
+                    .toList();
+        }
         return roots.stream().map(root -> response(root, currentUser)).toList();
     }
 
@@ -215,9 +235,9 @@ public class FeedbackServiceImpl {
     }
 
     /**
-     * Student/instructor replies on a published thread. Replies are published
-     * immediately and pinned to an explicit RETURNED review cycle — never to a
-     * PENDING draft, which would shift context under the instructor's feet.
+     * Single published thread with its legacy replies and attachments.
+     * Students see only threads on sections assigned to them (leaders see all);
+     * unpublished drafts stay instructor-visible only.
      */
     @Transactional(readOnly = true)
     public InstructorFeedbackResponseDto getThread(UUID feedbackItemId) {
@@ -226,6 +246,14 @@ public class FeedbackServiceImpl {
                 .orElseThrow(() -> notFound("Instructor feedback", feedbackItemId));
         requireFeedbackAccess(feedback.getRequest(), currentUser, false);
         if (!isPublished(feedback) && !isInstructorViewer(currentUser, feedback.getRequest())) {
+            throw notFound("Instructor feedback", feedbackItemId);
+        }
+        // Same member scope as the list endpoint, but hidden as 404 (matching
+        // the unpublished-draft convention) to avoid leaking thread existence.
+        if (!isInstructorViewer(currentUser, feedback.getRequest())
+                && !isProjectLeader(currentUser, feedback.getRequest().getProject())
+                && (feedback.getSection() == null
+                        || !sameUser(feedback.getSection().getAssignedUser(), currentUser))) {
             throw notFound("Instructor feedback", feedbackItemId);
         }
         return response(feedback, currentUser);
@@ -649,6 +677,13 @@ public class FeedbackServiceImpl {
         return project.getProjectMembers().stream().anyMatch(member -> member.getUser() != null
                 && sameUser(member.getUser(), user)
                 && (member.getRole() == ProjectRole.LEADER || member.getRole() == ProjectRole.MEMBER));
+    }
+
+    private boolean isProjectLeader(User user, Project project) {
+        if (user == null || user.getRole() != UserRole.STUDENT || user.getAccountStatus() != AccountStatus.ACTIVE
+                || project == null || project.getProjectMembers() == null) return false;
+        return project.getProjectMembers().stream().anyMatch(member -> member.getUser() != null
+                && sameUser(member.getUser(), user) && member.getRole() == ProjectRole.LEADER);
     }
 
     private boolean isCurrentAssignee(User user, PaperSection section, Project project) {
