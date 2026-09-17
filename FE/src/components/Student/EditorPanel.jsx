@@ -43,6 +43,7 @@ export default function EditorPanel({
   isReviewVisible = true, onToggleReviewVisible,
   feedback, feedbackOpen = false, setFeedbackOpen, activeFeedbackId, onSelectFeedback,
   feedbackRequestId, setFeedbackRequestId, feedbackScope, setFeedbackScope,
+  userProjectRole = 'MEMBER', currentUserId = null,
   citationIndex = {},
   paperReferences = [],
 }) {
@@ -425,8 +426,8 @@ export default function EditorPanel({
       </div>
       {feedback && <div id="student-feedback-panel" hidden={!feedbackOpen} style={{ flex: narrow ? '0 0 44%' : threePanes ? '0 0 320px' : `${100 - editorWidth} 1 0` }}
         className={`${feedbackOpen ? 'flex' : 'hidden'} min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-(--border) bg-(--surface) shadow-sm`}>
-        <FeedbackPanel feedback={feedback} sectionId={selectedSectionId} activeId={activeFeedbackId} onSelect={onSelectFeedback} onClose={closeFeedback} visible={feedbackOpen}
-          positions={positions} narrow={narrow} requestId={feedbackRequestId} setRequestId={setFeedbackRequestId} scope={feedbackScope} setScope={setFeedbackScope} overlapIds={overlapIds} projectId={projectId} />
+          <FeedbackPanel feedback={feedback} sectionId={selectedSectionId} activeId={activeFeedbackId} onSelect={onSelectFeedback} onClose={closeFeedback} visible={feedbackOpen}
+          positions={positions} narrow={narrow} requestId={feedbackRequestId} setRequestId={setFeedbackRequestId} scope={feedbackScope} setScope={setFeedbackScope} overlapIds={overlapIds} projectId={projectId} userProjectRole={userProjectRole} currentUserId={currentUserId} />
       </div>}
       <div style={{ flex: review ? '1 1 0' : threePanes ? '1 1 400px' : `${100 - editorWidth} 1 0` }} className={`${(!review && previewVisible) || (review && showPreview) ? 'flex' : 'hidden'} min-w-0 min-h-0 bg-(--surface) rounded-xl shadow-sm border border-(--border) flex-col overflow-hidden`}>
         <div className="h-11 border-b border-(--border-light) flex items-center justify-between px-4 bg-(--surface)">

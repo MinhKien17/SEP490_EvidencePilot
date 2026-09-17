@@ -1,29 +1,29 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { placeFeedbackCards } from '../../utils/student/feedbackAnchors.js';
+import { roundNumberFor } from '../../utils/reviewRounds.js';
 
 const control = 'min-w-0 rounded-md border border-(--border) bg-(--surface) px-2 py-1.5 text-xs text-(--text-primary) focus-visible:ring-2 focus-visible:ring-(--brand)';
-const FEEDBACK_REQUEST_STATUSES = new Set(['PENDING', 'RETURNED', 'REVIEWED']);
-const FEEDBACK_LOCATIONS = new Set(['ATTACHED', 'MODIFIED', 'DETACHED', 'SECTION', 'UNLOCATED']);
+const FEEDBACK_REQUEST_STATUSES = new Set(['PENDING', 'RETURNED', 'REVIEWED', 'REJECTED']);
 
 export default function FeedbackPanel({ feedback, sectionId, activeId, onSelect, onClose, visible,
-  positions, narrow, requestId, setRequestId, scope, setScope, overlapIds = [], projectId }) {
+  positions, narrow, requestId, setRequestId, scope, setScope, overlapIds = [], projectId,
+  userProjectRole = 'MEMBER', currentUserId = null }) {
   const { t, i18n } = useTranslation();
-  const [threadState, setThreadState] = useState('OPEN');
+  const isLeader = userProjectRole === 'LEADER';
   const [layout, setLayout] = useState([]);
   const scrollerRef = useRef(null);
   const cardsRef = useRef(new Map());
   const [sizeVersion, setSizeVersion] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
-  useEffect(() => {
-    const active = feedback.items.find(item => item.id === activeId);
-    if (active && ['RESOLVED', 'REJECTED'].includes(active.threadState || 'OPEN')) setThreadState('ALL');
-  }, [activeId, feedback.items]);
   const filtered = useMemo(() => feedback.items.filter(item => {
-    return (!requestId || item.requestId === requestId)
-      && (scope === 'project' || String(item.sectionId) === String(sectionId))
-      && (threadState === 'ALL' || (item.threadState || 'OPEN') === threadState);
-  }), [feedback.items, requestId, scope, sectionId, threadState]);
+    if (requestId && String(item.requestId) !== String(requestId)) return false;
+    if (scope !== 'project' && String(item.sectionId) !== String(sectionId)) return false;
+    // Members see only their own assigned sections (mirrors the server rule);
+    // leaders see the whole round. Unknown user degrades to unfiltered display.
+    if (!isLeader && currentUserId != null && String(item.assignedUserId ?? '') !== String(currentUserId)) return false;
+    return true;
+  }), [feedback.items, requestId, scope, sectionId, isLeader, currentUserId]);
   const byId = useMemo(() => new Map(positions.map(position => [position.id, position])), [positions]);
   const anchored = !narrow && scope === 'section';
   const visibleItems = anchored ? filtered.filter(item => {
@@ -96,18 +96,22 @@ export default function FeedbackPanel({ feedback, sectionId, activeId, onSelect,
         </select>
 
       </div>
-      <select className={`${control} w-full mt-2`} value={threadState} onChange={event => setThreadState(event.target.value)} aria-label={t('studentFeedback.threadFilter')}>
-        <option value="OPEN">{t('studentFeedback.open')}</option>
-        <option value="RESOLVED">{t('studentFeedback.resolved')}</option>
-        <option value="REJECTED">{t('studentFeedback.rejected')}</option>
-        <option value="ALL">{t('studentFeedback.all')}</option>
-      </select>
-      <select className={`${control} w-full mt-2`} value={requestId || ''} onChange={event => setRequestId(event.target.value || null)} aria-label={t('studentFeedback.roundFilter')}>
-        <option value="">{t('studentFeedback.allRounds')}</option>
-        {feedback.requests.map((request, index) => <option key={request.id} value={request.id}>
-          {t('studentFeedback.round', { number: feedback.requests.length - index })} · {t(`status.${FEEDBACK_REQUEST_STATUSES.has(request.status) ? request.status : 'UNKNOWN'}`)}
-        </option>)}
-      </select>
+      {isLeader ? (
+        <select className={`${control} w-full mt-2`} value={requestId || ''} onChange={event => setRequestId(event.target.value || null)} aria-label={t('studentFeedback.roundFilter')}>
+          {feedback.requests.map((request) => <option key={request.id} value={request.id}>
+            {t('studentFeedback.round', { number: roundNumberFor(feedback.requests, request.id) ?? '?' })} · {t(`status.${FEEDBACK_REQUEST_STATUSES.has(request.status) ? request.status : 'UNKNOWN'}`)}
+          </option>)}
+        </select>
+      ) : (
+        <p className="mt-2 text-[11px] font-semibold text-(--text-secondary)">
+          {(() => {
+            const current = feedback.requests.find(request => String(request.id) === String(requestId));
+            if (!current) return t('studentFeedback.empty');
+            const number = roundNumberFor(feedback.requests, current.id) ?? '?';
+            return `${t('studentFeedback.round', { number })} · ${t(`status.${FEEDBACK_REQUEST_STATUSES.has(current.status) ? current.status : 'UNKNOWN'}`)}`;
+          })()}
+        </p>
+      )}
       </details>
       {!!filtered.length && <select className={`${control} w-full`} value={filtered.some(item => item.id === activeId) ? activeId : ''}
         onChange={event => { const item = filtered.find(entry => entry.id === event.target.value); if (item) select(item); }} aria-label={t('studentFeedback.navigate')}>
@@ -131,7 +135,6 @@ export default function FeedbackPanel({ feedback, sectionId, activeId, onSelect,
         {visibleItems.map(item => {
           const position = byId.get(item.id);
           const anchor = position?.anchor || item.anchor;
-          const locationStatus = anchor?.current?.status || (item.lineReference ? 'UNLOCATED' : 'SECTION');
           const placed = layoutById.get(item.id);
           const active = item.id === activeId;
           const canNavigate = item.sectionId && (String(item.sectionId) !== String(sectionId) || position?.from != null);
@@ -143,50 +146,46 @@ export default function FeedbackPanel({ feedback, sectionId, activeId, onSelect,
               <path d={`M 0 ${placed.top - placed.y + scrollTop - placed.scroll} H 4 V 16 H 11`} fill="none" stroke="currentColor" strokeWidth="1.5" className="text-teal-600" />
             </svg>}
             <button type="button" className="w-full text-left rounded focus-visible:ring-2 focus-visible:ring-(--brand)" onClick={() => select(item)} aria-expanded={active}>
-              <span className="flex justify-between gap-2 font-semibold"><span>{item.instructorName || t('instructor')}</span>
-</span>
-              <span className="mt-1 block text-[10px] text-(--text-secondary)">{item.sectionTitle} · {t('studentFeedback.round', { number: item.roundNumber || '?' })}</span>
+              <span className="flex justify-between gap-2 font-semibold">
+                <span>{item.instructorName || t('instructor')} · {item.sectionTitle}{isLeader && item.assignedUserName ? ` · ${t('feedbackAssignee')}: ${item.assignedUserName}` : ''} · {t('studentFeedback.round', { number: item.roundNumber || '?' })}</span>
+                <span className="shrink-0 text-[10px] font-normal text-(--text-tertiary)">{date(item.createdAt)}</span>
+              </span>
               <span className={`mt-2 block whitespace-pre-wrap break-words leading-relaxed ${active ? '' : 'line-clamp-3'}`}>{item.content}</span>
             </button>
-            <p className="mt-2 text-xs text-(--text-secondary)">{t('feedbackAssignee')}: {item.assignedUserName || t('feedbackUnassigned')}</p>
-            {locationStatus !== 'ATTACHED' && <p className="mt-2 text-[11px] font-medium text-(--text-secondary)">
-              {t(`studentFeedback.location.${FEEDBACK_LOCATIONS.has(locationStatus) ? locationStatus : 'UNLOCATED'}`)}
-              {locationStatus === 'UNLOCATED' && item.lineReference ? ` · ${item.lineReference}` : ''}
-            </p>}
-            {(locationStatus === 'DETACHED' || locationStatus === 'MODIFIED') && anchor?.original?.exact && (
-              <p className="mt-2 rounded bg-(--surface-secondary) p-2 text-[11px] italic line-through opacity-60">
-                {t('studentFeedback.originalContext')}: {anchor.original.exact}
-              </p>
-            )}
+            <div className="mt-2 rounded-md border border-(--border) bg-(--surface-secondary) px-2 py-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-(--text-tertiary)">{t('studentFeedback.passage')}</p>
+              {anchor?.original?.exact
+                ? <p className="mt-1 whitespace-pre-wrap break-words font-mono leading-relaxed">“{anchor.original.exact}”</p>
+                : <p className="mt-1 italic text-(--text-secondary)">{t('studentFeedback.wholeSection')}{item.lineReference ? ` · ${item.lineReference}` : ''}</p>}
+            </div>
             {active && <div className="mt-3 space-y-3">
-              <p className="text-[10px] text-(--text-tertiary)">{date(item.createdAt)}</p>
-              {anchor?.original?.exact && <details className="rounded-md border border-(--border) bg-(--surface-secondary) px-2 py-1.5">
-                <summary className="cursor-pointer font-medium">{t('studentFeedback.original')}</summary>
-                <p className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words font-mono leading-relaxed">{anchor.original.exact}</p>
-              </details>}
               {canNavigate && <button type="button" className={`${control} font-semibold`} onClick={() => select(item)}>{t('studentFeedback.goToText')}</button>}
-              {item.threadState === 'RESOLVED' && <p className="rounded-md bg-(--surface-secondary) p-2 text-[11px] text-(--text-secondary)">{t('studentFeedback.resolvedNotice')}</p>}
-              {item.threadState === 'REJECTED' && <p className="rounded-md bg-(--surface-secondary) p-2 text-[11px] text-(--text-secondary)">{t('studentFeedback.rejectedNotice')}</p>}
               {(item.attachments || []).length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {item.attachments.map(attachment => (
-                    <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer" title={attachment.mimeType}>
-                      <img src={attachment.url} alt="" loading="lazy" decoding="async" className="h-14 w-14 rounded-md border border-(--border) object-cover" />
-                    </a>
-                  ))}
+                <div>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-(--text-tertiary)">{t('studentFeedback.providedImages')}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {item.attachments.map(attachment => (
+                      <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer" title={attachment.mimeType}>
+                        <img src={attachment.url} alt="" loading="lazy" decoding="async" className="h-14 w-14 rounded-md border border-(--border) object-cover" />
+                      </a>
+                    ))}
+                  </div>
                 </div>
               )}
               {(item.replies || []).length > 0 && (
-                <ul className="space-y-1.5">
-                  {item.replies.map(reply => (
-                    <li key={reply.id} className="rounded-md bg-(--surface-secondary)/70 px-2 py-1.5">
-                      <p className="text-[9px] font-bold text-(--text-tertiary)">
-                        {reply.authorName || reply.authorRole} · {date(reply.createdAt)}
-                      </p>
-                      <p className="mt-0.5 whitespace-pre-wrap break-words leading-relaxed">{reply.content}</p>
-                    </li>
-                  ))}
-                </ul>
+                <details className="rounded-md border border-(--border) bg-(--surface-secondary) px-2 py-1.5">
+                  <summary className="cursor-pointer font-medium">{t('studentFeedback.legacyDiscussion')}</summary>
+                  <ul className="mt-2 space-y-1.5">
+                    {item.replies.map(reply => (
+                      <li key={reply.id} className="rounded-md bg-(--surface-secondary)/70 px-2 py-1.5">
+                        <p className="text-[9px] font-bold text-(--text-tertiary)">
+                          {reply.authorName || reply.authorRole} · {date(reply.createdAt)}
+                        </p>
+                        <p className="mt-0.5 whitespace-pre-wrap break-words leading-relaxed">{reply.content}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               )}
             </div>}
           </article>;
