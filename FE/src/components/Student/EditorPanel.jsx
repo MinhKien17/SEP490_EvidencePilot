@@ -249,9 +249,9 @@ export default function EditorPanel({
                   />
                   <span>{t('instructor.review.showChanges')}</span>
                 </label>
-                {review.diffEnabled && review.baselineUnavailable && (
-                  <span role="status" className="hidden max-w-[220px] truncate text-[10px] font-semibold italic text-(--text-tertiary) md:inline" title={t('instructor.review.noComparisonBaseline')}>
-                    {t('instructor.review.noComparisonBaseline')}
+                {review.diffEnabled && (review.baselineUnavailable || review.diffTruncated) && (
+                  <span role="status" className="hidden max-w-[220px] truncate text-[10px] font-semibold italic text-(--text-tertiary) md:inline" title={review.diffTruncated ? t('instructor.review.diffTruncated') : t('instructor.review.noComparisonBaseline')}>
+                    {review.diffTruncated ? t('instructor.review.diffTruncated') : t('instructor.review.noComparisonBaseline')}
                   </span>
                 )}
                 <button type="button" onClick={() => switchReviewMode(!showPreview)} aria-pressed={showPreview}
@@ -448,9 +448,9 @@ export default function EditorPanel({
                 <span>{t('instructor.review.showChanges')}</span>
               </label>
             )}
-            {review && review.diffEnabled && review.baselineUnavailable && (
-              <span role="status" className="hidden max-w-[220px] truncate text-[10px] font-semibold italic text-(--text-tertiary) md:inline" title={t('instructor.review.noComparisonBaseline')}>
-                {t('instructor.review.noComparisonBaseline')}
+            {review && review.diffEnabled && (review.baselineUnavailable || review.diffTruncated) && (
+              <span role="status" className="hidden max-w-[220px] truncate text-[10px] font-semibold italic text-(--text-tertiary) md:inline" title={review.diffTruncated ? t('instructor.review.diffTruncated') : t('instructor.review.noComparisonBaseline')}>
+                {review.diffTruncated ? t('instructor.review.diffTruncated') : t('instructor.review.noComparisonBaseline')}
               </span>
             )}
             {review && showPreview && (

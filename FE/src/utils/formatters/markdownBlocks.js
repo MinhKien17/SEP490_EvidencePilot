@@ -265,8 +265,12 @@ export function rehypeChangeRanges(changeRanges = []) {
         return result.nodes;
       });
       // Commands such as \textbf and KaTeX can render text with no direct
-      // child offsets. Their positioned inline element is the closest anchor.
-      if (!highlighted && node.type === 'element' && blockOverlapsRanges(start, end, changeRanges)) {
+      // child offsets. Their positioned inline element is the closest anchor —
+      // but only mark the whole element when a range genuinely covers it, never
+      // from a partial unmappable range (the editor stays exact).
+      const coversNode = Number.isInteger(start) && Number.isInteger(end)
+        && (changeRanges || []).some(range => range.sourceStart <= start && range.sourceEnd >= end);
+      if (!highlighted && node.type === 'element' && coversNode) {
         mark(node);
         highlighted = true;
       }

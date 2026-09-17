@@ -99,6 +99,24 @@ class ComparisonSourceTest {
     }
 
     @Test
+    void versionFourToFiveResolvesExactSourceStrings() {
+        Fixture f = fixture(FeedbackStatus.PENDING);
+        FeedbackRequest older = request(f, FeedbackStatus.RETURNED, 2);
+        stubAccess(f, f.active);
+        stubSubmitted(f, f.active, "This is a test feedback, this is version 5", 5);
+        when(feedbackRequestRepository.findByProjectIdOrderByRequestedAtDesc(f.project.getId()))
+                .thenReturn(List.of(f.active, older));
+        stubSnapshots(older, "This is a test feedback, this is version 4", 4, SnapshotType.BASELINE);
+
+        ComparisonSourceDto source = service().getComparisonSource(f.active.getId(), f.section.getId());
+
+        assertThat(source.baseline().contentTex())
+                .isEqualTo("This is a test feedback, this is version 4");
+        assertThat(source.submitted().contentTex())
+                .isEqualTo("This is a test feedback, this is version 5");
+    }
+
+    @Test
     void thirdRoundUsesLatestReturnNotFirst() {
         Fixture f = fixture(FeedbackStatus.PENDING);
         FeedbackRequest middle = request(f, FeedbackStatus.RETURNED, 2);

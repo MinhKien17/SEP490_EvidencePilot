@@ -8,12 +8,14 @@ const BEFORE = 'Machine learning systems require testing.';
 const AFTER = 'Machine learning systems require extensive testing.';
 const CONTENT = [AFTER, ...Array.from({ length: 60 }, (_, i) => `Filler line ${i}.`)].join('\n\n');
 
-async function setupDiff(page, comparisonSource) {
+async function setupDiff(page, comparisonSource, texts = {}) {
   const projectId = 'diff-source-project';
   const paperId = 'diff-paper';
   const sectionId = 'diff-section';
   const roundId = 'diff-round';
   const state = { errors: [], unhandled: [], comparisonCalls: [], snapshotCalls: [] };
+  const content = texts.content || CONTENT;
+  const probe = texts.probe || 'extensive testing';
 
   page.on('pageerror', error => state.errors.push(error.message));
   await page.addInitScript(() => {
@@ -56,7 +58,7 @@ async function setupDiff(page, comparisonSource) {
         projectId,
         papers: [{ id: paperId, title: 'Diff paper', sections: [{
           id: sectionId, title: 'Introduction', order: 0,
-          contentTex: CONTENT, contentVersion: 2,
+          contentTex: content, contentVersion: 2,
         }] }],
       } };
     } else if (path === `/api/feedback-requests/${roundId}/feedback`) {
@@ -77,15 +79,33 @@ async function setupDiff(page, comparisonSource) {
     return route.fulfill({ json });
   });
 
-  return { projectId, state };
+  return { projectId, state, content, probe };
 }
 
-async function openReviewEditor(page, projectId) {
+async function openReviewEditor(page, projectId, probe = 'extensive testing', length = CONTENT.length) {
   await page.goto(`${baseUrl}/instructor/requests/${projectId}`);
-  await expect(page.locator('.cm-content')).toContainText('extensive testing');
+  await expect(page.locator('.cm-content')).toContainText(probe);
   await expect.poll(() => page.evaluate(
-    () => document.querySelector('.cm-editor')?.__cmView?.state.doc.length)).toBe(CONTENT.length);
+    () => document.querySelector('.cm-editor')?.__cmView?.state.doc.length)).toBe(length);
 }
+
+test('Single-character change highlights only the replacement token', async ({ page }) => {
+  const before = 'This is a test feedback, this is version 4';
+  const after = 'This is a test feedback, this is version 5';
+  const content = [after, ...Array.from({ length: 60 }, (_, i) => `Filler line ${i}.`)].join('\n\n');
+  const baseline = [before, ...Array.from({ length: 60 }, (_, i) => `Filler line ${i}.`)].join('\n\n');
+  const { projectId, state } = await setupDiff(page, {
+    submitted: { contentTex: content, contentVersion: 5 },
+    baseline: { contentTex: baseline, contentVersion: 4, origin: 'RETURN_FOR_REVISION' },
+  }, { content, probe: 'version 5' });
+  await openReviewEditor(page, projectId, 'version 5', content.length);
+
+  await page.getByRole('checkbox', { name: 'Show Diff' }).first().check();
+  const marks = page.locator('.cm-editor .cm-change-added');
+  await expect(marks).toHaveCount(1);
+  await expect(marks.first()).toHaveText('5');
+  expect(state.errors).toEqual([]);
+});
 
 test('Show Diff consumes the server comparison source, not single-request snapshots', async ({ page }) => {
   const { projectId, state } = await setupDiff(page, {
