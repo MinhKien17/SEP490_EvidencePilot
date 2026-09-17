@@ -340,3 +340,159 @@ test('Edit remove passage converts to whole-section feedback', async ({ page }) 
   expect(state.patches[0].anchor).toBeNull();
   expect(state.errors).toEqual([]);
 });
+
+const OVERLAP_SENTENCE = 'The man has hooked a fish';
+const OVERLAP_CONTENT = [OVERLAP_SENTENCE, ...Array.from({ length: 60 }, (_, i) => `Filler line ${i}.`)].join('\n\n');
+
+async function setupOverlap(page) {
+  const projectId = 'overlap-project';
+  const paperId = 'overlap-paper';
+  const sectionId = 'overlap-section';
+  const roundId = 'overlap-round';
+  const state = { errors: [], posts: [], patches: [] };
+  const thread = (id, from, to, extra = {}) => ({
+    id, requestId: roundId, sectionId,
+    content: `Feedback ${id}.`,
+    createdAt: '2026-09-16T09:00:00Z', threadState: 'OPEN', pendingState: null,
+    publishedAt: '2026-09-16T09:05:00Z', lineReference: null,
+    anchor: {
+      original: { representation: 'latex-source-lf-v1', offsetUnit: 'utf16', contentVersion: 1,
+        fingerprint: '0'.repeat(64), from, to, exact: 'x', prefix: '', suffix: '' },
+      current: { status: 'ATTACHED', contentVersion: 1, fingerprint: '0'.repeat(64), from, to },
+    },
+    studentStatus: null, studentNote: null, attachments: [], replies: [],
+    canMarkDone: false, canReopen: false, canEdit: false, canDelete: false,
+    ...extra,
+  });
+  // A covers the whole sentence (0-24); B is nested (10-15).
+  const threads = [
+    thread('feedback-a', 0, 24, { publishedAt: null, canEdit: true, canDelete: true }),
+    thread('feedback-b', 10, 15),
+  ];
+
+  page.on('pageerror', error => state.errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem('token', 'overlap-fixture');
+    localStorage.setItem('role', 'INSTRUCTOR');
+    localStorage.setItem('app_lang', 'en');
+    localStorage.setItem('app_theme', 'light');
+  });
+
+  await page.route('**/api/**', async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const method = request.method();
+    let json;
+
+    if (path === '/api/users/profile') {
+      json = { id: 'instructor-one', role: 'INSTRUCTOR', firstName: 'Test', lastName: 'Instructor' };
+    } else if (path === '/api/notifications' || path === '/api/review-guides'
+      || path === `/api/projects/${projectId}/evidence-traces`
+      || path === `/api/media/projects/${projectId}`) {
+      json = [];
+    } else if (path === '/api/notifications/unread-count') {
+      json = { count: 0 };
+    } else if (path === `/api/projects/${projectId}`) {
+      json = { id: projectId, title: 'Overlap fixture', status: 'SUBMITTED_FOR_REVIEW' };
+    } else if (path === `/api/projects/${projectId}/papers`) {
+      json = [{ id: paperId, title: 'Overlap paper', originalFilename: 'overlap.tex', processingStatus: 'READY' }];
+    } else if (path === `/api/projects/${projectId}/sources`) {
+      json = { content: [], last: true };
+    } else if (path === '/api/feedback-requests') {
+      json = [{ id: roundId, projectId, status: 'PENDING', requestedAt: '2026-09-16T08:00:00Z' }];
+    } else if (path === `/api/feedback-requests/${roundId}/submission-snapshot`) {
+      json = { state: 'AVAILABLE', snapshot: {
+        schemaVersion: 1,
+        projectId,
+        papers: [{ id: paperId, title: 'Overlap paper', sections: [{
+          id: sectionId, title: 'Introduction', order: 0,
+          contentTex: OVERLAP_CONTENT, contentVersion: 1,
+        }] }],
+      } };
+    } else if (method === 'GET' && path === `/api/feedback-requests/${roundId}/feedback`) {
+      json = threads;
+    } else if (path === `/api/papers/${paperId}/references`
+      || path === `/api/papers/${paperId}/references/check`) {
+      json = [];
+    } else if (method === 'POST' && path === `/api/feedback-requests/${roundId}/feedback`) {
+      const body = JSON.parse(request.postData() || '{}');
+      state.posts.push(body);
+      json = thread('feedback-new', body.anchor.from, body.anchor.to, { content: body.content });
+    } else if (method === 'PATCH' && path === '/api/instructor-feedback/feedback-a') {
+      const body = JSON.parse(request.postData() || '{}');
+      state.patches.push(body);
+      json = { ...threads[0], content: body.content };
+    } else {
+      return route.fulfill({ status: 404, json: { message: 'Unhandled fixture request' } });
+    }
+
+    return route.fulfill({ json });
+  });
+
+  return { projectId, state };
+}
+
+async function openOverlapEditor(page, projectId) {
+  await page.goto(`http://localhost:5173/instructor/requests/${projectId}`);
+  await expect(page.locator('.cm-content')).toContainText(OVERLAP_SENTENCE);
+  await expect.poll(() => page.evaluate(
+    () => document.querySelector('.cm-editor')?.__cmView?.state.doc.length)).toBe(OVERLAP_CONTENT.length);
+}
+
+async function cmSelect(page, anchor, head) {
+  await page.evaluate(({ anchor, head }) => {
+    document.querySelector('.cm-editor').__cmView.dispatch({ selection: { anchor, head } });
+  }, { anchor, head });
+}
+
+test('Nested overlap warns but saves anyway', async ({ page }) => {
+  const { projectId, state } = await setupOverlap(page);
+  await openOverlapEditor(page, projectId);
+
+  // "fish" is 20-24, nested inside feedback-a (0-24).
+  await cmSelect(page, 20, 24);
+  await page.getByRole('button', { name: 'Comment', exact: true }).click();
+  await expect(page.getByText('This selection overlaps 1 existing feedback item(s).', { exact: false })).toBeVisible();
+  await expect(page.getByText('Feedback feedback-a.')).toBeVisible();
+  await page.getByPlaceholder('Write feedback on the selected passage').fill('Use a more precise term here.');
+  await page.getByRole('button', { name: 'Save feedback', exact: true }).click();
+
+  await expect.poll(() => state.posts.length).toBe(1);
+  expect(state.posts[0].anchor.from).toBe(20);
+  expect(state.posts[0].anchor.to).toBe(24);
+  expect(state.errors).toEqual([]);
+});
+
+test('Exact duplicate warns stronger but still saves', async ({ page }) => {
+  const { projectId, state } = await setupOverlap(page);
+  await openOverlapEditor(page, projectId);
+
+  await cmSelect(page, 0, 24);
+  await page.getByRole('button', { name: 'Comment', exact: true }).click();
+  await expect(page.getByText('This exact passage already has feedback.', { exact: false })).toBeVisible();
+  await page.getByPlaceholder('Write feedback on the selected passage').fill('Second concern on the same text.');
+  await page.getByRole('button', { name: 'Save feedback', exact: true }).click();
+
+  await expect.poll(() => state.posts.length).toBe(1);
+  expect(state.posts[0].anchor.from).toBe(0);
+  expect(state.posts[0].anchor.to).toBe(24);
+  expect(state.errors).toEqual([]);
+});
+
+test('Edit into another feedback range is allowed', async ({ page }) => {
+  const { projectId, state } = await setupOverlap(page);
+  await openOverlapEditor(page, projectId);
+
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Update feedback', exact: true })).toBeVisible();
+  // Move A (0-24) into B's range (10-15): overlap with B is reported, save stays enabled.
+  await cmSelect(page, 12, 14);
+  await page.getByRole('button', { name: 'Use editor selection', exact: true }).click();
+  await expect(page.getByText('This selection overlaps 1 existing feedback item(s).', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Update feedback', exact: true }).click();
+
+  await expect.poll(() => state.patches.length).toBe(1);
+  expect(state.patches[0].anchor.from).toBe(12);
+  expect(state.patches[0].anchor.to).toBe(14);
+  expect(state.errors).toEqual([]);
+});

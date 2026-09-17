@@ -216,6 +216,7 @@ const INSTRUCTOR_REVIEW_KEYS = [
   'loadFeedbackFailed', 'loadReviewSpaceFailed', 'manualFeedback', 'noCheckpointBaseline',
   'noComparisonBaseline',
   'noEvidenceForSubmission', 'noEvidenceTraces', 'noSectionFeedback', 'noSuggestionIssues', 'openFeedback',
+  'overlapExact', 'overlapNotice', 'overlapView',
   'overviewConfirmed', 'overviewSections', 'overviewTab', 'paperConfirmations', 'paperReadOnly', 'paperWide', 'pendingState',
   'threadsEmpty', 'useSelection',
   'mediaTitle', 'mediaEmpty', 'mediaDone', 'selectMedia',

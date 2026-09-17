@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatDateTime } from '../../../utils/formatters/date.js';
 import MediaAssetPicker from '../../features/MediaAssetPicker.jsx';
+import { findOverlaps } from '../../../utils/instructor/feedbackOverlap.js';
 
 const LOCATION_KEYS = new Set(['ATTACHED', 'MODIFIED', 'DETACHED', 'SECTION', 'UNLOCATED']);
 
@@ -40,6 +41,19 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
       && String(item.sectionId) === String(selectedSection?.id))
     .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || ''))),
     [feedbackItems, activeRequestId, selectedSection?.id]);
+
+  // ponytail: overlap is valid — warn only, never block. The item under edit
+  // is excluded so its own passage is not reported as a duplicate.
+  const overlap = useMemo(() => {
+    if (!selectedAnchor) return { count: 0, exactDuplicate: false, ids: [] };
+    const others = (feedbackItems || []).filter(item => String(item.id) !== String(editingFeedbackId));
+    return findOverlaps(selectedAnchor, others, { requestId: activeRequestId, sectionId: selectedSection?.id });
+  }, [selectedAnchor, feedbackItems, editingFeedbackId, activeRequestId, selectedSection?.id]);
+
+  const viewFirstOverlap = () => {
+    const first = (feedbackItems || []).find(item => String(item.id) === String(overlap.ids[0]));
+    if (first) selectFeedback(first);
+  };
 
   const submitThread = async event => {
     event.preventDefault();
@@ -80,6 +94,20 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
               </button>
             )}
           </div>
+          {selectedAnchor && overlap.count > 0 && (
+            <p role="note" className="text-[10px] font-semibold text-(--text-secondary)">
+              {overlap.exactDuplicate
+                ? t('instructor.review.overlapExact')
+                : t('instructor.review.overlapNotice', { count: overlap.count })}{' '}
+              <button
+                type="button"
+                onClick={viewFirstOverlap}
+                className="font-black text-teal-700 underline hover:text-teal-800 dark:text-teal-300"
+              >
+                {t('instructor.review.overlapView')}
+              </button>
+            </p>
+          )}
           <textarea
             ref={composerRef}
             value={feedbackDraft}
