@@ -93,6 +93,9 @@ class ProjectStatusConcurrencyIntegrationTest {
     @Autowired
     private com.evidencepilot.repository.ReviewSectionSnapshotRepository sectionSnapshots;
 
+    @Autowired
+    private com.evidencepilot.repository.AssignmentSectionBaselineRepository assignmentBaselines;
+
     @MockBean
     private SystemNotificationService notifications;
 
@@ -110,6 +113,7 @@ class ProjectStatusConcurrencyIntegrationTest {
 
     @AfterEach
     void clean() {
+        assignmentBaselines.deleteAll();
         sectionSnapshots.deleteAll();
         feedbackItems.deleteAll();
         feedbackRequests.deleteAll();
