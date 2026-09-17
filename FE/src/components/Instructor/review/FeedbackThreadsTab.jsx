@@ -1,19 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { formatDateTime } from '../../../utils/formatters/date.js';
 import MediaAssetPicker from '../../features/MediaAssetPicker.jsx';
+import FeedbackCard from './FeedbackCard.jsx';
 import { findOverlaps } from '../../../utils/instructor/feedbackOverlap.js';
 
-const LOCATION_KEYS = new Set(['ATTACHED', 'MODIFIED', 'DETACHED', 'SECTION', 'UNLOCATED']);
-
-function stateChip(state) {
-  if (state === 'RESOLVED') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
-  if (state === 'REJECTED') return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300';
-  return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
-}
-
 export default function FeedbackThreadsTab({ review, selectedSection, projectId, composerFocusToken = 0 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const {
     feedbackItems, activeRequestId, canCreateRoot,
     feedbackDraft, selectedAnchor, editingFeedbackId, updateFeedbackDraft,
@@ -154,98 +146,35 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
 
       <ul className="space-y-2">
         {threads.map(item => {
-          const effective = item.pendingState || item.threadState || 'OPEN';
-          const location = item.anchor?.current?.status || (item.lineReference ? 'UNLOCATED' : 'SECTION');
           const active = String(item.id) === String(activeFeedbackId);
           const busy = busyId === item.id;
           return (
-            <li
+            <FeedbackCard
               key={item.id}
-              className={`rounded-xl border bg-(--surface) p-3 text-xs ${active ? 'border-teal-600 ring-1 ring-teal-600' : 'border-(--border-light)'}`}
-            >
-              <button type="button" onClick={() => selectFeedback(item)} className="w-full text-left">
-                <span className="flex flex-wrap items-center gap-1.5">
-                  {!item.publishedAt && (
-                    <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[9px] font-black uppercase text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                      {t('instructor.review.draftBadge')}
-                    </span>
-                  )}
-                  <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase ${stateChip(effective)}`}>
-                    {t(`instructor.review.state${effective.charAt(0) + effective.slice(1).toLowerCase()}`)}
-                  </span>
-                  {item.pendingState && item.pendingState !== item.threadState && (
-                    <span className="text-[9px] font-bold text-(--text-tertiary)">
-                      {t('instructor.review.pendingState')}: {item.pendingState}
-                    </span>
-                  )}
-                  <span className="ml-auto text-[9px] text-(--text-tertiary)">
-                    {formatDateTime(item.createdAt, i18n.language)}
-                  </span>
-                </span>
-                <span className="mt-1.5 block whitespace-pre-wrap break-words leading-relaxed text-(--text-primary)">
-                  {item.content}
-                </span>
-                <span className="mt-1 block text-[10px] text-(--text-secondary)">
-                  {t(`studentFeedback.location.${LOCATION_KEYS.has(location) ? location : 'UNLOCATED'}`)}
-                  {location === 'UNLOCATED' && item.lineReference ? ` · ${item.lineReference}` : ''}
-                </span>
-                {(location === 'DETACHED' || location === 'MODIFIED') && item.anchor?.original?.exact && (
-                  <span className="mt-1 block rounded bg-(--surface-secondary) p-1.5 text-[10px] italic line-through opacity-60">
-                    {t('studentFeedback.originalContext')}: {item.anchor.original.exact}
-                  </span>
-                )}
-                {item.studentStatus && (
-                  <span className="mt-1 block text-[10px] font-bold text-(--text-tertiary)">
-                    {t('studentFeedback.studentState', { status: item.studentStatus })}
-                    {item.studentNote ? ` · ${item.studentNote}` : ''}
-                  </span>
-                )}
-              </button>
-
-              {(item.attachments || []).length > 0 && (
+              item={item}
+              active={active}
+              onSelect={selectFeedback}
+              actions={(
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {item.attachments.map(attachment => (
-                    <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer" title={attachment.mimeType}>
-                      <img src={attachment.url} alt="" loading="lazy" decoding="async" className="h-14 w-14 rounded-lg border border-(--border) object-cover" />
-                    </a>
-                  ))}
+                  {item.canEdit && (
+                    <button
+                      type="button" disabled={busy} onClick={() => handleEditFeedback(item)}
+                      className="rounded-lg border border-(--border) px-2.5 py-1.5 text-[10px] font-bold text-(--text-secondary) disabled:opacity-50"
+                    >
+                      {t('instructor.review.edit')}
+                    </button>
+                  )}
+                  {item.canDelete && (
+                    <button
+                      type="button" disabled={busy} onClick={() => handleDeleteFeedback(item.id)}
+                      className="rounded-lg border border-rose-200 px-2.5 py-1.5 text-[10px] font-bold text-rose-600 disabled:opacity-50"
+                    >
+                      {t('delete')}
+                    </button>
+                  )}
                 </div>
               )}
-
-              {(item.replies || []).length > 0 && (
-                <ul className="mt-2 space-y-1.5 border-t border-(--border-light) pt-2">
-                  {item.replies.map(reply => (
-                    <li key={reply.id} className="rounded-lg bg-(--surface-secondary)/70 px-2 py-1.5">
-                      <p className="text-[9px] font-bold text-(--text-tertiary)">
-                        {reply.authorName || reply.authorRole} · {formatDateTime(reply.createdAt, i18n.language)}
-                      </p>
-                      <p className="mt-0.5 whitespace-pre-wrap break-words leading-relaxed text-(--text-primary)">
-                        {reply.content}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {item.canEdit && (
-                  <button
-                    type="button" disabled={busy} onClick={() => handleEditFeedback(item)}
-                    className="rounded-lg border border-(--border) px-2.5 py-1.5 text-[10px] font-bold text-(--text-secondary) disabled:opacity-50"
-                  >
-                    {t('instructor.review.edit')}
-                  </button>
-                )}
-                {item.canDelete && (
-                  <button
-                    type="button" disabled={busy} onClick={() => handleDeleteFeedback(item.id)}
-                    className="rounded-lg border border-rose-200 px-2.5 py-1.5 text-[10px] font-bold text-rose-600 disabled:opacity-50"
-                  >
-                    {t('delete')}
-                  </button>
-                )}
-              </div>
-            </li>
+            />
           );
         })}
       </ul>

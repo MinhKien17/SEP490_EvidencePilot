@@ -639,3 +639,102 @@ test('Preview selection with nothing armed shows honest guidance', async ({ page
   await expect(page.getByText(/Selected source range \d+–\d+/)).toHaveCount(0);
   expect(state.errors).toEqual([]);
 });
+
+async function setupHistory(page) {
+  const projectId = 'history-project';
+  const paperId = 'history-paper';
+  const sectionId = 'history-section';
+  const state = { errors: [] };
+  const snapshot = {
+    state: 'AVAILABLE',
+    snapshot: {
+      schemaVersion: 1,
+      projectId,
+      papers: [{ id: paperId, title: 'History paper', sections: [{
+        id: sectionId, title: 'Introduction', order: 0,
+        contentTex: PREVIEW_CONTENT, contentVersion: 3,
+      }] }],
+    },
+  };
+  const item = (id, requestId, content, createdAt, published = true) => ({
+    id, requestId, sectionId, content, createdAt,
+    updatedAt: createdAt, threadState: 'OPEN', pendingState: null,
+    publishedAt: published ? createdAt : null, lineReference: null, anchor: null,
+    studentStatus: null, studentNote: null, attachments: [],
+    replies: [{ id: `${id}-reply`, authorName: 'Former Student', authorRole: 'STUDENT',
+      content: `Legacy reply on ${id}.`, createdAt }],
+    canMarkDone: false, canReopen: false, canEdit: false, canDelete: false,
+  });
+
+  page.on('pageerror', error => state.errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem('token', 'history-fixture');
+    localStorage.setItem('role', 'INSTRUCTOR');
+    localStorage.setItem('app_lang', 'en');
+    localStorage.setItem('app_theme', 'light');
+  });
+
+  await page.route('**/api/**', async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const method = request.method();
+    let json;
+
+    if (path === '/api/users/profile') {
+      json = { id: 'instructor-one', role: 'INSTRUCTOR', firstName: 'Test', lastName: 'Instructor' };
+    } else if (path === '/api/notifications' || path === '/api/review-guides'
+      || path === `/api/projects/${projectId}/evidence-traces`
+      || path === `/api/media/projects/${projectId}`) {
+      json = [];
+    } else if (path === '/api/notifications/unread-count') {
+      json = { count: 0 };
+    } else if (path === `/api/projects/${projectId}`) {
+      json = { id: projectId, title: 'History fixture', status: 'SUBMITTED_FOR_REVIEW' };
+    } else if (path === `/api/projects/${projectId}/papers`) {
+      json = [{ id: paperId, title: 'History paper', originalFilename: 'history.tex', processingStatus: 'READY' }];
+    } else if (path === `/api/projects/${projectId}/sources`) {
+      json = { content: [], last: true };
+    } else if (path === '/api/feedback-requests') {
+      json = [
+        { id: 'round-b', projectId, status: 'PENDING', requestedAt: '2026-09-17T08:00:00Z' },
+        { id: 'round-a', projectId, status: 'RETURNED', requestedAt: '2026-09-16T08:00:00Z' },
+      ];
+    } else if (path === '/api/feedback-requests/round-b/submission-snapshot') {
+      json = snapshot;
+    } else if (path === '/api/feedback-requests/round-a/submission-snapshot') {
+      json = snapshot;
+    } else if (method === 'GET' && path === '/api/feedback-requests/round-b/feedback') {
+      json = [];
+    } else if (method === 'GET' && path === '/api/feedback-requests/round-a/feedback') {
+      json = [
+        item('prev-old', 'round-a', 'Older previous feedback.', '2026-09-16T09:00:00Z'),
+        item('prev-new', 'round-a', 'Newer previous feedback.', '2026-09-16T10:00:00Z'),
+        item('prev-draft', 'round-a', 'Unpublished previous draft.', '2026-09-16T11:00:00Z', false),
+      ];
+    } else if (path === `/api/papers/${paperId}/references`
+      || path === `/api/papers/${paperId}/references/check`) {
+      json = [];
+    } else {
+      return route.fulfill({ status: 404, json: { message: 'Unhandled fixture request' } });
+    }
+
+    return route.fulfill({ json });
+  });
+
+  return { projectId, state };
+}
+
+test('History shows the previous round latest card read-only', async ({ page }) => {
+  const { projectId, state } = await setupHistory(page);
+  await page.goto(`http://localhost:5173/instructor/requests/${projectId}`);
+  await expect(page.locator('.cm-content')).toContainText(PREVIEW_SENTENCE);
+
+  await page.getByRole('button', { name: 'History', exact: true }).click();
+  await expect(page.getByText('Newer previous feedback.')).toBeVisible();
+  await expect(page.getByText('Legacy reply on prev-new.')).toBeVisible();
+  await expect(page.getByText('Older previous feedback.')).toHaveCount(0);
+  await expect(page.getByText('Unpublished previous draft.')).toHaveCount(0);
+  // Read-only: the History tab mounts no composer and the shared card has no inputs.
+  await expect(page.getByPlaceholder('Write feedback on the selected passage')).toHaveCount(0);
+  expect(state.errors).toEqual([]);
+});

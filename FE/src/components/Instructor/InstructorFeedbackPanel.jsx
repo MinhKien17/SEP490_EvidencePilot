@@ -3,8 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { Modal } from '../index';
 import SectionEvidenceTab from './review/SectionEvidenceTab.jsx';
 import FeedbackThreadsTab from './review/FeedbackThreadsTab.jsx';
+import FeedbackCard from './review/FeedbackCard.jsx';
 import ReviewOverviewBlock from './review/ReviewOverviewBlock.jsx';
-import { formatDateTime } from '../../utils/formatters/date.js';
+import { selectPreviousCard } from '../../utils/instructor/historySelector.js';
 
 const ACTION_LABELS = { REVIEWED: 'instructor.review.approve', RETURNED: 'instructor.review.returnForRevision', REJECTED: 'instructor.review.rejectSubmission' };
 
@@ -32,7 +33,7 @@ export function InstructorReviewGuide({ review, selectedSection }) {
 }
 
 export default function InstructorFeedbackPanel({ review, selectedSection, projectId, focusSignal = 0, composerFocusToken = 0 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { activeRequest, isHistoricalRound, errorMessage, successMessage, transitioningRequestId, pendingTransition, setPendingTransition, requestLocked, canReturn, handleTransitionStatus } = review;
   const [panelTab, setPanelTab] = useState('feedback');
   useEffect(() => {
@@ -85,21 +86,23 @@ export default function InstructorFeedbackPanel({ review, selectedSection, proje
           <SectionEvidenceTab review={review} selectedSection={selectedSection} />
         )}
 
-        {panelTab === 'history' && (
-          <ul className="space-y-1.5">
-            {(review.orderedRequests || []).map(request => (
-              <li key={request.id} className="flex items-center justify-between gap-2 rounded-lg border border-(--border-light) px-2.5 py-2 text-[11px]">
-                <span className="font-semibold text-(--text-secondary)">
-                  {request.requestedAt ? formatDateTime(request.requestedAt, i18n.language) : t('status.UNKNOWN')}
-                </span>
-                <span className="font-black uppercase text-(--text-tertiary)">{request.status}</span>
-              </li>
-            ))}
-            {(review.orderedRequests || []).length === 0 && (
+        {panelTab === 'history' && (() => {
+          // ponytail: one card — the latest created published root of the
+          // immediately previous round for this section. Same component as
+          // the Feedback tab, read-only. updatedAt never orders.
+          const previous = selectPreviousCard(
+            review.feedbackItems, review.orderedRequests, review.activeRequestId, selectedSection?.id);
+          if (!previous) {
+            return (
               <p className="py-2 text-center text-[11px] italic text-(--text-tertiary)">{t('studentFeedback.empty')}</p>
-            )}
-          </ul>
-        )}
+            );
+          }
+          return (
+            <ul className="space-y-2">
+              <FeedbackCard item={previous} readOnly />
+            </ul>
+          );
+        })()}
 
       </div>
     </div>
