@@ -5,6 +5,7 @@ import api from '../services/api.js';
 import useUndoDelete from '../components/ui/UndoDelete.jsx';
 import { normalizeSource, resolveAnchor, sourceFingerprint } from '../utils/student/feedbackAnchors.js';
 import { wordDiff } from '../utils/instructor/wordDiff.js';
+import { previousRequest } from '../utils/reviewRounds.js';
 
 export async function loadAllProjectSources(projectId) {
   const sources = [];
@@ -308,19 +309,25 @@ export default function useInstructorReview({ projectId, enabled }) {
   const loadFeedback = useCallback(async () => {
     if (!enabled) return;
     const generation = ++feedbackLoadRef.current;
-    if (orderedRequests.length === 0) {
+    if (orderedRequests.length === 0 || !activeRequestId) {
       setFeedbackItems([]);
       return;
     }
     try {
-      const responses = await Promise.all(orderedRequests.map(request =>
-        api.get(`/api/feedback-requests/${request.id}/feedback`)));
+      // ponytail: the workspace only ever renders the active request plus the
+      // immediately previous returned one (cards, carry-over, History) — load
+      // those two rounds instead of flattening the whole history.
+      const ids = [activeRequestId];
+      const prev = previousRequest(orderedRequests, activeRequestId);
+      if (prev && String(prev.id) !== String(activeRequestId)) ids.push(prev.id);
+      const responses = await Promise.all(ids.map(id =>
+        api.get(`/api/feedback-requests/${id}/feedback`)));
       if (generation !== feedbackLoadRef.current) return;
       setFeedbackItems(responses.flatMap(response => response.data || []));
     } catch {
       setErrorMessage(t('instructor.review.loadFeedbackFailed'));
     }
-  }, [orderedRequests, t, enabled]);
+  }, [orderedRequests, activeRequestId, t, enabled]);
 
   useEffect(() => { if (!enabled) return; loadFeedback(); return () => { feedbackLoadRef.current += 1; }; }, [loadFeedback, enabled]);
 
@@ -461,12 +468,25 @@ export default function useInstructorReview({ projectId, enabled }) {
     if (!enabled) return;
     if (!feedbackLink) return;
     const feedback = feedbackItems.find(item => String(item.id) === String(feedbackLink));
-    if (!feedback) return;
-    selectFeedback(feedback, { focus: true });
-    const search = new URLSearchParams(location.search);
-    search.delete('review');
-    search.delete('feedback');
-    navigate({ pathname: location.pathname, search: search.toString() }, { replace: true });
+    if (feedback) {
+      selectFeedback(feedback, { focus: true });
+      const search = new URLSearchParams(location.search);
+      search.delete('review');
+      search.delete('feedback');
+      navigate({ pathname: location.pathname, search: search.toString() }, { replace: true });
+      return;
+    }
+    // Single-round pool: a deep link may point outside the two loaded rounds.
+    // Fetch that one thread on demand instead of loading all of history.
+    let cancelled = false;
+    api.get(`/api/instructor-feedback/${feedbackLink}`)
+      .then(({ data }) => {
+        if (cancelled || !data?.id) return;
+        mergeThread(data);
+        selectFeedback(data, { focus: true });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, [feedbackLink, feedbackItems, location.pathname, location.search, navigate]);
 
   useEffect(() => {

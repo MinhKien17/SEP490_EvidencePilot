@@ -167,10 +167,10 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
   const mediaAssets = workspace.mediaAssets;
   const papers = workspace.papers;
   const selectedPaper = workspace.selectedPaper;
-  const feedback = useProjectFeedback(isReview ? null : project?.id);
+  const [feedbackRequestId, setFeedbackRequestId] = useState(null);
+  const feedback = useProjectFeedback(isReview ? null : project?.id, isReview ? null : feedbackRequestId);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [activeFeedbackId, setActiveFeedbackId] = useState(null);
-  const [feedbackRequestId, setFeedbackRequestId] = useState(null);
   const [feedbackScope, setFeedbackScope] = useState('section');
   const pendingFeedbackRef = useRef(null);
   const defaultFeedbackRoundRef = useRef(null);
@@ -330,7 +330,15 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
   const openFeedback = (requestId, feedbackId = null, items = feedback.items) => {
     const target = feedbackId && items.find(item => String(item.id) === String(feedbackId));
     if (target) return handleSelectFeedback(target);
-    if (feedbackId) { showToast(t('studentFeedback.reviewUnavailable')); return false; }
+    if (feedbackId) {
+      // Single-round pool: scope to the link's round and let the effect retry
+      // once it loads instead of failing on a not-yet-loaded round.
+      if (requestId && String(feedbackRequestId) !== String(requestId)) {
+        setFeedbackRequestId(requestId);
+        return true;
+      }
+      showToast(t('studentFeedback.reviewUnavailable')); return false;
+    }
     setFeedbackRequestId(requestId || null);
     setFeedbackScope('project');
     setStudentFeedbackOpen(true);
@@ -371,9 +379,13 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
         if (notification.feedbackId) query.set('feedback', notification.feedbackId);
         navigate(`/instructor/requests/${encodeURIComponent(round.projectId)}?${query}`);
       } else if (String(round.projectId) === String(project?.id)) {
-        const items = await feedback.refresh();
-        if (!items || String(projectRef.current?.id) !== String(round.projectId)) return;
-        if (!await openFeedback(round.id, notification.feedbackId, items)) return;
+        // Single-round pool: load the notification's round directly so the
+        // target resolves even when it differs from the viewed round.
+        const { data } = await api.get(`/api/feedback-requests/${round.id}/feedback`);
+        const list = (data || []).map(item => ({ ...item, requestStatus: round.status,
+          instructorName: item.instructorName || round.instructorName }));
+        setFeedbackRequestId(round.id);
+        if (!await openFeedback(round.id, notification.feedbackId, list)) return;
       }
       else {
         if (dirtySectionsRef.current.has(selectedSectionIdRef.current) && !window.confirm(t('unsavedPaperSwitch'))) return;
@@ -405,7 +417,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
     }
     pendingFeedbackRef.current = item;
     setActiveFeedbackId(item.id);
-    setFeedbackRequestId(null);
+    setFeedbackRequestId(item.requestId || null);
     setFeedbackScope('section');
     setStudentFeedbackOpen(true);
     if (String(item.sectionId) === String(selectedSectionId)) {
