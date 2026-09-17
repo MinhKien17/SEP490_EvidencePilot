@@ -71,6 +71,8 @@ async function setupReview(page) {
       json = [];
     } else if (path === `/api/papers/${paperId}/references`) {
       json = [];
+    } else if (path === `/api/papers/${paperId}/references/check`) {
+      json = { checked: true, issues: [] };
     } else {
       state.unhandled.push(`${method} ${path}`);
       return route.fulfill({ status: 404, json: { message: `Unhandled fixture request: ${method} ${path}` } });

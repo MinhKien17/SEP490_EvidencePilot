@@ -214,6 +214,7 @@ const INSTRUCTOR_REVIEW_KEYS = [
   'generateSuggestions', 'generatingSuggestions', 'historicalRoundNotice', 'historyEmpty', 'historyTab',
   'judgmentFeedbackPlaceholder', 'legacySnapshotNotice',
   'loadFeedbackFailed', 'loadReviewSpaceFailed', 'manualFeedback', 'markDone', 'noCheckpointBaseline',
+  'noComparisonBaseline',
   'noEvidenceForSubmission', 'noEvidenceTraces', 'noSectionFeedback', 'noSuggestionIssues', 'openFeedback',
   'overviewConfirmed', 'overviewSections', 'overviewTab', 'paperConfirmations', 'paperReadOnly', 'paperWide', 'pendingState',
   'threadsEmpty', 'useSelection',

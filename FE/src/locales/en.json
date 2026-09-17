@@ -801,6 +801,7 @@
   "collapseNavigation": "Collapse navigation",
   "expandNavigation": "Expand navigation",
   "instructor.review.reviewReturned": "Review returned for revision.",
+  "instructor.review.noComparisonBaseline": "Comparison baseline unavailable for this section — showing submitted content without changes.",
   "instructor.review.saveFeedbackFailed": "Failed to save feedback.",
   "instructor.review.sectionChanged": "section changed",
   "instructor.review.sectionFeedback": "Section feedback",

@@ -801,6 +801,7 @@
   "collapseNavigation": "Thu gọn điều hướng",
   "expandNavigation": "Mở rộng điều hướng",
   "instructor.review.reviewReturned": "Đã trả bài để chỉnh sửa.",
+  "instructor.review.noComparisonBaseline": "Không có mốc so sánh cho phần này — hiển thị nội dung đã nộp, không có thay đổi.",
   "instructor.review.saveFeedbackFailed": "Không thể lưu phản hồi.",
   "instructor.review.sectionChanged": "phần đã thay đổi",
   "instructor.review.sectionFeedback": "Phản hồi theo phần",

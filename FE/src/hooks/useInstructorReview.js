@@ -54,6 +54,7 @@ export default function useInstructorReview({ projectId, enabled }) {
   const [baseline, setBaseline] = useState(null);
   const [submittedSnap, setSubmittedSnap] = useState(null);
   const [baselineSectionId, setBaselineSectionId] = useState(null);
+  const [baselineUnavailable, setBaselineUnavailable] = useState(false);
   const [feedbackDrafts, setFeedbackDrafts] = useState({});
   const draftKey = JSON.stringify([projectId, activeRequestId, selectedSectionId]);
   const { content: feedbackDraft = '', lineReference: feedbackLineRef = '',
@@ -250,24 +251,29 @@ export default function useInstructorReview({ projectId, enabled }) {
 
   useEffect(() => {
     if (!enabled) return;
-    if (!diffEnabled || !activeRequest?.id || !selectedSectionId) { setBaseline(null); setSubmittedSnap(null); setBaselineSectionId(null); return; }
+    if (!diffEnabled || !activeRequest?.id || !selectedSectionId) { setBaseline(null); setSubmittedSnap(null); setBaselineSectionId(null); setBaselineUnavailable(false); return; }
     setBaseline(null);
     setSubmittedSnap(null);
     setBaselineSectionId(null);
+    setBaselineUnavailable(false);
     let cancelled = false;
-    // ponytail: diff compares only review milestones (BASELINE vs SUBMITTED),
-    // never checkpoints or save history.
-    api.get(`/api/feedback-requests/${activeRequest.id}/section-snapshots`, {
+    // ponytail: comparison source is server-resolved (latest earlier RETURNED
+    // BASELINE, else initial assignment baseline, else null) — never compare
+    // rows within the single active request.
+    api.get(`/api/feedback-requests/${activeRequest.id}/comparison-source`, {
       params: { sectionId: selectedSectionId },
     })
       .then(r => {
         if (cancelled) return;
-        const rows = r.data || [];
-        setBaseline(rows.find(s => s.snapshotType === 'BASELINE') || null);
-        setSubmittedSnap(rows.find(s => s.snapshotType === 'SUBMITTED') || null);
+        const data = r.data || {};
+        const submitted = data.submitted || null;
+        const baselineRow = data.baseline || null;
+        setBaseline(baselineRow ? { contentTex: baselineRow.contentTex || '' } : null);
+        setSubmittedSnap(submitted ? { contentTex: submitted.contentTex || '' } : null);
         setBaselineSectionId(selectedSectionId);
+        setBaselineUnavailable(!baselineRow && !!submitted);
       })
-      .catch(() => { if (!cancelled) { setBaseline(null); setSubmittedSnap(null); setBaselineSectionId(null); } });
+      .catch(() => { if (!cancelled) { setBaseline(null); setSubmittedSnap(null); setBaselineSectionId(null); setBaselineUnavailable(false); } });
     return () => { cancelled = true; };
   }, [diffEnabled, activeRequest?.id, selectedSectionId]);
 
@@ -683,6 +689,7 @@ export default function useInstructorReview({ projectId, enabled }) {
     successMessage,
     diffEnabled,
     setDiffEnabled,
+    baselineUnavailable,
     diffOps,
     diffTruncated,
     changeRanges,

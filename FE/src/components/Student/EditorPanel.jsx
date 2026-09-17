@@ -272,6 +272,11 @@ export default function EditorPanel({
                   />
                   <span>{t('instructor.review.showChanges')}</span>
                 </label>
+                {review.diffEnabled && review.baselineUnavailable && (
+                  <span role="status" className="hidden max-w-[220px] truncate text-[10px] font-semibold italic text-(--text-tertiary) md:inline" title={t('instructor.review.noComparisonBaseline')}>
+                    {t('instructor.review.noComparisonBaseline')}
+                  </span>
+                )}
                 <button type="button" onClick={() => switchReviewMode(!showPreview)} aria-pressed={showPreview}
                 className="shrink-0 rounded-md border border-(--border) bg-(--surface-tertiary) px-2.5 py-1 text-[11px] font-bold text-(--text-primary) hover:bg-(--border) focus-visible:ring-2 focus-visible:ring-(--brand) transition-colors">
                 {showPreview ? t('student.workspace.latexLabel') : t('preview')}
@@ -465,6 +470,11 @@ export default function EditorPanel({
                 />
                 <span>{t('instructor.review.showChanges')}</span>
               </label>
+            )}
+            {review && review.diffEnabled && review.baselineUnavailable && (
+              <span role="status" className="hidden max-w-[220px] truncate text-[10px] font-semibold italic text-(--text-tertiary) md:inline" title={t('instructor.review.noComparisonBaseline')}>
+                {t('instructor.review.noComparisonBaseline')}
+              </span>
             )}
             {review && showPreview && (
               <button type="button" onClick={() => switchReviewMode(false)}
