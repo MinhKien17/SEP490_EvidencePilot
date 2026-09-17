@@ -7,19 +7,9 @@ const FEEDBACK_REQUEST_STATUSES = new Set(['PENDING', 'RETURNED', 'REVIEWED']);
 const FEEDBACK_LOCATIONS = new Set(['ATTACHED', 'MODIFIED', 'DETACHED', 'SECTION', 'UNLOCATED']);
 
 export default function FeedbackPanel({ feedback, sectionId, activeId, onSelect, onClose, visible,
-  positions, narrow, requestId, setRequestId, scope, setScope, overlapIds = [], onStudentState, projectId }) {
+  positions, narrow, requestId, setRequestId, scope, setScope, overlapIds = [], projectId }) {
   const { t, i18n } = useTranslation();
   const [threadState, setThreadState] = useState('OPEN');
-  const [studentNotes, setStudentNotes] = useState({});
-  const [studentBusyId, setStudentBusyId] = useState(null);
-  const sendStudentState = (item, status) => {
-    if (!onStudentState || studentBusyId === item.id) return;
-    setStudentBusyId(item.id);
-    Promise.resolve(onStudentState(item, status, studentNotes[item.id] || '')).then(ok => {
-      if (ok) setStudentNotes(prev => ({ ...prev, [item.id]: '' }));
-      setStudentBusyId(current => (current === item.id ? null : current));
-    });
-  };
   const [layout, setLayout] = useState([]);
   const scrollerRef = useRef(null);
   const cardsRef = useRef(new Map());
@@ -197,42 +187,6 @@ export default function FeedbackPanel({ feedback, sectionId, activeId, onSelect,
                     </li>
                   ))}
                 </ul>
-              )}
-              {item.requestStatus === 'RETURNED' && onStudentState && (
-                <div className="space-y-1.5">
-                  {item.studentStatus && (
-                    <p className="text-[10px] font-bold text-(--text-tertiary)">
-                      {t('studentFeedback.studentState', { status: item.studentStatus })}
-                      {item.studentNote ? ` · ${item.studentNote}` : ''}
-                    </p>
-                  )}
-                  <textarea
-                    value={studentNotes[item.id] ?? item.studentNote ?? ''}
-                    onChange={event => setStudentNotes(prev => ({ ...prev, [item.id]: event.target.value }))}
-                    placeholder={t('studentFeedback.studentNotePlaceholder')}
-                    rows={2}
-                    disabled={studentBusyId === item.id}
-                    className="w-full rounded-md border border-(--border) bg-(--surface) px-2 py-1.5 text-xs"
-                  />
-                  <div className="flex gap-1.5">
-                    <button
-                      type="button"
-                      disabled={studentBusyId === item.id}
-                      onClick={() => sendStudentState(item, 'IMPLEMENTED')}
-                      className="flex-1 rounded-md bg-emerald-600 px-2 py-1.5 text-[11px] font-bold text-white disabled:opacity-50"
-                    >
-                      {t('studentFeedback.markFixed')}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={studentBusyId === item.id}
-                      onClick={() => sendStudentState(item, 'WONT_FIX')}
-                      className="flex-1 rounded-md border border-(--border) px-2 py-1.5 text-[11px] font-bold text-(--text-secondary) disabled:opacity-50"
-                    >
-                      {t('studentFeedback.wontFix')}
-                    </button>
-                  </div>
-                </div>
               )}
             </div>}
           </article>;

@@ -460,43 +460,6 @@ export default function useInstructorReview({ projectId, enabled }) {
     }, () => { loadFeedback(); });
   };
 
-  const prepareState = async (feedback, state, note, student) => {
-    setErrorMessage('');
-    try {
-      const { data } = await api.patch(`/api/instructor-feedback/${feedback.id}/state`, {
-        state,
-        expectedRevision: feedback.revision,
-        ...(note?.trim() ? { note: note.trim() } : {}),
-        ...(student?.studentStatus ? { studentStatus: student.studentStatus } : {}),
-        ...(student?.studentNote?.trim() ? { studentNote: student.studentNote.trim() } : {}),
-      });
-      mergeThread(data);
-      return true;
-    } catch (err) {
-      setErrorMessage(err?.response?.data?.message || t('instructor.review.updateStatusFailed'));
-      return false;
-    }
-  };
-
-  const postReply = async (item, content, mediaAssetIds) => {
-    const text = (content || '').trim();
-    if (!enabled || !text || !item?.id || !item?.requestId) return false;
-    setErrorMessage('');
-    try {
-      const { data } = await api.post(`/api/instructor-feedback/${item.id}/replies`, {
-        requestId: item.requestId,
-        content: text,
-        idempotencyKey: crypto.randomUUID(),
-        ...(mediaAssetIds?.length ? { mediaAssetIds } : {}),
-      });
-      mergeThread(data);
-      return true;
-    } catch (err) {
-      setErrorMessage(err?.response?.data?.message || t('instructor.review.replyFailed'));
-      return false;
-    }
-  };
-
   const selectFeedback = (feedback, { focus = false } = {}) => {
     if (feedback.paperId && String(feedback.paperId) !== String(selectedPaperId)) {
       setSelectedPaperId(feedback.paperId);
@@ -723,8 +686,6 @@ export default function useInstructorReview({ projectId, enabled }) {
     handleCancelEdit,
     reanchorThread,
     handleDeleteFeedback,
-    prepareState,
-    postReply,
     selectFeedback,
     handleTransitionStatus,
     handleGenerateSuggestions,

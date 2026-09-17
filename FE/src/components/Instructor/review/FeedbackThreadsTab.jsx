@@ -19,14 +19,10 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
     feedbackDraft, selectedAnchor, editingFeedbackId, updateFeedbackDraft,
     savingFeedback, activeFeedbackId, handleSubmitFeedback, captureSourceSelection,
     handleEditFeedback, handleCancelEdit, handleDeleteFeedback,
-    prepareState, postReply, selectFeedback, errorMessage, successMessage,
+    selectFeedback, errorMessage, successMessage,
   } = review;
-  const [replyDrafts, setReplyDrafts] = useState({});
-  const [replyAttachments, setReplyAttachments] = useState({});
   const [pendingAttachments, setPendingAttachments] = useState({});
-  const [rejectNotes, setRejectNotes] = useState({});
-  const [rejectingId, setRejectingId] = useState(null);
-  const [busyId, setBusyId] = useState(null);
+  const [busyId] = useState(null);
   const pendingReanchor = usePendingReanchor();
   const composerRef = useRef(null);
   useEffect(() => {
@@ -46,36 +42,6 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
       && String(item.sectionId) === String(selectedSection?.id))
     .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || ''))),
     [feedbackItems, activeRequestId, selectedSection?.id]);
-
-  const runState = async (item, state, note) => {
-    setBusyId(item.id);
-    try {
-      const ok = await prepareState(item, state, note);
-      if (ok && state === 'REJECTED') {
-        setRejectNotes(prev => ({ ...prev, [item.id]: '' }));
-        setRejectingId(null);
-      }
-      return ok;
-    } finally {
-      setBusyId(current => (current === item.id ? null : current));
-    }
-  };
-
-  const sendReply = async item => {
-    const text = (replyDrafts[item.id] || '').trim();
-    if (!text) return;
-    setBusyId(item.id);
-    try {
-      const ids = (replyAttachments[item.id] || []).map(entry => entry.id);
-      const ok = await postReply(item, text, ids);
-      if (ok) {
-        setReplyDrafts(prev => ({ ...prev, [item.id]: '' }));
-        setReplyAttachments(prev => ({ ...prev, [item.id]: [] }));
-      }
-    } finally {
-      setBusyId(current => (current === item.id ? null : current));
-    }
-  };
 
   const submitThread = async event => {
     event.preventDefault();
@@ -226,30 +192,6 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
               )}
 
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {item.canMarkDone && (
-                  <button
-                    type="button" disabled={busy} onClick={() => runState(item, 'RESOLVED')}
-                    className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[10px] font-black text-white hover:bg-emerald-700 disabled:opacity-50"
-                  >
-                    {t('instructor.review.resolveThread')}
-                  </button>
-                )}
-                {item.canMarkDone && rejectingId !== item.id && (
-                  <button
-                    type="button" disabled={busy} onClick={() => setRejectingId(item.id)}
-                    className="rounded-lg bg-rose-600 px-2.5 py-1.5 text-[10px] font-black text-white hover:bg-rose-700 disabled:opacity-50"
-                  >
-                    {t('instructor.review.rejectThread')}
-                  </button>
-                )}
-                {item.canReopen && (
-                  <button
-                    type="button" disabled={busy} onClick={() => runState(item, 'OPEN')}
-                    className="rounded-lg border border-(--border) bg-(--surface) px-2.5 py-1.5 text-[10px] font-black text-(--text-secondary) hover:bg-(--surface-secondary) disabled:opacity-50"
-                  >
-                    {t('instructor.review.reopenThread')}
-                  </button>
-                )}
                 {item.canEdit && (
                   <button
                     type="button" disabled={busy} onClick={() => handleEditFeedback(item)}
@@ -284,63 +226,6 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
                   </button>
                 )}
               </div>
-
-              {rejectingId === item.id && (
-                <div className="mt-2 space-y-1.5 rounded-lg border border-rose-200 bg-rose-50/50 p-2 dark:bg-rose-950/20">
-                  <textarea
-                    value={rejectNotes[item.id] || ''}
-                    onChange={event => setRejectNotes(prev => ({ ...prev, [item.id]: event.target.value }))}
-                    placeholder={t('instructor.review.rejectNotePlaceholder')}
-                    rows={2}
-                    disabled={busy}
-                    className="w-full rounded-lg border border-(--border) bg-(--surface) px-2 py-1.5 text-xs text-(--text-primary)"
-                  />
-                  <p className="text-[10px] italic text-(--text-tertiary)">{t('instructor.review.rejectNoteRequired')}</p>
-                  <div className="flex gap-1.5">
-                    <button
-                      type="button" disabled={busy}
-                      onClick={() => runState(item, 'REJECTED', rejectNotes[item.id])}
-                      className="flex-1 rounded-lg bg-rose-600 px-2 py-1.5 text-[10px] font-black text-white hover:bg-rose-700 disabled:opacity-50"
-                    >
-                      {t('confirm')}
-                    </button>
-                    <button
-                      type="button" disabled={busy} onClick={() => setRejectingId(null)}
-                      className="rounded-lg border border-(--border) px-2 py-1.5 text-[10px] font-bold text-(--text-secondary)"
-                    >
-                      {t('cancel')}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {item.publishedAt && activeRequest?.status === 'RETURNED' && (
-                <div className="mt-2 space-y-1.5">
-                  <MediaAssetPicker
-                    projectId={projectId}
-                    labels={pickerLabels}
-                    value={replyAttachments[item.id] || []}
-                    onChange={entries => setReplyAttachments(prev => ({ ...prev, [item.id]: entries }))}
-                    disabled={busy}
-                  />
-                  <div className="flex gap-1.5">
-                  <input
-                    value={replyDrafts[item.id] || ''}
-                    onChange={event => setReplyDrafts(prev => ({ ...prev, [item.id]: event.target.value }))}
-                    placeholder={t('instructor.review.replyPlaceholder')}
-                    disabled={busy}
-                    onKeyDown={event => { if (event.key === 'Enter') sendReply(item); }}
-                    className="min-w-0 flex-1 rounded-lg border border-(--border) bg-(--surface) px-2 py-1.5 text-xs text-(--text-primary)"
-                  />
-                  <button
-                    type="button" disabled={busy || !(replyDrafts[item.id] || '').trim()} onClick={() => sendReply(item)}
-                    className="shrink-0 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[10px] font-black text-white hover:bg-indigo-700 disabled:opacity-50"
-                  >
-                    {t('instructor.review.sendReply')}
-                  </button>
-                  </div>
-                </div>
-              )}
             </li>
           );
         })}
