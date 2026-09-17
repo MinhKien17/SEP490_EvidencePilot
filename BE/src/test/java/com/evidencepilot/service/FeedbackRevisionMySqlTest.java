@@ -1,6 +1,8 @@
 package com.evidencepilot.service;
 
 import com.evidencepilot.service.impl.CheckpointServiceImpl;
+import com.evidencepilot.service.impl.PaperProcessingServiceImpl;
+import com.evidencepilot.service.impl.BlockTreeIngestor;
 import com.evidencepilot.dto.request.InstructorFeedbackRequest;
 import com.evidencepilot.dto.request.SubmitReviewRequest;
 import com.evidencepilot.exception.SubmissionReadinessException;
@@ -49,6 +51,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import({FeedbackServiceImpl.class, FeedbackAnchorService.class, CurrentUserServiceImpl.class,
         SubmissionReadinessService.class, SectionStandardService.class, ProjectCollectionService.class,
+        PaperProcessingServiceImpl.class, BlockTreeIngestor.class,
         com.evidencepilot.service.FeedbackAttachmentService.class,
         FeedbackRevisionMySqlTest.JsonConfig.class})
 class FeedbackRevisionMySqlTest {
@@ -71,6 +74,7 @@ class FeedbackRevisionMySqlTest {
     @Autowired private JdbcTemplate jdbc;
     @Autowired private FeedbackServiceImpl feedback;
     @Autowired private SubmissionReadinessService readiness;
+    @Autowired private PaperProcessingServiceImpl paperService;
     @Autowired private ObjectMapper json;
     @MockBean private AiModelClient model;
     @MockBean private com.evidencepilot.service.DocumentObjectStorage storage;
@@ -78,6 +82,10 @@ class FeedbackRevisionMySqlTest {
     @MockBean private AiGenerationConfigService generationConfig;
     @MockBean private SystemNotificationService notifications;
     @MockBean private CheckpointServiceImpl checkpoints;
+    @MockBean private PaperStandardService paperStandards;
+    @MockBean private TexArchiveBuilder texArchives;
+    @MockBean private com.evidencepilot.service.impl.EvidenceTraceService evidenceTraces;
+    @MockBean private AuditService audits;
 
     @AfterEach
     void clearActor() { SecurityContextHolder.clearContext(); }
@@ -247,7 +255,98 @@ class FeedbackRevisionMySqlTest {
     }
 
     @Test
+    void fullReviewCycleUsesHandoffBaselinesAndApprovesOpenThreads() throws Exception {
+        Fixture f = fixture();
+        // 1. Initial handoff through the real assignment path freezes one baseline row.
+        login(f.instructor());
+        paperService.assignSection(f.paper(), f.first(), f.leader().getId());
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM assignment_section_baselines WHERE project_id=UUID_TO_BIN(?)",
+                Integer.class, f.project().toString())).isEqualTo(1);
+        assertThat(jdbc.queryForObject(
+                "SELECT content_tex FROM assignment_section_baselines WHERE section_id=UUID_TO_BIN(?)",
+                String.class, f.first().toString())).isEqualTo("Original evidence.");
+
+        // 2-4. Student edits, confirms, submits Request A; diff = handoff vs A.
+        edit(f.first(), "Revised evidence.");
+        confirm(f, f.leader(), f.first());
+        confirm(f, f.member(), f.second());
+        login(f.leader());
+        var first = feedback.submitForReview(f.project(),
+                new SubmitReviewRequest(readiness.readiness(f.project()).submissionFingerprint()));
+        login(f.instructor());
+        var sourceA = feedback.getComparisonSource(first.id(), f.first());
+        assertThat(sourceA.baseline().contentTex()).isEqualTo("Original evidence.");
+        assertThat(sourceA.baseline().origin()).isEqualTo("INITIAL_ASSIGNMENT");
+        assertThat(sourceA.submitted().contentTex()).isEqualTo("Revised evidence.");
+
+        // 5-6. Instructor feedback, Return A → the return-time state is the new baseline.
+        var root = feedback.comment(first.id(), new InstructorFeedbackRequest(f.first(), null, "Clarify evidence"));
+        feedback.updateStatus(first.id(), "RETURNED");
+        assertThat(projectStatus(f.project())).isEqualTo("RETURNED");
+
+        // 7-8. Student reads the published thread, edits, confirms, resubmits Request B.
+        login(f.member());
+        assertThat(feedback.getFeedbackItems(first.id())).extracting(item -> item.id()).containsExactly(root.id());
+        login(f.leader());
+        edit(f.first(), "Final evidence.");
+        confirm(f, f.leader(), f.first());
+        // requested_at is second-precision DATETIME: separate the rounds so
+        // newest-first ordering is deterministic.
+        Thread.sleep(1100);
+        var second = feedback.submitForReview(f.project(),
+                new SubmitReviewRequest(readiness.readiness(f.project()).submissionFingerprint()));
+
+        // 9. Diff for B = A-return baseline vs B submitted (not the original handoff).
+        login(f.instructor());
+        var sourceB = feedback.getComparisonSource(second.id(), f.first());
+        assertThat(sourceB.baseline().contentTex()).isEqualTo("Revised evidence.");
+        assertThat(sourceB.baseline().origin()).isEqualTo("RETURN_FOR_REVISION");
+        assertThat(sourceB.submitted().contentTex()).isEqualTo("Final evidence.");
+
+        // 10. Approve B with the OPEN published thread — no closure needed.
+        feedback.updateStatus(second.id(), "REVIEWED");
+        assertThat(projectStatus(f.project())).isEqualTo("APPROVED");
+    }
+
+    @Test
+    void rejectedRequestReturnsToProgressAndResubmitReusesEarlierBaseline() throws Exception {
+        Fixture f = fixture();
+        login(f.instructor());
+        paperService.assignSection(f.paper(), f.first(), f.leader().getId());
+        confirm(f, f.leader(), f.first());
+        confirm(f, f.member(), f.second());
+        login(f.leader());
+        var first = feedback.submitForReview(f.project(),
+                new SubmitReviewRequest(readiness.readiness(f.project()).submissionFingerprint()));
+
+        // Request-level Reject is a separate workflow action: no baseline is written.
+        login(f.instructor());
+        feedback.updateStatus(first.id(), "REJECTED");
+        assertThat(projectStatus(f.project())).isEqualTo("IN_PROGRESS");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM review_section_snapshots WHERE request_id=UUID_TO_BIN(?) AND snapshot_type='BASELINE'",
+                Integer.class, first.id().toString())).isZero();
+
+        // Resubmission still compares against the initial handoff baseline.
+        login(f.leader());
+        edit(f.first(), "Revised after reject.");
+        confirm(f, f.leader(), f.first());
+        // requested_at is second-precision DATETIME: separate the rounds so
+        // newest-first ordering is deterministic.
+        Thread.sleep(1100);
+        var second = feedback.submitForReview(f.project(),
+                new SubmitReviewRequest(readiness.readiness(f.project()).submissionFingerprint()));
+        login(f.instructor());
+        var source = feedback.getComparisonSource(second.id(), f.first());
+        assertThat(source.baseline().contentTex()).isEqualTo("Original evidence.");
+        assertThat(source.baseline().origin()).isEqualTo("INITIAL_ASSIGNMENT");
+        assertThat(source.submitted().contentTex()).isEqualTo("Revised after reject.");
+    }
+
+    @Test
     void concurrentSubmissionsCreateOnlyOnePendingRequest() throws Exception {
+
         Fixture f = fixture();
         confirm(f, f.leader(), f.first());
         confirm(f, f.member(), f.second());

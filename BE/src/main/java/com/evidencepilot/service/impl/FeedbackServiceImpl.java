@@ -268,6 +268,8 @@ public class FeedbackServiceImpl {
 
     private ComparisonSourceDto.Baseline resolveComparisonBaseline(
             Project project, FeedbackRequest active, PaperSection section) {
+        // Round order is requested_at DESC at second precision (same ordering
+        // requireLatestRequest relies on); human-paced rounds are always distinct.
         List<FeedbackRequest> rounds =
                 feedbackRequestRepository.findByProjectIdOrderByRequestedAtDesc(project.getId());
         int activeIndex = -1;
