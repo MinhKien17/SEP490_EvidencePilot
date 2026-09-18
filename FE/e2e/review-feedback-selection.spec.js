@@ -908,3 +908,57 @@ test('Focusing the composer keeps the armed target sticky', async ({ page }) => 
   await expect(page.getByText('Whole section', { exact: true })).toHaveCount(0);
   expect(state.errors).toEqual([]);
 });
+
+test('Edit happens inside the existing card, top stays create-only', async ({ page }) => {
+  const { projectId, state } = await setupEdit(page);
+  await openEditEditor(page, projectId);
+  await beginEdit(page);
+
+  const card = page.locator('li').filter({ has: page.getByRole('button', { name: 'Update feedback', exact: true }) });
+  await expect(card.getByRole('button', { name: 'Update feedback', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save feedback', exact: true })).toHaveCount(0);
+  await card.getByPlaceholder('Write feedback on the selected passage').fill('Tighten this wording please.');
+  await card.getByRole('button', { name: 'Update feedback', exact: true }).click();
+
+  await expect.poll(() => state.patches.length).toBe(1);
+  expect(state.patches[0].content).toBe('Tighten this wording please.');
+  expect(state.patches[0].anchor.from).toBe(6);
+  expect(state.patches[0].anchor.to).toBe(17);
+  expect(state.errors).toEqual([]);
+});
+
+test('Cancel restores the unchanged card', async ({ page }) => {
+  const { projectId, state } = await setupEdit(page);
+  await openEditEditor(page, projectId);
+  await beginEdit(page);
+
+  const card = page.locator('li').filter({ has: page.getByRole('button', { name: 'Update feedback', exact: true }) });
+  await card.getByPlaceholder('Write feedback on the selected passage').fill('Discarded edit.');
+  await card.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+  await expect(page.getByText('Tighten this wording.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save feedback', exact: true })).toBeVisible();
+  expect(state.patches.length).toBe(0);
+  expect(state.errors).toEqual([]);
+});
+
+test('Change Passage mode replaces the range explicitly', async ({ page }) => {
+  const { projectId, state } = await setupEdit(page);
+  await openEditEditor(page, projectId);
+  await beginEdit(page);
+
+  const card = page.locator('li').filter({ has: page.getByRole('button', { name: 'Update feedback', exact: true }) });
+  await card.getByRole('button', { name: 'Change passage', exact: true }).click();
+  await cmSelect(page, 0, 80);
+  // Incidental selection alone must not retarget: still the seeded line.
+  await expect(card.getByText('Line 1', { exact: false }).first()).toBeVisible();
+  await card.getByRole('button', { name: 'Use new selection', exact: true }).click();
+  await expect(card.getByText(/Lines 1–\d+/).first()).toBeVisible();
+  await card.getByRole('button', { name: 'Update feedback', exact: true }).click();
+
+  await expect.poll(() => state.patches.length).toBe(1);
+  expect(state.patches[0].anchor.from).toBe(0);
+  expect(state.patches[0].anchor.to).toBe(80);
+  expect(state.errors).toEqual([]);
+});
+

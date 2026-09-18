@@ -44,32 +44,41 @@ export default function FeedbackCard({ item, active = false, onSelect, readOnly 
         )}
       </Header>
 
-      {(item.attachments || []).length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {item.attachments.map(attachment => (
-            <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer" title={attachment.mimeType}>
-              <img src={attachment.url} alt="" loading="lazy" decoding="async" className="h-14 w-14 rounded-lg border border-(--border) object-cover" />
-            </a>
-          ))}
-        </div>
-      )}
-
-      {(item.replies || []).length > 0 && (
-        <ul className="mt-2 space-y-1.5 border-t border-(--border-light) pt-2">
-          {item.replies.map(reply => (
-            <li key={reply.id} className="rounded-lg bg-(--surface-secondary)/70 px-2 py-1.5">
-              <p className="text-[9px] font-bold text-(--text-tertiary)">
-                {reply.authorName || reply.authorRole} · {formatDateTime(reply.createdAt, i18n.language)}
-              </p>
-              <p className="mt-0.5 whitespace-pre-wrap break-words leading-relaxed text-(--text-primary)">
-                {reply.content}
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
+      <AttachmentThumbs attachments={item.attachments} />
+      <ReplyList replies={item.replies} language={i18n.language} />
 
       {actions}
     </li>
+  );
+}
+
+export function AttachmentThumbs({ attachments }) {
+  if (!(attachments || []).length) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {attachments.map(attachment => (
+        <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer" title={attachment.mimeType}>
+          <img src={attachment.url} alt="" loading="lazy" decoding="async" className="h-14 w-14 rounded-lg border border-(--border) object-cover" />
+        </a>
+      ))}
+    </div>
+  );
+}
+
+export function ReplyList({ replies, language }) {
+  if (!(replies || []).length) return null;
+  return (
+    <ul className="mt-2 space-y-1.5 border-t border-(--border-light) pt-2">
+      {replies.map(reply => (
+        <li key={reply.id} className="rounded-lg bg-(--surface-secondary)/70 px-2 py-1.5">
+          <p className="text-[9px] font-bold text-(--text-tertiary)">
+            {reply.authorName || reply.authorRole} · {formatDateTime(reply.createdAt, language)}
+          </p>
+          <p className="mt-0.5 whitespace-pre-wrap break-words leading-relaxed text-(--text-primary)">
+            {reply.content}
+          </p>
+        </li>
+      ))}
+    </ul>
   );
 }

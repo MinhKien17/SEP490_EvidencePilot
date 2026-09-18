@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import MediaAssetPicker from '../../features/MediaAssetPicker.jsx';
-import FeedbackCard from './FeedbackCard.jsx';
+import FeedbackCard, { AttachmentThumbs, ReplyList } from './FeedbackCard.jsx';
 import { findOverlaps } from '../../../utils/instructor/feedbackOverlap.js';
 import { normalizeSource, selectionLines } from '../../../utils/student/feedbackAnchors.js';
 
 export default function FeedbackThreadsTab({ review, selectedSection, projectId, composerFocusToken = 0 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const {
     feedbackItems, activeRequestId, canCreateRoot,
     feedbackDraft, selectedAnchor, editingFeedbackId, updateFeedbackDraft,
@@ -16,6 +16,10 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
   } = review;
   const [pendingAttachments, setPendingAttachments] = useState({});
   const [busyId] = useState(null);
+  // ponytail: explicit adjust mode — incidental editor selections never
+  // retarget an edit; only "Use new selection" commits a new passage.
+  const [adjustingPassage, setAdjustingPassage] = useState(false);
+  useEffect(() => { setAdjustingPassage(false); }, [editingFeedbackId]);
   const composerRef = useRef(null);
   useEffect(() => {
     if (composerFocusToken > 0) composerRef.current?.focus();
@@ -67,91 +71,138 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
     if (ok) setPendingAttachments(prev => ({ ...prev, [pendingKey]: [] }));
   };
 
+  const useNewSelection = () => {
+    captureSourceSelection();
+    setAdjustingPassage(false);
+  };
+
+  // ponytail: one form, two homes — top composer is create-only, the editing
+  // card renders this same form inline. Called as a plain function (not a
+  // component) so focus and DOM identity survive re-renders.
+  const composerForm = mode => (
+    <form onSubmit={submitThread} className="space-y-2 rounded-xl border border-(--border-light) bg-(--surface-secondary)/50 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {mode === 'edit' && !adjustingPassage && (
+          <button
+            type="button"
+            onClick={captureSourceSelection}
+            disabled={savingFeedback}
+            className="rounded-lg bg-teal-600 px-2.5 py-1.5 text-[10px] font-black text-white hover:bg-teal-700 disabled:opacity-50"
+          >
+            {t('instructor.review.useSelection')}
+          </button>
+        )}
+        {mode === 'edit' && !adjustingPassage && (
+          <button
+            type="button"
+            onClick={() => setAdjustingPassage(true)}
+            disabled={savingFeedback}
+            className="flex items-center gap-1 rounded-lg bg-teal-600 px-2.5 py-1.5 text-[10px] font-black text-white hover:bg-teal-700 disabled:opacity-50"
+          >
+            <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 12h16M4 12l3-3M4 12l3 3M20 12l-3-3M20 12l-3 3" /></svg>
+            {t('instructor.review.changePassage')}
+          </button>
+        )}
+        {mode === 'edit' && adjustingPassage && (
+          <>
+            <button
+              type="button"
+              onClick={useNewSelection}
+              disabled={savingFeedback}
+              className="rounded-lg bg-teal-600 px-2.5 py-1.5 text-[10px] font-black text-white hover:bg-teal-700 disabled:opacity-50"
+            >
+              {t('instructor.review.useNewSelection')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdjustingPassage(false)}
+              disabled={savingFeedback}
+              className="rounded-lg border border-(--border) bg-(--surface) px-2.5 py-1.5 text-[10px] font-bold text-(--text-secondary) disabled:opacity-50"
+            >
+              {t('instructor.review.keepCurrent')}
+            </button>
+          </>
+        )}
+        {!(mode === 'edit' && adjustingPassage) ? (
+          <span className="text-[10px] font-semibold text-(--text-secondary)">
+            {passageLabel}
+          </span>
+        ) : (
+          <span className="text-[10px] font-semibold text-(--text-secondary)">
+            {passageLabel} · {t('instructor.review.adjustPassageHint')}
+          </span>
+        )}
+        {mode === 'edit' && selectedAnchor && !adjustingPassage && (
+          <button
+            type="button"
+            onClick={() => updateFeedbackDraft({ anchor: null })}
+            disabled={savingFeedback}
+            className="rounded-lg border border-(--border) bg-(--surface) px-2.5 py-1.5 text-[10px] font-bold text-(--text-secondary) hover:bg-(--surface-secondary) disabled:opacity-50"
+          >
+            {t('instructor.review.removePassage')}
+          </button>
+        )}
+        <span className="ml-auto">
+          <MediaAssetPicker
+            projectId={projectId}
+            labels={mediaLabels}
+            value={pendingAttachments[pendingKey] || []}
+            onChange={entries => setPendingAttachments(prev => ({ ...prev, [pendingKey]: entries }))}
+            disabled={savingFeedback}
+          />
+        </span>
+      </div>
+      {selectedAnchor && overlap.count > 0 && (
+        <p role="note" className="text-[10px] font-semibold text-(--text-secondary)">
+          {overlap.exactDuplicate
+            ? t('instructor.review.overlapExact')
+            : t('instructor.review.overlapNotice', { count: overlap.count })}{' '}
+          <button
+            type="button"
+            onClick={viewFirstOverlap}
+            className="font-black text-teal-700 underline hover:text-teal-800 dark:text-teal-300"
+          >
+            {t('instructor.review.overlapView')}
+          </button>
+        </p>
+      )}
+      <textarea
+        ref={composerRef}
+        value={feedbackDraft}
+        onChange={event => updateFeedbackDraft({ content: event.target.value })}
+        placeholder={t('instructor.review.composerPlaceholder')}
+        rows={3}
+        disabled={savingFeedback}
+        className="w-full rounded-lg border border-(--border) bg-(--surface) px-2.5 py-2 text-xs text-(--text-primary) focus-visible:ring-2 focus-visible:ring-(--brand)"
+      />
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={savingFeedback || !feedbackDraft.trim()}
+          className="flex-1 rounded-lg bg-indigo-600 px-3 py-2 text-[11px] font-black text-white hover:bg-indigo-700 disabled:opacity-50"
+        >
+          {savingFeedback ? t('saving') : mode === 'edit' ? t('instructor.review.updateFeedback') : t('instructor.review.saveFeedback')}
+        </button>
+        {mode === 'edit' && (
+          <button
+            type="button"
+            onClick={handleCancelEdit}
+            disabled={savingFeedback}
+            className="rounded-lg border border-(--border) bg-(--surface) px-3 py-2 text-[11px] font-bold text-(--text-secondary) disabled:opacity-50"
+          >
+            {t('cancel')}
+          </button>
+        )}
+      </div>
+    </form>
+  );
+
   return (
     <div className="space-y-3">
       {errorMessage && <p role="alert" className="text-rose-700">{errorMessage}</p>}
       {successMessage && <p role="status" className="text-emerald-700">{successMessage}</p>}
 
-      {canCreateRoot && (
-        <form onSubmit={submitThread} className="space-y-2 rounded-xl border border-(--border-light) bg-(--surface-secondary)/50 p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {editingFeedbackId && (
-              <button
-                type="button"
-                onClick={captureSourceSelection}
-                disabled={savingFeedback}
-                className="rounded-lg bg-teal-600 px-2.5 py-1.5 text-[10px] font-black text-white hover:bg-teal-700 disabled:opacity-50"
-              >
-                {t('instructor.review.useSelection')}
-              </button>
-            )}
-            <span className="text-[10px] font-semibold text-(--text-secondary)">
-              {passageLabel}
-            </span>
-            {editingFeedbackId && selectedAnchor && (
-              <button
-                type="button"
-                onClick={() => updateFeedbackDraft({ anchor: null })}
-                disabled={savingFeedback}
-                className="rounded-lg border border-(--border) bg-(--surface) px-2.5 py-1.5 text-[10px] font-bold text-(--text-secondary) hover:bg-(--surface-secondary) disabled:opacity-50"
-              >
-                {t('instructor.review.removePassage')}
-              </button>
-            )}
-            <span className="ml-auto">
-              <MediaAssetPicker
-                projectId={projectId}
-                labels={mediaLabels}
-                value={pendingAttachments[pendingKey] || []}
-                onChange={entries => setPendingAttachments(prev => ({ ...prev, [pendingKey]: entries }))}
-                disabled={savingFeedback}
-              />
-            </span>
-          </div>
-          {selectedAnchor && overlap.count > 0 && (
-            <p role="note" className="text-[10px] font-semibold text-(--text-secondary)">
-              {overlap.exactDuplicate
-                ? t('instructor.review.overlapExact')
-                : t('instructor.review.overlapNotice', { count: overlap.count })}{' '}
-              <button
-                type="button"
-                onClick={viewFirstOverlap}
-                className="font-black text-teal-700 underline hover:text-teal-800 dark:text-teal-300"
-              >
-                {t('instructor.review.overlapView')}
-              </button>
-            </p>
-          )}
-          <textarea
-            ref={composerRef}
-            value={feedbackDraft}
-            onChange={event => updateFeedbackDraft({ content: event.target.value })}
-            placeholder={t('instructor.review.composerPlaceholder')}
-            rows={3}
-            disabled={savingFeedback}
-            className="w-full rounded-lg border border-(--border) bg-(--surface) px-2.5 py-2 text-xs text-(--text-primary) focus-visible:ring-2 focus-visible:ring-(--brand)"
-          />
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={savingFeedback || !feedbackDraft.trim()}
-              className="flex-1 rounded-lg bg-indigo-600 px-3 py-2 text-[11px] font-black text-white hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {savingFeedback ? t('saving') : editingFeedbackId ? t('instructor.review.updateFeedback') : t('instructor.review.saveFeedback')}
-            </button>
-            {editingFeedbackId && (
-              <button
-                type="button"
-                onClick={handleCancelEdit}
-                disabled={savingFeedback}
-                className="rounded-lg border border-(--border) bg-(--surface) px-3 py-2 text-[11px] font-bold text-(--text-secondary) disabled:opacity-50"
-              >
-                {t('cancel')}
-              </button>
-            )}
-          </div>
-        </form>
-      )}
+      {canCreateRoot && !editingFeedbackId && composerForm('create')}
 
       {threads.length === 0 && (
         <p className="py-4 text-center text-[11px] italic text-(--text-tertiary)">
@@ -163,7 +214,17 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
         {threads.map(item => {
           const active = String(item.id) === String(activeFeedbackId);
           const busy = busyId === item.id;
-          return (
+          const isEditing = String(editingFeedbackId) === String(item.id);
+          return isEditing ? (
+            <li
+              key={item.id}
+              className="rounded-xl border border-teal-600 bg-(--surface) p-3 text-xs ring-1 ring-teal-600"
+            >
+              {composerForm('edit')}
+              <AttachmentThumbs attachments={item.attachments} />
+              <ReplyList replies={item.replies} language={i18n.language} />
+            </li>
+          ) : (
             <FeedbackCard
               key={item.id}
               item={item}
