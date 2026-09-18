@@ -280,6 +280,38 @@ export function rehypeChangeRanges(changeRanges = []) {
   };
 }
 
+// Source-offset serializer for exact Preview→source mapping. Wraps mapped
+// text nodes in <span data-ss data-se> so a DOM Range resolves to canonical
+// offsets by position, never by text search. A span is emitted ONLY when its
+// source slice equals its rendered text exactly — entity-decoded text,
+// citations, and KaTeX output stay unmapped and refuse honestly downstream.
+// Wrapper spans are styling-neutral (no classes). `source` must already be
+// LF-normalized so offsets align with the canonical anchor model.
+export function rehypeSourceOffsets(source) {
+  const text = String(source || '');
+  const transformChildren = children => (children || []).flatMap(child => {
+    if (child.type === 'text') {
+      const start = child.position?.start?.offset;
+      const end = child.position?.end?.offset;
+      if (Number.isInteger(start) && Number.isInteger(end) && end > start
+        && text.slice(start, end) === (child.value || '')) {
+        return [{
+          type: 'element',
+          tagName: 'span',
+          properties: { 'data-ss': String(start), 'data-se': String(end) },
+          children: [child],
+        }];
+      }
+      return [child];
+    }
+    if (Array.isArray(child.children)) child.children = transformChildren(child.children);
+    return [child];
+  });
+  return tree => {
+    tree.children = transformChildren(tree.children);
+  };
+}
+
 // Top-level-only scroll anchors (nested inline ranges would skew interpolation).
 export function rehypeAnchors() {
   return tree => {
