@@ -424,6 +424,30 @@ export default function useInstructorReview({ projectId, enabled }) {
     }
   }, [enabled, canCreateRoot, selectedSection, editingFeedbackId]);
 
+  // ponytail: Preview-armed passages share the editor's anchor contract —
+  // offsets are validated against the same normalized source + version, so a
+  // mapped Preview range is indistinguishable from an editor selection.
+  // Anything unmappable never reaches here (the banner refuses it instead).
+  const commitPreviewSelection = useCallback(async ({ from, to }) => {
+    if (!enabled || !canCreateRoot || !selectedSection) return false;
+    const source = normalizeSource(selectedSection.contentTex || '');
+    if (!Number.isInteger(from) || !Number.isInteger(to) || to <= from
+      || to > source.length || !Number.isInteger(selectedSection.version)) return false;
+    try {
+      updateFeedbackDraft({
+        anchor: {
+          from,
+          to,
+          contentVersion: selectedSection.version,
+          fingerprint: await sourceFingerprint(source),
+        }, lineReference: ''
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }, [enabled, canCreateRoot, selectedSection]);
+
   const handleEditFeedback = (item) => {
     selectFeedback(item);
     const key = JSON.stringify([projectId, activeRequestId, item.sectionId]);
@@ -701,6 +725,7 @@ export default function useInstructorReview({ projectId, enabled }) {
     handleSubmitFeedback,
     captureSourceSelection,
     autoCaptureSelection,
+    commitPreviewSelection,
     handleEditFeedback,
     handleCancelEdit,
     handleDeleteFeedback,

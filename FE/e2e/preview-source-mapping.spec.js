@@ -63,3 +63,154 @@ test('empty selection refuses', async ({ page }) => {
   }, MODULE_URL);
   expect(result).toEqual({ unmappable: 'empty-selection' });
 });
+
+const MD_SENTENCE = 'A fish is different from another fish.';
+const MD_CONTENT = [MD_SENTENCE, '', 'Second paragraph here.', '', 'Third paragraph here.'].join('\n');
+
+async function setupMarkdownPreview(page) {
+  const projectId = 'md-preview-project';
+  const paperId = 'md-paper';
+  const sectionId = 'md-section';
+  const roundId = 'md-round';
+  const state = { errors: [], posts: [] };
+
+  page.on('pageerror', error => state.errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem('token', 'md-preview-fixture');
+    localStorage.setItem('role', 'INSTRUCTOR');
+    localStorage.setItem('app_lang', 'en');
+    localStorage.setItem('app_theme', 'light');
+  });
+
+  await page.route('**/api/**', async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const method = request.method();
+    let json;
+
+    if (path === '/api/users/profile') {
+      json = { id: 'instructor-one', role: 'INSTRUCTOR', firstName: 'Test', lastName: 'Instructor' };
+    } else if (path === '/api/notifications' || path === '/api/review-guides'
+      || path === `/api/projects/${projectId}/evidence-traces`
+      || path === `/api/media/projects/${projectId}`) {
+      json = [];
+    } else if (path === '/api/notifications/unread-count') {
+      json = { count: 0 };
+    } else if (path === `/api/projects/${projectId}`) {
+      json = { id: projectId, title: 'Markdown preview fixture', status: 'SUBMITTED_FOR_REVIEW' };
+    } else if (path === `/api/projects/${projectId}/papers`) {
+      json = [{ id: paperId, title: 'Preview paper', originalFilename: 'preview.md', processingStatus: 'READY' }];
+    } else if (path === `/api/projects/${projectId}/sources`) {
+      json = { content: [], last: true };
+    } else if (path === '/api/feedback-requests') {
+      json = [{ id: roundId, projectId, status: 'PENDING', requestedAt: '2026-09-16T08:00:00Z' }];
+    } else if (path === `/api/feedback-requests/${roundId}/submission-snapshot`) {
+      json = { state: 'AVAILABLE', snapshot: {
+        schemaVersion: 1,
+        projectId,
+        papers: [{ id: paperId, title: 'Preview paper', sections: [{
+          id: sectionId, title: 'Introduction', order: 0,
+          contentTex: MD_CONTENT, contentVersion: 1,
+        }] }],
+      } };
+    } else if (method === 'GET' && path === `/api/feedback-requests/${roundId}/feedback`) {
+      json = [];
+    } else if (path === `/api/papers/${paperId}/references`
+      || path === `/api/papers/${paperId}/references/check`) {
+      json = [];
+    } else if (method === 'POST' && path === `/api/feedback-requests/${roundId}/feedback`) {
+      const body = JSON.parse(request.postData() || '{}');
+      state.posts.push(body);
+      json = { id: 'preview-created', requestId: roundId, sectionId, content: body.content,
+        createdAt: '2026-09-16T09:00:00Z', threadState: 'OPEN', pendingState: null,
+        publishedAt: null, lineReference: null, anchor: body.anchor,
+        studentStatus: null, studentNote: null, attachments: [], replies: [],
+        canMarkDone: false, canReopen: false, canEdit: true, canDelete: true };
+    } else {
+      return route.fulfill({ status: 404, json: { message: 'Unhandled fixture request' } });
+    }
+
+    return route.fulfill({ json });
+  });
+
+  return { projectId, state };
+}
+
+async function openMarkdownPreview(page, projectId) {
+  await page.goto(`http://localhost:5173/instructor/requests/${projectId}`);
+  await expect(page.locator('.cm-content')).toContainText('another fish', { timeout: 15000 });
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect(page.locator('.preview-content').getByText(MD_SENTENCE, { exact: true })).toBeVisible();
+}
+
+async function previewDomSelect(page, text, from, to) {
+  await page.evaluate(({ wanted, start, end }) => {
+    const host = document.querySelector('.preview-content');
+    const textNode = [...host.querySelectorAll('*')]
+      .map(el => [...el.childNodes].find(n => n.nodeType === 3 && n.textContent.includes(wanted)))
+      .find(Boolean);
+    const range = document.createRange();
+    range.setStart(textNode, start);
+    range.setEnd(textNode, end);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }, { wanted: text, start: from, end: to });
+  await page.locator('.preview-content').first().dispatchEvent('mouseup');
+}
+
+test('markdown preview selection arms the exact canonical range', async ({ page }) => {
+  const { projectId, state } = await setupMarkdownPreview(page);
+  await openMarkdownPreview(page, projectId);
+
+  // Select "different" (source 10..19) inside the first paragraph's text node.
+  // Offsets are DOM-node-relative; the paragraph renders as one text node.
+  await previewDomSelect(page, 'A fish is different', 10, 19);
+  await expect(page.getByText('Line 1', { exact: true })).toBeVisible();
+  await page.getByPlaceholder('Write feedback on the selected passage').fill('Word choice here.');
+  await page.getByRole('button', { name: 'Save feedback', exact: true }).click();
+
+  await expect.poll(() => state.posts.length).toBe(1);
+  const anchor = state.posts[0].anchor;
+  expect(anchor.from).toBe(10);
+  expect(anchor.to).toBe(19);
+  expect(state.errors).toEqual([]);
+});
+
+test('markdown preview maps the second duplicate fish exactly', async ({ page }) => {
+  const { projectId, state } = await setupMarkdownPreview(page);
+  await openMarkdownPreview(page, projectId);
+
+  // The second "fish" lives at source 33..37 inside the same paragraph node.
+  await previewDomSelect(page, 'another fish.', 33, 37);
+  await expect(page.getByText('Line 1', { exact: true })).toBeVisible();
+  await page.getByPlaceholder('Write feedback on the selected passage').fill('Second fish is vague.');
+  await page.getByRole('button', { name: 'Save feedback', exact: true }).click();
+
+  await expect.poll(() => state.posts.length).toBe(1);
+  expect(state.posts[0].anchor.from).toBe(33);
+  expect(state.posts[0].anchor.to).toBe(37);
+  expect(state.errors).toEqual([]);
+});
+
+test('markdown preview heading selection refuses honestly', async ({ page }) => {
+  const { projectId, state } = await setupMarkdownPreview(page);
+  await openMarkdownPreview(page, projectId);
+
+  // The section heading renders outside .preview-content and carries no
+  // source span: must refuse, never fabricate.
+  await page.evaluate(() => {
+    const heading = [...document.querySelectorAll('h2')]
+      .find(h => h.textContent.includes('Introduction'));
+    const range = document.createRange();
+    range.selectNodeContents(heading);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await page.locator('.preview-content').first().dispatchEvent('mouseup');
+
+  await expect(page.getByText('cannot be attached precisely', { exact: false })).toBeVisible();
+  await expect(page.getByText(/Line \d/, { exact: false })).toHaveCount(0);
+  expect(state.errors).toEqual([]);
+});

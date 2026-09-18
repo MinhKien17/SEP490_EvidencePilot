@@ -10,10 +10,13 @@ import {
   isLatexDialect,
   rehypeAnchors,
   rehypeChangeRanges,
+  rehypeSourceOffsets,
   remarkAssetToggle,
   remarkLatexInline,
   resolveImageSrc,
 } from '../../utils/formatters/markdownBlocks.js';
+import { resolvePreviewRange } from '../../utils/previewSelection.js';
+import { normalizeSource } from '../../utils/student/feedbackAnchors.js';
 import AssetToggle from './AssetToggle.jsx';
 import GeneratedReferences from './GeneratedReferences.jsx';
 
@@ -50,9 +53,11 @@ class PreviewDiffBoundary extends Component {
   }
 }
 
-// Preview text has no source map (block-level data-src-* only; KaTeX has
-// none at all) — every non-collapsed selection is unmappable by construction.
-// Never return offsets or searchable snippets; the parent routes to the Editor.
+// Preview selections resolve through the rendered source map (markdown
+// text-node spans); content the renderer cannot map (KaTeX output, headings,
+// legacy LaTeX HTML) refuses with an unmappable code and the parent shows an
+// honest banner. Never fall back to snippet search — indexOf resolves
+// recurring words to their first occurrence (the phantom-duplicate bug).
 function describePreviewSelection(container) {
   const selection = typeof window === 'undefined' ? null : window.getSelection();
   if (!container || !selection || selection.isCollapsed || selection.rangeCount === 0) return null;
@@ -60,7 +65,10 @@ function describePreviewSelection(container) {
   if (!container.contains(range.commonAncestorContainer)) return null;
   if (!selection.toString().trim()) return null;
   const rect = range.getBoundingClientRect();
-  return { kind: 'preview-selection', rect: { left: rect.left, top: rect.top, bottom: rect.bottom } };
+  const box = { left: rect.left, top: rect.top, bottom: rect.bottom };
+  const mapped = resolvePreviewRange(container);
+  if (mapped.unmappable) return { kind: 'preview-selection', rect: box, unmappable: mapped.unmappable };
+  return { kind: 'preview-selection', rect: box, from: mapped.from, to: mapped.to };
 }
 
 export default function PreviewPane({
@@ -84,19 +92,23 @@ export default function PreviewPane({
   // ponytail: keystrokes stay at 60fps — the full remark+KaTeX parse runs
   // against the deferred value while the editor updates instantly.
   const deferredLatex = useDeferredValue(latex);
-  const useLegacy = isLatexDialect(deferredLatex);
+  // ponytail: normalize once so the parser, the source-offset serializer, and
+  // the anchor contract all measure the same canonical source (raw \r\n
+  // lengths would drift every from/to).
+  const source = useMemo(() => normalizeSource(deferredLatex), [deferredLatex]);
+  const useLegacy = isLatexDialect(source);
   const html = useMemo(
-    () => applyChangeHighlights((useLegacy && (!deferredLatex && generatedReferences.length > 0
+    () => applyChangeHighlights((useLegacy && (!source && generatedReferences.length > 0
       ? ''
-      : renderLatexToHtml(deferredLatex, mediaUrlMap, citationNumbers))), changeRanges, deferredLatex),
-    [changeRanges, citationNumbers, generatedReferences.length, deferredLatex, mediaUrlMap, useLegacy],
+      : renderLatexToHtml(source, mediaUrlMap, citationNumbers))), changeRanges, source),
+    [changeRanges, citationNumbers, generatedReferences.length, source, mediaUrlMap, useLegacy],
   );
-  const markdown = useMemo(() => (!useLegacy ? String(deferredLatex || '') : ''), [deferredLatex, useLegacy]);
+  const markdown = useMemo(() => (!useLegacy ? String(source || '') : ''), [source, useLegacy]);
   const rehypePlugins = useMemo(
-    // Pass changeRanges as plugin options. Calling rehypeChangeRanges here
-    // would hand unified a transformer as an attacher and run it without a tree.
-    () => [rehypeKatex, rehypeAnchors, [rehypeChangeRanges, changeRanges]],
-    [changeRanges],
+    // Pass plugin options as pairs. Calling either serializer here would hand
+    // unified a transformer as an attacher and run it without a tree.
+    () => [rehypeKatex, rehypeAnchors, [rehypeSourceOffsets, source], [rehypeChangeRanges, changeRanges]],
+    [changeRanges, source],
   );
   const remarkPlugins = useMemo(
     () => [
@@ -157,7 +169,7 @@ export default function PreviewPane({
             </div>
           )
         )}
-        {(!deferredLatex && generatedReferences.length === 0 && !useLegacy && markdown.trim() === '') && (
+        {(!source && generatedReferences.length === 0 && !useLegacy && markdown.trim() === '') && (
           <p className="max-w-prose mx-auto text-slate-400 italic">{t('student.workspace.emptyPreview')}</p>
         )}
         <GeneratedReferences references={generatedReferences} className="max-w-prose mx-auto text-slate-700" />

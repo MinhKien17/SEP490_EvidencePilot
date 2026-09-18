@@ -141,12 +141,19 @@ export default function EditorPanel({
     const item = (review?.feedbackItems || feedback?.items || []).find(entry => entry.id === ids[0]);
     if (item) onSelectFeedback?.(item);
   }, [review, feedback?.items, onSelectFeedback]);
-  // ponytail: preview text is unmappable — route to the Editor instead of
-  // string-matching (indexOf resolves recurring words to their first
-  // occurrence: the phantom-duplicate bug). Anchors come only from the Editor.
+  // ponytail: mapped Preview ranges arm the draft exactly like editor
+  // selections (same canonical contract); unmappable content refuses with an
+  // honest banner instead of string-matching (indexOf resolves recurring words
+  // to their first occurrence: the phantom-duplicate bug).
   const handlePreviewSelect = useCallback(result => {
-    if (result?.kind === 'preview-selection' && review) setComplexSelection(result);
-    else setComplexSelection(null);
+    if (result?.kind !== 'preview-selection' || !review) { setComplexSelection(null); return; }
+    if (result.from != null && result.to != null) {
+      setComplexSelection(null);
+      review.commitPreviewSelection?.({ from: result.from, to: result.to });
+      setComposerFocusToken(token => token + 1);
+    } else {
+      setComplexSelection(result);
+    }
   }, [review]);
   const lockPreviewSelection = useCallback(() => {
     setComplexSelection(null);

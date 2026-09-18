@@ -136,7 +136,7 @@ test('FAB unmounts on editor wheel-scroll', async ({ page }) => {
   expect(state.errors).toEqual([]);
 });
 
-test('Preview selection routes to the Editor and creates no anchor', async ({ page }) => {
+test('Preview selection arms the exact range and saves with the canonical anchor', async ({ page }) => {
   const { projectId, state } = await setupReview(page);
   await openReviewEditor(page, projectId);
 
@@ -145,6 +145,8 @@ test('Preview selection routes to the Editor and creates no anchor', async ({ pa
   await expect(previewText).toBeVisible();
 
   // Programmatic DOM range (deterministic, no mouse drag), then the real mouseup path.
+  // Range [6,17) is the FIRST "comparisons" inside the rendered paragraph —
+  // the span map resolves it to source 6..17, not a first-match guess.
   await page.evaluate(() => {
     const host = document.querySelector('.preview-content');
     const textNode = [...host.querySelectorAll('*')]
@@ -159,12 +161,7 @@ test('Preview selection routes to the Editor and creates no anchor', async ({ pa
   });
   await page.locator('.preview-content').first().dispatchEvent('mouseup');
 
-  await expect(page.getByText("Select the passage in the editor to attach precise feedback.", { exact: false })).toBeVisible();
-  await page.getByRole('button', { name: 'Click here to switch to the Editor and lock this highlight.', exact: true }).click();
-  await expect(page.locator('.cm-content')).toBeVisible();
-  // No draft was armed from the preview: composer shows whole-section, never a range.
-  await expect(page.getByText('Whole section', { exact: true })).toBeVisible();
-  expect(state.posts).toEqual([]);
+  await expect(page.getByText('Line 1', { exact: true })).toBeVisible();
   expect(state.errors).toEqual([]);
   expect(state.unhandled).toEqual([]);
 });

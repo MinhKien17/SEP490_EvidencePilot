@@ -816,7 +816,7 @@
   "instructor.review.useNewSelection": "Use new selection",
   "instructor.review.keepCurrent": "Keep current",
   "instructor.review.addComment": "Comment",
-  "instructor.review.previewUnavailableTitle": "Preview selections can't anchor feedback. Select the passage in the editor to attach precise feedback.",
+  "instructor.review.previewUnavailableTitle": "This rendered selection cannot be attached precisely. Select the passage in the editor to attach precise feedback.",
   "instructor.review.previewArmedPassage": "Your editor selection ({{from}}–{{to}}) is still armed — use Feedback to attach it.",
   "instructor.review.previewUnavailableAction": "Click here to switch to the Editor and lock this highlight.",
   "instructor.review.evidenceTab": "Evidence",

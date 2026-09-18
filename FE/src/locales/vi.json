@@ -816,7 +816,7 @@
   "instructor.review.useNewSelection": "Dùng vùng chọn mới",
   "instructor.review.keepCurrent": "Giữ nguyên",
   "instructor.review.addComment": "Bình luận",
-  "instructor.review.previewUnavailableTitle": "Không thể ghim phản hồi từ vùng chọn trong khung xem trước. Hãy bôi đen đoạn văn trong trình soạn thảo để ghim phản hồi chính xác.",
+  "instructor.review.previewUnavailableTitle": "Vùng chọn trong khung xem trước này không thể ghim chính xác. Hãy bôi đen đoạn văn trong trình soạn thảo để ghim phản hồi chính xác.",
   "instructor.review.previewArmedPassage": "Vùng chọn ({{from}}–{{to}}) trong trình soạn thảo vẫn đang giữ — mở Phản hồi để ghim.",
   "instructor.review.previewUnavailableAction": "Nhấn vào đây để chuyển sang Editor và khóa highlight.",
   "instructor.review.evidenceTab": "Bằng chứng",
