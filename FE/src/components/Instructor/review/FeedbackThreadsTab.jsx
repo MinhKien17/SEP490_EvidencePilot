@@ -83,25 +83,26 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
     <form onSubmit={submitThread} className="space-y-2 rounded-xl border border-(--border-light) bg-(--surface-secondary)/50 p-3">
       <div className="flex flex-wrap items-center gap-2">
         {mode === 'edit' && !adjustingPassage && (
-          <button
-            type="button"
-            onClick={captureSourceSelection}
-            disabled={savingFeedback}
-            className="rounded-lg bg-teal-600 px-2.5 py-1.5 text-[10px] font-black text-white hover:bg-teal-700 disabled:opacity-50"
-          >
-            {t('instructor.review.useSelection')}
-          </button>
-        )}
-        {mode === 'edit' && !adjustingPassage && (
-          <button
-            type="button"
-            onClick={() => setAdjustingPassage(true)}
-            disabled={savingFeedback}
-            className="flex items-center gap-1 rounded-lg bg-teal-600 px-2.5 py-1.5 text-[10px] font-black text-white hover:bg-teal-700 disabled:opacity-50"
-          >
-            <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 12h16M4 12l3-3M4 12l3 3M20 12l-3-3M20 12l-3 3" /></svg>
-            {t('instructor.review.changePassage')}
-          </button>
+          <div data-testid="passage-controls" className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setAdjustingPassage(true)}
+              disabled={savingFeedback}
+              className="rounded-lg bg-teal-600 px-2.5 py-1.5 text-[10px] font-black text-white hover:bg-teal-700 disabled:opacity-50"
+            >
+              {t('instructor.review.changePassage')}
+            </button>
+            {selectedAnchor && (
+              <button
+                type="button"
+                onClick={() => updateFeedbackDraft({ anchor: null })}
+                disabled={savingFeedback}
+                className="rounded-lg bg-rose-600 px-2.5 py-1.5 text-[10px] font-black text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                {t('instructor.review.removePassage')}
+              </button>
+            )}
+          </div>
         )}
         {mode === 'edit' && adjustingPassage && (
           <>
@@ -132,25 +133,6 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
             {passageLabel} · {t('instructor.review.adjustPassageHint')}
           </span>
         )}
-        {mode === 'edit' && selectedAnchor && !adjustingPassage && (
-          <button
-            type="button"
-            onClick={() => updateFeedbackDraft({ anchor: null })}
-            disabled={savingFeedback}
-            className="rounded-lg border border-(--border) bg-(--surface) px-2.5 py-1.5 text-[10px] font-bold text-(--text-secondary) hover:bg-(--surface-secondary) disabled:opacity-50"
-          >
-            {t('instructor.review.removePassage')}
-          </button>
-        )}
-        <span className="ml-auto">
-          <MediaAssetPicker
-            projectId={projectId}
-            labels={mediaLabels}
-            value={pendingAttachments[pendingKey] || []}
-            onChange={entries => setPendingAttachments(prev => ({ ...prev, [pendingKey]: entries }))}
-            disabled={savingFeedback}
-          />
-        </span>
       </div>
       {selectedAnchor && overlap.count > 0 && (
         <p role="note" className="text-[10px] font-semibold text-(--text-secondary)">
@@ -175,6 +157,18 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
         disabled={savingFeedback}
         className="w-full rounded-lg border border-(--border) bg-(--surface) px-2.5 py-2 text-xs text-(--text-primary) focus-visible:ring-2 focus-visible:ring-(--brand)"
       />
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-wide text-(--text-tertiary)">{t('instructor.review.attachments')}</p>
+        <div className="mt-1">
+          <MediaAssetPicker
+            projectId={projectId}
+            labels={mediaLabels}
+            value={pendingAttachments[pendingKey] || []}
+            onChange={entries => setPendingAttachments(prev => ({ ...prev, [pendingKey]: entries }))}
+            disabled={savingFeedback}
+          />
+        </div>
+      </div>
       <div className="flex gap-2">
         <button
           type="submit"

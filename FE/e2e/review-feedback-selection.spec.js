@@ -891,13 +891,14 @@ test('Create auto-arms multi-line selections with a line range label', async ({ 
   expect(state.errors).toEqual([]);
 });
 
-test('Create has no Use-selection step; edit keeps the explicit control', async ({ page }) => {
+test('Create has no Use-selection step; edit has none either', async ({ page }) => {
   const { projectId, state } = await setupEdit(page);
   await openEditEditor(page, projectId);
 
   await expect(page.getByRole('button', { name: 'Use editor selection', exact: true })).toHaveCount(0);
   await beginEdit(page);
-  await expect(page.getByRole('button', { name: 'Use editor selection', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Use editor selection', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Use new selection', exact: true })).toHaveCount(0);
   expect(state.errors).toEqual([]);
 });
 
@@ -906,6 +907,140 @@ test('Media control lives in the target row', async ({ page }) => {
   await openEditEditor(page, projectId);
 
   await expect(page.getByRole('button', { name: 'Add media', exact: true })).toBeVisible();
+  expect(state.errors).toEqual([]);
+});
+
+const MEDIA_CONTENT = ['Alpha comparisons beta comparisons gamma.',
+  ...Array.from({ length: 10 }, (_, i) => `Filler line ${i}.`)].join('\n\n');
+const MEDIA_ASSETS = ['fig-one.png', 'fig-two.png', 'fig-three.png'].map((name, i) => ({
+  id: `media-${i + 1}`, mimeType: 'image/png', texFilename: name,
+}));
+
+async function setupMedia(page) {
+  const projectId = 'media-project';
+  const paperId = 'media-paper';
+  const sectionId = 'media-section';
+  const roundId = 'media-round';
+  const state = { errors: [], posts: [] };
+
+  page.on('pageerror', error => state.errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem('token', 'media-fixture');
+    localStorage.setItem('role', 'INSTRUCTOR');
+    localStorage.setItem('app_lang', 'en');
+    localStorage.setItem('app_theme', 'light');
+  });
+
+  await page.route('**/api/**', async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const method = request.method();
+    let json;
+
+    if (path === '/api/users/profile') {
+      json = { id: 'instructor-one', role: 'INSTRUCTOR', firstName: 'Test', lastName: 'Instructor' };
+    } else if (path === '/api/notifications' || path === '/api/review-guides'
+      || path === `/api/projects/${projectId}/evidence-traces`) {
+      json = [];
+    } else if (path === `/api/media/projects/${projectId}`) {
+      json = MEDIA_ASSETS;
+    } else if (path === '/api/media/urls' && method === 'POST') {
+      const { ids } = JSON.parse(request.postData() || '{}');
+      json = Object.fromEntries((ids || []).map(id => [id, `https://cdn.test/${id}.png`]));
+    } else if (path === '/api/notifications/unread-count') {
+      json = { count: 0 };
+    } else if (path === `/api/projects/${projectId}`) {
+      json = { id: projectId, title: 'Media fixture', status: 'SUBMITTED_FOR_REVIEW' };
+    } else if (path === `/api/projects/${projectId}/papers`) {
+      json = [{ id: paperId, title: 'Media paper', originalFilename: 'media.tex', processingStatus: 'READY' }];
+    } else if (path === `/api/projects/${projectId}/sources`) {
+      json = { content: [], last: true };
+    } else if (path === '/api/feedback-requests') {
+      json = [{ id: roundId, projectId, status: 'PENDING', requestedAt: '2026-09-16T08:00:00Z' }];
+    } else if (path === `/api/feedback-requests/${roundId}/submission-snapshot`) {
+      json = { state: 'AVAILABLE', snapshot: {
+        schemaVersion: 1,
+        projectId,
+        papers: [{ id: paperId, title: 'Media paper', sections: [{
+          id: sectionId, title: 'Introduction', order: 0,
+          contentTex: MEDIA_CONTENT, contentVersion: 1,
+        }] }],
+      } };
+    } else if (method === 'GET' && path === `/api/feedback-requests/${roundId}/feedback`) {
+      json = [];
+    } else if (method === 'POST' && path === `/api/feedback-requests/${roundId}/feedback`) {
+      const body = JSON.parse(request.postData() || '{}');
+      state.posts.push(body);
+      json = { id: 'media-created', requestId: roundId, sectionId, content: body.content,
+        createdAt: '2026-09-16T09:00:00Z', threadState: 'OPEN', pendingState: null,
+        publishedAt: null, lineReference: null, anchor: body.anchor,
+        studentStatus: null, studentNote: null, attachments: [], replies: [],
+        canMarkDone: false, canReopen: false, canEdit: true, canDelete: true };
+    } else if (path === `/api/papers/${paperId}/references`
+      || path === `/api/papers/${paperId}/references/check`) {
+      json = [];
+    } else {
+      return route.fulfill({ status: 404, json: { message: 'Unhandled fixture request' } });
+    }
+
+    return route.fulfill({ json });
+  });
+
+  return { projectId, state };
+}
+
+test('Attachments render below the message with header and working removal', async ({ page }) => {
+  const { projectId, state } = await setupMedia(page);
+  await page.goto('http://localhost:5173/instructor/requests/media-project');
+  await expect(page.locator('.cm-content')).toContainText('Alpha comparisons', { timeout: 15000 });
+  await expect.poll(() => page.evaluate(
+    () => document.querySelector('.cm-editor')?.__cmView?.state.doc.length)).toBe(MEDIA_CONTENT.length);
+
+  await cmSelect(page, 6, 17);
+  await page.getByRole('button', { name: 'Comment', exact: true }).click();
+  const composer = page.locator('form').filter({ has: page.getByPlaceholder('Write feedback on the selected passage') });
+  await composer.getByPlaceholder('Write feedback on the selected passage').fill('Check these figures.');
+  await composer.getByRole('button', { name: 'Add media', exact: true }).click();
+  for (const name of ['fig-one.png', 'fig-two.png', 'fig-three.png']) {
+    await page.getByRole('button', { name }).click();
+  }
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+
+  // DOM order: textarea, Attachments header, thumbnails, Save.
+  const order = await composer.evaluate(node => {
+    const textarea = node.querySelector('textarea');
+    const header = [...node.querySelectorAll('p')].find(p => p.textContent === 'Attachments');
+    const thumbs = [...node.querySelectorAll('img')];
+    const save = node.querySelector('button[type="submit"]');
+    if (!textarea || !header || thumbs.length !== 3 || !save) return 'missing';
+    const pos = el => textarea.compareDocumentPosition(el);
+    const AFTER = Node.DOCUMENT_POSITION_FOLLOWING;
+    return (pos(header) & AFTER) && (pos(thumbs[0]) & AFTER)
+      && (header.compareDocumentPosition(thumbs[0]) & AFTER)
+      && (thumbs[0].compareDocumentPosition(save) & AFTER) ? 'ordered' : 'unordered';
+  });
+  expect(order).toBe('ordered');
+
+  // Removing one thumbnail leaves two attached on save.
+  await composer.locator('button[aria-label="Delete"]').first().click();
+  await composer.getByRole('button', { name: 'Save feedback', exact: true }).click();
+  await expect.poll(() => state.posts.length).toBe(1);
+  expect(state.posts[0].mediaAssetIds).toHaveLength(2);
+  expect(state.errors).toEqual([]);
+});
+
+test('Edit card keeps Change and Remove in one row', async ({ page }) => {
+  const { projectId, state } = await setupEdit(page);
+  await openEditEditor(page, projectId);
+  await beginEdit(page);
+
+  const card = page.locator('li').filter({ has: page.getByRole('button', { name: 'Update feedback', exact: true }) });
+  const controls = card.getByTestId('passage-controls');
+  await expect(controls.getByRole('button', { name: 'Change passage', exact: true })).toBeVisible();
+  const remove = controls.getByRole('button', { name: 'Remove passage', exact: true });
+  await expect(remove).toBeVisible();
+  await expect(remove).toHaveClass(/rose/);
+  await expect(controls.getByRole('button', { name: 'Change passage', exact: true }).locator('svg')).toHaveCount(0);
   expect(state.errors).toEqual([]);
 });
 
