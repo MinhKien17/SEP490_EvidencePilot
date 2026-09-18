@@ -19,7 +19,7 @@ import { hasActiveExtraction } from '../../utils/student/extractionPolling.js';
 import useInstructorReview, { loadAllProjectSources } from '../../hooks/useInstructorReview.js';
 import { InstructorReviewGuide } from '../../components/Instructor/InstructorFeedbackPanel.jsx';
 import useProjectFeedback from '../../hooks/useProjectFeedback.js';
-import { feedbackKeys, upsertThread } from '../../services/feedbackKeys.js';
+import { feedbackKeys } from '../../services/feedbackKeys.js';
 import { usePaperReferences } from '../../hooks/usePaperReferences.js';
 import { normalizeSource } from '../../utils/student/feedbackAnchors.js';
 import { isReferenceSectionTitle } from '../../utils/formatters/latexHtml.js';
