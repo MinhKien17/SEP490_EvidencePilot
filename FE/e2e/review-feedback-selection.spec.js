@@ -323,8 +323,8 @@ test('Text-only edit preserves the stored passage', async ({ page }) => {
   await openEditEditor(page, projectId);
   await beginEdit(page);
 
-  // Seeded passage is shown, not whole-section.
-  await expect(page.getByText('Selected source range 6–17', { exact: true })).toBeVisible();
+  // Seeded passage is shown as a line label, not whole-section.
+  await expect(page.getByText('Line 1', { exact: true })).toBeVisible();
   await page.getByPlaceholder('Write feedback on the selected passage').fill('Tighten this wording please.');
   await page.getByRole('button', { name: 'Update feedback', exact: true }).click();
 
@@ -344,7 +344,7 @@ test('Edit reselect replaces the passage on the same feedback', async ({ page })
     document.querySelector('.cm-editor').__cmView.dispatch({ selection: { anchor: 23, head: 34 } });
   });
   await page.getByRole('button', { name: 'Use editor selection', exact: true }).click();
-  await expect(page.getByText('Selected source range 23–34', { exact: true })).toBeVisible();
+  await expect(page.getByText('Line 1', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Update feedback', exact: true }).click();
 
   await expect.poll(() => state.patches.length).toBe(1);
@@ -624,12 +624,12 @@ test('Armed editor passage survives Preview and saves exactly', async ({ page })
   // Select the SECOND "comparisons" (23-34), arm via FAB, then open Preview.
   await cmSelect(page, 23, 34);
   await page.getByRole('button', { name: 'Comment', exact: true }).click();
-  await expect(page.getByText('Selected source range 23–34', { exact: true })).toBeVisible();
+  await expect(page.getByText('Line 1', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await expect(page.locator('.preview-content').getByText(PREVIEW_SENTENCE, { exact: true })).toBeVisible();
 
   // The armed passage is still consumable while Preview is visible.
-  await expect(page.getByText('Selected source range 23–34', { exact: true })).toBeVisible();
+  await expect(page.getByText('Line 1', { exact: true })).toBeVisible();
   await page.getByPlaceholder('Write feedback on the selected passage').fill('Second comparisons is vague.');
   await page.getByRole('button', { name: 'Save feedback', exact: true }).click();
 
@@ -649,7 +649,7 @@ test('Preview selection with an armed passage keeps it usable', async ({ page })
   await previewDomSelect(page);
 
   await expect(page.getByText('Your editor selection (23–34) is still armed', { exact: false })).toBeVisible();
-  await expect(page.getByText('Selected source range 23–34', { exact: true })).toBeVisible();
+  await expect(page.getByText('Line 1', { exact: true })).toBeVisible();
   expect(state.errors).toEqual([]);
 });
 
@@ -661,7 +661,7 @@ test('Preview selection with nothing armed shows honest guidance', async ({ page
   await previewDomSelect(page);
 
   await expect(page.getByText("Select the passage in the editor to attach precise feedback.", { exact: false })).toBeVisible();
-  await expect(page.getByText(/Selected source range \d+–\d+/)).toHaveCount(0);
+  await expect(page.getByText('Whole section', { exact: true })).toBeVisible();
   expect(state.errors).toEqual([]);
 });
 
@@ -864,5 +864,47 @@ test('Editor highlights carry-over plus active feedback, never older rounds', as
   expect(ids).toEqual(['thread-b', 'thread-c', 'thread-d']);
   // The N-2 round is never even fetched.
   expect(state.feedbackCalls).not.toContain('round-1');
+  expect(state.errors).toEqual([]);
+});
+
+test('Create auto-arms multi-line selections with a line range label', async ({ page }) => {
+  const { projectId, state } = await setupEdit(page);
+  await openEditEditor(page, projectId);
+
+  // Span line 1 into the filler lines without touching any button.
+  await page.evaluate(() => {
+    document.querySelector('.cm-editor').__cmView.dispatch({ selection: { anchor: 0, head: 80 } });
+  });
+  await expect(page.getByText(/Lines 1–\d+/, { exact: false }).first()).toBeVisible();
+  expect(state.errors).toEqual([]);
+});
+
+test('Create has no Use-selection step; edit keeps the explicit control', async ({ page }) => {
+  const { projectId, state } = await setupEdit(page);
+  await openEditEditor(page, projectId);
+
+  await expect(page.getByRole('button', { name: 'Use editor selection', exact: true })).toHaveCount(0);
+  await beginEdit(page);
+  await expect(page.getByRole('button', { name: 'Use editor selection', exact: true })).toBeVisible();
+  expect(state.errors).toEqual([]);
+});
+
+test('Media control lives in the target row', async ({ page }) => {
+  const { projectId, state } = await setupEdit(page);
+  await openEditEditor(page, projectId);
+
+  await expect(page.getByRole('button', { name: 'Add media', exact: true })).toBeVisible();
+  expect(state.errors).toEqual([]);
+});
+
+test('Focusing the composer keeps the armed target sticky', async ({ page }) => {
+  const { projectId, state } = await setupEdit(page);
+  await openEditEditor(page, projectId);
+
+  await cmSelect(page, 23, 34);
+  await expect(page.getByText('Line 1', { exact: true })).toBeVisible();
+  await page.getByPlaceholder('Write feedback on the selected passage').click();
+  await expect(page.getByText('Line 1', { exact: true })).toBeVisible();
+  await expect(page.getByText('Whole section', { exact: true })).toHaveCount(0);
   expect(state.errors).toEqual([]);
 });

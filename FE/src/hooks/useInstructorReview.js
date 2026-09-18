@@ -400,6 +400,30 @@ export default function useInstructorReview({ projectId, enabled }) {
     }
   };
 
+  // ponytail: create-mode auto-arm — every non-empty editor selection becomes
+  // the draft target without a confirmation click. Silent on empty/collapsed
+  // (that must NOT clear an armed passage — stickiness lives in the draft
+  // store), skipped entirely while editing (seeded passages are explicit).
+  const autoCaptureSelection = useCallback(async () => {
+    if (!enabled || !canCreateRoot || !selectedSection || editingFeedbackId) return;
+    const range = sourceEditorRef.current?.getSelectionRange?.();
+    const source = normalizeSource(selectedSection.contentTex || '');
+    if (!range || range.to <= range.from || range.to > source.length
+      || !Number.isInteger(selectedSection.version)) return;
+    try {
+      updateFeedbackDraft({
+        anchor: {
+          from: range.from,
+          to: range.to,
+          contentVersion: selectedSection.version,
+          fingerprint: await sourceFingerprint(source),
+        }, lineReference: ''
+      });
+    } catch {
+      // Silent by design — the composer keeps its previous target.
+    }
+  }, [enabled, canCreateRoot, selectedSection, editingFeedbackId]);
+
   const handleEditFeedback = (item) => {
     selectFeedback(item);
     const key = JSON.stringify([projectId, activeRequestId, item.sectionId]);
@@ -676,6 +700,7 @@ export default function useInstructorReview({ projectId, enabled }) {
     feedbackFocusToken,
     handleSubmitFeedback,
     captureSourceSelection,
+    autoCaptureSelection,
     handleEditFeedback,
     handleCancelEdit,
     handleDeleteFeedback,

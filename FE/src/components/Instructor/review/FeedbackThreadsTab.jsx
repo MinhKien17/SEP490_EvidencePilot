@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import MediaAssetPicker from '../../features/MediaAssetPicker.jsx';
 import FeedbackCard from './FeedbackCard.jsx';
 import { findOverlaps } from '../../../utils/instructor/feedbackOverlap.js';
+import { normalizeSource, selectionLines } from '../../../utils/student/feedbackAnchors.js';
 
 export default function FeedbackThreadsTab({ review, selectedSection, projectId, composerFocusToken = 0 }) {
   const { t } = useTranslation();
@@ -21,12 +22,24 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
   }, [composerFocusToken]);
   // ponytail: picker picks keyed by message so composer/reply drafts never mix.
   const pendingKey = editingFeedbackId || 'new';
-  const pickerLabels = {
-    selectMedia: t('instructor.review.selectMedia'),
+  // ponytail: human line target, never raw offsets. Create mode arms
+  // automatically (see autoCaptureSelection); edit mode keeps the explicit
+  // button so reviewing never clobbers a seeded passage.
+  const passageLines = useMemo(() => {
+    if (!selectedAnchor || !selectedSection) return null;
+    return selectionLines(selectedSection.contentTex || '', selectedAnchor.from, selectedAnchor.to);
+  }, [selectedAnchor, selectedSection]);
+  const passageLabel = !selectedAnchor || !passageLines
+    ? t('instructor.review.wholeSection')
+    : passageLines.first === passageLines.last
+      ? t('instructor.review.selectionLine', { line: passageLines.first })
+      : t('instructor.review.selectionLines', { from: passageLines.first, to: passageLines.last });
+  const mediaLabels = useMemo(() => ({
+    selectMedia: t('instructor.review.addMedia'),
     title: t('instructor.review.mediaTitle'),
     empty: t('instructor.review.mediaEmpty'),
     done: t('instructor.review.mediaDone'),
-  };
+  }), [t]);
 
   const threads = useMemo(() => (feedbackItems || [])
     .filter(item => String(item.requestId) === String(activeRequestId)
@@ -62,18 +75,18 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
       {canCreateRoot && (
         <form onSubmit={submitThread} className="space-y-2 rounded-xl border border-(--border-light) bg-(--surface-secondary)/50 p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={captureSourceSelection}
-              disabled={savingFeedback}
-              className="rounded-lg bg-teal-600 px-2.5 py-1.5 text-[10px] font-black text-white hover:bg-teal-700 disabled:opacity-50"
-            >
-              {t('instructor.review.useSelection')}
-            </button>
+            {editingFeedbackId && (
+              <button
+                type="button"
+                onClick={captureSourceSelection}
+                disabled={savingFeedback}
+                className="rounded-lg bg-teal-600 px-2.5 py-1.5 text-[10px] font-black text-white hover:bg-teal-700 disabled:opacity-50"
+              >
+                {t('instructor.review.useSelection')}
+              </button>
+            )}
             <span className="text-[10px] font-semibold text-(--text-secondary)">
-              {selectedAnchor
-                ? t('instructor.review.selectionReady', { from: selectedAnchor.from, to: selectedAnchor.to })
-                : t('instructor.review.wholeSection')}
+              {passageLabel}
             </span>
             {editingFeedbackId && selectedAnchor && (
               <button
@@ -85,6 +98,15 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
                 {t('instructor.review.removePassage')}
               </button>
             )}
+            <span className="ml-auto">
+              <MediaAssetPicker
+                projectId={projectId}
+                labels={mediaLabels}
+                value={pendingAttachments[pendingKey] || []}
+                onChange={entries => setPendingAttachments(prev => ({ ...prev, [pendingKey]: entries }))}
+                disabled={savingFeedback}
+              />
+            </span>
           </div>
           {selectedAnchor && overlap.count > 0 && (
             <p role="note" className="text-[10px] font-semibold text-(--text-secondary)">
@@ -108,13 +130,6 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
             rows={3}
             disabled={savingFeedback}
             className="w-full rounded-lg border border-(--border) bg-(--surface) px-2.5 py-2 text-xs text-(--text-primary) focus-visible:ring-2 focus-visible:ring-(--brand)"
-          />
-          <MediaAssetPicker
-            projectId={projectId}
-            labels={pickerLabels}
-            value={pendingAttachments[pendingKey] || []}
-            onChange={entries => setPendingAttachments(prev => ({ ...prev, [pendingKey]: entries }))}
-            disabled={savingFeedback}
           />
           <div className="flex gap-2">
             <button

@@ -101,6 +101,18 @@ export function remapAnchor(anchor, after, changes) {
     from: from >= to ? null : from, to: from >= to ? null : to } };
 }
 
+// Human line span for a canonical source range (1-based, over normalized
+// text so offsets line up with stored anchors). Null when there is no range.
+export function selectionLines(text, from, to) {
+  const source = normalizeSource(text);
+  if (!Number.isInteger(from) || !Number.isInteger(to) || source.length === 0) return null;
+  const start = Math.max(0, Math.min(from, source.length));
+  const end = Math.max(0, Math.min(to, source.length));
+  if (end <= start) return null;
+  const lineAt = offset => source.slice(0, offset).split('\n').length;
+  return { first: lineAt(start), last: lineAt(Math.max(start, end - 1)) };
+}
+
 // Pack measured cards around the active anchor; the editor's line geometry stays untouched.
 export function placeFeedbackCards(cards, activeId, gap = 10) {
   const sorted = [...cards].sort((a, b) => Number(b.id === activeId) - Number(a.id === activeId)

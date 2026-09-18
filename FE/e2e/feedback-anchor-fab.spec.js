@@ -106,19 +106,17 @@ async function cmSelect(page, anchor, head) {
   }, { anchor, head });
 }
 
-test('FAB appears on keyboard selection and arms the draft with absolute offsets', async ({ page }) => {
+test('FAB appears on keyboard selection and the draft auto-arms with line label', async ({ page }) => {
   const { projectId, state } = await setupReview(page);
   await openReviewEditor(page, projectId);
 
-  // Select the SECOND "comparisons" (23-34). An indexOf-based anchor would report 6-17.
+  // Select the SECOND "comparisons" (23-34). No confirmation click needed:
+  // create mode arms the draft target automatically with a line label.
   await cmSelect(page, SECOND_FROM, SECOND_TO);
 
   const fab = page.getByRole('button', { name: 'Comment', exact: true });
   await expect(fab).toBeVisible();
-
-  await fab.click();
-  // En-dash is the catalog's separator (see instructor.review.selectionReady).
-  await expect(page.getByText(`Selected source range ${SECOND_FROM}\u2013${SECOND_TO}`, { exact: true })).toBeVisible();
+  await expect(page.getByText('Line 1', { exact: true })).toBeVisible();
   expect(state.posts).toEqual([]);
   expect(state.errors).toEqual([]);
 });
@@ -165,7 +163,7 @@ test('Preview selection routes to the Editor and creates no anchor', async ({ pa
   await page.getByRole('button', { name: 'Click here to switch to the Editor and lock this highlight.', exact: true }).click();
   await expect(page.locator('.cm-content')).toBeVisible();
   // No draft was armed from the preview: composer shows whole-section, never a range.
-  await expect(page.getByText(/Selected source range \d+\u2013\d+/)).toHaveCount(0);
+  await expect(page.getByText('Whole section', { exact: true })).toBeVisible();
   expect(state.posts).toEqual([]);
   expect(state.errors).toEqual([]);
   expect(state.unhandled).toEqual([]);
