@@ -3,17 +3,12 @@ import { formatDateTime } from '../../../utils/formatters/date.js';
 
 const LOCATION_KEYS = new Set(['ATTACHED', 'MODIFIED', 'DETACHED', 'SECTION', 'UNLOCATED']);
 
-function stateChip(state) {
-  if (state === 'RESOLVED') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
-  if (state === 'REJECTED') return 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300';
-  return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
-}
-
 // ponytail: one card for both tabs — FeedbackThreadsTab passes actions,
 // History renders it readOnly with none. No duplicate markup.
+// No ticket-state presentation: thread/pending/student statuses stay in
+// storage for legacy reads but never render as workflow UI.
 export default function FeedbackCard({ item, active = false, onSelect, readOnly = false, actions = null }) {
   const { t, i18n } = useTranslation();
-  const effective = item.pendingState || item.threadState || 'OPEN';
   const location = item.anchor?.current?.status || (item.lineReference ? 'UNLOCATED' : 'SECTION');
   const interactive = !readOnly && typeof onSelect === 'function';
   const Header = interactive ? 'button' : 'div';
@@ -31,14 +26,6 @@ export default function FeedbackCard({ item, active = false, onSelect, readOnly 
               {t('instructor.review.draftBadge')}
             </span>
           )}
-          <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase ${stateChip(effective)}`}>
-            {t(`instructor.review.state${effective.charAt(0) + effective.slice(1).toLowerCase()}`)}
-          </span>
-          {item.pendingState && item.pendingState !== item.threadState && (
-            <span className="text-[9px] font-bold text-(--text-tertiary)">
-              {t('instructor.review.pendingState')}: {item.pendingState}
-            </span>
-          )}
           <span className="ml-auto text-[9px] text-(--text-tertiary)">
             {formatDateTime(item.createdAt, i18n.language)}
           </span>
@@ -53,12 +40,6 @@ export default function FeedbackCard({ item, active = false, onSelect, readOnly 
         {(location === 'DETACHED' || location === 'MODIFIED') && item.anchor?.original?.exact && (
           <span className="mt-1 block rounded bg-(--surface-secondary) p-1.5 text-[10px] italic line-through opacity-60">
             {t('studentFeedback.originalContext')}: {item.anchor.original.exact}
-          </span>
-        )}
-        {item.studentStatus && (
-          <span className="mt-1 block text-[10px] font-bold text-(--text-tertiary)">
-            {t('studentFeedback.studentState', { status: item.studentStatus })}
-            {item.studentNote ? ` · ${item.studentNote}` : ''}
           </span>
         )}
       </Header>

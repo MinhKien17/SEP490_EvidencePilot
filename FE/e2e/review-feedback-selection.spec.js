@@ -212,6 +212,10 @@ test('Thread shows legacy replies read-only with no conversation controls', asyn
 
   await expect(page.getByText('Rewrite this sentence for academic tone.')).toBeVisible();
   await expect(page.getByText('Old discussion line.')).toBeVisible();
+  // No ticket-state presentation: content, attachments and legacy replies stay.
+  await expect(page.getByText('Open', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Resolved', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Pending state')).toHaveCount(0);
   await expect(page.getByPlaceholder('Reply to this thread.')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Resolve', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Reopen', exact: true })).toHaveCount(0);
