@@ -16,6 +16,7 @@ import {
   resolveImageSrc,
 } from '../../utils/formatters/markdownBlocks.js';
 import { resolvePreviewRange } from '../../utils/previewSelection.js';
+import { resolveLatexRange } from '../../utils/formatters/latexSourceMap.js';
 import { normalizeSource } from '../../utils/student/feedbackAnchors.js';
 import AssetToggle from './AssetToggle.jsx';
 import GeneratedReferences from './GeneratedReferences.jsx';
@@ -53,12 +54,13 @@ class PreviewDiffBoundary extends Component {
   }
 }
 
-// Preview selections resolve through the rendered source map (markdown
-// text-node spans); content the renderer cannot map (KaTeX output, headings,
-// legacy LaTeX HTML) refuses with an unmappable code and the parent shows an
-// honest banner. Never fall back to snippet search — indexOf resolves
-// recurring words to their first occurrence (the phantom-duplicate bug).
-function describePreviewSelection(container) {
+// Preview selections resolve through a source map — markdown text-node
+// spans, or the legacy renderer's structural zip (inline elements ↔ scanned
+// spans, both in order). Content no map covers (KaTeX output, headings,
+// tables, prose around constructs) refuses with an unmappable code and the
+// parent shows an honest banner. Never fall back to snippet search — indexOf
+// resolves recurring words to their first occurrence (phantom duplicates).
+function describePreviewSelection(container, source, legacy) {
   const selection = typeof window === 'undefined' ? null : window.getSelection();
   if (!container || !selection || selection.isCollapsed || selection.rangeCount === 0) return null;
   const range = selection.getRangeAt(0);
@@ -66,8 +68,10 @@ function describePreviewSelection(container) {
   if (!selection.toString().trim()) return null;
   const rect = range.getBoundingClientRect();
   const box = { left: rect.left, top: rect.top, bottom: rect.bottom };
-  const mapped = resolvePreviewRange(container);
-  if (mapped.unmappable) return { kind: 'preview-selection', rect: box, unmappable: mapped.unmappable };
+  const mapped = legacy ? resolveLatexRange(container, source) : resolvePreviewRange(container);
+  if (!mapped || mapped.unmappable) {
+    return mapped ? { kind: 'preview-selection', rect: box, unmappable: mapped.unmappable } : null;
+  }
   return { kind: 'preview-selection', rect: box, from: mapped.from, to: mapped.to };
 }
 
@@ -148,7 +152,7 @@ export default function PreviewPane({
       ref={scrollRef}
       className="h-full overflow-y-auto bg-white p-8"
       onScroll={onScroll}
-      onMouseUp={event => onPreviewSelect?.(describePreviewSelection(event.currentTarget))}
+      onMouseUp={event => onPreviewSelect?.(describePreviewSelection(event.currentTarget, source, useLegacy))}
     >
       <div style={{ zoom: zoom / 100 }}>
         {heading && <h2 className="max-w-prose mx-auto text-lg font-bold mb-3 text-slate-800">{heading}</h2>}
