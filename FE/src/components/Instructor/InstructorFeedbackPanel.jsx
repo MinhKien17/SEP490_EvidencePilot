@@ -7,7 +7,7 @@ import FeedbackCard from './review/FeedbackCard.jsx';
 import ReviewOverviewBlock from './review/ReviewOverviewBlock.jsx';
 import { selectPreviousCards } from '../../utils/instructor/historySelector.js';
 
-const ACTION_LABELS = { REVIEWED: 'instructor.review.approve', RETURNED: 'instructor.review.returnForRevision', REJECTED: 'instructor.review.rejectSubmission' };
+const ACTION_LABELS = { REVIEWED: 'instructor.review.approve', RETURNED: 'instructor.review.returnForRevision' };
 
 export function InstructorReviewGuide({ review, selectedSection }) {
   const { t } = useTranslation();
@@ -52,7 +52,6 @@ export default function InstructorFeedbackPanel({ review, selectedSection, proje
       {!requestLocked && <>
         {canReturn && <button type="button" disabled={actionDisabled} onClick={() => setPendingTransition({ requestId: activeRequest.id, targetStatus: 'RETURNED' })} className={`${actionBtn} min-w-[116px] flex-[1.2_1_116px] bg-amber-500`}>{t('instructor.review.returnForRevision')}</button>}
         <button type="button" disabled={actionDisabled} onClick={() => setPendingTransition({ requestId: activeRequest.id, targetStatus: 'REVIEWED' })} className={`${actionBtn} min-w-[76px] flex-[1_1_76px] bg-emerald-600`}>{t('instructor.review.approve')}</button>
-        <button type="button" disabled={actionDisabled} onClick={() => setPendingTransition({ requestId: activeRequest.id, targetStatus: 'REJECTED' })} className={`${actionBtn} min-w-[76px] flex-[1_1_76px] bg-rose-600`}>{t('instructor.review.rejectSubmission')}</button>
       </>}
     </div>
     {errorMessage && <p role="alert" className="text-rose-700">{errorMessage}</p>}
@@ -113,8 +112,7 @@ export default function InstructorFeedbackPanel({ review, selectedSection, proje
       <div className="space-y-4 text-xs">
         <p className="text-(--text-secondary)">
           {pendingTransition?.targetStatus === 'REVIEWED' ? t('instructor.review.finalizeReviewConfirm')
-            : pendingTransition?.targetStatus === 'REJECTED' ? t('instructor.review.rejectConfirm')
-              : `${t('instructor.review.returnForRevision')} · ${draftCount} ${t('instructor.review.draft')}`}
+            : `${t('instructor.review.returnForRevision')} · ${draftCount} ${t('instructor.review.draft')}`}
         </p>
         <div className="flex gap-3 pt-2">
           <button type="button" onClick={() => setPendingTransition(null)} disabled={!!transitioningRequestId}

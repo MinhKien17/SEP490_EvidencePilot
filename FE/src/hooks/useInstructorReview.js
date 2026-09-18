@@ -530,7 +530,7 @@ export default function useInstructorReview({ projectId, enabled }) {
       setRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: res.data.status } : r));
       await loadFeedback();
       setPendingTransition(null);
-      setSuccessMessage(targetStatus === 'REVIEWED' ? t('instructor.review.reviewApproved') : targetStatus === 'REJECTED' ? t('instructor.review.reviewRejected') : t('instructor.review.reviewReturned'));
+      setSuccessMessage(targetStatus === 'REVIEWED' ? t('instructor.review.reviewApproved') : t('instructor.review.reviewReturned'));
       if (targetStatus === 'REVIEWED') {
         setTimeout(() => navigate('/instructor/requests'), 1000);
       }

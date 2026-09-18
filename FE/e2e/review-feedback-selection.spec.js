@@ -219,9 +219,9 @@ test('Thread shows legacy replies read-only with no conversation controls', asyn
   await expect(page.getByPlaceholder('Reply to this thread.')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Resolve', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Reopen', exact: true })).toHaveCount(0);
-  // Request-level Reject is a separate workflow action and must remain —
-  // exactly one Reject button (the thread-level one is gone).
-  await expect(page.getByRole('button', { name: 'Reject', exact: true })).toHaveCount(1);
+  // No conversation controls, and no request-Reject action (Return + Approve only).
+  await expect(page.getByRole('button', { name: 'Reject', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeVisible();
   expect(state.errors).toEqual([]);
 });
 

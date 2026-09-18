@@ -220,7 +220,6 @@ const INSTRUCTOR_REVIEW_KEYS = [
   'overviewConfirmed', 'overviewSections', 'overviewTab', 'paperConfirmations', 'paperReadOnly', 'paperWide',
   'threadsEmpty', 'useSelection',
   'mediaTitle', 'mediaEmpty', 'mediaDone', 'addMedia',
-  'rejectConfirm', 'rejectSubmission',
   'removePassage',
   'changePassage', 'adjustPassageHint', 'useNewSelection', 'keepCurrent',
   'returnForRevision', 'reviewApproved', 'reviewClosed',

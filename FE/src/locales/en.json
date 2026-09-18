@@ -834,8 +834,6 @@
   "instructor.review.overlapExact": "This exact passage already has feedback.",
   "instructor.review.overlapView": "View existing",
   "instructor.review.historicalRoundNotice": "Viewing a previous review round. Content and comments are read-only; switch to the latest round to give feedback.",
-  "instructor.review.rejectSubmission": "Reject",
-  "instructor.review.rejectConfirm": "Reject this submission? The project returns to In Progress without approval.",
   "instructor.review.reviewRejected": "Review rejected.",
   "instructor.review.diffTruncated": "Diff truncated for a very large section.",
   "instructor.review.reviewOverview": "Review overview",

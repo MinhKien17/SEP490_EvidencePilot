@@ -352,7 +352,10 @@ public class FeedbackServiceImpl {
         return switch (next) {
             case RETURNED -> returnReview(feedbackRequestId, currentUser);
             case REVIEWED -> approveReview(feedbackRequestId, currentUser);
-            case REJECTED -> rejectReview(feedbackRequestId, currentUser);
+            // ponytail: request-Reject is retired from the active workflow
+            // (Return covers revision). FeedbackStatus.REJECTED still exists
+            // for legacy rows — reads, history, and comparison-skip honor it.
+            case REJECTED -> throw conflict("Review rejection is retired; use Return for Revision.");
             case PENDING -> throw badRequest("Invalid status: " + status);
         };
     }
@@ -411,29 +414,6 @@ public class FeedbackServiceImpl {
         }
         transition(request, project, FeedbackStatus.REVIEWED, ProjectStatus.APPROVED, now);
         checkpointService.capture(project.getId(), "REVIEW_STATUS:REVIEWED");
-        return FeedbackRequestResponseDto.fromEntity(request);
-    }
-
-    private FeedbackRequestResponseDto rejectReview(UUID id, User currentUser) {
-        FeedbackRequest request = requireFeedbackAccessForUpdate(id, currentUser, true);
-        Project project = lockProject(request);
-        requireLatestRequest(request, project);
-        if (request.getStatus() != FeedbackStatus.PENDING && request.getStatus() != FeedbackStatus.RETURNED) {
-            throw conflict("Illegal transition from " + request.getStatus() + " to REJECTED.");
-        }
-        if (project.getStatus().isReadOnly()) throw conflict("Project is read-only.");
-        List<InstructorFeedback> roots = instructorFeedbackRepository.findByRequestProjectIdForUpdate(project.getId());
-        if (hasInstructorDrafts(roots)) {
-            throw conflict("Publish or delete instructor drafts before rejecting.");
-        }
-        LocalDateTime now = LocalDateTime.now();
-        transition(request, project, FeedbackStatus.REJECTED, ProjectStatus.IN_PROGRESS, now);
-        checkpointService.capture(project.getId(), "REVIEW_STATUS:REJECTED");
-        if (request.getStudent() != null) {
-            systemNotificationService.createNotification(
-                    request.getStudent(), currentUser, "REVIEW_STATUS_CHANGED", request.getId(),
-                    "Review status for project \"" + project.getTitle() + "\" changed to REJECTED.");
-        }
         return FeedbackRequestResponseDto.fromEntity(request);
     }
 

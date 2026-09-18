@@ -326,6 +326,21 @@ class FeedbackServiceImplTest {
     }
 
     @Test
+    void rejectTransitionIsRetired() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student, ProjectStatus.SUBMITTED_FOR_REVIEW);
+        FeedbackRequest request = request(project, instructor, student, FeedbackStatus.PENDING);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+
+        assertThatThrownBy(() -> service().updateStatus(request.getId(), "REJECTED"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409");
+        assertThat(request.getStatus()).isEqualTo(FeedbackStatus.PENDING);
+    }
+
+    @Test
     void approveSucceedsWithOpenThreadsAndNoClosure() {
         User instructor = user(UserRole.INSTRUCTOR);
         User student = user(UserRole.STUDENT);

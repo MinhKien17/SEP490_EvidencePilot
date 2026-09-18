@@ -834,8 +834,6 @@
   "instructor.review.overlapExact": "Đoạn này đã có nhận xét.",
   "instructor.review.overlapView": "Xem nhận xét",
   "instructor.review.historicalRoundNotice": "Đang xem vòng duyệt trước. Nội dung và nhận xét chỉ đọc; chuyển sang vòng mới nhất để nhận xét.",
-  "instructor.review.rejectSubmission": "Từ chối",
-  "instructor.review.rejectConfirm": "Từ chối bài nộp này? Dự án sẽ trở về Trạng thái đang thực hiện mà không được duyệt.",
   "instructor.review.reviewRejected": "Đã từ chối bài duyệt.",
   "instructor.review.diffTruncated": "So sánh bị cắt ngắn vì mục quá lớn.",
   "instructor.review.reviewOverview": "Tổng quan duyệt",

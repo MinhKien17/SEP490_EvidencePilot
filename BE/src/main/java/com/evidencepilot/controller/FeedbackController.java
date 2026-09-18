@@ -200,19 +200,21 @@ public class FeedbackController {
     }
 
     @Operation(summary = "Update feedback request status",
-            description = "Transitions a feedback request to a new status (RETURNED, REVIEWED, or REJECTED) "
-                    + "and sets the project status to ACTIVE. Replaces the old RPC-style status endpoints.")
+            description = "Transitions a feedback request to a new status (RETURNED or REVIEWED). "
+                    + "Request-level REJECTED is retired: stored REJECTED rows remain readable, "
+                    + "but new transitions to REJECTED are rejected. Replaces the old RPC-style status endpoints.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Status updated"),
             @ApiResponse(responseCode = "400", description = "Invalid status value"),
             @ApiResponse(responseCode = "401", description = "Missing or invalid JWT"),
             @ApiResponse(responseCode = "403", description = "Not the assigned instructor"),
-            @ApiResponse(responseCode = "404", description = "Feedback request not found")
+            @ApiResponse(responseCode = "404", description = "Feedback request not found"),
+            @ApiResponse(responseCode = "409", description = "Illegal or retired transition")
     })
     @PatchMapping("/feedback-requests/{id}/status")
     public FeedbackRequestResponseDto updateStatus(
             @Parameter(description = "Feedback request UUID") @PathVariable UUID id,
-            @Parameter(description = "New status: RETURNED, REVIEWED, or REJECTED") @RequestParam String status) {
+            @Parameter(description = "New status: RETURNED or REVIEWED") @RequestParam String status) {
         return feedbackService.updateStatus(id, status);
     }
 }

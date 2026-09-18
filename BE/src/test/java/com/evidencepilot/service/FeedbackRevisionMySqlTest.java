@@ -312,7 +312,7 @@ class FeedbackRevisionMySqlTest {
     }
 
     @Test
-    void rejectedRequestReturnsToProgressAndResubmitReusesEarlierBaseline() throws Exception {
+    void legacyRejectedRequestStillResolvesAroundIt() throws Exception {
         Fixture f = fixture();
         login(f.instructor());
         paperService.assignSection(f.paper(), f.first(), f.leader().getId());
@@ -322,9 +322,16 @@ class FeedbackRevisionMySqlTest {
         var first = feedback.submitForReview(f.project(),
                 new SubmitReviewRequest(readiness.readiness(f.project()).submissionFingerprint()));
 
-        // Request-level Reject is a separate workflow action: no baseline is written.
+        // Request-level Reject is retired: new transitions are refused, while a
+        // legacy REJECTED row stays readable and contributes no baseline.
         login(f.instructor());
-        feedback.updateStatus(first.id(), "REJECTED");
+        assertThatThrownBy(() -> feedback.updateStatus(first.id(), "REJECTED"))
+                .isInstanceOfSatisfying(org.springframework.web.server.ResponseStatusException.class,
+                        error -> assertThat(error.getStatusCode().value()).isEqualTo(409));
+        jdbc.update("UPDATE feedback_requests SET status='REJECTED' WHERE id=UUID_TO_BIN(?)",
+                first.id().toString());
+        jdbc.update("UPDATE projects SET status='IN_PROGRESS' WHERE id=UUID_TO_BIN(?)",
+                f.project().toString());
         assertThat(projectStatus(f.project())).isEqualTo("IN_PROGRESS");
         assertThat(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM review_section_snapshots WHERE request_id=UUID_TO_BIN(?) AND snapshot_type='BASELINE'",
