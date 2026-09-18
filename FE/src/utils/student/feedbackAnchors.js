@@ -112,19 +112,3 @@ export function selectionLines(text, from, to) {
   const lineAt = offset => source.slice(0, offset).split('\n').length;
   return { first: lineAt(start), last: lineAt(Math.max(start, end - 1)) };
 }
-
-// Pack measured cards around the active anchor; the editor's line geometry stays untouched.
-export function placeFeedbackCards(cards, activeId, gap = 10) {
-  const sorted = [...cards].sort((a, b) => Number(b.id === activeId) - Number(a.id === activeId)
-    || a.top - b.top || String(a.id).localeCompare(String(b.id)));
-  const placed = [];
-  // ponytail: quadratic packing over visible cards; use interval indexing if dense reviews become slow.
-  for (const card of sorted) {
-    let y = Math.max(0, card.top);
-    for (const other of [...placed].sort((a, b) => a.y - b.y)) {
-      if (y < other.y + other.height + gap && y + card.height + gap > other.y) y = other.y + other.height + gap;
-    }
-    placed.push({ ...card, y });
-  }
-  return placed;
-}

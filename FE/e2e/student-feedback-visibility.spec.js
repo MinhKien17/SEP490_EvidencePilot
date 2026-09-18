@@ -112,7 +112,6 @@ test('Member sees only latest returned own-section feedback, no status or round 
   await expect(page.getByText('Other section feedback.')).toHaveCount(0);
   await expect(page.getByText('Old round feedback.')).toHaveCount(0);
   // No obsolete thread-status filter and no round selector for members.
-  await page.getByText('Filters', { exact: true }).click();
   await expect(page.getByLabel('Feedback status')).toHaveCount(0);
   await expect(page.locator('select[aria-label="Review round"]')).toHaveCount(0);
   await expect(page.getByText('Round 2 · Returned', { exact: true })).toBeVisible();
@@ -142,7 +141,6 @@ test('Leader sees whole project one round at a time with assignee context', asyn
   const scroller = page.locator('[data-testid="feedback-scroller"]');
 
   // Defaults to the latest returned round: both sections, assignee shown.
-  await page.getByText('Filters', { exact: true }).click();
   await page.getByLabel('Feedback scope').selectOption('project');
   await expect(scroller.getByText('Own section feedback.')).toBeVisible();
   await expect(scroller.getByText('Other section feedback.')).toBeVisible();
@@ -154,5 +152,50 @@ test('Leader sees whole project one round at a time with assignee context', asyn
   await expect(scroller.getByText('Old round feedback.')).toBeVisible();
   await expect(page.getByText('Own section feedback.')).toHaveCount(0);
   await expect(page.getByText('Other section feedback.')).toHaveCount(0);
+  expect(state.errors).toEqual([]);
+});
+
+test('Feedback panel is a compact stacked list with same-row filters', async ({ page }) => {
+  const { projectId, state } = await setupStudent(page, { role: 'LEADER', userId: 'leader-1' });
+  await page.goto(`${baseUrl}/student/projects/${projectId}`);
+  await page.locator('[data-tour="file-panel"]').getByText('Introduction').click();
+  await expect(page.locator('.cm-content')).toContainText('Member section text.', { timeout: 15000 });
+  await page.locator('[data-tour="editor-feedback"]').click();
+  const panel = page.locator('#student-feedback-panel');
+  await expect(panel).toBeVisible();
+  const scroller = page.locator('[data-testid="feedback-scroller"]');
+
+  // Filters are always visible in one row container — no collapsed <details>.
+  const grid = panel.locator('div.grid').first();
+  await expect(grid.getByLabel('Feedback scope')).toBeVisible();
+  await expect(grid.getByLabel('Review round')).toBeVisible();
+  // Defaults: This section + latest returned round.
+  await expect(grid.getByLabel('Feedback scope')).toHaveValue('section');
+  await expect(grid.getByLabel('Review round')).toHaveValue('round-2');
+  // Filter row sits directly above the card list in DOM order.
+  const filtersAboveList = await grid.evaluate((node, scrollerSelector) => {
+    const scrollerNode = document.querySelector(scrollerSelector);
+    return Boolean(node.compareDocumentPosition(scrollerNode) & Node.DOCUMENT_POSITION_FOLLOWING);
+  }, '[data-testid="feedback-scroller"]');
+  expect(filtersAboveList).toBe(true);
+
+  // Stacked cards in section scope: activate the card, then assert normal
+  // flow (no absolute anchor-mirroring) and no connector element.
+  await scroller.getByText('Own section feedback.').click();
+  const sectionCards = scroller.locator('article[data-feedback-card]');
+  await expect(sectionCards.first()).not.toHaveCSS('position', 'absolute');
+  await expect(sectionCards.locator('svg')).toHaveCount(0);
+
+  // Two visible cards, no Go-to dropdown, no overlap buttons, no offscreen note.
+  await page.getByLabel('Feedback scope').selectOption('project');
+  await expect(scroller.getByText('Own section feedback.')).toBeVisible();
+  await expect(scroller.getByText('Other section feedback.')).toBeVisible();
+  const cards = scroller.locator('article[data-feedback-card]');
+  await expect(cards).toHaveCount(2);
+  await expect(cards.first()).not.toHaveCSS('position', 'absolute');
+  await expect(cards.locator('svg')).toHaveCount(0);
+  await expect(panel.locator('select[aria-label="Go to feedback"]')).toHaveCount(0);
+  await expect(panel.getByText('Feedback on this passage')).toHaveCount(0);
+  await expect(panel.getByText(/outside the editor view/)).toHaveCount(0);
   expect(state.errors).toEqual([]);
 });

@@ -96,8 +96,6 @@ export default function EditorPanel({
     });
     return () => cancelAnimationFrame(frame);
   }, [showPreview, editorRef]);
-  const [positions, setPositions] = useState([]);
-  const [overlapIds, setOverlapIds] = useState([]);
   const measureFrameRef = useRef(null);
   const narrow = compact || (availableWidth > 0 && availableWidth < 780);
   const canShowThree = availableWidth >= 1240;
@@ -118,26 +116,17 @@ export default function EditorPanel({
     const seen = new Set(active.map(item => String(item.id)));
     return [...active, ...selectFeedbackForRound(pool, { ...scope, requestId: prev.id }).filter(item => !seen.has(String(item.id)))];
   }, [review?.feedbackItems, feedback?.items, selectedSectionId, review?.activeRequestId, review?.orderedRequests]);
-  const measureFeedback = useCallback(() => {
-    if (measureFrameRef.current != null) return;
-    measureFrameRef.current = requestAnimationFrame(() => {
-      measureFrameRef.current = null;
-      setPositions(editorRef.current?.getFeedbackPositions?.() || []);
-    });
-  }, [editorRef]);
   useEffect(() => {
-    const observer = new ResizeObserver(entries => { setAvailableWidth(entries[0].contentRect.width); measureFeedback(); });
+    const observer = new ResizeObserver(entries => { setAvailableWidth(entries[0].contentRect.width); });
     if (containerRef.current) observer.observe(containerRef.current);
     return () => { observer.disconnect(); cancelAnimationFrame(measureFrameRef.current); measureFrameRef.current = null; };
-  }, [measureFeedback]);
-  useEffect(() => { setOverlapIds([]); measureFeedback(); }, [selectedSectionId, feedbackOpen, measureFeedback]);
+  }, []);
   const [complexSelection, setComplexSelection] = useState(null);
   // Transient comment FAB: coordinates are single-frame truth — any scroll,
   // doc change, collapse, section switch, or Escape unmounts it immediately.
   const [fab, setFab] = useState(null);
   const [composerFocusToken, setComposerFocusToken] = useState(0);
   const handleFeedbackClick = useCallback(ids => {
-    setOverlapIds(ids);
     const item = (review?.feedbackItems || feedback?.items || []).find(entry => entry.id === ids[0]);
     if (item) onSelectFeedback?.(item);
   }, [review, feedback?.items, onSelectFeedback]);
@@ -186,9 +175,9 @@ export default function EditorPanel({
 
   // Sync by source anchors so tall preview blocks (especially tables) can move at their own rate.
   const syncScrollRef = useRef(null);
-  const editorScrollBridge = useCallback(() => { syncScrollRef.current?.('editor'); measureFeedback(); }, [measureFeedback]);
+  const editorScrollBridge = useCallback(() => { syncScrollRef.current?.('editor'); }, []);
   const previewScrollBridge = useCallback(() => { syncScrollRef.current?.('preview'); setFab(null); }, []);
-  const layoutBridge = useCallback(() => { syncScrollRef.current?.(); measureFeedback(); }, [measureFeedback]);
+  const layoutBridge = useCallback(() => { syncScrollRef.current?.(); }, []);
 
   // Recreated per section so pending scrolls reset; both panes start at top.
   useEffect(() => {
@@ -435,7 +424,7 @@ export default function EditorPanel({
         )}
         <div className="flex-1 min-h-0 overflow-hidden">
           <LatexEditor key={review ? `${review.viewMode}-${review.activeRequestId}-${selectedSectionId}` : selectedSectionId || 'no-section'} ref={editorRef} content={displayContent} savedContent={currentSection?.contentTex || ''} savedVersion={currentSection?.version}
-            feedbackItems={sectionFeedback} activeFeedbackId={review?.activeFeedbackId || activeFeedbackId} feedbackVisible={Boolean(review) || feedbackOpen} onFeedbackClick={handleFeedbackClick} onFeedbackChange={measureFeedback}
+            feedbackItems={sectionFeedback} activeFeedbackId={review?.activeFeedbackId || activeFeedbackId} feedbackVisible={Boolean(review) || feedbackOpen} onFeedbackClick={handleFeedbackClick}
             onChange={isOwnSection && !isLocked ? updateCode : undefined} readOnly={!isOwnSection || isLocked} fontSize={textSize} findings={findings} onFindingClick={onFindingClick} onScroll={editorScrollBridge} onSelection={review ? handleEditorSelection : undefined} onLayoutChange={layoutBridge} onUserScroll={onEditorUserScroll} citationIndex={citationIndex} mediaAssets={mediaAssets} changeRanges={review?.changeRanges || []} />
         </div>
         <GeneratedReferences
@@ -451,7 +440,7 @@ export default function EditorPanel({
       {feedback && <div id="student-feedback-panel" hidden={!feedbackOpen} style={{ flex: narrow ? '0 0 44%' : threePanes ? '0 0 320px' : `${100 - editorWidth} 1 0` }}
         className={`${feedbackOpen ? 'flex' : 'hidden'} min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-(--border) bg-(--surface) shadow-sm`}>
           <FeedbackPanel feedback={feedback} sectionId={selectedSectionId} activeId={activeFeedbackId} onSelect={onSelectFeedback} onClose={closeFeedback} visible={feedbackOpen}
-          positions={positions} narrow={narrow} requestId={feedbackRequestId} setRequestId={setFeedbackRequestId} scope={feedbackScope} setScope={setFeedbackScope} overlapIds={overlapIds} projectId={projectId} userProjectRole={userProjectRole} currentUserId={currentUserId} />
+          requestId={feedbackRequestId} setRequestId={setFeedbackRequestId} scope={feedbackScope} setScope={setFeedbackScope} userProjectRole={userProjectRole} currentUserId={currentUserId} />
       </div>}
       <div style={{ flex: review ? '1 1 0' : threePanes ? '1 1 400px' : `${100 - editorWidth} 1 0` }} className={`${(!review && previewVisible) || (review && showPreview) ? 'flex' : 'hidden'} min-w-0 min-h-0 bg-(--surface) rounded-xl shadow-sm border border-(--border) flex-col overflow-hidden`}>
         <div className="h-11 border-b border-(--border-light) flex items-center justify-between px-4 bg-(--surface)">
