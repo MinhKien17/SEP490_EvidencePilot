@@ -448,6 +448,37 @@ export default function useInstructorReview({ projectId, enabled }) {
     }
   }, [enabled, canCreateRoot, selectedSection]);
 
+  // ponytail: passage-adjust intent shared by the edit card (which starts it)
+  // and the EditorPanel FAB (which confirms it). Confirming writes the draft
+  // only — Update persists, Cancel discards. No auto-remap anywhere.
+  const [passageAdjust, setPassageAdjust] = useState(null);
+  const startPassageAdjust = useCallback(feedbackId => {
+    if (enabled) setPassageAdjust({ feedbackId });
+  }, [enabled]);
+  const cancelPassageAdjust = useCallback(() => setPassageAdjust(null), []);
+  useEffect(() => { setPassageAdjust(null); }, [selectedSectionId, activeRequestId]);
+  const confirmPassageSelection = useCallback(async () => {
+    if (!enabled || !canCreateRoot || !selectedSection || !passageAdjust) return false;
+    const range = sourceEditorRef.current?.getSelectionRange?.();
+    const source = normalizeSource(selectedSection.contentTex || '');
+    if (!range || range.to <= range.from || range.to > source.length
+      || !Number.isInteger(selectedSection.version)) return false;
+    try {
+      updateFeedbackDraft({
+        anchor: {
+          from: range.from,
+          to: range.to,
+          contentVersion: selectedSection.version,
+          fingerprint: await sourceFingerprint(source),
+        }, lineReference: ''
+      });
+      setPassageAdjust(null);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [enabled, canCreateRoot, selectedSection, passageAdjust]);
+
   const handleEditFeedback = (item) => {
     selectFeedback(item);
     const key = JSON.stringify([projectId, activeRequestId, item.sectionId]);
@@ -468,6 +499,7 @@ export default function useInstructorReview({ projectId, enabled }) {
 
   const handleCancelEdit = () => {
     clearFeedbackDraft();
+    setPassageAdjust(null);
   };
 
   const handleDeleteFeedback = async (itemId) => {
@@ -726,6 +758,10 @@ export default function useInstructorReview({ projectId, enabled }) {
     captureSourceSelection,
     autoCaptureSelection,
     commitPreviewSelection,
+    isAdjustingPassage: !!passageAdjust,
+    startPassageAdjust,
+    cancelPassageAdjust,
+    confirmPassageSelection,
     handleEditFeedback,
     handleCancelEdit,
     handleDeleteFeedback,

@@ -510,9 +510,11 @@ test('Edit into another feedback range is allowed', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Edit', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Update feedback', exact: true })).toBeVisible();
-  // Move A (0-24) into B's range (10-15): overlap with B is reported, save stays enabled.
+  // Move A (0-24) into B's range (10-15): Change passage, select, confirm via
+  // the floating affordance — overlap with B is reported, save stays enabled.
+  await page.getByRole('button', { name: 'Change passage', exact: true }).click();
   await cmSelect(page, 12, 14);
-  await page.getByRole('button', { name: 'Use editor selection', exact: true }).click();
+  await page.getByRole('button', { name: 'Use this passage', exact: true }).click();
   await expect(page.getByText('This selection overlaps 1 existing feedback item(s).', { exact: false })).toBeVisible();
   await page.getByRole('button', { name: 'Update feedback', exact: true }).click();
 
@@ -1097,15 +1099,70 @@ test('Change Passage mode replaces the range explicitly', async ({ page }) => {
   const card = page.locator('li').filter({ has: page.getByRole('button', { name: 'Update feedback', exact: true }) });
   await card.getByRole('button', { name: 'Change passage', exact: true }).click();
   await cmSelect(page, 0, 80);
-  // Incidental selection alone must not retarget: still the seeded line.
+  // Incidental selection alone must not retarget: still the seeded line, and
+  // the floating confirmation appears instead of a panel button.
   await expect(card.getByText('Line 1', { exact: false }).first()).toBeVisible();
-  await card.getByRole('button', { name: 'Use new selection', exact: true }).click();
+  await expect(card.getByRole('button', { name: 'Use new selection', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Use this passage', exact: true }).click();
   await expect(card.getByText(/Lines 1–\d+/).first()).toBeVisible();
   await card.getByRole('button', { name: 'Update feedback', exact: true }).click();
 
   await expect.poll(() => state.patches.length).toBe(1);
   expect(state.patches[0].anchor.from).toBe(0);
   expect(state.patches[0].anchor.to).toBe(80);
+  expect(state.errors).toEqual([]);
+});
+
+test('Escape exits adjustment without touching the draft', async ({ page }) => {
+  const { projectId, state } = await setupEdit(page);
+  await openEditEditor(page, projectId);
+  await beginEdit(page);
+
+  const card = page.locator('li').filter({ has: page.getByRole('button', { name: 'Update feedback', exact: true }) });
+  await card.getByRole('button', { name: 'Change passage', exact: true }).click();
+  await cmSelect(page, 0, 80);
+  await expect(page.getByRole('button', { name: 'Use this passage', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  // Adjustment exited, edit still open, seeded passage intact.
+  await expect(page.getByRole('button', { name: 'Use this passage', exact: true })).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Change passage', exact: true })).toBeVisible();
+  await expect(card.getByText('Line 1', { exact: false }).first()).toBeVisible();
+  await card.getByRole('button', { name: 'Update feedback', exact: true }).click();
+
+  await expect.poll(() => state.patches.length).toBe(1);
+  expect(state.patches[0].anchor.from).toBe(6);
+  expect(state.patches[0].anchor.to).toBe(17);
+  expect(state.errors).toEqual([]);
+});
+
+test('Ordinary edit-mode selection raises no FAB and changes nothing', async ({ page }) => {
+  const { projectId, state } = await setupEdit(page);
+  await openEditEditor(page, projectId);
+  await beginEdit(page);
+
+  const card = page.locator('li').filter({ has: page.getByRole('button', { name: 'Update feedback', exact: true }) });
+  await cmSelect(page, 23, 34);
+  await expect(page.getByRole('button', { name: 'Use this passage', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Comment', exact: true })).toHaveCount(0);
+  await expect(card.getByText('Line 1', { exact: false }).first()).toBeVisible();
+  expect(state.patches).toEqual([]);
+  expect(state.errors).toEqual([]);
+});
+
+test('Confirm then Cancel leaves the persisted passage', async ({ page }) => {
+  const { projectId, state } = await setupEdit(page);
+  await openEditEditor(page, projectId);
+  await beginEdit(page);
+
+  const card = page.locator('li').filter({ has: page.getByRole('button', { name: 'Update feedback', exact: true }) });
+  await card.getByRole('button', { name: 'Change passage', exact: true }).click();
+  await cmSelect(page, 0, 80);
+  await page.getByRole('button', { name: 'Use this passage', exact: true }).click();
+  await expect(card.getByText(/Lines 1–\d+/).first()).toBeVisible();
+  await card.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+  await expect(page.getByText('Tighten this wording.')).toBeVisible();
+  expect(state.patches).toEqual([]);
   expect(state.errors).toEqual([]);
 });
 

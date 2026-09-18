@@ -10,16 +10,23 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
   const {
     feedbackItems, activeRequestId, canCreateRoot,
     feedbackDraft, selectedAnchor, editingFeedbackId, updateFeedbackDraft,
-    savingFeedback, activeFeedbackId, handleSubmitFeedback, captureSourceSelection,
+    savingFeedback, activeFeedbackId, handleSubmitFeedback,
     handleEditFeedback, handleCancelEdit, handleDeleteFeedback,
     selectFeedback, errorMessage, successMessage,
+    isAdjustingPassage, startPassageAdjust, cancelPassageAdjust,
   } = review;
   const [pendingAttachments, setPendingAttachments] = useState({});
   const [busyId] = useState(null);
   // ponytail: explicit adjust mode — incidental editor selections never
-  // retarget an edit; only "Use new selection" commits a new passage.
-  const [adjustingPassage, setAdjustingPassage] = useState(false);
-  useEffect(() => { setAdjustingPassage(false); }, [editingFeedbackId]);
+  // retarget an edit; only the floating FAB confirmation commits a new
+  // passage. The flag lives in the review workflow so EditorPanel's FAB can
+  // see it; Escape exits adjust mode, Change passage toggles it.
+  useEffect(() => {
+    if (!isAdjustingPassage) return undefined;
+    const onKey = event => { if (event.key === 'Escape') cancelPassageAdjust(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isAdjustingPassage, cancelPassageAdjust]);
   const composerRef = useRef(null);
   useEffect(() => {
     if (composerFocusToken > 0) composerRef.current?.focus();
@@ -71,28 +78,24 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
     if (ok) setPendingAttachments(prev => ({ ...prev, [pendingKey]: [] }));
   };
 
-  const useNewSelection = () => {
-    captureSourceSelection();
-    setAdjustingPassage(false);
-  };
-
   // ponytail: one form, two homes — top composer is create-only, the editing
   // card renders this same form inline. Called as a plain function (not a
   // component) so focus and DOM identity survive re-renders.
   const composerForm = mode => (
     <form onSubmit={submitThread} className="space-y-2 rounded-xl border border-(--border-light) bg-(--surface-secondary)/50 p-3">
       <div className="flex flex-wrap items-center gap-2">
-        {mode === 'edit' && !adjustingPassage && (
+        {mode === 'edit' && (
           <div data-testid="passage-controls" className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => setAdjustingPassage(true)}
+              onClick={() => (isAdjustingPassage ? cancelPassageAdjust() : startPassageAdjust(editingFeedbackId))}
               disabled={savingFeedback}
+              aria-pressed={mode === 'edit' && isAdjustingPassage}
               className="rounded-lg bg-teal-600 px-2.5 py-1.5 text-[10px] font-black text-white hover:bg-teal-700 disabled:opacity-50"
             >
               {t('instructor.review.changePassage')}
             </button>
-            {selectedAnchor && (
+            {selectedAnchor && !isAdjustingPassage && (
               <button
                 type="button"
                 onClick={() => updateFeedbackDraft({ anchor: null })}
@@ -104,27 +107,7 @@ export default function FeedbackThreadsTab({ review, selectedSection, projectId,
             )}
           </div>
         )}
-        {mode === 'edit' && adjustingPassage && (
-          <>
-            <button
-              type="button"
-              onClick={useNewSelection}
-              disabled={savingFeedback}
-              className="rounded-lg bg-teal-600 px-2.5 py-1.5 text-[10px] font-black text-white hover:bg-teal-700 disabled:opacity-50"
-            >
-              {t('instructor.review.useNewSelection')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setAdjustingPassage(false)}
-              disabled={savingFeedback}
-              className="rounded-lg border border-(--border) bg-(--surface) px-2.5 py-1.5 text-[10px] font-bold text-(--text-secondary) disabled:opacity-50"
-            >
-              {t('instructor.review.keepCurrent')}
-            </button>
-          </>
-        )}
-        {!(mode === 'edit' && adjustingPassage) ? (
+        {!(mode === 'edit' && isAdjustingPassage) ? (
           <span className="text-[10px] font-semibold text-(--text-secondary)">
             {passageLabel}
           </span>

@@ -221,7 +221,7 @@ const INSTRUCTOR_REVIEW_KEYS = [
   'threadsEmpty',
   'mediaTitle', 'mediaEmpty', 'mediaDone', 'addMedia', 'attachments',
   'removePassage',
-  'changePassage', 'adjustPassageHint', 'useNewSelection', 'keepCurrent',
+  'changePassage', 'adjustPassageHint', 'useThisPassage',
   'returnForRevision', 'reviewApproved', 'reviewClosed',
   'reviewGuide', 'reviewOverview', 'reviewRejected', 'reviewReturned', 'reviewRound',
   'saveFeedback', 'saveFeedbackFailed', 'sectionChanged', 'sectionFeedback', 'sectionFeedbackPlaceholder', 'sectionOverview', 'selectionLine', 'selectionLines', 'selectSectionFeedback', 'selectSectionGuide',

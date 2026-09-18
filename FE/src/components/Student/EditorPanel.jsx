@@ -164,7 +164,20 @@ export default function EditorPanel({
     setFab(null);
     setComposerFocusToken(token => token + 1);
   }, [review]);
+  // ponytail: the same floating affordance confirms a new passage while
+  // adjusting an edit (chat icon, draft-only) and creates from a fresh
+  // selection (message-plus). Ordinary edit-mode selections raise nothing —
+  // reviewing never clobbers a seeded passage.
+  const confirmPassageFromFab = useCallback(() => {
+    if (!review) return;
+    review.confirmPassageSelection?.();
+    setFab(null);
+    setComposerFocusToken(token => token + 1);
+  }, [review]);
   const handleEditorSelection = useCallback(sel => {
+    if (!review) { setFab(null); return; }
+    if (review.isAdjustingPassage) { setFab(sel ? { ...sel, mode: 'confirm' } : null); return; }
+    if (review.editingFeedbackId) { setFab(null); return; }
     setFab(sel);
     if (sel) review?.autoCaptureSelection?.();
   }, [review]);
@@ -540,10 +553,10 @@ export default function EditorPanel({
       {review && fab?.coords && createPortal(
         <button
           type="button"
-          aria-label={t('instructor.review.addComment')}
-          title={t('instructor.review.addComment')}
+          aria-label={t(fab.mode === 'confirm' ? 'instructor.review.useThisPassage' : 'instructor.review.addComment')}
+          title={t(fab.mode === 'confirm' ? 'instructor.review.useThisPassage' : 'instructor.review.addComment')}
           onMouseDown={event => event.preventDefault()}
-          onClick={openComposerFromFab}
+          onClick={fab.mode === 'confirm' ? confirmPassageFromFab : openComposerFromFab}
           style={{
             position: 'fixed',
             left: fab.coords.right,
@@ -551,7 +564,9 @@ export default function EditorPanel({
           }}
           className="z-50 flex h-5 w-5 items-center justify-center rounded text-teal-700/80 hover:bg-teal-50 hover:text-teal-700 focus-visible:ring-2 focus-visible:ring-teal-300 dark:text-teal-300/80 dark:hover:bg-teal-950 dark:hover:text-teal-300"
         >
-          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /><path strokeLinecap="round" strokeWidth="2" d="M18.5 13.5v5M16 16h5" /></svg>
+          {fab.mode === 'confirm'
+            ? <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m9.5 12 1.8 1.8 3.4-3.6" /></svg>
+            : <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /><path strokeLinecap="round" strokeWidth="2" d="M18.5 13.5v5M16 16h5" /></svg>}
         </button>,
         document.body,
       )}
