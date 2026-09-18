@@ -639,7 +639,7 @@ test('Armed editor passage survives Preview and saves exactly', async ({ page })
   expect(state.errors).toEqual([]);
 });
 
-test('Preview selection with an armed passage keeps it usable', async ({ page }) => {
+test('Preview selection re-arms the draft to the exact preview range', async ({ page }) => {
   const { projectId, state } = await setupPreview(page);
   await openPreviewEditor(page, projectId);
 
@@ -648,20 +648,32 @@ test('Preview selection with an armed passage keeps it usable', async ({ page })
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await previewDomSelect(page);
 
-  await expect(page.getByText('Your editor selection (23–34) is still armed', { exact: false })).toBeVisible();
+  // The mapped preview range (first "comparisons", 6..17) replaces the armed
+  // editor passage — exact offsets, never a first-match guess.
   await expect(page.getByText('Line 1', { exact: true })).toBeVisible();
+  await page.getByPlaceholder('Write feedback on the selected passage').fill('First comparisons is vague.');
+  await page.getByRole('button', { name: 'Save feedback', exact: true }).click();
+
+  await expect.poll(() => state.posts.length).toBe(1);
+  expect(state.posts[0].anchor.from).toBe(6);
+  expect(state.posts[0].anchor.to).toBe(17);
   expect(state.errors).toEqual([]);
 });
 
-test('Preview selection with nothing armed shows honest guidance', async ({ page }) => {
+test('Preview selection arms the draft without an editor round-trip', async ({ page }) => {
   const { projectId, state } = await setupPreview(page);
   await openPreviewEditor(page, projectId);
 
   await page.getByRole('button', { name: 'Preview', exact: true }).click();
   await previewDomSelect(page);
 
-  await expect(page.getByText("Select the passage in the editor to attach precise feedback.", { exact: false })).toBeVisible();
-  await expect(page.getByText('Whole section', { exact: true })).toBeVisible();
+  await expect(page.getByText('Line 1', { exact: true })).toBeVisible();
+  await page.getByPlaceholder('Write feedback on the selected passage').fill('First comparisons is vague.');
+  await page.getByRole('button', { name: 'Save feedback', exact: true }).click();
+
+  await expect.poll(() => state.posts.length).toBe(1);
+  expect(state.posts[0].anchor.from).toBe(6);
+  expect(state.posts[0].anchor.to).toBe(17);
   expect(state.errors).toEqual([]);
 });
 
