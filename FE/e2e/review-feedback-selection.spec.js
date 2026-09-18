@@ -340,10 +340,11 @@ test('Edit reselect replaces the passage on the same feedback', async ({ page })
   await openEditEditor(page, projectId);
   await beginEdit(page);
 
+  await page.getByRole('button', { name: 'Change passage', exact: true }).click();
   await page.evaluate(() => {
     document.querySelector('.cm-editor').__cmView.dispatch({ selection: { anchor: 23, head: 34 } });
   });
-  await page.getByRole('button', { name: 'Use editor selection', exact: true }).click();
+  await page.getByRole('button', { name: 'Use this passage', exact: true }).click();
   await expect(page.getByText('Line 1', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Update feedback', exact: true }).click();
 
