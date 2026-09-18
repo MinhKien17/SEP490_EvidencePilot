@@ -119,7 +119,6 @@ class ProjectRouteMappingTest {
                 "GET /api/papers/{paperId}/references/check",
                 "POST /api/papers/{paperId}/references/{sourceId}",
                 "DELETE /api/papers/{paperId}/references/{sourceId}",
-                "GET /api/papers/{paperId}/references/check",
                 "GET /api/papers/{id}/standard-suggestion",
                 "POST /api/papers/{documentId}/sections/{sectionId}/review",
                 "GET /api/papers/{documentId}/sections/{sectionId}/review",
