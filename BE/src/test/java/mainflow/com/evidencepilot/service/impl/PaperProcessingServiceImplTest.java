@@ -380,6 +380,36 @@ class PaperProcessingServiceImplTest {
                         para("Conclusion body."),
                         new AiModelClient.ExtractionBlock("reference", "7 REFERENCES", null, null),
                         new AiModelClient.ExtractionBlock("reference", "- [1] Reference.", null, null),
+                        new AiModelClient.ExtractionBlock("reference",
+                                "The Perception by University Students of the Use of ChatGPT in Education",
+                                null, null),
+                        new AiModelClient.ExtractionBlock("reference", "iJET", null, null),
+                        new AiModelClient.ExtractionBlock("reference", "| Vol. 18 No. 17 (2023)", null, null),
+                        new AiModelClient.ExtractionBlock("reference",
+                                "International Journal of Emerging Technologies in Learning (iJET)", null, null),
+                        new AiModelClient.ExtractionBlock("reference", "17", null, null),
+                        new AiModelClient.ExtractionBlock("reference", "- [2] Reference.", null, null),
+                        new AiModelClient.ExtractionBlock("reference", "Ngo", null, null),
+                        new AiModelClient.ExtractionBlock("reference", "18", null, null),
+                        new AiModelClient.ExtractionBlock("reference",
+                                "International Journal of Emerging Technologies in Learning (iJET)", null, null),
+                        new AiModelClient.ExtractionBlock("reference", "iJET | Vol. 18 No. 17 (2023)", null, null),
+                        new AiModelClient.ExtractionBlock("reference", "- [3] Reference.", null, null),
+                        new AiModelClient.ExtractionBlock("reference",
+                                "The Perception by University Students of the Use of ChatGPT in Education",
+                                null, null),
+                        new AiModelClient.ExtractionBlock("reference", "iJET", null, null),
+                        new AiModelClient.ExtractionBlock("reference", "| Vol. 18 No. 17 (2023)", null, null),
+                        new AiModelClient.ExtractionBlock("reference",
+                                "International Journal of Emerging Technologies in Learning (iJET)", null, null),
+                        new AiModelClient.ExtractionBlock("reference", "19", null, null),
+                        new AiModelClient.ExtractionBlock("reference", "- [4] Reference.", null, null),
+                        new AiModelClient.ExtractionBlock("reference", "Ngo", null, null),
+                        new AiModelClient.ExtractionBlock("reference", "20", null, null),
+                        new AiModelClient.ExtractionBlock("reference",
+                                "International Journal of Emerging Technologies in Learning (iJET)", null, null),
+                        new AiModelClient.ExtractionBlock("reference", "iJET | Vol. 18 No. 17 (2023)", null, null),
+                        new AiModelClient.ExtractionBlock("reference", "- [5] Reference.", null, null),
                         heading("AUTHOR", 2),
                         para("Author biography."))));
 
@@ -396,7 +426,8 @@ class PaperProcessingServiceImplTest {
                         "CONCLUSION AND RECOMMENDATION",
                         "References");
         assertThat(result.sections().getLast().getContentTex())
-                .isEqualTo("- [1] Reference.");
+                .isEqualTo("- [1] Reference.\n\n- [2] Reference.\n\n- [3] Reference."
+                        + "\n\n- [4] Reference.\n\n- [5] Reference.");
     }
 
     @Test

@@ -10,10 +10,12 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -46,6 +48,9 @@ public class BlockTreeIngestor {
     /** Dotted arabic numbering (3.1, 3.1.2) marks a sub-section of 3. */
     private static final Pattern DOTTED_NUMBER =
             Pattern.compile("^(\\d+(?:\\.\\d+)+)\\b");
+    private static final Pattern REFERENCE_ENTRY = Pattern.compile("(?m)^\\s*-?\\s*\\[\\d+]");
+    private static final Pattern STANDALONE_PAGE_NUMBER = Pattern.compile("^\\d{1,4}$");
+    private static final int MAX_PAGE_FURNITURE_LENGTH = 160;
 
     private final ObjectMapper objectMapper;
 
@@ -207,6 +212,7 @@ public class BlockTreeIngestor {
     private void parseBody(List<AiModelClient.ExtractionBlock> blocks, int from,
             DocumentMetadata metadata, List<Seed> seeds) {
         int sectionLevel = resolveSectionLevel(blocks, from);
+        Set<Integer> referencePageFurniture = referencePageFurnitureIndexes(blocks, metadata.getTitle());
         Seed current = null;
         boolean currentIsReferences = false;
         for (int i = from; i <= blocks.size(); i++) {
@@ -239,6 +245,9 @@ public class BlockTreeIngestor {
             }
             if (boundary && "reference".equals(block.type())) {
                 String refText = block.text() == null ? "" : block.text().strip();
+                if (referencePageFurniture.contains(i)) {
+                    continue;
+                }
                 if (currentIsReferences) {
                     if (current != null && !isReferencesHeader(refText)) {
                         current.append(refText);
@@ -292,6 +301,69 @@ public class BlockTreeIngestor {
                 current.append(renderContent(block));
             }
         }
+    }
+
+    private static Set<Integer> referencePageFurnitureIndexes(
+            List<AiModelClient.ExtractionBlock> blocks, String paperTitle) {
+        Map<String, Integer> frequencies = new LinkedHashMap<>();
+        for (AiModelClient.ExtractionBlock block : blocks) {
+            if (isShortReferenceFragment(block)) {
+                frequencies.merge(normalizeTitle(block.text()), 1, Integer::sum);
+            }
+        }
+
+        String normalizedTitle = normalizeTitle(paperTitle);
+        Set<Integer> indexes = new HashSet<>();
+        for (int i = 0; i < blocks.size(); i++) {
+            if (!isStandalonePageNumber(blocks.get(i))) {
+                continue;
+            }
+            int start = i;
+            int end = i;
+            while (start > 0 && isShortReferenceFragment(blocks.get(start - 1))) {
+                start--;
+            }
+            while (end + 1 < blocks.size() && isShortReferenceFragment(blocks.get(end + 1))) {
+                end++;
+            }
+            boolean repeatedPageFurniture = false;
+            for (int j = start; j <= end; j++) {
+                String normalized = normalizeTitle(blocks.get(j).text());
+                if ((!normalizedTitle.isBlank() && normalized.equals(normalizedTitle))
+                        || frequencies.getOrDefault(normalized, 0) > 1) {
+                    repeatedPageFurniture = true;
+                    break;
+                }
+            }
+            if (end - start < 2 || !repeatedPageFurniture) {
+                continue;
+            }
+            for (int j = start; j <= end; j++) {
+                String normalized = normalizeTitle(blocks.get(j).text());
+                if (isStandalonePageNumber(blocks.get(j))
+                        || (!normalizedTitle.isBlank() && normalized.equals(normalizedTitle))
+                        || frequencies.getOrDefault(normalized, 0) > 1) {
+                    indexes.add(j);
+                }
+            }
+        }
+        return indexes;
+    }
+
+    private static boolean isShortReferenceFragment(AiModelClient.ExtractionBlock block) {
+        if (block == null || !"reference".equals(block.type())
+                || block.text() == null || block.text().isBlank()) {
+            return false;
+        }
+        String text = collapse(block.text());
+        return text.length() <= MAX_PAGE_FURNITURE_LENGTH
+                && !REFERENCE_ENTRY.matcher(text).find()
+                && !isReferencesHeader(text);
+    }
+
+    private static boolean isStandalonePageNumber(AiModelClient.ExtractionBlock block) {
+        return isShortReferenceFragment(block)
+                && STANDALONE_PAGE_NUMBER.matcher(block.text().strip()).matches();
     }
 
     private static String renderContent(AiModelClient.ExtractionBlock block) {
