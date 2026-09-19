@@ -146,7 +146,7 @@ public class PaperProcessingServiceImpl {
         int lastEnd = 0;
 
         while (matcher.find()) {
-            String sectionName = matcher.group(1).trim();
+            String sectionName = BlockNormalizer.stripHeadingNumber(matcher.group(1));
             int start = matcher.start();
 
             if (index > 0) {
