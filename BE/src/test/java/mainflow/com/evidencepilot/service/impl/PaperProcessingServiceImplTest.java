@@ -58,6 +58,8 @@ class PaperProcessingServiceImplTest {
     @Mock
     private CurrentUserServiceImpl currentUserService;
     @Mock
+    private PaperStandardService paperStandardService;
+    @Mock
     private AuditService auditService;
     @Mock
     private EvidenceTraceService evidenceTraceService;
@@ -711,6 +713,52 @@ class PaperProcessingServiceImplTest {
     }
 
     @Test
+    void referenceSectionRejectsSingleAssignment() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        Project project = project(ProjectStatus.ASSIGNED);
+        Document paper = paper(project);
+        PaperSection section = section(paper);
+        section.setSectionTitle("References");
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(currentUserService.isInstructor(instructor)).thenReturn(true);
+        when(documentRepository.findById(paper.getId())).thenReturn(Optional.of(paper));
+        when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
+        when(paperStandardService.isReferenceSectionTitle("References")).thenReturn(true);
+
+        assertThatThrownBy(() -> service().assignSection(
+                paper.getId(), section.getId(), UUID.randomUUID()))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(HttpStatus.BAD_REQUEST));
+        verify(userRepository, never()).findById(org.mockito.ArgumentMatchers.any());
+        verify(paperSectionRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void referenceSectionRejectsBatchAssignmentAfterRename() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(ProjectStatus.ASSIGNED);
+        Document paper = paper(project);
+        PaperSection section = section(paper);
+        section.setSectionTitle("Introduction");
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(documentRepository.findById(paper.getId())).thenReturn(Optional.of(paper));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paper.getId()))
+                .thenReturn(List.of(section));
+        when(paperStandardService.isReferenceSectionTitle("References")).thenReturn(true);
+
+        var request = List.of(new SectionBatchItem(
+                section.getId(), 0, "References", student.getId(), "Draft", 0L));
+        assertThatThrownBy(() -> service().batchUpdateSections(paper.getId(), request))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(HttpStatus.BAD_REQUEST));
+        verify(paperSectionRepository, never()).saveAll(anyList());
+        verify(paperSectionRepository, never()).flush();
+    }
+
+    @Test
     void assignSectionKeepsProjectStatusWhenAlreadyAssigned() {
         User instructor = user(UserRole.INSTRUCTOR);
         User student = user(UserRole.STUDENT);
@@ -1047,7 +1095,7 @@ class PaperProcessingServiceImplTest {
                 mock(InstructorFeedbackRepository.class),
                 documentRepository,
                 currentUserService,
-                mock(PaperStandardService.class),
+                paperStandardService,
                 userRepository,
                 projectRepository,
                 mock(SystemNotificationService.class),
