@@ -321,6 +321,7 @@ test('Sections opens one Edit Paper Section modal for all section controls', asy
 
   const editor = page.getByRole('dialog', { name: 'Edit paper sections' });
   await expect(editor).toBeVisible();
+  await expect(editor.getByRole('button', { name: 'Save changes', exact: true })).toBeDisabled();
   await expect(editor.getByRole('heading', { name: 'Pages', exact: false })).toHaveCount(0);
   await expect(editor.getByTitle('paper.tex')).toBeVisible();
   await expect(editor.getByTestId('rename-paper')).toBeVisible();
@@ -537,6 +538,7 @@ test('Unassign all is available in Sections instead of Assign Students', async (
   const confirmation = page.getByRole('alertdialog', { name: 'Remove every student from every section?' });
   await expect(confirmation).toBeVisible();
   await confirmation.getByRole('button', { name: 'Unassign all sections', exact: true }).click();
+  await expect(editor.getByRole('button', { name: 'Save changes', exact: true })).toBeEnabled();
   await editor.getByRole('button', { name: 'Save changes', exact: true }).click();
   expect(state.sectionPuts[0].sections).toEqual([
     expect.objectContaining({ id: sectionId, assignedUserId: null }),
