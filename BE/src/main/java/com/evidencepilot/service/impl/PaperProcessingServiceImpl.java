@@ -807,13 +807,30 @@ public class PaperProcessingServiceImpl {
     }
 
     private void requireSectionStructureUnlocked(List<PaperSection> sections) {
-        if (sections.stream().anyMatch(
-                section -> section.isActive() && section.getAssignedUser() != null)) {
+        if (sections.stream().anyMatch(section -> section.isActive() && hasMeaningfulWork(section))) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "Section structure is locked while one or more sections are assigned. "
-                    + "Unassign all sections before making structural changes.");
+                    "SECTION_STRUCTURE_LOCKED: one or more sections contain current work or history. "
+                    + "Structural changes are only available for setup-only sections.");
         }
+    }
+
+    private boolean hasMeaningfulWork(PaperSection section) {
+        if (section.getAssignedUser() != null) return true;
+        if (paperStandardService.hasStudentContent(section.getContentTex())) return true;
+        if (section.getPreviousContentTex() != null && !section.getPreviousContentTex().isBlank()) return true;
+        if (section.getVersion() != null && section.getVersion() > 1) return true;
+        if (section.getDocument() != null && section.getDocument().getProject() != null
+                && section.getId() != null
+                && assignmentSectionBaselineRepository.existsByProjectIdAndSectionId(
+                        section.getDocument().getProject().getId(), section.getId())) {
+            return true;
+        }
+        if (section.getId() != null
+                && sectionStandardEvaluationRepository.findTopBySectionIdOrderByUpdatedAtDesc(section.getId()).isPresent()) {
+            return true;
+        }
+        return hasFeedback(section);
     }
 
     private boolean hasFeedback(PaperSection section) {
@@ -925,13 +942,7 @@ public class PaperProcessingServiceImpl {
         }
         if (hasStructuralChange) {
             requireInstructorDocumentWriteAccess(documentId);
-            boolean currentlyLocked = persisted.stream().anyMatch(s -> s.getAssignedUser() != null);
-            boolean remainsLocked = items.stream().anyMatch(item -> item.assignedUserId() != null);
-            if (currentlyLocked && remainsLocked) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Section structure is locked while one or more sections are assigned. "
-                                + "Unassign all sections before making structural changes.");
-            }
+            requireSectionStructureUnlocked(persisted);
         } else if (hasAssignChange) {
             requireInstructorDocumentWriteAccess(documentId);
         } else {
