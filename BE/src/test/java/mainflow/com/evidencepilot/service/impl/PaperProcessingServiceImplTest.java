@@ -1193,6 +1193,30 @@ class PaperProcessingServiceImplTest {
     }
 
     @Test
+    void batchUnassignOnlyPreservesGapOrderForSectionsWithCurrentWork() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        Document paper = paper(project);
+        PaperSection section = section(paper);
+        section.setSectionOrder(1024);
+        section.setContentTex("Draft");
+        section.setAssignedUser(student);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(currentUserService.isInstructor(instructor)).thenReturn(true);
+        when(documentRepository.findById(paper.getId())).thenReturn(Optional.of(paper));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paper.getId()))
+                .thenReturn(List.of(section));
+
+        service().batchUpdateSections(paper.getId(), List.of(
+                new SectionBatchItem(section.getId(), 1024, "Intro", null, "Draft", 0L)));
+
+        assertThat(section.getAssignedUser()).isNull();
+        verify(paperSectionRepository).saveAll(anyList());
+        verify(paperSectionRepository).flush();
+    }
+
+    @Test
     void batchContentChangeMarksConfiguredStandardStale() {
         User student = user(UserRole.STUDENT);
         Project project = project(ProjectStatus.IN_PROGRESS);

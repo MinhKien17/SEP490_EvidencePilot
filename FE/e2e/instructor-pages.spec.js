@@ -519,6 +519,8 @@ test('Edit Paper Section respects structure locks without hiding instructor cont
 
 test('Unassign all is available in Sections instead of Assign Students', async ({ page }) => {
   const state = await setup(page);
+  state.sections[0].sectionOrder = 1024;
+  state.sections[1].sectionOrder = 2048;
   state.sections[0].assignedUserId = 'student-1';
   state.sections[0].assignedUserName = 'Student One';
   state.sections[1].assignedUserId = 'student-2';
@@ -541,8 +543,8 @@ test('Unassign all is available in Sections instead of Assign Students', async (
   await expect(editor.getByRole('button', { name: 'Save changes', exact: true })).toBeEnabled();
   await editor.getByRole('button', { name: 'Save changes', exact: true }).click();
   expect(state.sectionPuts[0].sections).toEqual([
-    expect.objectContaining({ id: sectionId, assignedUserId: null }),
-    expect.objectContaining({ id: 'section-2', assignedUserId: null }),
+    expect.objectContaining({ id: sectionId, sectionOrder: 1024, assignedUserId: null }),
+    expect.objectContaining({ id: 'section-2', sectionOrder: 2048, assignedUserId: null }),
   ]);
   await page.keyboard.press('Escape');
   await expect(editor).toBeHidden();
