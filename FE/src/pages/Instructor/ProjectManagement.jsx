@@ -13,6 +13,7 @@ import {
 import { formatDate } from '../../utils/formatters/date.js';
 import StatusBadge from '../../components/ui/StatusBadge.jsx';
 import DeleteConfirm from '../../components/ui/DeleteConfirm.jsx';
+import ProjectEditModal from '../../components/Instructor/ProjectEditModal.jsx';
 import { getProjectActions, hasProjectAction } from '../../utils/projectActions.js';
 
 export default function ProjectManagement() {
@@ -28,8 +29,8 @@ export default function ProjectManagement() {
   const [showGuide, setShowGuide] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [newTitle, setNewTitle] = useState('');
-  const [editId, setEditId] = useState(null);
-  const [editTitle, setEditTitle] = useState('');
+  const [editingProject, setEditingProject] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [newDescription, setNewDescription] = useState('');
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -109,15 +110,17 @@ export default function ProjectManagement() {
     }
   };
 
-  const handleUpdate = async (id) => {
-    if (!editTitle.trim()) return;
+  const handleUpdate = async ({ title, description }) => {
+    if (!editingProject || !title.trim() || savingEdit) return;
+    setSavingEdit(true);
     try {
-      await api.put(API_ROUTES.PROJECTS.BY_ID(id), { title: editTitle });
-      setEditId(null);
-      setEditTitle('');
-      fetchProjects();
+      await api.put(API_ROUTES.PROJECTS.BY_ID(editingProject.id), { title, description });
+      setEditingProject(null);
+      await fetchProjects();
     } catch {
       alert(t('instructor.projectManagement.updateProjectFailed'));
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -275,7 +278,7 @@ export default function ProjectManagement() {
 
                   <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
                     {!showTrash && <button onClick={() => navigate(`/instructor/projects/${p.id}`)} className="text-xs text-(--brand) hover:bg-(--brand-soft) font-bold px-2.5 py-1 rounded-lg transition-colors">{t('instructor.projectManagement.detail')}</button>}
-                    {hasProjectAction(actionState(p), 'edit') && <button onClick={() => { setEditId(p.id); setEditTitle(p.title); }} className="text-xs text-(--brand) hover:bg-(--brand-soft) font-bold px-2.5 py-1 rounded-lg transition-colors">{t('instructor.projectManagement.commonEdit')}</button>}
+                    {hasProjectAction(actionState(p), 'edit') && <button onClick={() => setEditingProject(p)} className="text-xs text-(--brand) hover:bg-(--brand-soft) font-bold px-2.5 py-1 rounded-lg transition-colors">{t('instructor.projectManagement.commonEdit')}</button>}
                     {hasProjectAction(actionState(p), 'restore') && <button onClick={() => handleRestore(p.id)} className="text-xs text-emerald-600 hover:bg-emerald-50 font-bold px-2.5 py-1 rounded-lg transition-colors">{t('instructor.projectManagement.restore')}</button>}
                     {hasProjectAction(actionState(p), 'archive') && <button onClick={() => handlePatch(p.id, 'archive')} className="text-xs text-amber-600 hover:bg-amber-50 font-bold px-2.5 py-1 rounded-lg transition-colors">{t('instructor.projectManagement.archive')}</button>}
                     {hasProjectAction(actionState(p), 'unarchive') && <button onClick={() => handlePatch(p.id, 'unarchive')} className="text-xs text-(--brand) hover:bg-(--brand-soft) font-bold px-2.5 py-1 rounded-lg transition-colors">{t('instructor.projectManagement.unarchive')}</button>}
@@ -301,14 +304,7 @@ export default function ProjectManagement() {
             {projects.map(p => (
               <div key={p.id} data-testid={`project-card-${p.id}`} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 hover:bg-(--surface-secondary) transition-colors">
                 <div className={`flex-1 min-w-0 ${showTrash ? '' : 'cursor-pointer'}`} onClick={() => !showTrash && navigate(`/instructor/projects/${p.id}`)}>
-                  {editId === p.id && hasProjectAction(actionState(p), 'edit') ? (
-                    <div className="flex gap-2 items-center" onClick={e => e.stopPropagation()}>
-                      <input value={editTitle} onChange={e => setEditTitle(e.target.value)} className="flex-1 min-w-0 border border-(--border) bg-(--surface) text-(--text-primary) rounded-lg px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-(--focus)" autoFocus />
-                      <button onClick={() => handleUpdate(p.id)} className="text-xs font-bold text-emerald-600 hover:text-emerald-800">{t('save')}</button>
-                      <button onClick={() => setEditId(null)} className="text-xs text-slate-400 hover:text-slate-600">{t('cancel')}</button>
-                    </div>
-                  ) : (
-                    <div>
+                  <div>
                       <h3 className="font-bold text-(--text-primary) text-sm hover:text-(--brand) transition-colors">{p.title}</h3>
                       <div className="flex flex-wrap items-center gap-3 mt-1">
                         <p className="text-[10px] text-(--text-secondary) flex items-center gap-1">
@@ -319,13 +315,12 @@ export default function ProjectManagement() {
                           {t('instructor.projectManagement.lastUpdated')}: {formatDate(p.updatedAt || p.createdAt, i18n.language)}
                         </p>
                       </div>
-                    </div>
-                  )}
+                  </div>
                 </div>
                 <StatusBadge status={p.status} />
                 <div className="flex flex-wrap gap-1 sm:justify-end" onClick={e => e.stopPropagation()}>
                   {!showTrash && <button onClick={() => navigate(`/instructor/projects/${p.id}`)} className="text-xs text-(--brand) hover:text-(--brand-hover) font-bold px-2 py-1.5">{t('instructor.projectManagement.detail')}</button>}
-                  {hasProjectAction(actionState(p), 'edit') && <button onClick={() => { setEditId(p.id); setEditTitle(p.title); }} className="text-xs text-(--brand) hover:text-(--brand-hover) font-bold px-2 py-1.5">{t('instructor.projectManagement.commonEdit')}</button>}
+                  {hasProjectAction(actionState(p), 'edit') && <button onClick={() => setEditingProject(p)} className="text-xs text-(--brand) hover:text-(--brand-hover) font-bold px-2 py-1.5">{t('instructor.projectManagement.commonEdit')}</button>}
                   {hasProjectAction(actionState(p), 'restore') && <button onClick={() => handleRestore(p.id)} className="text-xs text-emerald-600 hover:text-emerald-800 font-bold px-2 py-1.5">{t('instructor.projectManagement.restore')}</button>}
                   {hasProjectAction(actionState(p), 'archive') && <button onClick={() => handlePatch(p.id, 'archive')} className="text-xs text-amber-600 hover:text-amber-800 font-bold px-2 py-1.5">{t('instructor.projectManagement.archive')}</button>}
                   {hasProjectAction(actionState(p), 'unarchive') && <button onClick={() => handlePatch(p.id, 'unarchive')} className="text-xs text-(--brand) hover:text-(--brand-hover) font-bold px-2 py-1.5">{t('instructor.projectManagement.unarchive')}</button>}
@@ -374,6 +369,15 @@ export default function ProjectManagement() {
           </div>
         </div>
       )}
+
+      <ProjectEditModal
+        open={!!editingProject}
+        project={editingProject}
+        saving={savingEdit}
+        onClose={() => setEditingProject(null)}
+        onSave={handleUpdate}
+        t={t}
+      />
 
       <Modal open={showGuide} onClose={() => setShowGuide(false)} title={t('instructor.projectManagement.guideTitle')} closeLabel={t('close')}>
         <ol className="space-y-3 text-xs">

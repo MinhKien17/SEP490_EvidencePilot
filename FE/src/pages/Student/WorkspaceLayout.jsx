@@ -125,6 +125,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout, user, role } = useAuth();
+  const { notifications, unreadCount, markRead, markAllRead } = useNotification();
   const { t, i18n } = useTranslation();
   const { pending: pendingDelete, start: startDelete, undo: undoDelete, dismiss: dismissDelete } = useUndoDelete();
   const undoStrings = {
@@ -973,8 +974,6 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
     frame = requestAnimationFrame(reveal);
     return () => cancelAnimationFrame(frame);
   }, [activeFeedbackId, selectedSectionId, feedback.items, feedbackOpen]);
-
-  const { notifications, unreadCount, markRead, markAllRead } = useNotification();
 
   useEffect(() => {
     // Gated via NotificationContext — 503 will not spam, WS uses exponential backoff

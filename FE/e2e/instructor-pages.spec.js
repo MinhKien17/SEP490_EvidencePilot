@@ -119,7 +119,9 @@ async function setup(page) {
       return route.fulfill({ json: { cleared: 1 } });
     }
 
-    if (path === '/api/users/profile') {
+    if (path === `/api/papers/${paperId}/sections/section-1/history`) {
+      json = state.sections.find(section => section.id === 'section-1') || state.sections[0];
+    } else if (path === '/api/users/profile') {
       json = { id: 'instructor-1', role: 'INSTRUCTOR', firstName: 'Test', lastName: 'Instructor' };
     } else if (path === '/api/notifications') {
       json = [];
@@ -300,16 +302,23 @@ test('Sections opens one Edit Paper Section modal for all section controls', asy
   await expect(editor.getByLabel('Section content')).toHaveValue('Initial section content.');
   await expect(editor.getByRole('button', { name: 'Add section', exact: true })).toBeVisible();
   await expect(editor.getByRole('button', { name: 'Bulk assign', exact: true })).toBeVisible();
-  await expect(editor.getByRole('button', { name: 'Config standard', exact: true })).toBeVisible();
+  await expect(editor.getByRole('button', { name: 'Config Standard', exact: true })).toBeVisible();
   await expect(editor.getByRole('button', { name: 'Delete section', exact: true }).first()).toBeVisible();
+
+  await editor.getByRole('button', { name: 'Config Standard', exact: true }).click();
+  await editor.getByTestId('standard-requirement-input').fill('Use evidence');
+  await editor.getByRole('button', { name: 'Add', exact: true }).click();
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
+  expect(state.sectionStandards[sectionId]).toEqual({ requirements: ['Use evidence'] });
 
   await editor.getByLabel('Section title').fill('Updated introduction');
   await editor.getByLabel('Section content').fill('Edited section content.');
-  await editor.getByLabel('Select section Introduction').check();
-  await editor.getByLabel('Select section Methodology').check();
+  await editor.getByRole('button', { name: 'Bulk assign', exact: true }).click();
+  await editor.getByTestId('bulk-section-section-1').check();
+  await editor.getByTestId('bulk-section-section-2').check();
   await editor.getByLabel('Bulk assignment student').selectOption('student-1');
   await editor.getByRole('button', { name: 'Apply assignment', exact: true }).click();
-  await editor.getByRole('button', { name: 'Methodology', exact: true }).click();
+  await editor.getByTestId('section-nav-section-2').click();
   await editor.getByLabel('Assigned student').selectOption('student-2');
   await editor.getByRole('button', { name: 'Save changes', exact: true }).click();
 
@@ -362,6 +371,7 @@ test('Edit Paper Section preserves drafts across dirty-close and revision confli
   await expect(editor.getByLabel('Section content')).toHaveValue('Conflict draft must remain.');
   await expect(editor.getByTestId('section-conflict-section-1')).toBeVisible();
   await editor.getByRole('button', { name: 'Reload section', exact: true }).click();
+  await editor.getByLabel('Section content').fill('Conflict draft must remain.');
   await editor.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(editor).toBeHidden();
   expect(state.batchAttempts).toBe(2);
@@ -382,8 +392,8 @@ test('Edit Paper Section respects structure locks without hiding instructor cont
   const editor = page.getByRole('dialog', { name: 'Edit paper sections' });
   await expect(editor.getByLabel('Section content')).not.toHaveAttribute('readonly');
   await expect(editor.getByRole('button', { name: 'Add section', exact: true })).toBeDisabled();
-  await expect(editor.getByRole('button', { name: 'Config standard', exact: true }).first()).toBeDisabled();
-  await expect(editor.getByText('Student One', { exact: true })).toBeVisible();
+  await expect(editor.getByRole('button', { name: 'Config Standard', exact: true }).first()).toBeDisabled();
+  await expect(editor.getByRole('button', { name: /Introduction Student One/ })).toBeVisible();
   expect(state.errors).toEqual([]);
   expect(state.unhandled).toEqual([]);
 });
@@ -397,6 +407,8 @@ test('Unassign all is available in Sections instead of Assign Students', async (
   await page.getByRole('button', { name: 'Edit paper', exact: true }).click();
   const editor = page.getByRole('dialog', { name: 'Edit paper sections' });
   await expect(editor.getByRole('button', { name: 'Unassign all sections', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(editor).toBeHidden();
   await page.getByRole('button', { name: 'Assign Students', exact: true }).click();
   await expect(page.locator('#project-members').getByRole('button', { name: 'Unassign all sections', exact: true })).toHaveCount(0);
   expect(state.errors).toEqual([]);

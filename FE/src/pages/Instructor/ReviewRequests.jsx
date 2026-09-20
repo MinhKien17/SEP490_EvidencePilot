@@ -103,17 +103,13 @@ export default function ReviewRequests() {
             { label: t('instructor.reviewRequests.reviewRequests') }
           ]}
         />
-        <div className="mb-6 border-b border-(--border) pb-6">
-          <h1 className="text-2xl sm:text-3xl font-black text-(--brand-foreground) tracking-tight">{t('instructor.reviewRequests.reviewRequests')}</h1>
-          <p className="text-xs text-(--text-tertiary) mt-1">{t('instructor.reviewRequests.pendingRequests')}</p>
-        </div>
+        <div className="sticky top-16 z-20 flex flex-col lg:flex-row justify-between items-start lg:items-center w-full mb-6 gap-4 border-b border-(--border) bg-(--page-bg) pb-6 pt-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl sm:text-3xl font-black text-(--brand-foreground) tracking-tight">{t('instructor.reviewRequests.reviewRequests')}</h1>
+            <p className="text-xs text-(--text-tertiary) mt-1">{t('instructor.reviewRequests.pendingRequests')}</p>
+          </div>
 
-        {errorMessage && (
-          <div className="p-4 mb-6 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-xs font-bold">{errorMessage}</div>
-        )}
-
-        {/* Control Toolbar */}
-        <div className="sticky top-16 z-20 flex flex-wrap items-center gap-2 mb-4 border-b border-(--border) bg-(--page-bg) py-3">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
           <input
             type="search"
             value={searchQuery}
@@ -201,6 +197,12 @@ export default function ReviewRequests() {
             </button>
           </div>
         </div>
+
+        </div>
+
+        {errorMessage && (
+          <div className="p-4 mb-6 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 text-xs font-bold">{errorMessage}</div>
+        )}
 
         {loading ? (
           viewMode === 'list' ? (

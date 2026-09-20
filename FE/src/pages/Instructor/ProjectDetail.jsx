@@ -16,7 +16,8 @@ import useUndoDelete, { UndoToast } from '../../components/ui/UndoDelete.jsx';
 import DeleteConfirm from '../../components/ui/DeleteConfirm.jsx';
 import ActionExpandHeader from '../../components/Instructor/ActionExpandHeader.jsx';
 import ContributionGraph from '../../components/Instructor/ContributionGraph.jsx';
-import SectionManager from '../../components/Instructor/sections/SectionManager.jsx';
+import EditPaperSectionModal from '../../components/Instructor/EditPaperSectionModal.jsx';
+import ProjectEditModal from '../../components/Instructor/ProjectEditModal.jsx';
 import { useAuth } from '../../context/AuthContext';
 import { hasProjectAction } from '../../utils/projectActions.js';
 import { formatDate, formatDateTime } from '../../utils/formatters/date.js';
@@ -58,6 +59,7 @@ export default function ProjectDetail() {
     sectionConflict: t('instructor.projectDetail.sectionConflict'),
     sectionsUnsaved: t('instructor.projectDetail.sectionsUnsaved'),
     rename: t('instructor.projectDetail.rename'),
+    editContent: t('instructor.projectDetail.editContent'),
     unassigned: t('instructor.projectDetail.unassigned'),
     dragToReorder: t('instructor.projectDetail.dragToReorder'),
     unassignToReorder: t('instructor.projectDetail.unassignToReorder'),
@@ -68,6 +70,46 @@ export default function ProjectDetail() {
     standardRequirements: t('instructor.projectDetail.standardRequirements'),
     noStandardRequirements: t('instructor.projectDetail.noStandardRequirements'),
     addStandardRequirement: t('instructor.projectDetail.addStandardRequirement'),
+  };
+  const paperEditorT = {
+    editPaperSections: t('instructor.projectDetail.editPaperSections'),
+    pages: t('pages'),
+    paperEditor: t('instructor.projectDetail.paperEditor'),
+    sectionTitle: t('instructor.projectDetail.sectionTitle'),
+    sectionContent: t('instructor.projectDetail.sectionContent'),
+    assignedStudent: t('instructor.projectDetail.assignedStudent'),
+    unassigned: t('instructor.projectDetail.unassigned'),
+    selectSection: t('instructor.projectDetail.selectSection'),
+    standardConfigured: t('instructor.projectDetail.standardConfigured'),
+    standardNotConfigured: t('instructor.projectDetail.standardNotConfigured'),
+    configStandard: t('instructor.projectDetail.configStandard'),
+    referenceSharedEditors: t('instructor.projectDetail.referenceSharedEditors'),
+    bulkAssign: t('instructor.projectDetail.bulkAssign'),
+    bulkAssignHint: t('instructor.projectDetail.bulkAssignHint'),
+    bulkAssignmentStudent: t('instructor.projectDetail.bulkAssignmentStudent'),
+    selectStudent: t('instructor.projectDetail.selectStudent'),
+    applyAssignment: t('instructor.projectDetail.applyAssignment'),
+    studentFilter: t('instructor.projectDetail.studentFilter'),
+    unassignAll: t('instructor.projectDetail.unassignAll'),
+    unassignAllHint: t('instructor.projectDetail.unassignAllHint'),
+    unassignAllConfirm: t('instructor.projectDetail.unassignAllConfirm'),
+    addSection: t('instructor.projectDetail.addSection'),
+    rename: t('instructor.projectDetail.rename'),
+    deleteSection: t('instructor.projectDetail.deleteSectionAction'),
+    deleteSectionConfirm: t('instructor.projectDetail.deleteSectionConfirm'),
+    reloadSection: t('instructor.projectDetail.reloadSectionAction'),
+    sectionsUnsaved: t('instructor.projectDetail.sectionsUnsaved'),
+    noUnsavedChanges: t('instructor.projectDetail.noUnsavedChanges'),
+    discardChanges: t('instructor.projectDetail.discardChangesAction'),
+    saveChanges: t('instructor.projectDetail.saveSectionChanges'),
+    discardUnsavedChanges: t('instructor.projectDetail.discardUnsavedChanges'),
+    discardUnsavedChangesHint: t('instructor.projectDetail.discardUnsavedChangesHint'),
+    keepEditing: t('instructor.projectDetail.keepEditing'),
+    noSectionsHelp: t('instructor.projectDetail.noSectionsHelp'),
+    editMode: t('instructor.projectDetail.editMode'),
+    previewMode: t('instructor.projectDetail.previewMode'),
+    closePages: t('instructor.projectDetail.closePages'),
+    closeEditor: t('instructor.projectDetail.closeEditor'),
   };
   const undoStrings = {
     header: t('instructor.projectDetail.undoHeader'),
@@ -81,6 +123,10 @@ export default function ProjectDetail() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [project, setProject] = useState(null);
+  const [showEditProject, setShowEditProject] = useState(false);
+  const [showEditPaper, setShowEditPaper] = useState(false);
+  const [savingProjectEdit, setSavingProjectEdit] = useState(false);
+  const [deletingProject, setDeletingProject] = useState(false);
   const [members, setMembers] = useState([]);
   const [papers, setPapers] = useState([]);
   const [sections, setSections] = useState([]);
@@ -666,7 +712,7 @@ export default function ProjectDetail() {
 
   // Single batch endpoint — replaces Promise.all N-transaction trap.
   const handleSaveAllSections = async () => {
-    if (!selectedPaper || !anyDirty || pendingDelete) return;
+    if (!selectedPaper || !anyDirty || pendingDelete) return false;
     setSectionStructureSaving(true);
     setConflictSectionId(null);
     try {
@@ -684,6 +730,7 @@ export default function ProjectDetail() {
       setSections(data || []);
       setDraftSections(data || []);
       await loadProject();
+      return true;
     } catch (err) {
       const fieldErrors = err?.response?.data?.fieldErrors;
       const sid = fieldErrors?.sectionId || err?.response?.data?.details?.sectionId;
@@ -692,6 +739,7 @@ export default function ProjectDetail() {
       } else {
         alert(err?.response?.data?.message || t('instructor.projectDetail.reorderSectionsFailed'));
       }
+      return false;
     } finally {
       setSectionStructureSaving(false);
     }
@@ -717,11 +765,17 @@ export default function ProjectDetail() {
     setEditingSectionTitle(section.sectionTitle);
   };
 
-  const handleSaveSectionRename = async (sectionId) => {
-    if (!editingSectionTitle.trim() || !selectedPaper) return;
+  const handleSaveSectionRename = async (sectionId, nextTitle = editingSectionTitle) => {
+    if (!nextTitle.trim() || !selectedPaper) return;
     // Draft-only — no API (Mandate 1)
-    setDraftSections(prev => prev.map(s => String(s.id) === String(sectionId) ? { ...s, sectionTitle: editingSectionTitle.trim() } : s));
+    setDraftSections(prev => prev.map(s => String(s.id) === String(sectionId) ? { ...s, sectionTitle: nextTitle.trim() } : s));
     setEditingSectionId(null);
+  };
+
+  const handleDiscardSectionDraft = () => {
+    setDraftSections(sections);
+    setConflictSectionId(null);
+    setShowEditPaper(false);
   };
 
   const handleDeleteSection = async (sectionId) => {
@@ -934,6 +988,37 @@ export default function ProjectDetail() {
     finally { setStatusPending(null); }
   };
 
+  const handleDeleteProject = async () => {
+    if (deletingProject) return;
+    setDeletingProject(true);
+    try {
+      await api.delete(API_ROUTES.PROJECTS.BY_ID(id));
+      navigate('/instructor/projects');
+    } catch {
+      alert(t('instructor.projectManagement.deleteProjectFailed'));
+    } finally {
+      setDeletingProject(false);
+    }
+  };
+
+  const handleUpdateProject = async ({ title, description }) => {
+    if (!project || savingProjectEdit) return;
+    setSavingProjectEdit(true);
+    try {
+      const { data } = await api.put(`/api/projects/${id}`, {
+        title,
+        description,
+        targetStandard: project.targetStandard || null,
+      });
+      setProject(data || { ...project, title, description });
+      setShowEditProject(false);
+    } catch {
+      alert(t('instructor.projectManagement.updateProjectFailed'));
+    } finally {
+      setSavingProjectEdit(false);
+    }
+  };
+
   const TOUR_STEPS = [
     { element: '#project-header', popover: { title: t('instructor.projectDetail.tourProjectTitle'), description: t('instructor.projectDetail.tourProjectDesc'), side: 'bottom', align: 'start' } },
     { element: '#tab-setup', popover: { title: t('instructor.projectDetail.projectSetup'), description: t('instructor.projectDetail.tourSetupDesc'), side: 'bottom', align: 'center' } },
@@ -1026,7 +1111,25 @@ export default function ProjectDetail() {
               <p className="mt-1 flex flex-wrap items-center gap-1 text-xs text-[var(--text-tertiary)]"><StatusBadge status={project.status} /></p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {hasProjectAction(projectActionState, 'edit') && (
+                <button onClick={() => setShowEditProject(true)} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-bold text-[var(--brand-foreground)] transition hover:border-[var(--brand)] hover:bg-[var(--brand-soft)]">
+                  {t('instructor.projectManagement.commonEdit')}
+                </button>
+              )}
               {/* PHASE 1: Status Control lifted from Settings tab — replaces View Evidence Trace */}
+              {hasProjectAction(projectActionState, 'delete') && (
+                <DeleteConfirm
+                  message={t('instructor.projectManagement.deleteProjectConfirm')}
+                  onConfirm={handleDeleteProject}
+                  triggerLabel={t('delete')}
+                  confirmLabel={t('delete')}
+                  cancelLabel={t('cancel')}
+                  disabled={deletingProject}
+                  className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100"
+                >
+                  {deletingProject ? t('saving') : t('delete')}
+                </DeleteConfirm>
+              )}
               {hasProjectAction(projectActionState, 'complete') && (
                 <button onClick={() => handlePatch('complete')} disabled={!!statusPending} className="rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white transition hover:bg-[var(--brand-hover)] disabled:opacity-50">
                   {statusPending === 'complete' ? '...' : t('instructor.projectDetail.markComplete')}
@@ -1257,35 +1360,16 @@ export default function ProjectDetail() {
                     </p>
                   )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   {selectedPaper && (
                     <button
-                      onClick={handleAddSection}
-                      disabled={sectionStructureLocked || sectionStructureSaving
-                        || selectedPaper.processingStatus === 'QUEUED'
-                        || selectedPaper.processingStatus === 'PROCESSING'}
+                      type="button"
+                      aria-label={t('instructor.projectDetail.editPaperAction')}
+                      onClick={() => setShowEditPaper(true)}
+                      disabled={displaySections.length === 0 || sectionStructureSaving || selectedPaper.processingStatus === 'QUEUED' || selectedPaper.processingStatus === 'PROCESSING'}
                       className="rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white hover:bg-[var(--brand-hover)] disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      + {t('instructor.projectDetail.addSection')}
-                    </button>
-                  )}
-                  {selectedPaper && anyDirty && (
-                    <button
-                      data-testid="save-section-changes"
-                      onClick={handleSaveAllSections}
-                      disabled={sectionStructureSaving || !!pendingDelete}
-                      title={sectionStructureLocked ? t('instructor.projectDetail.sectionStructureLocked') : undefined}
-                      className="px-3 py-1.5 bg-amber-500 text-white text-xs font-bold rounded-lg hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {t('instructor.projectDetail.saveSectionChanges')}
-                    </button>
-                  )}
-                  {selectedPaper && anyDirty && (
-                    <button
-                      onClick={() => { setDraftSections(sections); setConflictSectionId(null); }}
-                      className="px-3 py-1.5 bg-[var(--surface-tertiary)] text-[var(--text-secondary)] text-xs font-bold rounded-lg hover:opacity-80"
-                    >
-                      {t('instructor.projectDetail.discardSectionChanges')}
+                      {t('instructor.projectDetail.editPaperAction')}
                     </button>
                   )}
                 </div>
@@ -1326,32 +1410,26 @@ export default function ProjectDetail() {
                   <p>{t('instructor.projectDetail.noSectionsHelp')}</p>
                 </div>
               ) : (
-                <SectionManager
-                  selectedPaper={selectedPaper}
-                  sections={sections}
-                  draftSections={draftSections}
-                  displaySections={displaySections}
-                  conflictSectionId={conflictSectionId}
-                  sectionStructureLocked={sectionStructureLocked}
-                  projectReadOnly={projectReadOnly}
-                  sectionStructureSaving={sectionStructureSaving}
-                  sectionEvals={sectionEvals}
-                  t={sectionT}
-                  ct={ct}
-                  users={users}
-                  projectMembers={projectMembers}
-                  editingSectionId={editingSectionId}
-                  editingSectionTitle={editingSectionTitle}
-                  onStartRename={handleStartSectionRename}
-                  onSaveRename={handleSaveSectionRename}
-                  onCancelRename={()=>setEditingSectionId(null)}
-                  onEditingChange={setEditingSectionTitle}
-                  onDelete={handleDeleteSection}
-                  onAssign={handleAssignSection}
-                  onReloadConflict={handleReloadConflictSection}
-                  onDragEnd={handleDragEnd}
-                  onConfigSave={saveSectionStandard}
-                />
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto" aria-label={t('instructor.projectDetail.sectionSummary')}>
+                  {displaySections.map((section, index) => {
+                    const evaluation = sectionEvals[String(section.id)];
+                    const assignedMember = projectMembers.find(member => String(member.userId) === String(section.assignedUserId));
+                    return (
+                      <div key={section.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-secondary)] px-3 py-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--brand-soft)] text-xs font-black text-[var(--brand-foreground)]">{index + 1}</span>
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-bold text-[var(--text-primary)]">{section.sectionTitle || t('untitled')}</p>
+                            <p className="truncate text-[10px] text-[var(--text-tertiary)]">{section.sectionType === 'REFERENCE' ? t('instructor.projectDetail.referenceSharedEditors') : (assignedMember ? studentDisplayName(assignedMember) : t('instructor.projectDetail.unassigned'))}</p>
+                          </div>
+                        </div>
+                        <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${evaluation?.requirements?.length ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {evaluation?.requirements?.length ? t('instructor.projectDetail.standardConfigured') : t('instructor.projectDetail.standardNotConfigured')}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>
@@ -1573,7 +1651,6 @@ export default function ProjectDetail() {
                         <option value="MEMBER">{t('instructor.projectDetail.memberRole')}</option>
                         <option value="LEADER">{t('instructor.projectDetail.leaderRole')}</option>
                       </select>
-                      <DeleteConfirm message={t('instructor.projectDetail.unassignAllConfirm')} onConfirm={() => handleUnassignAll(selectedMember.userId)} triggerLabel={t('instructor.projectDetail.unassignAll')} confirmLabel={t('instructor.projectDetail.unassignAll')} cancelLabel={t('cancel')} disabled={unassigningAll || projectReadOnly} className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-50">{unassigningAll ? t('saving') : t('instructor.projectDetail.unassignAll')}</DeleteConfirm>
                       <DeleteConfirm message={t('instructor.projectDetail.removeMemberConfirm')} onConfirm={()=>{handleRemoveMember(selectedMember.userId); setSelectedMemberId(null)}} triggerLabel={t('instructor.projectDetail.remove')} confirmLabel={t('instructor.projectDetail.remove')} cancelLabel={t('cancel')} className="ml-auto rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100">{t('instructor.projectDetail.remove')}</DeleteConfirm>
                     </div>
                   )}
@@ -1802,7 +1879,41 @@ export default function ProjectDetail() {
           </div>
         )}
       </Modal>
+      <EditPaperSectionModal
+        open={showEditPaper}
+        paper={selectedPaper}
+        sections={displaySections}
+        serverSections={sections}
+        sectionEvals={sectionEvals}
+        projectMembers={projectMembers}
+        users={users}
+        projectReadOnly={projectReadOnly}
+        sectionStructureLocked={sectionStructureLocked}
+        sectionStructureSaving={sectionStructureSaving}
+        conflictSectionId={conflictSectionId}
+        onClose={() => setShowEditPaper(false)}
+        onDraftChange={setDraftSections}
+        onSave={handleSaveAllSections}
+        onDiscard={handleDiscardSectionDraft}
+        onAddSection={handleAddSection}
+        onDeleteSection={handleDeleteSection}
+        onStartRename={handleStartSectionRename}
+        onSaveRename={handleSaveSectionRename}
+        onReloadConflict={handleReloadConflictSection}
+        onSaveStandard={saveSectionStandard}
+        onUnassignAll={handleUnassignAll}
+        t={paperEditorT}
+        ct={ct}
+      />
 
+      <ProjectEditModal
+        open={showEditProject}
+        project={project}
+        saving={savingProjectEdit}
+        onClose={() => setShowEditProject(false)}
+        onSave={handleUpdateProject}
+        t={t}
+      />
 
       <Modal open={showExportModal} onClose={() => setShowExportModal(false)} title={t('instructor.projectDetail.export')}>
         <div className="space-y-3 text-xs">

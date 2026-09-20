@@ -204,6 +204,9 @@ public class CurrentUserServiceImpl {
                     org.springframework.http.HttpStatus.CONFLICT,
                     "Section is inactive.");
         }
+        if (isAdmin(currentUser) || isInstructor(currentUser)) {
+            return;
+        }
         if (section.getSectionType() == PaperSectionType.REFERENCE
                 && currentUser.getRole() == UserRole.STUDENT
                 && currentUser.getAccountStatus() == AccountStatus.ACTIVE

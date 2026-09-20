@@ -85,7 +85,7 @@ class CurrentUserServiceImplTest {
     }
 
     @Test
-    void sectionContentWriteFollowsAssignmentAndRejectsInstructor() {
+    void sectionContentWriteAllowsProjectInstructorAndKeepsStudentAssignmentRules() {
         User assigned = user(UserRole.STUDENT);
         User otherStudent = user(UserRole.STUDENT);
         User instructor = user(UserRole.INSTRUCTOR);
@@ -105,10 +105,8 @@ class CurrentUserServiceImplTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
                         .isEqualTo(HttpStatus.FORBIDDEN));
-        assertThatThrownBy(() -> service().requireSectionContentWriteAccess(instructor, section))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
-                        .isEqualTo(HttpStatus.FORBIDDEN));
+        assertThatCode(() -> service().requireSectionContentWriteAccess(instructor, section))
+                .doesNotThrowAnyException();
 
         section.setAssignedUser(null);
         assertThatThrownBy(() -> service().requireSectionContentWriteAccess(otherStudent, section))
@@ -118,7 +116,7 @@ class CurrentUserServiceImplTest {
     }
 
     @Test
-    void activeStudentMembersCanEditUnassignedReferencesButNotOtherStudentsSections() {
+    void activeStudentMembersCanEditUnassignedReferencesAndInstructorsCanEditProjectSections() {
         User leader = user(UserRole.STUDENT);
         User member = user(UserRole.STUDENT);
         User nonMember = user(UserRole.STUDENT);
@@ -144,8 +142,8 @@ class CurrentUserServiceImplTest {
                 .isInstanceOf(ResponseStatusException.class);
         assertThatThrownBy(() -> service().requireSectionContentWriteAccess(nonMember, references))
                 .isInstanceOf(ResponseStatusException.class);
-        assertThatThrownBy(() -> service().requireSectionContentWriteAccess(instructor, references))
-                .isInstanceOf(ResponseStatusException.class);
+        assertThatCode(() -> service().requireSectionContentWriteAccess(instructor, references))
+                .doesNotThrowAnyException();
 
         project.setStatus(ProjectStatus.SUBMITTED_FOR_REVIEW);
         assertThatThrownBy(() -> service().requireSectionContentWriteAccess(member, references))

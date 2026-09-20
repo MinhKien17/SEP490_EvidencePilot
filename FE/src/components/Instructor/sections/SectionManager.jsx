@@ -23,6 +23,7 @@ export default function SectionManager({
   onSaveRename,
   onCancelRename,
   onEditingChange,
+  onEditContent,
   onDelete,
   onAssign,
   onReloadConflict,
@@ -79,6 +80,7 @@ export default function SectionManager({
               onSaveRename={onSaveRename}
               onCancelRename={onCancelRename}
               onEditingChange={onEditingChange}
+              onEditContent={onEditContent}
               onDelete={onDelete}
               onAssign={onAssign}
               onReloadConflict={onReloadConflict}
