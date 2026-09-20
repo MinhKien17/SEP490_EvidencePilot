@@ -127,6 +127,7 @@ export default function ProjectDetail() {
   const [collectionSourcePage, setCollectionSourcePage] = useState(0);
   const [collectionSourceTotalPages, setCollectionSourceTotalPages] = useState(0);
   const [selectedSourceIds, setSelectedSourceIds] = useState([]);
+  const [selectedProjectSourceIds, setSelectedProjectSourceIds] = useState([]);
   const [collectionSourcesLoading, setCollectionSourcesLoading] = useState(false);
   const sourceSelectionTouched = useRef(new Set());
   const [showSetUpPaper, setShowSetUpPaper] = useState(false);
@@ -272,7 +273,10 @@ export default function ProjectDetail() {
   const loadSources = useCallback(async () => {
     try {
       const res = await api.get(`/api/sources/projects/${id}`);
-      setSources(res.data || []);
+      const nextSources = res.data || [];
+      setSources(nextSources);
+      setSelectedProjectSourceIds(current => current.filter(sourceId =>
+        nextSources.some(source => String(source.id) === String(sourceId))));
     } catch { }
   }, [id]);
 
@@ -597,8 +601,11 @@ export default function ProjectDetail() {
     const requests = [
       ...toShare.map(sourceId => ({ id: sourceId, promise: api.post(
         `/api/collections/${selectedCollectionId}/sources/${sourceId}/share-to-project/${id}`) })),
-      ...toUnshare.map(sourceId => ({ id: sourceId, promise: api.delete(
-        `/api/sources/projects/${id}/sources/${sourceId}`) })),
+      ...(toUnshare.length > 0 ? [{
+        id: 'bulk-unshare',
+        title: toUnshare.map(sourceId => titles.get(String(sourceId)) || sourceId).join(', '),
+        promise: api.post(`/api/sources/projects/${id}/unshare`, { sourceIds: toUnshare }),
+      }] : []),
     ];
     setShareLoadingId(selectedCollectionId);
     try {
@@ -606,7 +613,7 @@ export default function ProjectDetail() {
       await Promise.all([loadSources(), loadCollectionSources(selectedCollectionId)]);
       const failed = requests.filter((request, index) => results[index].status === 'rejected');
       if (failed.length > 0) {
-        alert(`${t('instructor.projectDetail.operationFailed')}: ${failed.map(request => titles.get(String(request.id)) || request.id).join(', ')}`);
+        alert(`${t('instructor.projectDetail.operationFailed')}: ${failed.map(request => request.title || titles.get(String(request.id)) || request.id).join(', ')}`);
         return;
       }
       setShowShareCollection(false);
@@ -757,14 +764,40 @@ export default function ProjectDetail() {
       entityDetails: sourceId,
     }, async () => {
       try {
-        await api.delete(`/api/sources/projects/${id}/sources/${sourceId}`);
+        await api.post(`/api/sources/projects/${id}/unshare`, { sourceIds: [sourceId] });
       } catch (err) {
-        alert(err?.response?.data?.message || t('instructor.projectDetail.removeSourceFailed'));
+        const blocked = err?.response?.data?.blocked || [];
+        alert(blocked.length > 0
+          ? `${t('instructor.projectDetail.removeSourceBlocked')}: ${blocked.length}`
+          : (err?.response?.data?.message || t('instructor.projectDetail.removeSourceFailed')));
       }
       await loadSources();
     }, async () => {
       await loadSources();
     });
+  };
+
+  const toggleProjectSourceSelection = (sourceId) => {
+    const normalizedId = String(sourceId);
+    setSelectedProjectSourceIds(current => current.includes(normalizedId)
+      ? current.filter(id => id !== normalizedId)
+      : [...current, normalizedId]);
+  };
+
+  const handleRemoveSelectedSources = async () => {
+    if (selectedProjectSourceIds.length === 0) return;
+    const sourceIds = [...selectedProjectSourceIds];
+    try {
+      await api.post(`/api/sources/projects/${id}/unshare`, { sourceIds });
+      setSelectedProjectSourceIds([]);
+      await loadSources();
+    } catch (err) {
+      const blocked = err?.response?.data?.blocked || [];
+      alert(blocked.length > 0
+        ? `${t('instructor.projectDetail.removeSourceBlocked')}: ${blocked.length}`
+        : (err?.response?.data?.message || t('instructor.projectDetail.removeSourceFailed')));
+      await loadSources();
+    }
   };
 
   const handleAssignSection = async (sectionId, userId) => {
@@ -1044,12 +1077,34 @@ export default function ProjectDetail() {
               <div className="mb-3 shrink-0">
                 <ActionExpandHeader title={t('instructor.projectDetail.sourceDocuments')} placeholder={t('instructor.projectDetail.searchSource')} searchValue={sourceSearch} onSearch={setSourceSearch} onAdd={() => setShowAddSource(true)} addLabel={t('instructor.projectDetail.addSource')} />
               </div>
+              {selectedProjectSourceIds.length > 0 && (
+                <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  <span>{t('instructor.projectDetail.selectedSources', { count: selectedProjectSourceIds.length })}</span>
+                  <DeleteConfirm
+                    message={t('instructor.projectDetail.removeSelectedSourcesConfirm', { count: selectedProjectSourceIds.length })}
+                    onConfirm={handleRemoveSelectedSources}
+                    triggerLabel={t('instructor.projectDetail.removeSelectedSources')}
+                    confirmLabel={t('instructor.projectDetail.removeSelectedSources')}
+                    cancelLabel={t('cancel')}
+                    className="rounded-md bg-rose-600 px-2.5 py-1.5 font-bold text-white transition hover:bg-rose-700"
+                  >
+                    {t('instructor.projectDetail.removeSelectedSources')}
+                  </DeleteConfirm>
+                </div>
+              )}
               {filteredSources.length === 0 ? (
                 <p className="text-xs italic text-[var(--text-tertiary)]">{sourceSearch ? t('instructor.projectDetail.noStudentsFound') : t('instructor.projectDetail.noSourceDocuments')}</p>
               ) : (
                 <div className="space-y-1 flex-1 min-h-0 overflow-y-auto">
                   {filteredSources.map(s => (
                     <div key={s.id} data-testid={`source-${s.id}`} className="flex items-center gap-2 rounded-lg bg-[var(--surface-secondary)] px-3 py-2 text-xs transition hover:bg-[var(--surface-tertiary)]">
+                      <input
+                        type="checkbox"
+                        checked={selectedProjectSourceIds.includes(String(s.id))}
+                        onChange={() => toggleProjectSourceSelection(s.id)}
+                        aria-label={t('instructor.projectDetail.selectSource', { name: s.title || s.originalFilename || s.id })}
+                        className="h-4 w-4 shrink-0 rounded border-[var(--border)] text-[var(--brand)] focus:ring-[var(--brand)]"
+                      />
                       <button onClick={() => { setSourceDetail(s); setShowSourceDetail(true); }} className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
                         <span className="min-w-0 truncate font-medium">{s.title || s.originalFilename || t('unknown')}</span>
                         <StatusBadge status={s.processingStatus || 'READY'} />
