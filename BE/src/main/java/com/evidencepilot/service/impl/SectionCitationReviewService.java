@@ -12,6 +12,7 @@ import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ReviewSnapshot;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.PaperSectionType;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.service.PromptTemplateService;
 import com.evidencepilot.service.PromptTemplateService.ResolvedPrompt;
@@ -222,7 +223,7 @@ public class SectionCitationReviewService {
         }
         ResolvedPrompt prompt = promptTemplateService.resolve("CITATION_REVIEW");
         String normalizedTitle = paperStandardService.normalizeSectionTitle(section.getSectionTitle());
-        AiModelClient.GenerationSelection selection = isPolicyExempt(normalizedTitle)
+        AiModelClient.GenerationSelection selection = isPolicyExempt(section, normalizedTitle)
                 ? null : aiModelClient.generationSelection();
         String generationFingerprint = selection == null ? NOT_APPLICABLE : selection.fingerprint();
         String reviewInputFingerprint = reviewInputFingerprint(section, prompt, generationFingerprint);
@@ -242,9 +243,9 @@ public class SectionCitationReviewService {
         }
 
         SectionCitationReviewResponse review;
-        if (isPolicyExempt(normalizedTitle)) {
+        if (isPolicyExempt(section, normalizedTitle)) {
             review = notApplicable(
-                    section, reviewInputFingerprint, generationFingerprint, exemptionSummary(normalizedTitle));
+                    section, reviewInputFingerprint, generationFingerprint, exemptionSummary(section, normalizedTitle));
         } else {
             // Resume: batches finished by an earlier interrupted run are skipped, not repaid.
             Map<Integer, SectionCitationReviewResponse> resumeBatches =
@@ -321,7 +322,7 @@ public class SectionCitationReviewService {
 
     public String prepareReview(PaperSection section) {
         String normalizedTitle = paperStandardService.normalizeSectionTitle(section.getSectionTitle());
-        if (isPolicyExempt(normalizedTitle)) {
+        if (isPolicyExempt(section, normalizedTitle)) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "CITATION_REVIEW_NOT_APPLICABLE");
         }
@@ -332,7 +333,7 @@ public class SectionCitationReviewService {
 
     private String generationIdentity(PaperSection section) {
         String normalizedTitle = paperStandardService.normalizeSectionTitle(section.getSectionTitle());
-        if (isPolicyExempt(normalizedTitle)) return NOT_APPLICABLE;
+        if (isPolicyExempt(section, normalizedTitle)) return NOT_APPLICABLE;
         return generationConfigService.current().map(AiModelClient.GenerationSelection::fingerprint)
                 .orElse(NO_GENERATION_SELECTION);
     }
@@ -928,8 +929,8 @@ public class SectionCitationReviewService {
                 List.of());
     }
 
-    private static String exemptionSummary(String title) {
-        return "Abstract".equals(title)
+    private static String exemptionSummary(PaperSection section, String title) {
+        return "Abstract".equals(title) && section.getSectionType() != PaperSectionType.REFERENCE
                 ? "The abstract is exempt from citation critique."
                 : "Citation critique is not applicable to the references section.";
     }
@@ -988,8 +989,8 @@ public class SectionCitationReviewService {
         return response.substring(start, end + 1);
     }
 
-    private static boolean isPolicyExempt(String title) {
-        return "Abstract".equals(title) || "References".equals(title) || "Works Cited".equals(title);
+    private static boolean isPolicyExempt(PaperSection section, String title) {
+        return "Abstract".equals(title) || section.getSectionType() == PaperSectionType.REFERENCE;
     }
 
     private record ClaimCandidate(int id, String text, int startOffset, int endOffset) {

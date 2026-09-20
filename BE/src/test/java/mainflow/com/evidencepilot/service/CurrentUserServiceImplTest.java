@@ -5,6 +5,7 @@ import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.PaperSection;
 import com.evidencepilot.model.User;
+import com.evidencepilot.model.enums.PaperSectionType;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
@@ -131,11 +132,11 @@ class CurrentUserServiceImplTest {
         PaperSection references = new PaperSection();
         references.setDocument(document);
         references.setSectionTitle("References");
+        references.setSectionType(PaperSectionType.REFERENCE);
         PaperSection introduction = new PaperSection();
         introduction.setDocument(document);
         introduction.setSectionTitle("Introduction");
         introduction.setAssignedUser(leader);
-        when(paperStandardService.isReferenceSectionTitle("References")).thenReturn(true);
 
         assertThatCode(() -> service().requireSectionContentWriteAccess(member, references))
                 .doesNotThrowAnyException();

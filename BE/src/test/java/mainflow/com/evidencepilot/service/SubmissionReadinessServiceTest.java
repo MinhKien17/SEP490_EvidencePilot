@@ -12,6 +12,7 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
+import com.evidencepilot.model.enums.PaperSectionType;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
@@ -101,12 +102,11 @@ class SubmissionReadinessServiceTest {
         references.setDocument(fixture.paper());
         references.setSectionOrder(1);
         references.setSectionTitle("References");
+        references.setSectionType(PaperSectionType.REFERENCE);
         references.setContentTex("Saved references");
         references.setVersion(1);
         references.setOptVersion(0L);
         references.setActive(true);
-        when(paperStandardService.isReferenceSectionTitle(org.mockito.ArgumentMatchers.anyString()))
-                .thenAnswer(invocation -> "References".equals(invocation.getArgument(0)));
         when(documentRepository.findByProjectIdAndDocTypeAndActiveTrue(
                 fixture.project().getId(), DocumentType.PAPER)).thenReturn(List.of(fixture.paper()));
         when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(fixture.paper().getId()))

@@ -14,6 +14,7 @@ import com.evidencepilot.model.Project;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.PaperStandard;
+import com.evidencepilot.model.enums.PaperSectionType;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.repository.DocumentRepository;
@@ -157,6 +158,8 @@ public class PaperProcessingServiceImpl {
             section.setDocument(document);
             section.setSectionOrder((index + 1) * BlockTreeIngestor.ORDER_STEP);
             section.setSectionTitle(sectionName);
+            section.setSectionType(referenceTitle(sectionName)
+                    ? PaperSectionType.REFERENCE : PaperSectionType.STANDARD);
             section.setHeadingLevel(2);
             sections.add(section);
 
@@ -401,7 +404,7 @@ public class PaperProcessingServiceImpl {
         Document document = requireInstructorDocumentWriteAccess(documentId);
         User currentUser = currentUserService.requireCurrentUser();
         PaperSection section = requireSectionInDocument(sectionId, documentId);
-        if (assignedUserId != null && paperStandardService.isReferenceSectionTitle(section.getSectionTitle())) {
+        if (assignedUserId != null && isReferenceSection(section)) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Reference sections are shared and cannot be assigned.");
@@ -521,6 +524,8 @@ public class PaperProcessingServiceImpl {
         PaperSection section = new PaperSection();
         section.setDocument(document);
         section.setSectionTitle(title != null ? title : "New Section");
+        section.setSectionType(referenceTitle(section.getSectionTitle())
+                ? PaperSectionType.REFERENCE : PaperSectionType.STANDARD);
         section.setSectionOrder(maxOrder + BlockTreeIngestor.ORDER_STEP);
         PaperStandard standard = document.getProject().getTargetStandard();
         section.setContentTex(paperStandardService.getSectionTemplate(
@@ -562,6 +567,8 @@ public class PaperProcessingServiceImpl {
             PaperSection section = new PaperSection();
             section.setDocument(document);
             section.setSectionTitle(requiredSections.get(i));
+            section.setSectionType(referenceTitle(section.getSectionTitle())
+                    ? PaperSectionType.REFERENCE : PaperSectionType.STANDARD);
             section.setSectionOrder(startOrder + i * BlockTreeIngestor.ORDER_STEP);
             section.setContentTex(
                     paperStandardService.getSectionTemplate(
@@ -839,6 +846,14 @@ public class PaperProcessingServiceImpl {
                 .anyMatch(feedback -> section.getId().equals(feedback.getSection().getId()));
     }
 
+    private static boolean isReferenceSection(PaperSection section) {
+        return section != null && section.getSectionType() == PaperSectionType.REFERENCE;
+    }
+
+    private boolean referenceTitle(String title) {
+        return paperStandardService.isReferenceSectionTitle(title);
+    }
+
     private Document requireDocumentAccess(UUID documentId) {
         User currentUser = currentUserService.requireCurrentUser();
         Document document = documentRepository.findById(documentId)
@@ -915,7 +930,8 @@ public class PaperProcessingServiceImpl {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Section title must contain 1 to 255 characters");
             }
-            if (paperStandardService.isReferenceSectionTitle(item.sectionTitle())
+            PaperSection persistedSection = persistedById.get(item.id());
+            if (isReferenceSection(persistedSection)
                     && item.assignedUserId() != null) {
                 throw new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,

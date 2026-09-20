@@ -5,7 +5,6 @@ import SectionRequirementsPanel from './SectionRequirementsPanel.jsx';
 import SourceLibraryContent from './SourceLibraryContent.jsx';
 import { formatDateTime } from '../../utils/formatters/date.js';
 import { PROJECT_STATUSES } from '../../constants';
-import { isReferenceSectionTitle } from '../../utils/formatters/latexHtml.js';
 
 const FEEDBACK_STATUSES = new Set(['PENDING', 'RETURNED', 'REVIEWED']);
 
@@ -169,7 +168,7 @@ export default function ContextPanel({
                                 <h4 className="font-bold">{paper.title || t('paper')}</h4>
                                 {paper.sections.map(section => <div key={section.id} className="mt-2 border-t border-(--border) pt-2">
                                   {(() => {
-                                    const sharedReferences = isReferenceSectionTitle(section.title);
+                                    const sharedReferences = section.sectionType === 'REFERENCE';
                                     const handoffState = sharedReferences ? 'NOT_REQUIRED' : section.handoffState;
                                     return <>
                                   <p className="font-semibold">{section.title}</p>

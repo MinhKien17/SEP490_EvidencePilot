@@ -1,6 +1,5 @@
 import DeleteConfirm from '../../ui/DeleteConfirm.jsx';
 import { studentDisplayName } from '../../../utils/instructor/studentSearch.js';
-import { isReferenceSectionTitle } from '../../../utils/formatters/latexHtml.js';
 
 export default function SectionRow({
   section: s,
@@ -28,7 +27,7 @@ export default function SectionRow({
   onDragOver,
   onDrop,
   }) {
-  const isReferenceSection = isReferenceSectionTitle(s.sectionTitle);
+  const isReferenceSection = s.sectionType === 'REFERENCE';
   return (
     <div
       draggable={!isLocked && !isSaving}

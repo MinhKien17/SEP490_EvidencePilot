@@ -11,6 +11,7 @@ import com.evidencepilot.model.ReviewSnapshot;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.PaperStandard;
+import com.evidencepilot.model.enums.PaperSectionType;
 import com.evidencepilot.prompt.SectionCitationReviewPrompt;
 import com.evidencepilot.repository.PaperSectionRepository;
 import com.evidencepilot.repository.ReviewSnapshotRepository;
@@ -1456,6 +1457,9 @@ class SectionCitationReviewServiceTest {
         section.setId(sectionId);
         section.setDocument(document);
         section.setSectionTitle(title);
+        if ("References".equals(title) || "Bibliography".equals(title) || "Works Cited".equals(title)) {
+            section.setSectionType(PaperSectionType.REFERENCE);
+        }
         section.setContentTex(content);
         section.setVersion(2);
         section.setActive(true);

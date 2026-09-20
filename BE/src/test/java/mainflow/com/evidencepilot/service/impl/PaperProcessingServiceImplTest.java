@@ -1,6 +1,7 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.request.SectionBatchItem;
+import com.evidencepilot.dto.response.PaperSectionResponse;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentText;
 import com.evidencepilot.model.PaperSection;
@@ -8,6 +9,7 @@ import com.evidencepilot.model.Project;
 import com.evidencepilot.model.SectionStandardEvaluation;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.ProcessingStatus;
+import com.evidencepilot.model.enums.PaperSectionType;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.DocumentRepository;
@@ -69,6 +71,15 @@ class PaperProcessingServiceImplTest {
     private FeedbackAnchorService feedbackAnchorService;
     @Mock
     private com.evidencepilot.repository.AssignmentSectionBaselineRepository assignmentSectionBaselineRepository;
+
+    @Test
+    void paperSectionResponseCarriesExplicitSectionKind() {
+        PaperSection section = section(paper(project(ProjectStatus.IN_PROGRESS)));
+        section.setSectionType(PaperSectionType.REFERENCE);
+
+        assertThat(PaperSectionResponse.from(section).sectionType())
+                .isEqualTo(PaperSectionType.REFERENCE);
+    }
 
     @Test
     void structuralRenameRejectsASectionWithHistoryEvenWhenItIsUnassignedAndEmpty() {
@@ -825,12 +836,12 @@ class PaperProcessingServiceImplTest {
         Project project = project(ProjectStatus.ASSIGNED);
         Document paper = paper(project);
         PaperSection section = section(paper);
-        section.setSectionTitle("References");
+        section.setSectionTitle("Sources");
+        section.setSectionType(PaperSectionType.REFERENCE);
         when(currentUserService.requireCurrentUser()).thenReturn(instructor);
         when(currentUserService.isInstructor(instructor)).thenReturn(true);
         when(documentRepository.findById(paper.getId())).thenReturn(Optional.of(paper));
         when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
-        when(paperStandardService.isReferenceSectionTitle("References")).thenReturn(true);
 
         assertThatThrownBy(() -> service().assignSection(
                 paper.getId(), section.getId(), UUID.randomUUID()))
@@ -849,20 +860,42 @@ class PaperProcessingServiceImplTest {
         Document paper = paper(project);
         PaperSection section = section(paper);
         section.setSectionTitle("Introduction");
+        section.setSectionType(PaperSectionType.REFERENCE);
         when(currentUserService.requireCurrentUser()).thenReturn(instructor);
         when(documentRepository.findById(paper.getId())).thenReturn(Optional.of(paper));
         when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paper.getId()))
                 .thenReturn(List.of(section));
-        when(paperStandardService.isReferenceSectionTitle("References")).thenReturn(true);
 
         var request = List.of(new SectionBatchItem(
-                section.getId(), 0, "References", student.getId(), "Draft", 0L));
+                section.getId(), 0, "Methods", student.getId(), "Draft", 0L));
         assertThatThrownBy(() -> service().batchUpdateSections(paper.getId(), request))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
                         .isEqualTo(HttpStatus.BAD_REQUEST));
         verify(paperSectionRepository, never()).saveAll(anyList());
         verify(paperSectionRepository, never()).flush();
+    }
+
+    @Test
+    void standardSectionWithReferenceLookingTitleRemainsAssignable() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(ProjectStatus.ASSIGNED);
+        Document paper = paper(project);
+        PaperSection section = section(paper);
+        section.setSectionTitle("References");
+        section.setSectionType(PaperSectionType.STANDARD);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(currentUserService.isInstructor(instructor)).thenReturn(true);
+        when(documentRepository.findById(paper.getId())).thenReturn(Optional.of(paper));
+        when(userRepository.findById(student.getId())).thenReturn(Optional.of(student));
+        when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
+        when(paperSectionRepository.save(section)).thenReturn(section);
+
+        service().assignSection(paper.getId(), section.getId(), student.getId());
+
+        assertThat(section.getAssignedUser()).isEqualTo(student);
+        verify(paperSectionRepository).save(section);
     }
 
     @Test

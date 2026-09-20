@@ -16,6 +16,7 @@ import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProcessingStatus;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
+import com.evidencepilot.model.enums.PaperSectionType;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.CitationReviewRoundRepository;
 import com.evidencepilot.repository.DocumentRepository;
@@ -86,7 +87,7 @@ public class SubmissionReadinessService {
         PaperSection section = requireSection(documentId, sectionId);
         User currentUser = currentUserService.requireCurrentUser();
         currentUserService.requireSectionContentWriteAccess(currentUser, section);
-        if (paperStandardService.isReferenceSectionTitle(section.getSectionTitle())) {
+        if (isReferenceSection(section)) {
             throw new SubmissionReadinessException(
                     "SECTION_HANDOFF_NOT_REQUIRED",
                     "Reference sections are shared and do not require handoff.",
@@ -130,7 +131,7 @@ public class SubmissionReadinessService {
         PaperSection section = requireSection(documentId, sectionId);
         User currentUser = currentUserService.requireCurrentUser();
         currentUserService.requireSectionContentWriteAccess(currentUser, section);
-        if (paperStandardService.isReferenceSectionTitle(section.getSectionTitle())) {
+        if (isReferenceSection(section)) {
             throw new SubmissionReadinessException(
                     "SECTION_HANDOFF_NOT_REQUIRED",
                     "Reference sections are shared and do not require handoff.",
@@ -251,7 +252,7 @@ public class SubmissionReadinessService {
                 }
 
                 User assigned = section.getAssignedUser();
-                boolean handoffRequired = !paperStandardService.isReferenceSectionTitle(section.getSectionTitle());
+                boolean handoffRequired = !isReferenceSection(section);
                 boolean assigneeValid = !handoffRequired
                         || assigned != null && studentMembers.containsKey(assigned.getId());
                 if (!assigneeValid) {
@@ -279,6 +280,7 @@ public class SubmissionReadinessService {
 
                 sectionResponses.add(new ReviewReadinessResponse.Section(
                         section.getId(), paper.getId(), section.getSectionTitle(),
+                        section.getSectionType() == null ? PaperSectionType.STANDARD : section.getSectionType(),
                         section.getSectionOrder(), section.getVersion(), section.getOptVersion(),
                         assigned != null ? assigned.getId() : null, displayName(assigned),
                         assigned != null ? assigned.getStudentCode() : null,
@@ -522,6 +524,10 @@ public class SubmissionReadinessService {
         section.setHandoffConfirmedAt(null);
         section.setHandoffContentVersion(null);
         section.setHandoffInputFingerprint(null);
+    }
+
+    private static boolean isReferenceSection(PaperSection section) {
+        return section != null && section.getSectionType() == PaperSectionType.REFERENCE;
     }
 
     private static String displayName(User user) {

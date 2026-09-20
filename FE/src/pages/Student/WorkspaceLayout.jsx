@@ -23,7 +23,7 @@ import useProjectFeedback from '../../hooks/useProjectFeedback.js';
 import { feedbackKeys } from '../../services/feedbackKeys.js';
 import { usePaperReferences } from '../../hooks/usePaperReferences.js';
 import { normalizeSource } from '../../utils/student/feedbackAnchors.js';
-import { isAbstractSectionTitle, isReferenceSectionTitle } from '../../utils/formatters/latexHtml.js';
+import { isAbstractSectionTitle } from '../../utils/formatters/latexHtml.js';
 import useUndoDelete, { UndoToast } from '../../components/ui/UndoDelete.jsx';
 
 const VisualSourceMap = React.lazy(() => import('../../components/features/VisualSourceMap.jsx'));
@@ -712,7 +712,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
   const isLocked = isReview || project?.status === 'SUBMITTED_FOR_REVIEW' || project?.status === 'APPROVED' || project?.status === 'ARCHIVED';
   const canEditSection = (section) => {
     if (isReview || isLocked || !section || role !== 'STUDENT') return false;
-    if (isReferenceSectionTitle(section.sectionTitle)) {
+    if (section.sectionType === 'REFERENCE') {
       return project?.currentUserRole === 'LEADER' || project?.currentUserRole === 'MEMBER';
     }
     return role === 'STUDENT'
@@ -822,12 +822,12 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
     const sectionId = String(currentSection?.id ?? '');
     const staleCheckVisible = paperRefs.check || paperRefs.checkLoading || paperRefs.checkError;
     if (sectionId
-      && isReferenceSectionTitle(currentSection?.sectionTitle)
+      && currentSection?.sectionType === 'REFERENCE'
       && dirtySectionsRef.current.has(sectionId)
       && staleCheckVisible) {
       paperRefs.clearCheck();
     }
-  }, [codeContent, currentSection?.id, currentSection?.sectionTitle,
+  }, [codeContent, currentSection?.id, currentSection?.sectionType,
     paperRefs.check, paperRefs.checkLoading, paperRefs.checkError, paperRefs.clearCheck]);
 
   useEffect(() => {
@@ -1104,7 +1104,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
     if (section?.revision == null) { showToast(t('restoreFailed')); return; }
     if (!window.confirm(t('restoreConfirm'))) return;
     const paperId = selectedPaper.id;
-    if (isReferenceSectionTitle(section?.sectionTitle)) paperRefs.clearCheck();
+    if (section?.sectionType === 'REFERENCE') paperRefs.clearCheck();
     setRollingBack(true);
     try {
       const res = await api.post(
@@ -1142,8 +1142,8 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
     const paperId = selectedPaper.id;
     const projectId = projectRef.current?.id;
     const sectionId = selectedSectionIdRef.current;
-    const savedSectionTitle = sections.find(section =>
-      String(section.id) === String(sectionId))?.sectionTitle;
+    const savedSectionType = sections.find(section =>
+      String(section.id) === String(sectionId))?.sectionType;
     const content = codeContentRef.current;
     const editor = editorRef.current;
     const snapshot = editor?.getChangeSnapshot?.();
@@ -1156,7 +1156,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
       if (changes) editor?.acknowledgeSave?.(snapshot);
       setSections(previous => previous.map(section =>
         withSavedContent(section, sectionId, content, updated)));
-      if (isReferenceSectionTitle(savedSectionTitle)) await refreshReferences();
+      if (savedSectionType === 'REFERENCE') await refreshReferences();
       setLastSaved(new Date());
       feedback.refresh();
       const stillCurrent = String(selectedSectionIdRef.current) === String(sectionId);
@@ -1356,7 +1356,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
 
   const handleAddReference = async (sourceId) => {
     const selected = sections.find(section => String(section.id) === String(selectedSectionIdRef.current));
-    if (selected && isReferenceSectionTitle(selected.sectionTitle)
+    if (selected && selected.sectionType === 'REFERENCE'
       && dirtySectionsRef.current.has(String(selected.id))
       && !await handleSaveDraft()) return;
     try {
@@ -1365,7 +1365,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
       const refreshed = response.data || [];
       setSections(refreshed);
       const current = refreshed.find(section => String(section.id) === String(selectedSectionIdRef.current));
-      if (current && isReferenceSectionTitle(current.sectionTitle)
+      if (current && current.sectionType === 'REFERENCE'
         && !dirtySectionsRef.current.has(String(current.id))) loadCode(current.contentTex || '');
     } catch (error) {
       showToast(t('failedToAddSource'));
@@ -1373,7 +1373,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
   };
 
   const handleRunReferenceCheck = async () => {
-    if (!selectedPaper || !currentSection || !isReferenceSectionTitle(currentSection.sectionTitle)) return;
+    if (!selectedPaper || !currentSection || currentSection.sectionType !== 'REFERENCE') return;
     if (!requireEditableCurrentSection()) return;
     if (dirtySectionsRef.current.has(String(currentSection.id))) {
       const saved = await handleSaveDraft();
@@ -1659,7 +1659,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
     return !open;
   });
 
-  const isReferenceSection = isReferenceSectionTitle(currentSection?.sectionTitle);
+  const isReferenceSection = currentSection?.sectionType === 'REFERENCE';
   const isAbstractSection = isAbstractSectionTitle(currentSection?.sectionTitle);
   const reviewAction = isReview ? null : {
     label: isReferenceSection ? t('refCheckAction') : t('aiReview'),
