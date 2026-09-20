@@ -17,6 +17,7 @@ import DeleteConfirm from '../../components/ui/DeleteConfirm.jsx';
 import ActionExpandHeader from '../../components/Instructor/ActionExpandHeader.jsx';
 import ContributionGraph from '../../components/Instructor/ContributionGraph.jsx';
 import EditPaperSectionModal from '../../components/Instructor/EditPaperSectionModal.jsx';
+import StandardRequirementsModal from '../../components/Instructor/sections/StandardRequirementsModal.jsx';
 import ProjectEditModal from '../../components/Instructor/ProjectEditModal.jsx';
 import { useAuth } from '../../context/AuthContext';
 import { hasProjectAction } from '../../utils/projectActions.js';
@@ -86,6 +87,10 @@ export default function ProjectDetail() {
     selectSection: t('instructor.projectDetail.selectSection'),
     standardConfigured: t('instructor.projectDetail.standardConfigured'),
     standardNotConfigured: t('instructor.projectDetail.standardNotConfigured'),
+    viewStandard: t('instructor.projectDetail.viewStandard'),
+    standardRequirements: t('instructor.projectDetail.standardRequirements'),
+    noStandardRequirements: t('instructor.projectDetail.noStandardRequirements'),
+    changesSaved: t('instructor.projectDetail.changesSaved'),
     configStandard: t('instructor.projectDetail.configStandard'),
     standards: t('instructor.projectDetail.standards'),
     referenceSharedEditors: t('instructor.projectDetail.referenceSharedEditors'),
@@ -210,6 +215,7 @@ export default function ProjectDetail() {
   const [viewerFile, setViewerFile] = useState(null);
   // Section standards are configured here and checked by the assigned student.
   const [sectionEvals, setSectionEvals] = useState({});
+  const [standardViewSectionId, setStandardViewSectionId] = useState(null);
   const sectionLoadRequestRef = useRef(0);
   const anyDirty = draftDirty;
 
@@ -219,9 +225,9 @@ export default function ProjectDetail() {
   );
   const visibleCollectionSources = collectionSourcePages[collectionSourcePage] || [];
 
-  const loadProject = useCallback(async () => {
+  const loadProject = useCallback(async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const [projRes, memRes] = await Promise.all([
         api.get(`/api/projects/${id}`),
         api.get(`/api/projects/${id}/members`).catch(() => ({ data: [] })),
@@ -230,7 +236,7 @@ export default function ProjectDetail() {
       setStandard(projRes.data.targetStandard || '');
       setMembers(memRes.data || []);
     } catch { navigate('/instructor/projects'); }
-    finally { setLoading(false); }
+    finally { if (showLoading) setLoading(false); }
   }, [id, navigate]);
 
   const loadPapers = useCallback(async () => {
@@ -735,7 +741,7 @@ export default function ProjectDetail() {
       const { data } = await api.put(`/api/papers/${selectedPaper.id}/sections/batch`, payload);
       setSections(data || []);
       setDraftSections(data || []);
-      await loadProject();
+      await loadProject(false);
       return true;
     } catch (err) {
       const fieldErrors = err?.response?.data?.fieldErrors;
@@ -752,7 +758,9 @@ export default function ProjectDetail() {
   };
 
   const handleAddSection = async () => {
-    if (!selectedPaper) return;
+    const structureLockedNow = sections.some(section => section.assignedUserId)
+      || ['SUBMITTED_FOR_REVIEW', 'APPROVED', 'ARCHIVED'].includes(project?.status);
+    if (!selectedPaper || structureLockedNow || sectionStructureSaving) return;
     setSectionStructureSaving(true);
     try {
       await api.post(`/api/papers/${selectedPaper.id}/sections/create`, null, {
@@ -1083,6 +1091,7 @@ export default function ProjectDetail() {
   const hasAssignedSections = sections.some(s => s.assignedUserId);
   const projectReadOnly = ['SUBMITTED_FOR_REVIEW', 'APPROVED', 'ARCHIVED'].includes(project.status);
   const sectionStructureLocked = hasAssignedSections || projectReadOnly;
+  const standardViewSection = displaySections.find(section => String(section.id) === String(standardViewSectionId)) || null;
   const projectActionState = {
     ...project,
     active: project.active ?? true,
@@ -1420,9 +1429,23 @@ export default function ProjectDetail() {
                             <p className="truncate text-[10px] text-[var(--text-tertiary)]">{section.sectionType === 'REFERENCE' ? t('instructor.projectDetail.referenceSharedEditors') : (assignedMember ? studentDisplayName(assignedMember) : t('instructor.projectDetail.unassigned'))}</p>
                           </div>
                         </div>
-                        <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${evaluation?.requirements?.length ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                          {evaluation?.requirements?.length ? t('instructor.projectDetail.standardConfigured') : t('instructor.projectDetail.standardNotConfigured')}
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${evaluation?.requirements?.length ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                            {evaluation?.requirements?.length ? t('instructor.projectDetail.standardConfigured') : t('instructor.projectDetail.standardNotConfigured')}
+                          </span>
+                          {evaluation?.requirements?.length > 0 && (
+                            <button
+                              type="button"
+                              data-testid={`view-standard-tab-${section.id}`}
+                              onClick={() => setStandardViewSectionId(section.id)}
+                              aria-label={`${t('instructor.projectDetail.viewStandard')}: ${section.sectionTitle}`}
+                              title={t('instructor.projectDetail.viewStandard')}
+                              className="rounded p-1 text-indigo-600 hover:bg-indigo-50"
+                            >
+                              <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" /><circle cx="12" cy="12" r="2.5" /></svg>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -1902,6 +1925,17 @@ export default function ProjectDetail() {
         onUnassignAll={handleUnassignAll}
         t={paperEditorT}
         ct={ct}
+      />
+
+      <StandardRequirementsModal
+        open={Boolean(standardViewSection)}
+        section={standardViewSection}
+        requirements={standardViewSection ? sectionEvals[String(standardViewSection.id)]?.requirements || [] : []}
+        title={t('instructor.projectDetail.viewStandard')}
+        requirementsLabel={t('instructor.projectDetail.standardRequirements')}
+        emptyLabel={t('instructor.projectDetail.noStandardRequirements')}
+        closeLabel={t('close')}
+        onClose={() => setStandardViewSectionId(null)}
       />
 
       <ProjectEditModal

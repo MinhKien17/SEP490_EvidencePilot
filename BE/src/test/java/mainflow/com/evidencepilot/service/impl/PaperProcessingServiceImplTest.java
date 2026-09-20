@@ -778,6 +778,7 @@ class PaperProcessingServiceImplTest {
         Document paperDoc = paper(project);
         PaperSection existingSection = section(paperDoc);
         existingSection.setSectionOrder(1024);
+        assertThat(existingSection.getAssignedUser()).isNull();
         when(currentUserService.requireCurrentUser()).thenReturn(instructor);
         when(currentUserService.isInstructor(instructor)).thenReturn(true);
         when(documentRepository.findById(paperDoc.getId())).thenReturn(Optional.of(paperDoc));
@@ -789,6 +790,25 @@ class PaperProcessingServiceImplTest {
         var response = service().createSection(paperDoc.getId(), "Extra", null);
 
         assertThat(response.sectionOrder()).isEqualTo(2048);
+    }
+
+    @Test
+    void createSectionRejectsAnAssignedPaper() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        Document paperDoc = paper(project);
+        PaperSection existingSection = section(paperDoc);
+        existingSection.setAssignedUser(student);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(currentUserService.isInstructor(instructor)).thenReturn(true);
+        when(documentRepository.findById(paperDoc.getId())).thenReturn(Optional.of(paperDoc));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paperDoc.getId()))
+                .thenReturn(List.of(existingSection));
+
+        assertThatThrownBy(() -> service().createSection(paperDoc.getId(), "Extra", null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("SECTION_STRUCTURE_LOCKED");
     }
 
     @Test
