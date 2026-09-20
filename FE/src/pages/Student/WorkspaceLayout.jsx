@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import FileViewerModal from '../../components/features/FileViewerModal';
 import InlineCitationCard from '../../components/features/InlineCitationCard.jsx';
 import { hasNoEvidence, wrapFindingIndex } from '../../utils/citationReviewPopover.js';
+import { normalizeCitationReviewReload } from '../../utils/citationReviewJob.js';
 import { isReferenceCandidate } from '../../utils/paperReferences.js';
 import api from '../../services/api.js';
 import { useNotification } from '../../context/NotificationContext';
@@ -1467,22 +1468,31 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
     api.get(`/api/papers/${selectedPaper.id}/sections/${selectedSectionId}/review`)
       .then(async response => {
         if (aiReviewRequestRef.current !== requestId) return;
-        if (response.status !== 204) {
-          const review = response.data;
-          setAiReviewResult(review);
-          setAiReviewedContent(codeContentRef.current);
-          fetchAiReviewSources(review, requestId);
+        // ponytail: refresh-while-running — the job outlives FE state, reattach
+        // to it even when the cache already contains partial findings.
+        const cachedReview = response.status === 204 ? null : response.data;
+        const storedJobId = readReviewJob(selectedSectionId);
+        if (!storedJobId) {
+          if (cachedReview) {
+            setAiReviewResult(cachedReview);
+            setAiReviewedContent(codeContentRef.current);
+            fetchAiReviewSources(cachedReview, requestId);
+          }
           return;
         }
-        // ponytail: refresh-while-running — the job outlives FE state, reattach
-        // to it instead of showing a blank panel until the next manual Run.
-        const storedJobId = readReviewJob(selectedSectionId);
-        if (!storedJobId) return;
         try {
           const { data: job } = await api.get(`/api/jobs/${storedJobId}`);
           if (aiReviewRequestRef.current !== requestId) return;
-          if (job.status !== 'PENDING' && job.status !== 'PROCESSING') {
+          const reload = normalizeCitationReviewReload({ cachedReview, storedJob: job });
+          if (reload.shouldClearJob) {
             clearReviewJob(selectedSectionId);
+          }
+          if (reload.review) {
+            setAiReviewResult(reload.review);
+            setAiReviewedContent(codeContentRef.current);
+          }
+          if (!reload.shouldPoll) {
+            if (reload.review) fetchAiReviewSources(reload.review, requestId);
             return;
           }
           aiReviewJobRef.current = job.id;
