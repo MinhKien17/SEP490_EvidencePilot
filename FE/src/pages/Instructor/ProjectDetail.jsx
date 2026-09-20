@@ -74,6 +74,10 @@ export default function ProjectDetail() {
   const paperEditorT = {
     editPaperSections: t('instructor.projectDetail.editPaperSections'),
     pages: t('pages'),
+    paperName: t('instructor.projectDetail.paperName'),
+    renamePaper: t('instructor.projectDetail.renamePaper'),
+    savePaperName: t('save'),
+    cancelPaperRename: t('cancel'),
     paperEditor: t('instructor.projectDetail.paperEditor'),
     sectionTitle: t('instructor.projectDetail.sectionTitle'),
     sectionContent: t('instructor.projectDetail.sectionContent'),
@@ -83,16 +87,18 @@ export default function ProjectDetail() {
     standardConfigured: t('instructor.projectDetail.standardConfigured'),
     standardNotConfigured: t('instructor.projectDetail.standardNotConfigured'),
     configStandard: t('instructor.projectDetail.configStandard'),
+    standards: t('instructor.projectDetail.standards'),
     referenceSharedEditors: t('instructor.projectDetail.referenceSharedEditors'),
     bulkAssign: t('instructor.projectDetail.bulkAssign'),
     bulkAssignHint: t('instructor.projectDetail.bulkAssignHint'),
     bulkAssignmentStudent: t('instructor.projectDetail.bulkAssignmentStudent'),
     selectStudent: t('instructor.projectDetail.selectStudent'),
     applyAssignment: t('instructor.projectDetail.applyAssignment'),
-    studentFilter: t('instructor.projectDetail.studentFilter'),
     unassignAll: t('instructor.projectDetail.unassignAll'),
-    unassignAllHint: t('instructor.projectDetail.unassignAllHint'),
     unassignAllConfirm: t('instructor.projectDetail.unassignAllConfirm'),
+    selectedSections: count => t('instructor.projectDetail.selectedSections', { count }),
+    deleteSelectedSections: t('instructor.projectDetail.deleteSelectedSections'),
+    deleteSelectedSectionsConfirm: t('instructor.projectDetail.deleteSelectedSectionsConfirm'),
     addSection: t('instructor.projectDetail.addSection'),
     rename: t('instructor.projectDetail.rename'),
     deleteSection: t('instructor.projectDetail.deleteSectionAction'),
@@ -192,7 +198,6 @@ export default function ProjectDetail() {
   const [shareLoadingId, setShareLoadingId] = useState(null);
   const [pendingAssign, setPendingAssign] = useState(null); // { sectionId, userId, userName }
   const [statusPending, setStatusPending] = useState(null);
-  const [unassigningAll, setUnassigningAll] = useState(false);
   // Phase 2: Assign Students local state
   const [selectedMemberId, setSelectedMemberId] = useState(null);
   const [memberSearch, setMemberSearch] = useState('');
@@ -688,13 +693,14 @@ export default function ProjectDetail() {
     setEditingPaperTitle(paper.title || paper.originalFilename || '');
   };
 
-  const handleSaveRename = async (paperId) => {
-    if (!editingPaperTitle.trim()) return;
+  const handleSaveRename = async (paperId, nextTitle = editingPaperTitle) => {
+    if (!nextTitle.trim()) return;
     try {
-      const newTitle = editingPaperTitle.trim();
+      const newTitle = nextTitle.trim();
       const newFilename = newTitle.endsWith('.tex') ? newTitle : newTitle + '.tex';
       await api.put(`/api/papers/${paperId}`, null, { params: { title: newTitle, originalFilename: newFilename } });
       setEditingPaperId(null);
+      setSelectedPaper(current => current?.id === paperId ? { ...current, title: newTitle, originalFilename: newFilename } : current);
       await loadPapers();
     } catch { alert(t('instructor.projectDetail.renameFailed')); }
   };
@@ -960,19 +966,10 @@ export default function ProjectDetail() {
     }
   };
 
-  const handleUnassignAll = async (userId) => {
-    if (!userId || unassigningAll) return;
-    setUnassigningAll(true);
-    try {
-      const response = await api.patch(API_ROUTES.PROJECTS.UNASSIGN_ALL(id, userId));
-      const cleared = Number(response.data?.cleared || 0);
-      if (selectedPaper?.id) await loadSections(selectedPaper.id);
-      alert(t('instructor.projectDetail.unassignAllComplete', { count: cleared }));
-    } catch (error) {
-      alert(error?.response?.data?.message || t('instructor.projectDetail.unassignAllFailed'));
-    } finally {
-      setUnassigningAll(false);
-    }
+  const handleUnassignAll = () => {
+    setDraftSections(current => current.map(section => (
+      section.sectionType === 'REFERENCE' ? section : { ...section, assignedUserId: null }
+    )));
   };
 
   const handlePatch = async (action) => {
@@ -1897,6 +1894,7 @@ export default function ProjectDetail() {
         onDiscard={handleDiscardSectionDraft}
         onAddSection={handleAddSection}
         onDeleteSection={handleDeleteSection}
+        onSavePaperRename={handleSaveRename}
         onStartRename={handleStartSectionRename}
         onSaveRename={handleSaveSectionRename}
         onReloadConflict={handleReloadConflictSection}
