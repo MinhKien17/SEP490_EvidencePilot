@@ -4,9 +4,8 @@
 -- EmailOtpToken: 6-digit verification code with TTL + attempt counter.
 -- EmailOtpClaim:  one-shot token issued after a successful verify, consumed
 --                 by PUT /api/users/profile when the user actually saves.
--- ponytail: rows older than 24h are tiny in practice; add a nightly cleanup
--- job if these tables grow. Indexes kept minimal (the lookup pattern is
--- always the latest unverified row for one (user, email)).
+-- Cleanup is scheduled hourly by the application; indexes stay minimal because
+-- the lookup pattern is always the latest unverified row for one (user, email).
 
 CREATE TABLE email_otp_tokens (
     id              BINARY(16)   NOT NULL,

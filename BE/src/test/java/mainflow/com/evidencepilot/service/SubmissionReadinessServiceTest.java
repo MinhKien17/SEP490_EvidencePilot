@@ -401,7 +401,7 @@ class SubmissionReadinessServiceTest {
                 .isEqualTo("Saved section text");
         assertThat(json.get("papers").get(0).get("sections").get(0).get("contentVersion").asInt())
                 .isEqualTo(3);
-        // ponytail: schema v2 binds the section to its evidence/standard context
+        // rationale: schema v2 binds the section to its evidence/standard context
         assertThat(json.get("schemaVersion").asInt()).isEqualTo(2);
         var section = json.get("papers").get(0).get("sections").get(0);
         assertThat(section.get("contentFingerprint").asText()).matches("[0-9a-f]{64}");

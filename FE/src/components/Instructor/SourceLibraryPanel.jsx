@@ -16,7 +16,7 @@ function statusColor(status) {
   return STATUS_COLOR_MAP[status] || STATUS_COLOR_MAP.DEFAULT;
 }
 
-// ponytail: library cards want 8/page; the shared PAGINATION_LIMIT (6) drives other pages
+// rationale: library cards want 8/page; the shared PAGINATION_LIMIT (6) drives other pages
 const LIBRARY_PAGE_SIZE = 8;
 
 function formatSize(bytes) {
@@ -445,7 +445,7 @@ export default function SourceLibraryPanel() {
 
                 <div className="border-t border-(--border-light) pt-3 mt-4">
                   <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                    {/* ponytail: unconditional like Project/Collection detail — FileViewerModal already handles unloadable files */}
+                    {/* rationale: unconditional like Project/Collection detail — FileViewerModal already handles unloadable files */}
                     <button
                       type="button"
                       onClick={() => setViewerFile({

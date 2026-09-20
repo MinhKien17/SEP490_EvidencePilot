@@ -43,7 +43,7 @@ export default function ContextPanel({
           return;
         }
         const candidate = response.data?.snapshot;
-        // ponytail: accept snapshot schema v1 (sections only) and v2 (+evidence/standard refs)
+        // rationale: accept snapshot schema v1 (sections only) and v2 (+evidence/standard refs)
         const valid = response.data?.state === 'AVAILABLE' && (candidate?.schemaVersion === 1 || candidate?.schemaVersion === 2)
           && String(candidate.projectId) === String(project?.id) && Array.isArray(candidate.papers)
           && candidate.papers.every(paper => paper.id && (typeof paper.title === 'string' || paper.title === null) && Array.isArray(paper.sections)
@@ -61,7 +61,7 @@ export default function ContextPanel({
 
   const activeClass = (tab) =>
     `flex-1 py-3 text-xs font-bold uppercase tracking-wider flex flex-col justify-center items-center gap-1 transition-all relative ${activeTab === tab ? 'text-(--brand-foreground)' : 'text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--surface-secondary)'}`;
-  // ponytail: Sources live in the review left column; keep the tab only for student workspaces
+  // rationale: Sources live in the review left column; keep the tab only for student workspaces
   const showSourceTab = !reviewContent;
 
   return (
@@ -138,7 +138,7 @@ export default function ContextPanel({
                           <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 flex items-center justify-center font-bold text-xs border border-indigo-200 dark:border-indigo-800">I</div>
                           <div>
                             <p className="text-xs font-bold text-(--text-primary)">{t('instructor')}{fb.instructorName ? `: ${fb.instructorName}` : ''}</p>
-                            <p className="text-[9px] text-(--text-tertiary) font-medium">{fb.requestedAt ? new Date(fb.requestedAt).toLocaleString(i18n.language === 'vi' ? 'vi-VN' : 'en-US') : ''}</p>
+                            <p className="text-[9px] text-(--text-tertiary) font-medium">{fb.requestedAt ? formatDateTime(fb.requestedAt, i18n.language) : ''}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">

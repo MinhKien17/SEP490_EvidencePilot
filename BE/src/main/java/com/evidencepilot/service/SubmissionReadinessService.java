@@ -426,7 +426,7 @@ public class SubmissionReadinessService {
                 sectionSnapshot.put("confirmedByName", displayName(section.getHandoffConfirmedBy()));
                 sectionSnapshot.put("confirmedAt", section.getHandoffConfirmedAt());
                 sectionSnapshot.put("confirmedContentVersion", section.getHandoffContentVersion());
-                // ponytail: v2 binds the submitted section to its evidence/standard context (best-effort, never blocks submit)
+                // rationale: v2 binds the submitted section to its evidence/standard context (best-effort, never blocks submit)
                 sectionSnapshot.put("contentFingerprint", contentFingerprint(section.getContentTex()));
                 sectionSnapshot.put("standardEvaluation", standardEvaluationSnapshot(section.getId()));
                 sectionSnapshot.put("citationReviewRoundIds", citationReviewRoundIds(section.getId(), submittedAt));

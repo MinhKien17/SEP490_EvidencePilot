@@ -1149,7 +1149,7 @@ class DocumentServiceImplAccessTest {
         when(currentUserService.requireCurrentUser()).thenReturn(stranger);
         when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
         when(projectDocumentRepository.findByDocumentId(source.getId())).thenReturn(List.of());
-        // ponytail: owning project exists, so the owner branch is out of scope.
+        // rationale: owning project exists, so the owner branch is out of scope.
         doThrow(new ResponseStatusException(
                 org.springframework.http.HttpStatus.FORBIDDEN, "Write access denied to project"))
                 .when(currentUserService).requireProjectWriteAccess(stranger, owning);

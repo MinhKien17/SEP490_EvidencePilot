@@ -244,7 +244,7 @@ public class PaperProcessingServiceImpl {
             }
             return authors;
         } catch (Exception exception) {
-            // ponytail: metadata must never break the paper display; fall back to empty.
+            // rationale: metadata must never break the paper display; fall back to empty.
             return List.of();
         }
     }
@@ -741,7 +741,7 @@ public class PaperProcessingServiceImpl {
             String beforeContent, String afterContent) {
         if (project == null || Objects.equals(beforeContent, afterContent)) return;
         ContentWordDelta delta = contentWordDelta(beforeContent, afterContent);
-        // ponytail: write the section as the entity (not the project) so the activity
+        // rationale: write the section as the entity (not the project) so the activity
         // feed can resolve the section directly via PaperSection and render a
         // student-friendly "Section: X in Project Y" row.
         auditService.record(

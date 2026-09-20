@@ -168,7 +168,7 @@ export default function ProjectManagement() {
         />
 
         {/* Master Action Header */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center w-full mb-6 gap-4 border-b border-(--border) pb-6">
+        <div className="sticky top-16 z-20 flex flex-col lg:flex-row justify-between items-start lg:items-center w-full mb-6 gap-4 border-b border-(--border) bg-(--page-bg) pb-6 pt-3">
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl sm:text-3xl font-black text-(--brand-foreground) tracking-tight">{t('instructor.projectManagement.projects')}</h1>
             <p className="text-xs text-(--text-tertiary) mt-1">{t('instructor.projectManagement.projectsManagementDesc')}</p>

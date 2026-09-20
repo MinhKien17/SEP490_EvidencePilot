@@ -104,7 +104,7 @@ public class SectionCitationReviewService {
                         reviewInputFingerprint)
                 .flatMap(this::readSnapshot)
                 .filter(SectionCitationReviewResponse::complete);
-        // ponytail: a partial final already holds every finished finding — serve it
+        // rationale: a partial final already holds every finished finding — serve it
         // directly so a refresh never blanks completed work.
         Optional<SectionCitationReviewResponse> partialFinal = cached.isPresent() ? Optional.empty()
                 : reviewSnapshotRepository
@@ -182,7 +182,7 @@ public class SectionCitationReviewService {
                 List.copyOf(limitations));
     }
 
-    // ponytail: no @Transactional — the AI loop below outlives any sane DB transaction.
+    // rationale: no @Transactional — the AI loop below outlives any sane DB transaction.
     // Reads ride per-call repository transactions; writes go through ReviewPersistenceService.
     public SectionCitationReviewResponse run(
             UUID documentId,
@@ -199,7 +199,7 @@ public class SectionCitationReviewService {
                 (current, total) -> {});
     }
 
-    // ponytail: see above — transactionless orchestration over short-lived persistence calls.
+    // rationale: see above — transactionless orchestration over short-lived persistence calls.
     public SectionCitationReviewResponse run(
             UUID documentId,
             UUID projectId,
@@ -211,7 +211,7 @@ public class SectionCitationReviewService {
                 requestedByUserId, onProgress, checkpoint -> {});
     }
 
-    // ponytail: see above — transactionless orchestration over short-lived persistence calls.
+    // rationale: see above — transactionless orchestration over short-lived persistence calls.
     public SectionCitationReviewResponse run(
             UUID documentId, UUID projectId, UUID sectionId, String expectedReviewInputFingerprint,
             UUID requestedByUserId, BiConsumer<Integer, Integer> onProgress,
@@ -405,7 +405,7 @@ public class SectionCitationReviewService {
             java.util.function.Consumer<SectionCitationReviewResponse> onCheckpoint, ResolvedPrompt prompt,
             AiModelClient.GenerationSelection selection,
             Map<Integer, SectionCitationReviewResponse> resumeBatches) {
-        // ponytail: section/document/project ride findByIdWithDocument's join fetch,
+        // rationale: section/document/project ride findByIdWithDocument's join fetch,
         // so basics stay readable here with no ambient transaction. Keep it that way.
         Project project = section.getDocument().getProject();
         UUID paperId = section.getDocument().getId();

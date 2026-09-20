@@ -5,6 +5,7 @@ import com.evidencepilot.service.impl.CurrentUserServiceImpl;
 import com.evidencepilot.dto.request.InstructorFeedbackRequest;
 import com.evidencepilot.dto.request.FeedbackAnchorRequest;
 import com.evidencepilot.dto.response.FeedbackRequestResponseDto;
+import com.evidencepilot.dto.response.FeedbackRequestPageResponse;
 import com.evidencepilot.dto.response.InstructorFeedbackResponseDto;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.FeedbackRequest;
@@ -31,8 +32,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
@@ -62,6 +66,34 @@ class FeedbackServiceImplTest {
     @Mock private CheckpointServiceImpl checkpointService;
     @Mock private ProjectCollectionService projectCollectionService;
     @Mock private SubmissionReadinessService submissionReadinessService;
+
+    @Test
+    void instructorQueueUsesScopedFiltersAndReturnsStablePageMetadata() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student, ProjectStatus.SUBMITTED_FOR_REVIEW);
+        FeedbackRequest item = request(project, instructor, student, FeedbackStatus.PENDING);
+        LocalDate from = LocalDate.of(2026, 9, 1);
+        LocalDate to = LocalDate.of(2026, 9, 21);
+        var pageable = PageRequest.of(1, 20);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(feedbackRequestRepository.findCurrentForInstructor(
+                eq(instructor.getId()), eq(project.getId()), eq(FeedbackStatus.PENDING),
+                any(), any(), eq("capstone"), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(item), pageable, 21));
+
+        FeedbackRequestPageResponse response = service().findQueueForCurrentUser(
+                1, 20, project.getId(), FeedbackStatus.PENDING, from, to, "capstone");
+
+        assertThat(response.content()).hasSize(1);
+        assertThat(response.page()).isEqualTo(1);
+        assertThat(response.size()).isEqualTo(20);
+        assertThat(response.totalElements()).isEqualTo(21);
+        assertThat(response.totalPages()).isEqualTo(2);
+        verify(feedbackRequestRepository).findCurrentForInstructor(
+                eq(instructor.getId()), eq(project.getId()), eq(FeedbackStatus.PENDING),
+                any(), any(), eq("capstone"), eq(pageable));
+    }
 
     @Test
     void commentCreatesAnUnpublishedDraftWithoutNotifyingStudents() {

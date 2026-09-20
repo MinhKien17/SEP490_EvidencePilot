@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-// ponytail: @hello-pangea/dnd removed — native HTML5 draggable (few lines) covers vertical list reorder.
+// rationale: @hello-pangea/dnd removed — native HTML5 draggable (few lines) covers vertical list reorder.
 import SectionRow from './SectionRow.jsx';
 import StandardConfigModal from './StandardConfigModal.jsx';
 

@@ -19,6 +19,7 @@ import ContributionGraph from '../../components/Instructor/ContributionGraph.jsx
 import SectionManager from '../../components/Instructor/sections/SectionManager.jsx';
 import { useAuth } from '../../context/AuthContext';
 import { hasProjectAction } from '../../utils/projectActions.js';
+import { formatDate, formatDateTime } from '../../utils/formatters/date.js';
 
 import {
   CITATION_STANDARDS,
@@ -46,9 +47,9 @@ export default function ProjectDetail() {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const { pending: pendingDelete, start: startDelete, undo: undoDelete, dismiss: dismissDelete } = useUndoDelete();
-  // ponytail: common action labels for SectionManager/SectionRow/StandardConfigModal (were an undefined `ct` → crash).
+  // rationale: common action labels for SectionManager/SectionRow/StandardConfigModal (were an undefined `ct` → crash).
   const ct = { delete: t('delete'), add: t('add'), cancel: t('cancel'), saving: t('saving'), save: t('save') };
-  // ponytail: section components take a scoped label object, not the i18next
+  // rationale: section components take a scoped label object, not the i18next
   // function (passing `t` raw renders every label as undefined/empty).
   const sectionT = {
     selectPaperSections: t('instructor.projectDetail.selectPaperSections'),
@@ -1369,7 +1370,7 @@ export default function ProjectDetail() {
                     <Link key={fb.id} to={`/instructor/requests/${encodeURIComponent(id)}?review=${encodeURIComponent(fb.id)}`} data-testid={`feedback-${fb.id}`} className="block rounded-lg bg-[var(--surface-secondary)] px-3 py-2 text-xs">
                       <div className="flex justify-between items-center">
                         <StatusBadge status={fb.status} />
-                        <span className="text-[var(--text-tertiary)]">{fb.requestedAt ? new Date(fb.requestedAt).toLocaleDateString(i18n.language) : ''}</span>
+                        <span className="text-[var(--text-tertiary)]">{fb.requestedAt ? formatDate(fb.requestedAt, i18n.language) : ''}</span>
                       </div>
                       <p className="mt-1 text-[var(--text-secondary)]">{t('instructor.projectDetail.studentLabel', { student: fb.studentName || fb.studentId })}</p>
                     </Link>
@@ -1454,7 +1455,7 @@ export default function ProjectDetail() {
                         <p className="font-bold text-[var(--text-primary)]">{contribution.userName}</p>
                         <span className="text-[10px] text-[var(--text-tertiary)]">
                           {t('instructor.projectDetail.lastRecordedEdit')}: {contribution.lastEditedAt
-                            ? new Date(contribution.lastEditedAt).toLocaleString(i18n.language)
+                            ? formatDateTime(contribution.lastEditedAt, i18n.language)
                             : '—'}
                         </span>
                       </div>
@@ -1488,7 +1489,7 @@ export default function ProjectDetail() {
                           <p className="text-[9px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">{t('instructor.projectDetail.dailyEditHistory')}</p>
                           {contribution.dailyWordDeltas.map(day => (
                             <div key={day.date} className="flex items-center justify-between rounded bg-[var(--surface)] px-2 py-1 text-[10px]">
-                              <span>{new Date(`${day.date}T00:00:00`).toLocaleDateString(i18n.language)}</span>
+                              <span>{formatDate(`${day.date}T00:00:00Z`, i18n.language)}</span>
                               <span className="text-[var(--text-secondary)]">
                                 {day.saveCount} {t('instructor.projectDetail.savesShort')} · +{day.wordsAdded ?? Math.max(day.wordDelta, 0)}/-{day.wordsRemoved ?? Math.max(-day.wordDelta, 0)} {t('instructor.projectDetail.wordsShort')} · {day.wordDelta > 0 ? `+${day.wordDelta}` : day.wordDelta} {t('instructor.projectDetail.netWordChange').toLowerCase()}
                               </span>

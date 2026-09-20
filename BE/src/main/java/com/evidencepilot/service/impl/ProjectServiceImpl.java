@@ -97,7 +97,7 @@ public class ProjectServiceImpl {
         return ProjectResponse.withCounts(base, sources, sections);
     }
 
-    // ponytail: one batch query per count type (same shape as the memberCounts query) —
+    // rationale: one batch query per count type (same shape as the memberCounts query) —
     // no per-project N+1, no FE-side fan-out for the Metadata badges.
     private List<ProjectResponse> toResponses(List<Project> projects) {
         List<UUID> projectIds = idsOf(projects);

@@ -25,6 +25,9 @@ import { usePaperReferences } from '../../hooks/usePaperReferences.js';
 import { normalizeSource } from '../../utils/student/feedbackAnchors.js';
 import { isAbstractSectionTitle } from '../../utils/formatters/latexHtml.js';
 import useUndoDelete, { UndoToast } from '../../components/ui/UndoDelete.jsx';
+import Modal from '../../components/ui/Modal.jsx';
+import { isProjectMembershipDenied } from '../../utils/authz.js';
+import { formatDateTime } from '../../utils/formatters/date.js';
 
 const VisualSourceMap = React.lazy(() => import('../../components/features/VisualSourceMap.jsx'));
 
@@ -189,6 +192,8 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
   const [exports, setExports] = useState([]);
   const [loadingProject, setLoadingProject] = useState(false);
   const [projectLoadError, setProjectLoadError] = useState(null);
+  const [unassignedProject, setUnassignedProject] = useState(false);
+  const [unassignedCountdown, setUnassignedCountdown] = useState(5);
   const [isUploading, setIsUploading] = useState(false);
   const [viewerFile, setViewerFile] = useState(null);
   const [sourceMapProjectId, setSourceMapProjectId] = useState(null);
@@ -476,7 +481,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
       current?.current === next.current && current?.total === next.total ? current : next);
   };
 
-  // ponytail: refresh-while-running survival — the active jobId lives in localStorage
+  // rationale: refresh-while-running survival — the active jobId lives in localStorage
   // (FE state is wiped by reload) so a remount can reattach to the still-running job.
   const reviewJobKey = (sectionId) => `citation_review_job:${sectionId}`;
   const storeReviewJob = (sectionId, jobId) => {
@@ -634,7 +639,8 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
       const status = err?.response?.status;
       if (status === 403) {
         if (!stale()) {
-          setProjectLoadError('forbidden');
+          if (isProjectMembershipDenied(err)) setUnassignedProject(true);
+          else setProjectLoadError('forbidden');
           setProject(null);
         }
         return;
@@ -708,6 +714,29 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
     })();
   }, [projectId, loadProjectData, navigate]);
 
+  useEffect(() => {
+    if (isReview || role !== 'STUDENT' || !projectId) return;
+    const removed = notifications.some(notification =>
+      notification.actionType === 'PROJECT_MEMBER_REMOVED'
+      && String(notification.entityId) === String(projectId));
+    if (removed) setUnassignedProject(true);
+  }, [isReview, notifications, projectId, role]);
+
+  useEffect(() => {
+    if (!unassignedProject) return undefined;
+    setUnassignedCountdown(5);
+    const intervalId = window.setInterval(() => {
+      setUnassignedCountdown(current => Math.max(0, current - 1));
+    }, 1000);
+    const timeoutId = window.setTimeout(() => {
+      navigate('/student/projects', { replace: true });
+    }, 5000);
+    return () => {
+      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
+    };
+  }, [navigate, unassignedProject]);
+
   const assignedSections = user ? sections.filter(s => String(s.assignedUserId) === String(user.id)) : [];
   const isLocked = isReview || project?.status === 'SUBMITTED_FOR_REVIEW' || project?.status === 'APPROVED' || project?.status === 'ARCHIVED';
   const canEditSection = (section) => {
@@ -758,7 +787,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
   const closeReviewOverlay = useCallback(() => {
     setReviewOverlay(prev => (prev.open ? { open: false, findingIndex: -1, anchor: null } : prev));
   }, []);
-  // ponytail: programmatic revealRange() scrolls the editor, which would trip scroll-close
+  // rationale: programmatic revealRange() scrolls the editor, which would trip scroll-close
   // handlers and instantly hide the card on Next/Prev. Suppress them briefly after each reveal.
   const revealGuardRef = useRef(0);
   const markProgrammaticReveal = useCallback(() => { revealGuardRef.current = Date.now(); }, []);
@@ -792,7 +821,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
 
   const handleFindingClick = useCallback((findingIndex, coords) => {
     if (!aiReviewResult?.findings?.[findingIndex]) return;
-    // ponytail: null coords (unrendered line) still opens — the card centers itself.
+    // rationale: null coords (unrendered line) still opens — the card centers itself.
     setReviewOverlay({
       open: true,
       findingIndex,
@@ -945,7 +974,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
     return () => cancelAnimationFrame(frame);
   }, [activeFeedbackId, selectedSectionId, feedback.items, feedbackOpen]);
 
-  const { notifications, unreadCount, markRead } = useNotification();
+  const { notifications, unreadCount, markRead, markAllRead } = useNotification();
 
   useEffect(() => {
     // Gated via NotificationContext — 503 will not spam, WS uses exponential backoff
@@ -960,6 +989,10 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
 
   const handleMarkNotificationRead = async (id) => {
     if (!await markRead(id)) showToast(t('markNotificationFailed'));
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    if (!await markAllRead()) showToast(t('markNotificationFailed'));
   };
 
   const handleExportTexArchive = async () => {
@@ -1174,11 +1207,12 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
       dirtySectionsRef.current.delete(sectionId);
       saveStatusTimerRef.current = window.setTimeout(() => setSaveStatus(''), 3000);
       return { paperId, sectionId, content, version: updated?.version };
-    } catch (error) {
-      setSaveStatus('error');
-      const status = error?.response?.status;
-      if (status === 409) showToast(t('saveConflict'));
-      else if (status === 403) showToast(t('saveReadOnly'));
+      } catch (error) {
+        setSaveStatus('error');
+        const status = error?.response?.status;
+        if (status === 409) showToast(t('saveConflict'));
+        else if (status === 403 && isProjectMembershipDenied(error)) setUnassignedProject(true);
+        else if (status === 403) showToast(t('saveReadOnly'));
       else if (status === 404) showToast(t('saveSectionRemoved'));
       else if (status === 400) showToast(t('saveContentInvalid'));
       else showToast(t('saveFailed'));
@@ -1225,7 +1259,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
       for (let start = 0; start < findings.length; start += SOURCE_MATCH_BATCH_SIZE) {
         batchStarts.push(start);
       }
-      // ponytail: batches are independent — run two workers instead of stacking
+      // rationale: batches are independent — run two workers instead of stacking
       // sequential submit+poll round-trips.
       const aborted = () => aiReviewRequestRef.current !== reviewRequestId
         || aiSourceRequestRef.current !== sourceRequestId;
@@ -1298,7 +1332,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
       setSectionTraces([]);
       setUpdatingTraceIds([]);
       setTraceError('');
-      // ponytail: unchanged re-clicks resolve from snapshot — skip the queue entirely.
+      // rationale: unchanged re-clicks resolve from snapshot — skip the queue entirely.
       try {
         const cachedRes = await api.get(
           `/api/papers/${saved.paperId}/sections/${sectionId}/review`);
@@ -1332,7 +1366,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
       if (aiReviewRequestRef.current !== requestId) return;
       const rawMessage = error.response?.data?.message || '';
       const status = error.response?.status || error.status;
-      // ponytail: prompt/model drift needs different guidance than content drift.
+      // rationale: prompt/model drift needs different guidance than content drift.
       const message = status === 409
         ? (/prompt changed/i.test(rawMessage) ? t('reviewPromptChanged')
           : /model configuration changed/i.test(rawMessage) ? t('reviewModelChanged')
@@ -1403,7 +1437,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
     const findings = aiReviewResult?.findings || [];
     const findingIndex = wrapFindingIndex(requestedIndex, findings.length);
     if (findingIndex < 0) return;
-    // ponytail: open the new finding immediately (keep previous anchor as fallback) so
+    // rationale: open the new finding immediately (keep previous anchor as fallback) so
     // Next/Prev never leaves a closed or stale card, even when the excerpt moved.
     markProgrammaticReveal();
     setReviewOverlay(prev => ({ open: true, findingIndex, anchor: prev.anchor }));
@@ -1468,7 +1502,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
     api.get(`/api/papers/${selectedPaper.id}/sections/${selectedSectionId}/review`)
       .then(async response => {
         if (aiReviewRequestRef.current !== requestId) return;
-        // ponytail: refresh-while-running — the job outlives FE state, reattach
+        // rationale: refresh-while-running — the job outlives FE state, reattach
         // to it even when the cache already contains partial findings.
         const cachedReview = response.status === 204 ? null : response.data;
         const storedJobId = readReviewJob(selectedSectionId);
@@ -1706,13 +1740,32 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
     );
   }
 
+  if (unassignedProject) {
+    return (
+      <div className="h-screen w-full bg-(--surface-secondary)">
+        <Modal
+          open
+          onClose={() => navigate('/student/projects', { replace: true })}
+          title={t('projectUnassignedTitle')}
+          closeLabel={t('close')}
+        >
+          <p className="text-sm leading-relaxed text-(--text-secondary)">{t('projectUnassignedMessage')}</p>
+          <p className="mt-4 text-xs font-bold text-(--text-tertiary)">{t('projectUnassignedRedirect', { seconds: unassignedCountdown })}</p>
+          <button type="button" onClick={() => navigate('/student/projects', { replace: true })} className="mt-5 rounded-lg bg-(--brand) px-4 py-2 text-xs font-bold text-white hover:bg-(--brand-hover)">
+            {t('backToProjects')}
+          </button>
+        </Modal>
+      </div>
+    );
+  }
+
   return (
     <div role="region" aria-label={t('feedbackProjectWorkspace')} className="h-screen w-full flex flex-col bg-(--surface-secondary) overflow-hidden font-sans antialiased text-(--text-primary)">
       <WorkspaceHeader workspaceMode={workspaceMode} project={project} navigate={navigate} onShowHistory={isReview ? undefined : () => setShowHistoryModal(true)} historyDisabled={editableSections.length === 0}
         reviewRound={isReview ? review.workflow : null}
         reviewGuide={isReview ? <InstructorReviewGuide review={review.workflow} selectedSection={currentSection} /> : null}
         review={isReview ? review.workflow : null} reviewSection={isReview ? currentSection : null}
-        notifications={notifications} unreadCount={unreadCount} showNotifications={showNotifications} setShowNotifications={setShowNotifications} onMarkNotificationRead={handleMarkNotificationRead} onOpenNotification={handleOpenNotification}
+        notifications={notifications} unreadCount={unreadCount} showNotifications={showNotifications} setShowNotifications={setShowNotifications} onMarkNotificationRead={handleMarkNotificationRead} onMarkAllNotificationsRead={handleMarkAllNotificationsRead} onOpenNotification={handleOpenNotification}
         showExportMenu={showExportMenu} setShowExportMenu={setShowExportMenu} handleExportTexArchive={handleExportTexArchive} handleExportTraceabilityJson={handleExportTraceabilityJson} handleExportTraceabilityCsv={handleExportTraceabilityCsv} tourSteps={isReview ? undefined : tourSteps} tourKey="student-workspace"
         reviewAction={reviewAction} />
 
@@ -1795,7 +1848,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
                       <div className="flex items-start justify-between mb-2">
                         <div>
                           <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">{t('currentVersionLabel', { version: sec.version || 1 })}</span>
-                          <p className="text-[10px] text-(--text-tertiary) mt-1.5">{t('updatedAtLabel', { date: sec.updatedAt ? new Date(sec.updatedAt).toLocaleString(i18n.language === 'vi' ? 'vi-VN' : 'en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : t('unknown') })}</p>
+                          <p className="text-[10px] text-(--text-tertiary) mt-1.5">{t('updatedAtLabel', { date: sec.updatedAt ? formatDateTime(sec.updatedAt, i18n.language) : t('unknown') })}</p>
                         </div>
                       </div>
                       <p className="text-[11px] text-(--text-secondary) leading-relaxed font-mono bg-(--surface) rounded-lg p-2.5 border border-(--border-light)">{(sec.contentTex || '').substring(0, 140)}{(sec.contentTex || '').length > 140 ? '...' : ''}</p>
