@@ -216,9 +216,7 @@ public class ProjectServiceImpl {
         Project project = findActiveProject(id);
         currentUserService.requireRole(currentUser, UserRole.INSTRUCTOR);
         currentUserService.requireProjectAccess(currentUser, project);
-        if (project.getStatus() != ProjectStatus.IN_PROGRESS
-                && project.getStatus() != ProjectStatus.SUBMITTED_FOR_REVIEW
-                && project.getStatus() != ProjectStatus.RETURNED) {
+        if (!project.getStatus().canTransitionTo(ProjectStatus.APPROVED)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project cannot be completed in its current state.");
         }
         ProjectStatus oldStatus = project.getStatus();
@@ -242,7 +240,7 @@ public class ProjectServiceImpl {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(id);
         currentUserService.requireProjectManageAccess(currentUser, project);
-        if (project.getStatus() != ProjectStatus.APPROVED) {
+        if (!project.getStatus().canTransitionTo(ProjectStatus.ARCHIVED)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only APPROVED projects can be archived.");
         }
         project.setStatus(ProjectStatus.ARCHIVED);
@@ -260,7 +258,7 @@ public class ProjectServiceImpl {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(id);
         currentUserService.requireProjectManageAccess(currentUser, project);
-        if (project.getStatus() != ProjectStatus.ARCHIVED) {
+        if (!project.getStatus().canTransitionTo(ProjectStatus.APPROVED)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only ARCHIVED projects can be unarchived.");
         }
         project.setStatus(ProjectStatus.APPROVED);

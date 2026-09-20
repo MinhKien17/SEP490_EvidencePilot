@@ -386,6 +386,7 @@ public class FeedbackServiceImpl {
         }
 
         transition(request, project, FeedbackStatus.RETURNED, ProjectStatus.RETURNED, now);
+        request.setReturnedAt(now);
         writeSnapshots(request,
                 paperSectionRepository.findByDocument_Project_IdOrderByDocument_IdAscSectionOrderAsc(project.getId()),
                 SnapshotType.BASELINE, now);
@@ -398,7 +399,7 @@ public class FeedbackServiceImpl {
         FeedbackRequest request = requireFeedbackAccessForUpdate(id, currentUser, true);
         Project project = lockProject(request);
         requireLatestRequest(request, project);
-        if (request.getStatus() != FeedbackStatus.PENDING && request.getStatus() != FeedbackStatus.RETURNED) {
+        if (request.getStatus() != FeedbackStatus.PENDING) {
             throw conflict("Approve requires the latest submitted review request.");
         }
         if (project.getStatus().isReadOnly()) throw conflict("Project is read-only.");
@@ -413,6 +414,7 @@ public class FeedbackServiceImpl {
             instructorFeedbackRepository.save(root);
         }
         transition(request, project, FeedbackStatus.REVIEWED, ProjectStatus.APPROVED, now);
+        request.setReviewedAt(now);
         checkpointService.capture(project.getId(), "REVIEW_STATUS:REVIEWED");
         return FeedbackRequestResponseDto.fromEntity(request);
     }

@@ -100,6 +100,20 @@ class ProjectServiceImplLifecycleTest {
     }
 
     @Test
+    void completeRejectsReturnedProjectUntilStudentResubmits() {
+        User user = user();
+        Project project = project(ProjectStatus.RETURNED);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+
+        assertThatThrownBy(() -> service().completeProject(project.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Project cannot be completed in its current state.");
+        verify(projectRepository, never()).save(project);
+    }
+
+    @Test
     void archiveCompletedProjectMarksArchived() {
         User user = user();
         Project project = project(ProjectStatus.APPROVED);

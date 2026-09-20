@@ -4,6 +4,7 @@ import com.evidencepilot.service.impl.CheckpointServiceImpl;
 import com.evidencepilot.service.impl.CurrentUserServiceImpl;
 import com.evidencepilot.dto.request.InstructorFeedbackRequest;
 import com.evidencepilot.dto.request.FeedbackAnchorRequest;
+import com.evidencepilot.dto.response.FeedbackRequestResponseDto;
 import com.evidencepilot.dto.response.InstructorFeedbackResponseDto;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.FeedbackRequest;
@@ -33,6 +34,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -278,6 +280,7 @@ class FeedbackServiceImplTest {
         service().updateStatus(request.getId(), "RETURNED");
 
         assertThat(request.getStatus()).isEqualTo(FeedbackStatus.RETURNED);
+        assertThat(request.getReturnedAt()).isNotNull();
         assertThat(project.getStatus()).isEqualTo(ProjectStatus.RETURNED);
         assertThat(root.getPublishedAt()).isNotNull();
         verify(systemNotificationService).createNotification(
@@ -302,6 +305,26 @@ class FeedbackServiceImplTest {
         assertThatThrownBy(() -> service().updateStatus(request.getId(), "RETURNED"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Only a PENDING review request can be returned");
+        verifyNoInteractions(systemNotificationService);
+    }
+
+    @Test
+    void returnedRequestCannotBeApprovedWithoutAFreshSubmission() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(instructor, student, ProjectStatus.RETURNED);
+        FeedbackRequest request = request(project, instructor, student, FeedbackStatus.RETURNED);
+
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(feedbackRequestRepository.findByIdForUpdate(request.getId())).thenReturn(Optional.of(request));
+        when(projectRepository.findByIdForUpdate(project.getId())).thenReturn(Optional.of(project));
+        when(feedbackRequestRepository.findByProjectIdOrderByRequestedAtDesc(project.getId())).thenReturn(List.of(request));
+
+        assertThatThrownBy(() -> service().updateStatus(request.getId(), "REVIEWED"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Approve requires the latest submitted review request");
+        assertThat(request.getStatus()).isEqualTo(FeedbackStatus.RETURNED);
+        assertThat(project.getStatus()).isEqualTo(ProjectStatus.RETURNED);
         verifyNoInteractions(systemNotificationService);
     }
 
@@ -341,11 +364,19 @@ class FeedbackServiceImplTest {
     }
 
     @Test
+    void feedbackRequestResponseIncludesTransitionTimestamps() {
+        assertThat(Arrays.stream(FeedbackRequestResponseDto.class.getRecordComponents())
+                .map(component -> component.getName())
+                .toList())
+                .contains("returnedAt", "reviewedAt");
+    }
+
+    @Test
     void approveSucceedsWithOpenThreadsAndNoClosure() {
         User instructor = user(UserRole.INSTRUCTOR);
         User student = user(UserRole.STUDENT);
-        Project project = project(instructor, student, ProjectStatus.RETURNED);
-        FeedbackRequest request = request(project, instructor, student, FeedbackStatus.RETURNED);
+        Project project = project(instructor, student, ProjectStatus.SUBMITTED_FOR_REVIEW);
+        FeedbackRequest request = request(project, instructor, student, FeedbackStatus.PENDING);
         PaperSection section = section(project, student);
         Document paper = section.getDocument();
         paper.setTitle("Paper");
@@ -372,6 +403,7 @@ class FeedbackServiceImplTest {
         service().updateStatus(request.getId(), "REVIEWED");
         assertThat(project.getStatus()).isEqualTo(ProjectStatus.APPROVED);
         assertThat(request.getStatus()).isEqualTo(com.evidencepilot.model.FeedbackStatus.REVIEWED);
+        assertThat(request.getReviewedAt()).isNotNull();
         assertThat(root.getThreadState()).isEqualTo(FeedbackThreadState.OPEN);
         assertThat(root.getPendingState()).isNull();
     }
