@@ -408,6 +408,31 @@ test('Sections opens one Edit Paper Section modal for all section controls', asy
   expect(state.unhandled).toEqual([]);
 });
 
+test('Edit Paper Section allows clearing every standard requirement', async ({ page }) => {
+  const state = await setup(page);
+  await page.goto(`${baseUrl}/instructor/projects/${projectId}`);
+  await page.getByRole('button', { name: 'Sections', exact: true }).click();
+  await page.getByRole('button', { name: 'paper.tex', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit paper', exact: true }).click();
+
+  const editor = page.getByRole('dialog', { name: 'Edit paper sections' });
+  await editor.getByRole('button', { name: 'Config Standard', exact: true }).click();
+  await editor.getByTestId('standard-requirement-input').fill('Use evidence');
+  await editor.getByRole('button', { name: 'Add', exact: true }).click();
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(editor.getByTestId('standards-requirements')).toContainText('Use evidence');
+
+  await editor.getByRole('button', { name: 'Config Standard', exact: true }).click();
+  await editor.getByRole('button', { name: 'Delete: Use evidence', exact: true }).click();
+  await expect(editor.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
+  await editor.getByRole('button', { name: 'Save', exact: true }).click();
+
+  expect(state.sectionStandards[sectionId]).toEqual({ requirements: [] });
+  await expect(editor.getByTestId('standards-requirements')).toContainText('No requirements yet.');
+  expect(state.errors).toEqual([]);
+  expect(state.unhandled).toEqual([]);
+});
+
 test('Add section creates a new unassigned section while the paper is still setup-only', async ({ page }) => {
   const state = await setup(page);
   await page.goto(`${baseUrl}/instructor/projects/${projectId}`);
