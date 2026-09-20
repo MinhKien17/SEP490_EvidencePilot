@@ -18,6 +18,7 @@ import ActionExpandHeader from '../../components/Instructor/ActionExpandHeader.j
 import ContributionGraph from '../../components/Instructor/ContributionGraph.jsx';
 import SectionManager from '../../components/Instructor/sections/SectionManager.jsx';
 import { useAuth } from '../../context/AuthContext';
+import { hasProjectAction } from '../../utils/projectActions.js';
 
 import {
   CITATION_STANDARDS,
@@ -28,7 +29,6 @@ import {
   API_ROUTES,
 } from '../../constants';
 
-const PROJECT_ACTIONS = Object.freeze(['archive', 'unarchive', 'complete']);
 const USER_ROLES = Object.freeze(['STUDENT', 'INSTRUCTOR', 'ADMIN']);
 const PROJECT_ROLES = Object.freeze(['MEMBER', 'LEADER', 'INSTRUCTOR']);
 const DOCUMENT_TYPES = Object.freeze(['PAPER', 'SOURCE']);
@@ -144,7 +144,8 @@ export default function ProjectDetail() {
   const [shareLoadingId, setShareLoadingId] = useState(null);
   const [pendingAssign, setPendingAssign] = useState(null); // { sectionId, userId, userName }
   const [statusPending, setStatusPending] = useState(null);
-  // Phase 2: Assign Member local state
+  const [unassigningAll, setUnassigningAll] = useState(false);
+  // Phase 2: Assign Students local state
   const [selectedMemberId, setSelectedMemberId] = useState(null);
   const [memberSearch, setMemberSearch] = useState('');
   const [sourceSearch, setSourceSearch] = useState('');
@@ -328,16 +329,13 @@ export default function ProjectDetail() {
     [members],
   );
 
-  // Phase 2 & 3: filtered members for Assign Member search + selection
+  // Phase 2 & 3: filtered students for assignment search + selection.
   const filteredMembers = useMemo(() => {
-    let filtered = members;
-    if (user?.id) {
-      filtered = filtered.filter(m => String(m.userId) !== String(user.id));
-    }
+    let filtered = studentMembers;
     if (!memberSearch.trim()) return filtered;
     const q = memberSearch.toLowerCase();
     return filtered.filter(m => studentDisplayName(m).toLowerCase().includes(q) || m.email?.toLowerCase().includes(q) || String(m.userRole||'').toLowerCase().includes(q));
-  }, [members, memberSearch, user?.id]);
+  }, [studentMembers, memberSearch]);
 
   const filteredSources = useMemo(() => {
     if (!sourceSearch.trim()) return sources;
@@ -357,9 +355,9 @@ export default function ProjectDetail() {
   );
 
   const selectedMember = useMemo(() => {
-    if (selectedMemberId) return members.find(m => String(m.userId) === String(selectedMemberId)) || members.find(m => String(m.id) === String(selectedMemberId)) || null;
-    return members[0] || null;
-  }, [members, selectedMemberId]);
+    if (selectedMemberId) return studentMembers.find(m => String(m.userId) === String(selectedMemberId)) || studentMembers.find(m => String(m.id) === String(selectedMemberId)) || null;
+    return studentMembers[0] || null;
+  }, [studentMembers, selectedMemberId]);
 
   useEffect(() => {
     if (activeTab === 'review') loadFeedback();
@@ -371,9 +369,9 @@ export default function ProjectDetail() {
 
   // Phase 2: auto-select first member when members load
   useEffect(() => {
-    if (members.length > 0 && !selectedMemberId) setSelectedMemberId(String(members[0].userId || members[0].id));
-    if (members.length === 0) setSelectedMemberId(null);
-  }, [members, selectedMemberId]);
+    if (studentMembers.length > 0 && !selectedMemberId) setSelectedMemberId(String(studentMembers[0].userId || studentMembers[0].id));
+    if (studentMembers.length === 0) setSelectedMemberId(null);
+  }, [studentMembers, selectedMemberId]);
 
   const saveStandard = async (nextStandard) => {
     if (!nextStandard || !project) return;
@@ -874,6 +872,21 @@ export default function ProjectDetail() {
     }
   };
 
+  const handleUnassignAll = async (userId) => {
+    if (!userId || unassigningAll) return;
+    setUnassigningAll(true);
+    try {
+      const response = await api.patch(API_ROUTES.PROJECTS.UNASSIGN_ALL(id, userId));
+      const cleared = Number(response.data?.cleared || 0);
+      if (selectedPaper?.id) await loadSections(selectedPaper.id);
+      alert(t('instructor.projectDetail.unassignAllComplete', { count: cleared }));
+    } catch (error) {
+      alert(error?.response?.data?.message || t('instructor.projectDetail.unassignAllFailed'));
+    } finally {
+      setUnassigningAll(false);
+    }
+  };
+
   const handlePatch = async (action) => {
     setStatusPending(action);
     try {
@@ -881,7 +894,7 @@ export default function ProjectDetail() {
       await loadProject();
     } catch {
       alert(t('instructor.projectDetail.projectActionFailed', {
-        action: t(`instructor.projectDetail.action.${PROJECT_ACTIONS.includes(action) ? action : 'UNKNOWN'}`),
+        action: t(`instructor.projectDetail.action.${['archive', 'unarchive', 'complete'].includes(action) ? action : 'UNKNOWN'}`),
       }));
     }
     finally { setStatusPending(null); }
@@ -890,7 +903,7 @@ export default function ProjectDetail() {
   const TOUR_STEPS = [
     { element: '#project-header', popover: { title: t('instructor.projectDetail.tourProjectTitle'), description: t('instructor.projectDetail.tourProjectDesc'), side: 'bottom', align: 'start' } },
     { element: '#tab-setup', popover: { title: t('instructor.projectDetail.projectSetup'), description: t('instructor.projectDetail.tourSetupDesc'), side: 'bottom', align: 'center' } },
-    { element: '#tab-assign-member', popover: { title: t('instructor.projectDetail.assignMember'), description: t('instructor.projectDetail.tourProjectSettingsDesc'), side: 'bottom', align: 'center' } },
+    { element: '#tab-assign-member', popover: { title: t('instructor.projectDetail.assignStudents'), description: t('instructor.projectDetail.tourProjectSettingsDesc'), side: 'bottom', align: 'center' } },
     { element: '#tab-sections', popover: { title: t('instructor.projectDetail.projectSections'), description: t('instructor.projectDetail.tourSectionsDesc'), side: 'bottom', align: 'center' } },
     { element: '#tab-review', popover: { title: t('instructor.projectDetail.projectReview'), description: t('instructor.projectDetail.tourProjectReviewDesc'), side: 'bottom', align: 'center' } },
     { element: '#source-documents', popover: { title: t('instructor.projectDetail.sourceDocuments'), description: t('instructor.projectDetail.tourSourceDocumentsDesc'), side: 'top', align: 'start' } },
@@ -954,6 +967,11 @@ export default function ProjectDetail() {
   const hasAssignedSections = sections.some(s => s.assignedUserId);
   const projectReadOnly = ['SUBMITTED_FOR_REVIEW', 'APPROVED', 'ARCHIVED'].includes(project.status);
   const sectionStructureLocked = hasAssignedSections || projectReadOnly;
+  const projectActionState = {
+    ...project,
+    active: project.active ?? true,
+    hasAuthoritativeData: Boolean(selectedPaper || papers.length),
+  };
 
   return (
     <div className="h-screen w-full flex flex-col overflow-hidden bg-[var(--page-bg)] text-[var(--text-primary)] font-sans">
@@ -975,21 +993,22 @@ export default function ProjectDetail() {
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {/* PHASE 1: Status Control lifted from Settings tab — replaces View Evidence Trace */}
-              {project.status === 'IN_PROGRESS' && (
+              {hasProjectAction(projectActionState, 'complete') && (
                 <button onClick={() => handlePatch('complete')} disabled={!!statusPending} className="rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white transition hover:bg-[var(--brand-hover)] disabled:opacity-50">
                   {statusPending === 'complete' ? '...' : t('instructor.projectDetail.markComplete')}
                 </button>
               )}
-              {project.status !== 'ARCHIVED' ? (
+              {hasProjectAction(projectActionState, 'archive') && (
                 <button onClick={() => handlePatch('archive')} disabled={!!statusPending} className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-amber-700 disabled:opacity-50">
                   {statusPending === 'archive' ? '...' : t('instructor.projectDetail.archive')}
                 </button>
-              ) : (
+              )}
+              {hasProjectAction(projectActionState, 'unarchive') && (
                 <button onClick={() => handlePatch('unarchive')} disabled={!!statusPending} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50">
                   {statusPending === 'unarchive' ? '...' : t('instructor.projectDetail.unarchive')}
                 </button>
               )}
-              <button onClick={() => setShowExportModal(true)} className="rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white transition hover:bg-[var(--brand-hover)]">{t('instructor.projectDetail.export')}</button>
+              {hasProjectAction(projectActionState, 'export') && <button onClick={() => setShowExportModal(true)} className="rounded-lg bg-[var(--brand)] px-3 py-2 text-xs font-bold text-white transition hover:bg-[var(--brand-hover)]">{t('instructor.projectDetail.export')}</button>}
               <TourLauncher steps={TOUR_STEPS} tourKey="instructor-project-detail"
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-sm font-bold text-[var(--text-secondary)] shadow-sm transition-all hover:border-indigo-300 hover:bg-[var(--brand-soft)] hover:text-[var(--brand-foreground)]" />
             </div>
@@ -1000,7 +1019,7 @@ export default function ProjectDetail() {
         <div className="flex flex-wrap items-center border-b border-[var(--border)] shrink-0 mb-6">
           {[
             { key: 'setup', label: t('instructor.projectDetail.projectSetup') },
-            { key: 'assign-member', label: t('instructor.projectDetail.assignMember') },
+            { key: 'assign-member', label: t('instructor.projectDetail.assignStudents') },
             { key: 'sections', label: t('instructor.projectDetail.projectSections') },
             { key: 'progress', label: t('instructor.projectDetail.projectProgressReport') },
             { key: 'review', label: t('instructor.projectDetail.projectReview') },
@@ -1437,7 +1456,7 @@ export default function ProjectDetail() {
           </div>
         )}
 
-        {/* Tab: Assign Member — PHASE 2+3: former Settings, Status controls removed, 2-col layout */}
+        {/* Tab: Assign Students — PHASE 2+3: former Settings, Status controls removed, 2-col layout */}
         {(activeTab === 'assign-member' || activeTab === 'settings') && (
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-full overflow-hidden">
             {/* Left: Members list with search — expanded from 33% to 40% so search fits without horizontal scroll */}
@@ -1446,7 +1465,7 @@ export default function ProjectDetail() {
                 <ActionExpandHeader title={t('instructor.projectDetail.members')} placeholder={t('instructor.projectDetail.searchStudent')} searchValue={memberSearch} onSearch={setMemberSearch} onAdd={() => { setShowAdvancedAdd(true); loadUsers(); }} addLabel={t('instructor.projectDetail.add')} />
               </div>
               {filteredMembers.length === 0 ? (
-                <p className="text-xs italic text-[var(--text-tertiary)]">{memberSearch ? t('instructor.projectDetail.noStudentsFound') : t('instructor.projectDetail.noMembers')}</p>
+                <p className="text-xs italic text-[var(--text-tertiary)]">{memberSearch ? t('instructor.projectDetail.noStudentsFound') : t('instructor.projectDetail.noStudentsAssigned')}</p>
               ) : (
                 <div className="space-y-1 max-h-[60vh] overflow-y-auto pr-1">
                   {filteredMembers.map(m => {
@@ -1498,6 +1517,7 @@ export default function ProjectDetail() {
                         <option value="MEMBER">{t('instructor.projectDetail.memberRole')}</option>
                         <option value="LEADER">{t('instructor.projectDetail.leaderRole')}</option>
                       </select>
+                      <DeleteConfirm message={t('instructor.projectDetail.unassignAllConfirm')} onConfirm={() => handleUnassignAll(selectedMember.userId)} triggerLabel={t('instructor.projectDetail.unassignAll')} confirmLabel={t('instructor.projectDetail.unassignAll')} cancelLabel={t('cancel')} disabled={unassigningAll || projectReadOnly} className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-50">{unassigningAll ? t('saving') : t('instructor.projectDetail.unassignAll')}</DeleteConfirm>
                       <DeleteConfirm message={t('instructor.projectDetail.removeMemberConfirm')} onConfirm={()=>{handleRemoveMember(selectedMember.userId); setSelectedMemberId(null)}} triggerLabel={t('instructor.projectDetail.remove')} confirmLabel={t('instructor.projectDetail.remove')} cancelLabel={t('cancel')} className="ml-auto rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-100">{t('instructor.projectDetail.remove')}</DeleteConfirm>
                     </div>
                   )}
@@ -1509,7 +1529,7 @@ export default function ProjectDetail() {
         </div>
       </main>
 
-      <Modal open={showAddMember} onClose={closeAddMemberModal} title={t('instructor.projectDetail.addMember')} className="!overflow-visible">
+      <Modal open={showAddMember} onClose={closeAddMemberModal} title={t('instructor.projectDetail.addStudents')} className="!overflow-visible">
         <div className="space-y-4">
           <div className="relative">
             <svg aria-hidden="true" viewBox="0 0 24 24" className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 fill-none stroke-[var(--text-tertiary)]" strokeWidth="2">

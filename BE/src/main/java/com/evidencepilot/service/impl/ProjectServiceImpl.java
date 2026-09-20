@@ -283,6 +283,35 @@ public class ProjectServiceImpl {
         events.publishEvent(new EntityChangedEvent("PROJECT", project.getId(), "STATUS_CHANGED", null));
     }
 
+    @Transactional
+    public ProjectResponse restoreProject(UUID id) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = projectRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException(id, "Project"));
+        currentUserService.requireProjectManageAccess(currentUser, project);
+        if (project.isActive()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is not in trash.");
+        }
+        project.setActive(true);
+        project.setUpdatedAt(LocalDateTime.now());
+        Project saved = projectRepository.save(project);
+        auditService.record("PROJECT_RESTORED", "PROJECT", saved.getId(), currentUser, null, null);
+        events.publishEvent(new EntityChangedEvent("PROJECT", saved.getId(), "STATUS_CHANGED", null));
+        return ProjectResponse.from(saved);
+    }
+
+    @Transactional
+    public int unassignAllSections(UUID projectId, UUID userId) {
+        User currentUser = currentUserService.requireCurrentUser();
+        Project project = findActiveProject(projectId);
+        currentUserService.requireProjectManageAccess(currentUser, project);
+        currentUserService.requireProjectWriteAccess(currentUser, project);
+        int cleared = paperSectionRepository.clearAssignmentsForProjectAndUser(projectId, userId);
+        auditService.record("PROJECT_SECTIONS_UNASSIGNED", "PROJECT", projectId, currentUser, userId, cleared);
+        events.publishEvent(new EntityChangedEvent("PROJECT", projectId, "STATUS_CHANGED", null));
+        return cleared;
+    }
+
     public List<ProjectMember> getProjectMembers(UUID projectId) {
         User currentUser = currentUserService.requireCurrentUser();
         Project project = findActiveProject(projectId);
@@ -388,6 +417,7 @@ public class ProjectServiceImpl {
         if (target.getRole() == ProjectRole.LEADER) {
             requireAnotherLeader(projectId);
         }
+        paperSectionRepository.clearAssignmentsForProjectAndUser(projectId, userId);
         members.forEach(member -> systemNotificationService.createNotification(
                 member.getUser(),
                 currentUser,
