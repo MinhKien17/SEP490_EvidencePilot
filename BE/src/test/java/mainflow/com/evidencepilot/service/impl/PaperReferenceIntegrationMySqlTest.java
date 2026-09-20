@@ -44,6 +44,7 @@ class PaperReferenceIntegrationMySqlTest {
     @MockBean AiModelClient model;
     @MockBean QdrantClient qdrant;
     @MockBean PaperStandardService paperStandardService;
+    @MockBean PaperProcessingServiceImpl paperProcessingService;
     @Autowired JdbcTemplate jdbc;
     @Autowired PaperReferenceService service;
     @Autowired SourceMatchingService matching;

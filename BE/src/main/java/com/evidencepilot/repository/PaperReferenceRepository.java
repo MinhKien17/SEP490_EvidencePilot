@@ -34,5 +34,15 @@ public interface PaperReferenceRepository extends JpaRepository<PaperReference, 
               AND r.paper.docType = com.evidencepilot.model.enums.DocumentType.PAPER
             """)
     boolean existsActiveForProject(@Param("projectId") UUID projectId, @Param("sourceId") UUID sourceId);
+
+    @Query("""
+            SELECT CASE WHEN COUNT(r) > 0 THEN true ELSE false END
+            FROM PaperReference r
+            WHERE r.source.id = :sourceId
+              AND r.paper.active = true
+              AND r.paper.docType = com.evidencepilot.model.enums.DocumentType.PAPER
+            """)
+    boolean existsActiveForSource(@Param("sourceId") UUID sourceId);
+
     void deleteByPaperIdAndSourceId(UUID paperId, UUID sourceId);
 }

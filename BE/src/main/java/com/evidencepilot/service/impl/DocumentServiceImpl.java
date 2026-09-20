@@ -76,6 +76,7 @@ public class DocumentServiceImpl {
     private final PaperSectionRepository paperSectionRepository;
     private final CurrentUserServiceImpl currentUserService;
     private final DocumentPersistenceService documentPersistenceService;
+    private final ExtractionCandidateService extractionCandidateService;
     private final DocumentObjectStorage documentObjectStorage;
     private final MediaAssetService mediaAssetService;
     private final QdrantServiceImpl qdrantService;
@@ -670,20 +671,17 @@ public class DocumentServiceImpl {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "No file in storage for this document");
         }
-        ProcessingStatus status = doc.getProcessingStatus();
-        // DEBT-07: only re-process documents in a terminal state; refuse while a
-        // processing round is already in flight to avoid queue spam.
-        if (status != ProcessingStatus.READY && status != ProcessingStatus.FAILED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Document is currently " + status + " and cannot be re-extracted");
+        var candidate = extractionCandidateService.request(documentId);
+        try {
+            return DocumentResponse.from(
+                    documentPersistenceService.markDocumentAsUploaded(
+                            documentId, doc.getFileUrl(), doc.getFileHashSha256()));
+        } catch (RuntimeException failure) {
+            if (candidate.getId() != null) {
+                extractionCandidateService.markFailed(candidate.getId(), failure.getMessage());
+            }
+            throw failure;
         }
-        documentObjectStorage.deleteExtractionCheckpoint(
-                documentId, doc.getFileHashSha256());
-        mediaAssetService.deleteExtractedForDocument(doc);
-        qdrantService.deleteVectors(documentId);
-        return DocumentResponse.from(
-                documentPersistenceService.markDocumentAsUploaded(
-                        documentId, doc.getFileUrl(), doc.getFileHashSha256()));
     }
 
     @Transactional
