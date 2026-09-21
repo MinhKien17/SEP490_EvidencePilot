@@ -1,5 +1,4 @@
 const EDITABLE_STATUSES = new Set(['CREATED', 'ASSIGNED', 'IN_PROGRESS', 'RETURNED']);
-const DELETABLE_STATUSES = EDITABLE_STATUSES;
 const EXPORTABLE_STATUSES = new Set(['IN_PROGRESS', 'SUBMITTED_FOR_REVIEW', 'RETURNED', 'APPROVED', 'ARCHIVED']);
 
 export function getProjectActions(project = {}) {
@@ -22,7 +21,7 @@ export function getProjectActions(project = {}) {
   if (EXPORTABLE_STATUSES.has(status) && project.hasAuthoritativeData !== false) {
     actions.push('export');
   }
-  if (DELETABLE_STATUSES.has(status)) actions.push('delete');
+  if (EDITABLE_STATUSES.has(status)) actions.push('delete');
   return actions;
 }
 

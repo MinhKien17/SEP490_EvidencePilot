@@ -14,7 +14,9 @@ export function normalizeCitationReviewReload({ serverState = null, storedJob = 
     jobId,
     review,
     shouldPoll: active && review?.complete !== true,
-    shouldClearJob: Boolean(jobId && (review?.complete === true || terminal)),
+    shouldClearJob: Boolean(jobId && terminal),
+    errorCode: serverState?.errorCode || storedJob?.errorCode || null,
+    errorMessage: serverState?.errorMessage || storedJob?.errorMessage || null,
     progress: {
       current: Math.max(0, Number(serverState?.finishedCount ?? storedJob?.progressCurrent) || 0),
       total: Math.max(0, Number(serverState?.totalCount ?? storedJob?.progressTotal) || 0),

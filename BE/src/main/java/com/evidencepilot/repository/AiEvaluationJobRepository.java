@@ -17,6 +17,8 @@ import java.util.Optional;
 public interface AiEvaluationJobRepository extends JpaRepository<AiEvaluationJob, UUID> {
     List<AiEvaluationJob> findByStatus(String status);
 
+    boolean existsBySectionIdAndKind(UUID sectionId, String kind);
+
     List<AiEvaluationJob> findByProjectIdAndKindAndStatusInOrderByCreatedAtDesc(
             UUID projectId, String kind, Collection<String> statuses);
 

@@ -513,7 +513,8 @@ class PaperProcessingServiceImplTest {
                 sectionStandardEvaluationRepository,
                 feedbackAnchorService,
                 assignmentSectionBaselineRepository,
-                new com.fasterxml.jackson.databind.ObjectMapper());
+                new com.fasterxml.jackson.databind.ObjectMapper(),
+                mock(SectionWorkHistoryService.class));
         when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
         when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(documentId)).thenReturn(List.of());
         List<PaperSection> saved = new ArrayList<>();
@@ -662,7 +663,8 @@ class PaperProcessingServiceImplTest {
                 sectionStandardEvaluationRepository,
                 feedbackAnchorService,
                 mock(com.evidencepilot.repository.AssignmentSectionBaselineRepository.class),
-                new com.fasterxml.jackson.databind.ObjectMapper());
+                new com.fasterxml.jackson.databind.ObjectMapper(),
+                mock(SectionWorkHistoryService.class));
 
         Project project = project(ProjectStatus.IN_PROGRESS);
         Document paperDoc = paper(project);
@@ -727,7 +729,8 @@ class PaperProcessingServiceImplTest {
                 sectionStandardEvaluationRepository,
                 feedbackAnchorService,
                 mock(com.evidencepilot.repository.AssignmentSectionBaselineRepository.class),
-                new com.fasterxml.jackson.databind.ObjectMapper());
+                new com.fasterxml.jackson.databind.ObjectMapper(),
+                mock(SectionWorkHistoryService.class));
 
         Project project = project(ProjectStatus.IN_PROGRESS);
         project.setTargetStandard(com.evidencepilot.model.enums.PaperStandard.IEEE);
@@ -1414,7 +1417,8 @@ class PaperProcessingServiceImplTest {
                 sectionStandardEvaluationRepository,
                 feedbackAnchorService,
                 assignmentSectionBaselineRepository,
-                new com.fasterxml.jackson.databind.ObjectMapper());
+                new com.fasterxml.jackson.databind.ObjectMapper(),
+                mock(SectionWorkHistoryService.class));
     }
 
     private User user(UserRole role) {

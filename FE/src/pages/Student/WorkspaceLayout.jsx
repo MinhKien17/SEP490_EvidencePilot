@@ -1541,7 +1541,15 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
             setAiReviewResult(reload.review);
             setAiReviewedContent(codeContentRef.current);
           }
+          if (reload.errorCode || reload.errorMessage) {
+            setAiReviewError({
+              code: reload.errorCode,
+              message: reload.errorMessage || t('cachedReviewFailed'),
+            });
+          }
           if (!reload.shouldPoll) {
+            aiReviewJobRef.current = null;
+            setLoadingAiReview(false);
             if (reload.review) fetchAiReviewSources(reload.review, requestId);
             return;
           }
@@ -1558,9 +1566,9 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
           await finishReviewPoll(polled, requestId, codeContentRef.current);
         } catch {
           if (aiReviewRequestRef.current !== requestId) return;
-          clearReviewJob(selectedSectionId);
           aiReviewJobRef.current = null;
           setLoadingAiReview(false);
+          setAiReviewError({ message: t('cachedReviewFailed') });
         }
       })
       .catch(() => {

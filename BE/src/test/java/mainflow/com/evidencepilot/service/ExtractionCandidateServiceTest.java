@@ -20,6 +20,7 @@ import com.evidencepilot.service.impl.DocumentPersistenceService;
 import com.evidencepilot.service.impl.ExtractionCandidateService;
 import com.evidencepilot.service.impl.PaperProcessingServiceImpl;
 import com.evidencepilot.service.impl.QdrantServiceImpl;
+import com.evidencepilot.service.impl.SectionWorkHistoryService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -64,6 +65,8 @@ class ExtractionCandidateServiceTest {
     private QdrantServiceImpl qdrantService;
     @Mock
     private PaperProcessingServiceImpl paperProcessingService;
+    @Mock
+    private SectionWorkHistoryService sectionWorkHistoryService;
 
     @Test
     void requestAllowsImportedPaperTextWithoutWorkHistory() {
@@ -178,6 +181,25 @@ class ExtractionCandidateServiceTest {
     }
 
     @Test
+    void requestRejectsPersistedSectionHistory() {
+        Document document = document(DocumentType.PAPER);
+        PaperSection section = new PaperSection();
+        section.setId(UUID.randomUUID());
+        section.setDocument(document);
+
+        when(documentRepository.findByIdForUpdate(document.getId())).thenReturn(Optional.of(document));
+        when(candidateRepository.existsActiveForDocument(document.getId())).thenReturn(false);
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(sectionWorkHistoryService.hasPersistedHistory(section.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> service().request(document.getId()))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("meaningful work");
+        verify(candidateRepository, never()).save(any());
+    }
+
+    @Test
     void activationReplacesLiveDerivedDataOnlyAfterCandidateIsReady() throws Exception {
         Document document = document(DocumentType.SOURCE);
         document.setFileUrl("sources/raw/source.pdf");
@@ -226,7 +248,8 @@ class ExtractionCandidateServiceTest {
                 documentPersistenceService,
                 qdrantService,
                 paperProcessingService,
-                new ObjectMapper());
+                new ObjectMapper(),
+                sectionWorkHistoryService);
     }
 
     private static Document document(DocumentType type) {

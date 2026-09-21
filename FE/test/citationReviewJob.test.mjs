@@ -16,6 +16,8 @@ test('reattaches an active job when the cached review is partial', () => {
       review: partial,
       shouldPoll: true,
       shouldClearJob: false,
+      errorCode: null,
+      errorMessage: null,
       progress: { current: 0, total: 0 },
     },
   );
@@ -29,6 +31,8 @@ test('keeps a partial cached result visible when no active job can be reattached
       review: partial,
       shouldPoll: false,
       shouldClearJob: false,
+      errorCode: null,
+      errorMessage: null,
       progress: { current: 0, total: 0 },
     },
   );
@@ -45,18 +49,20 @@ test('clears a saved job after a terminal complete result', () => {
       review: complete,
       shouldPoll: false,
       shouldClearJob: true,
+      errorCode: null,
+      errorMessage: null,
       progress: { current: 0, total: 0 },
     },
   );
 });
 
-test('clears an active job when the cache is already terminal', () => {
+test('keeps an active job when the server still reports it as running', () => {
   assert.equal(
     normalizeCitationReviewReload({
       serverState: { status: 'RUNNING', review: complete },
       storedJob: { id: 'job-1', status: 'PROCESSING', result: null },
     }).shouldClearJob,
-    true,
+    false,
   );
 });
 
@@ -71,6 +77,8 @@ test('uses a reattached job result when the cache has no response', () => {
       review: partial,
       shouldPoll: true,
       shouldClearJob: false,
+      errorCode: null,
+      errorMessage: null,
       progress: { current: 0, total: 0 },
     },
   );
@@ -85,6 +93,20 @@ test('reattaches from server state when localStorage is empty', () => {
     storedJob: null,
   }), {
     jobId: 'job-1', review: partial, shouldPoll: true,
-    shouldClearJob: false, progress: { current: 2, total: 5 },
+    shouldClearJob: false, errorCode: null, errorMessage: null,
+    progress: { current: 2, total: 5 },
+  });
+});
+
+test('exposes a terminal server failure without polling', () => {
+  assert.deepEqual(normalizeCitationReviewReload({
+    serverState: {
+      jobId: 'job-2', status: 'FAILED', errorCode: 'CITATION_REVIEW_FAILED',
+      errorMessage: 'Provider unavailable', review: null,
+    },
+  }), {
+    jobId: 'job-2', review: null, shouldPoll: false, shouldClearJob: true,
+    errorCode: 'CITATION_REVIEW_FAILED', errorMessage: 'Provider unavailable',
+    progress: { current: 0, total: 0 },
   });
 });

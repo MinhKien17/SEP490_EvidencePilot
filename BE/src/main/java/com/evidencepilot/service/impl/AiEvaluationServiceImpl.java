@@ -75,9 +75,7 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
         job.setPayloadJson(payloadJson);
         job.setStatus(AiEvaluationJob.STATUS_PENDING);
         job.setCreatedAt(LocalDateTime.now());
-        jobRepository.save(job);
-        publish(job);
-        return new JobSubmitResponse(job.getId());
+        return saveAndPublish(job);
     }
 
     @Override
@@ -119,9 +117,7 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
             job.setPayloadJson(payload);
             job.setStatus(AiEvaluationJob.STATUS_PENDING);
             job.setCreatedAt(LocalDateTime.now());
-            jobRepository.save(job);
-            publish(job);
-            return new JobSubmitResponse(job.getId());
+            return saveAndPublish(job);
         } catch (Exception exception) {
             throw new IllegalStateException("Could not serialize section citation review job", exception);
         }
@@ -600,5 +596,11 @@ public class AiEvaluationServiceImpl implements AiEvaluationService {
         } catch (Exception e) {
             log.error("Failed to publish AI evaluation job {}; retry scheduled: {}", job.getId(), e.getMessage());
         }
+    }
+
+    private JobSubmitResponse saveAndPublish(AiEvaluationJob job) {
+        jobRepository.save(job);
+        publish(job);
+        return new JobSubmitResponse(job.getId());
     }
 }

@@ -82,6 +82,7 @@ public class PaperProcessingServiceImpl {
     private final FeedbackAnchorService feedbackAnchorService;
     private final AssignmentSectionBaselineRepository assignmentSectionBaselineRepository;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    private final SectionWorkHistoryService sectionWorkHistoryService;
 
     public List<PaperSectionResponse> getPaperSections(UUID documentId) {
         requireDocumentAccess(documentId);
@@ -858,7 +859,7 @@ public class PaperProcessingServiceImpl {
                         section.getDocument().getProject().getId(), section.getId())) {
             return true;
         }
-        return hasFeedback(section);
+        return hasFeedback(section) || sectionWorkHistoryService.hasPersistedHistory(section.getId());
     }
 
     private boolean hasFeedback(PaperSection section) {

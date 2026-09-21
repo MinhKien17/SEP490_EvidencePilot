@@ -60,6 +60,7 @@ public class ExtractionCandidateService {
     private final QdrantServiceImpl qdrantService;
     private final PaperProcessingServiceImpl paperProcessingService;
     private final ObjectMapper objectMapper;
+    private final SectionWorkHistoryService sectionWorkHistoryService;
 
     @Transactional
     public DocumentExtractionCandidate request(UUID documentId) {
@@ -225,7 +226,7 @@ public class ExtractionCandidateService {
             return true;
         }
         return !instructorFeedbackRepository.findBySectionId(section.getId()).isEmpty()
-                || !evidenceRevisionTraceRepository.findBySectionIdOrderByCreatedAtDesc(section.getId()).isEmpty();
+                || sectionWorkHistoryService.hasPersistedHistory(section.getId());
     }
 
     private void registerVectorCleanup(List<UUID> obsoleteChunkIds, List<UUID> newIds) {

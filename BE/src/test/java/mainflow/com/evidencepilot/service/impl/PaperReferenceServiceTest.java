@@ -83,7 +83,7 @@ class PaperReferenceServiceTest {
         leader.setRole(UserRole.STUDENT);
         when(userRepository.findById(leaderId)).thenReturn(Optional.of(leader));
         when(documentRepository.findById(paperId)).thenReturn(Optional.of(paper));
-        when(documentRepository.findByIdForUpdate(paperId)).thenReturn(Optional.of(paper));
+        when(documentRepository.findByIdWithProjectForUpdate(paperId)).thenReturn(Optional.of(paper));
         when(projectMemberRepository.findByProjectIdAndUserId(projectId, leaderId))
                 .thenReturn(List.of(member(ProjectRole.LEADER)));
     }

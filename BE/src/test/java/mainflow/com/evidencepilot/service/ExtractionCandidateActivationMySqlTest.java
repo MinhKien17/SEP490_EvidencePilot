@@ -8,6 +8,7 @@ import com.evidencepilot.service.impl.DocumentPersistenceService;
 import com.evidencepilot.service.impl.ExtractionCandidateService;
 import com.evidencepilot.service.impl.PaperProcessingServiceImpl;
 import com.evidencepilot.service.impl.QdrantServiceImpl;
+import com.evidencepilot.service.impl.SectionWorkHistoryService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,7 +48,8 @@ import static org.mockito.Mockito.verify;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import({ExtractionCandidateService.class, DocumentPersistenceService.class,
-        QdrantServiceImpl.class, ExtractionCandidateActivationMySqlTest.JsonConfig.class})
+        QdrantServiceImpl.class, SectionWorkHistoryService.class,
+        ExtractionCandidateActivationMySqlTest.JsonConfig.class})
 class ExtractionCandidateActivationMySqlTest {
 
     @Container
