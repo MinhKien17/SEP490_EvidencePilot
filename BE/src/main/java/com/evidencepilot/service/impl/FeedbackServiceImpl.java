@@ -98,6 +98,12 @@ public class FeedbackServiceImpl {
     }
 
     @Transactional(readOnly = true)
+    public FeedbackRequestResponseDto findOneForCurrentUser(UUID id) {
+        User currentUser = currentUserService.requireCurrentUser();
+        return FeedbackRequestResponseDto.fromEntity(requireFeedbackAccess(id, currentUser, false));
+    }
+
+    @Transactional(readOnly = true)
     public FeedbackRequestPageResponse findQueueForCurrentUser(
             int page,
             int size,

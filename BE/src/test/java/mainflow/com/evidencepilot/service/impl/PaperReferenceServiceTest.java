@@ -322,7 +322,7 @@ class PaperReferenceServiceTest {
         Document shared = source(ProcessingStatus.READY, "file.pdf");
         shared.setProject(null);
         when(documentRepository.findById(shared.getId())).thenReturn(Optional.of(shared));
-        when(projectDocumentRepository.findByProjectIdAndDocumentId(projectId, shared.getId()))
+        when(projectDocumentRepository.findByProjectIdAndDocumentIdForUpdate(projectId, shared.getId()))
                 .thenReturn(Optional.of(new com.evidencepilot.model.ProjectDocument()));
         when(paperReferenceRepository.findByPaperIdAndSourceId(paperId, shared.getId()))
                 .thenReturn(Optional.empty());
@@ -427,7 +427,7 @@ class PaperReferenceServiceTest {
         source.setProject(null);
         source.setProcessingError("token=private; C:\\private\\extract.log");
         when(documentRepository.findById(source.getId())).thenReturn(Optional.of(source));
-        when(projectDocumentRepository.findByProjectIdAndDocumentId(projectId, source.getId()))
+        when(projectDocumentRepository.findByProjectIdAndDocumentIdForUpdate(projectId, source.getId()))
                 .thenReturn(Optional.of(new com.evidencepilot.model.ProjectDocument()));
         when(paperReferenceRepository.findByPaperIdAndSourceId(paperId, source.getId()))
                 .thenReturn(Optional.of(link(source)));

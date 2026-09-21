@@ -323,10 +323,15 @@ public class PaperReferenceService {
         // Lock before the first consistent read: duplicate adds see the committed link.
         Document paper = documentRepository.findByIdForUpdate(paperId)
                 .orElseThrow(() -> new ResourceNotFoundException(paperId, "Paper"));
-        validatePaper(paper);
         User requester = requireUser(requesterId);
+        // Lock the source before any ordinary visibility/membership reads so
+        // an unshare cannot be observed through a stale MySQL snapshot.
+        Document source = documentRepository.findByIdForUpdate(sourceId)
+                .or(() -> documentRepository.findById(sourceId))
+                .orElseThrow(() -> new ResourceNotFoundException(sourceId, "Source"));
+        validatePaper(paper);
         requireStudentWriter(requester, paper.getProject());
-        Document source = requireVisibleSource(paper.getProject(), sourceId);
+        requireVisibleSource(paper.getProject(), source);
         List<PaperSection> sections = paperSectionRepository
                 .findByDocumentIdOrderBySectionOrderAsc(paperId).stream()
                 .filter(PaperSection::isActive)
@@ -499,14 +504,18 @@ public class PaperReferenceService {
     private Document requireVisibleSource(Project project, UUID sourceId) {
         Document source = documentRepository.findById(sourceId)
                 .orElseThrow(() -> new ResourceNotFoundException(sourceId, "Source"));
+        return requireVisibleSource(project, source);
+    }
+
+    private Document requireVisibleSource(Project project, Document source) {
         if (!source.isActive() || source.getDocType() != DocumentType.SOURCE) {
-            throw new ResourceNotFoundException(sourceId, "Source");
+            throw new ResourceNotFoundException(source.getId(), "Source");
         }
         boolean direct = source.getProject() != null && project.getId().equals(source.getProject().getId());
         boolean shared = projectDocumentRepository
-                .findByProjectIdAndDocumentId(project.getId(), sourceId).isPresent();
+                .findByProjectIdAndDocumentIdForUpdate(project.getId(), source.getId()).isPresent();
         if (!direct && !shared) {
-            throw new ResourceNotFoundException(sourceId, "Source");
+            throw new ResourceNotFoundException(source.getId(), "Source");
         }
         return source;
     }
