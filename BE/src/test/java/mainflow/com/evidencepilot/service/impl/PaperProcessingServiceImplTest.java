@@ -1,6 +1,7 @@
 package com.evidencepilot.service.impl;
 
 import com.evidencepilot.dto.request.SectionBatchItem;
+import com.evidencepilot.dto.response.PaperSectionResponse;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.DocumentText;
 import com.evidencepilot.model.PaperSection;
@@ -8,6 +9,7 @@ import com.evidencepilot.model.Project;
 import com.evidencepilot.model.SectionStandardEvaluation;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.ProcessingStatus;
+import com.evidencepilot.model.enums.PaperSectionType;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.DocumentRepository;
@@ -67,6 +69,39 @@ class PaperProcessingServiceImplTest {
     private SectionStandardEvaluationRepository sectionStandardEvaluationRepository;
     @Mock
     private FeedbackAnchorService feedbackAnchorService;
+    @Mock
+    private com.evidencepilot.repository.AssignmentSectionBaselineRepository assignmentSectionBaselineRepository;
+
+    @Test
+    void paperSectionResponseCarriesExplicitSectionKind() {
+        PaperSection section = section(paper(project(ProjectStatus.IN_PROGRESS)));
+        section.setSectionType(PaperSectionType.REFERENCE);
+
+        assertThat(PaperSectionResponse.from(section).sectionType())
+                .isEqualTo(PaperSectionType.REFERENCE);
+    }
+
+    @Test
+    void structuralRenameRejectsASectionWithHistoryEvenWhenItIsUnassignedAndEmpty() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        Document document = paper(project);
+        PaperSection section = section(document);
+        section.setContentTex("");
+        when(documentRepository.findById(document.getId())).thenReturn(java.util.Optional.of(document));
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(currentUserService.isInstructor(instructor)).thenReturn(true);
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(document.getId()))
+                .thenReturn(List.of(section));
+        when(assignmentSectionBaselineRepository.existsByProjectIdAndSectionId(
+                project.getId(), section.getId())).thenReturn(true);
+
+        assertThatThrownBy(() -> service().updateSection(
+                document.getId(), section.getId(), "Renamed", null, null, null, 0L))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("SECTION_STRUCTURE_LOCKED");
+        verify(paperSectionRepository, never()).save(section);
+    }
 
     @Test
     void detectsLatexSections() {
@@ -473,7 +508,7 @@ class PaperProcessingServiceImplTest {
                 auditService,
                 sectionStandardEvaluationRepository,
                 feedbackAnchorService,
-                mock(com.evidencepilot.repository.AssignmentSectionBaselineRepository.class),
+                assignmentSectionBaselineRepository,
                 new com.fasterxml.jackson.databind.ObjectMapper());
         when(documentRepository.findById(documentId)).thenReturn(Optional.of(document));
         when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(documentId)).thenReturn(List.of());
@@ -736,12 +771,63 @@ class PaperProcessingServiceImplTest {
     }
 
     @Test
+    void batchUpdateAllowsRenamingAnUnassignedImportedSection() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        Document paperDoc = paper(project);
+        PaperSection section = section(paperDoc);
+        section.setSectionOrder(1024);
+        section.setContentTex("Imported paper content");
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(currentUserService.isInstructor(instructor)).thenReturn(true);
+        when(documentRepository.findById(paperDoc.getId())).thenReturn(Optional.of(paperDoc));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paperDoc.getId()))
+                .thenReturn(List.of(section));
+
+        var result = service().batchUpdateSections(paperDoc.getId(), List.of(
+                new SectionBatchItem(section.getId(), 1024, "Renamed", null,
+                        "Imported paper content", 0L)));
+
+        assertThat(result).singleElement().extracting("sectionTitle").isEqualTo("Renamed");
+        verify(paperSectionRepository).saveAll(anyList());
+        verify(paperSectionRepository).flush();
+    }
+
+    @Test
+    void configuredInstructorStandardsDoNotLockSetupStructure() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        Document paperDoc = paper(project);
+        PaperSection section = section(paperDoc);
+        section.setSectionOrder(1024);
+        section.setContentTex("Imported paper content");
+        SectionStandardEvaluation evaluation = new SectionStandardEvaluation();
+        evaluation.setRequirements(List.of("Use evidence"));
+        org.mockito.Mockito.lenient()
+                .when(sectionStandardEvaluationRepository.findTopBySectionIdOrderByUpdatedAtDesc(section.getId()))
+                .thenReturn(Optional.of(evaluation));
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(currentUserService.isInstructor(instructor)).thenReturn(true);
+        when(documentRepository.findById(paperDoc.getId())).thenReturn(Optional.of(paperDoc));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paperDoc.getId()))
+                .thenReturn(List.of(section));
+
+        var result = service().batchUpdateSections(paperDoc.getId(), List.of(
+                new SectionBatchItem(section.getId(), 1024, "Renamed", null,
+                        "Imported paper content", 0L)));
+
+        assertThat(result).singleElement().extracting("sectionTitle").isEqualTo("Renamed");
+        verify(paperSectionRepository).saveAll(anyList());
+    }
+
+    @Test
     void createSectionUsesGapStep() {
         User instructor = user(UserRole.INSTRUCTOR);
         Project project = project(ProjectStatus.IN_PROGRESS);
         Document paperDoc = paper(project);
         PaperSection existingSection = section(paperDoc);
         existingSection.setSectionOrder(1024);
+        assertThat(existingSection.getAssignedUser()).isNull();
         when(currentUserService.requireCurrentUser()).thenReturn(instructor);
         when(currentUserService.isInstructor(instructor)).thenReturn(true);
         when(documentRepository.findById(paperDoc.getId())).thenReturn(Optional.of(paperDoc));
@@ -753,6 +839,68 @@ class PaperProcessingServiceImplTest {
         var response = service().createSection(paperDoc.getId(), "Extra", null);
 
         assertThat(response.sectionOrder()).isEqualTo(2048);
+    }
+
+    @Test
+    void createSectionAllowsAnUnassignedPaperWithImportedContent() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        Document paperDoc = paper(project);
+        PaperSection existingSection = section(paperDoc);
+        existingSection.setSectionOrder(1024);
+        existingSection.setContentTex("Imported paper content");
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(currentUserService.isInstructor(instructor)).thenReturn(true);
+        when(documentRepository.findById(paperDoc.getId())).thenReturn(Optional.of(paperDoc));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paperDoc.getId()))
+                .thenReturn(List.of(existingSection));
+        when(paperSectionRepository.save(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service().createSection(paperDoc.getId(), "Extra", null);
+
+        assertThat(response.sectionTitle()).isEqualTo("Extra");
+        verify(paperSectionRepository).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void deleteSectionAllowsRemovingAnUnassignedImportedSection() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        Document paperDoc = paper(project);
+        PaperSection section = section(paperDoc);
+        section.setContentTex("Imported paper content");
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(currentUserService.isInstructor(instructor)).thenReturn(true);
+        when(documentRepository.findById(paperDoc.getId())).thenReturn(Optional.of(paperDoc));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paperDoc.getId()))
+                .thenReturn(List.of(section));
+        when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
+        when(paperSectionRepository.save(section)).thenReturn(section);
+
+        service().deleteSection(paperDoc.getId(), section.getId());
+
+        assertThat(section.isActive()).isFalse();
+        verify(paperSectionRepository).save(section);
+    }
+
+    @Test
+    void createSectionRejectsAnAssignedPaper() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        Document paperDoc = paper(project);
+        PaperSection existingSection = section(paperDoc);
+        existingSection.setAssignedUser(student);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(currentUserService.isInstructor(instructor)).thenReturn(true);
+        when(documentRepository.findById(paperDoc.getId())).thenReturn(Optional.of(paperDoc));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paperDoc.getId()))
+                .thenReturn(List.of(existingSection));
+
+        assertThatThrownBy(() -> service().createSection(paperDoc.getId(), "Extra", null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("SECTION_STRUCTURE_LOCKED");
     }
 
     @Test
@@ -800,12 +948,12 @@ class PaperProcessingServiceImplTest {
         Project project = project(ProjectStatus.ASSIGNED);
         Document paper = paper(project);
         PaperSection section = section(paper);
-        section.setSectionTitle("References");
+        section.setSectionTitle("Sources");
+        section.setSectionType(PaperSectionType.REFERENCE);
         when(currentUserService.requireCurrentUser()).thenReturn(instructor);
         when(currentUserService.isInstructor(instructor)).thenReturn(true);
         when(documentRepository.findById(paper.getId())).thenReturn(Optional.of(paper));
         when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
-        when(paperStandardService.isReferenceSectionTitle("References")).thenReturn(true);
 
         assertThatThrownBy(() -> service().assignSection(
                 paper.getId(), section.getId(), UUID.randomUUID()))
@@ -824,20 +972,42 @@ class PaperProcessingServiceImplTest {
         Document paper = paper(project);
         PaperSection section = section(paper);
         section.setSectionTitle("Introduction");
+        section.setSectionType(PaperSectionType.REFERENCE);
         when(currentUserService.requireCurrentUser()).thenReturn(instructor);
         when(documentRepository.findById(paper.getId())).thenReturn(Optional.of(paper));
         when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paper.getId()))
                 .thenReturn(List.of(section));
-        when(paperStandardService.isReferenceSectionTitle("References")).thenReturn(true);
 
         var request = List.of(new SectionBatchItem(
-                section.getId(), 0, "References", student.getId(), "Draft", 0L));
+                section.getId(), 0, "Methods", student.getId(), "Draft", 0L));
         assertThatThrownBy(() -> service().batchUpdateSections(paper.getId(), request))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
                         .isEqualTo(HttpStatus.BAD_REQUEST));
         verify(paperSectionRepository, never()).saveAll(anyList());
         verify(paperSectionRepository, never()).flush();
+    }
+
+    @Test
+    void standardSectionWithReferenceLookingTitleRemainsAssignable() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(ProjectStatus.ASSIGNED);
+        Document paper = paper(project);
+        PaperSection section = section(paper);
+        section.setSectionTitle("References");
+        section.setSectionType(PaperSectionType.STANDARD);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(currentUserService.isInstructor(instructor)).thenReturn(true);
+        when(documentRepository.findById(paper.getId())).thenReturn(Optional.of(paper));
+        when(userRepository.findById(student.getId())).thenReturn(Optional.of(student));
+        when(paperSectionRepository.findById(section.getId())).thenReturn(Optional.of(section));
+        when(paperSectionRepository.save(section)).thenReturn(section);
+
+        service().assignSection(paper.getId(), section.getId(), student.getId());
+
+        assertThat(section.getAssignedUser()).isEqualTo(student);
+        verify(paperSectionRepository).save(section);
     }
 
     @Test
@@ -1115,6 +1285,30 @@ class PaperProcessingServiceImplTest {
     }
 
     @Test
+    void batchUnassignOnlyPreservesGapOrderForSectionsWithCurrentWork() {
+        User instructor = user(UserRole.INSTRUCTOR);
+        User student = user(UserRole.STUDENT);
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        Document paper = paper(project);
+        PaperSection section = section(paper);
+        section.setSectionOrder(1024);
+        section.setContentTex("Draft");
+        section.setAssignedUser(student);
+        when(currentUserService.requireCurrentUser()).thenReturn(instructor);
+        when(currentUserService.isInstructor(instructor)).thenReturn(true);
+        when(documentRepository.findById(paper.getId())).thenReturn(Optional.of(paper));
+        when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paper.getId()))
+                .thenReturn(List.of(section));
+
+        service().batchUpdateSections(paper.getId(), List.of(
+                new SectionBatchItem(section.getId(), 1024, "Intro", null, "Draft", 0L)));
+
+        assertThat(section.getAssignedUser()).isNull();
+        verify(paperSectionRepository).saveAll(anyList());
+        verify(paperSectionRepository).flush();
+    }
+
+    @Test
     void batchContentChangeMarksConfiguredStandardStale() {
         User student = user(UserRole.STUDENT);
         Project project = project(ProjectStatus.IN_PROGRESS);
@@ -1143,7 +1337,7 @@ class PaperProcessingServiceImplTest {
     }
 
     @Test
-    void batchCanUnassignAllAndRenameInOneAtomicRequest() {
+    void batchCannotUnassignAndRenameASectionWithCurrentResponsibility() {
         User instructor = user(UserRole.INSTRUCTOR);
         User student = user(UserRole.STUDENT);
         Project project = project(ProjectStatus.IN_PROGRESS);
@@ -1158,15 +1352,12 @@ class PaperProcessingServiceImplTest {
         when(paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paper.getId()))
                 .thenReturn(List.of(section));
 
-        var result = service().batchUpdateSections(paper.getId(), List.of(
-                new SectionBatchItem(section.getId(), 0, "Renamed", null, "Draft", 0L)));
-
-        assertThat(result).singleElement().satisfies(updated -> {
-            assertThat(updated.sectionTitle()).isEqualTo("Renamed");
-            assertThat(updated.assignedUserId()).isNull();
-        });
-        verify(paperSectionRepository).saveAll(anyList());
-        verify(paperSectionRepository).flush();
+        assertThatThrownBy(() -> service().batchUpdateSections(paper.getId(), List.of(
+                new SectionBatchItem(section.getId(), 0, "Renamed", null, "Draft", 0L))))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("SECTION_STRUCTURE_LOCKED");
+        verify(paperSectionRepository, never()).saveAll(anyList());
+        verify(paperSectionRepository, never()).flush();
     }
 
     private PaperProcessingServiceImpl service() {
@@ -1186,7 +1377,7 @@ class PaperProcessingServiceImplTest {
                 auditService,
                 sectionStandardEvaluationRepository,
                 feedbackAnchorService,
-                mock(com.evidencepilot.repository.AssignmentSectionBaselineRepository.class),
+                assignmentSectionBaselineRepository,
                 new com.fasterxml.jackson.databind.ObjectMapper());
     }
 
