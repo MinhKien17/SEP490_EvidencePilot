@@ -1989,6 +1989,8 @@
   "instructor.projectDetail.setupLockedReadOnly": "Thiết lập bị khóa vì dự án đang ở chế độ chỉ đọc.",
   "instructor.projectDetail.setupLockedAssigned": "Thiết lập bị khóa vì đã có phần được phân công. Hãy bỏ phân công tất cả các phần để thay đổi.",
   "instructor.projectDetail.updateSetup": "Cập nhật thiết lập",
+  "instructor.projectDetail.reExtractPaper": "Trích xuất lại bài viết",
+  "instructor.projectDetail.reExtractFailed": "Không thể kích hoạt trích xuất lại.",
   "instructor.projectDetail.papers": "Bài viết",
   "instructor.projectDetail.uploadPaperFirst": "Hãy tải bài viết lên từ tab Thiết lập trước.",
   "instructor.projectDetail.rename": "Đổi tên",

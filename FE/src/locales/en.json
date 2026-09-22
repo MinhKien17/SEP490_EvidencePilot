@@ -1989,6 +1989,8 @@
   "instructor.projectDetail.setupLockedReadOnly": "Setup is locked because the project is read-only.",
   "instructor.projectDetail.setupLockedAssigned": "Setup is locked because sections are assigned. Unassign every section to make changes.",
   "instructor.projectDetail.updateSetup": "Update setup",
+  "instructor.projectDetail.reExtractPaper": "Re-extract paper",
+  "instructor.projectDetail.reExtractFailed": "Failed to trigger re-extraction.",
   "instructor.projectDetail.papers": "Papers",
   "instructor.projectDetail.uploadPaperFirst": "Upload a paper from the Setup tab first.",
   "instructor.projectDetail.rename": "Rename",
