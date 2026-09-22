@@ -31,13 +31,13 @@ export default function ProjectDeletionNotice({ deadline, canRevoke = false, onR
     dateStyle: 'medium', timeStyle: 'short',
   }).format(deadlineDate);
   return (
-    <aside role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
-      <p className="font-bold">{t('projectDeletion.readOnlyNotice', { deadline: formattedDeadline })}</p>
-      <p className="mt-1 text-sm">
+    <aside role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-950">
+      <p className="text-xs font-bold">{t('projectDeletion.readOnlyNotice', { deadline: formattedDeadline })}</p>
+      <p className="mt-0.5 text-[11px]">
         {remaining > 0 ? remainingValue(remaining, t) : t('projectDeletion.awaitingPurge')}
       </p>
       {canRevoke && (
-        <button type="button" onClick={onRevoke} className="mt-3 rounded-lg border border-amber-500 px-3 py-1.5 text-sm font-bold hover:bg-amber-100 transition-colors cursor-pointer">
+        <button type="button" onClick={onRevoke} className="mt-1.5 rounded-md border border-amber-500 px-2.5 py-1 text-xs font-bold hover:bg-amber-100 transition-colors cursor-pointer">
           {t('instructor.projectManagement.revokeDeletion')}
         </button>
       )}
