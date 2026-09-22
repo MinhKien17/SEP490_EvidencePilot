@@ -155,6 +155,7 @@ export default function useInstructorReview({ projectId, enabled }) {
     || project?.status === 'ARCHIVED'
     || project?.status === 'PENDING_DELETE';
   const canReturn = !requestLocked && activeRequest.status === 'PENDING';
+  const canApprove = !requestLocked && activeRequest.status === 'PENDING';
   const canCreateRoot = canReturn && viewMode === 'submitted' && snapshotState === 'AVAILABLE';
 
   useEffect(() => {
@@ -781,6 +782,7 @@ export default function useInstructorReview({ projectId, enabled }) {
     activeGuide,
     requestLocked,
     canReturn,
+    canApprove,
     canCreateRoot,
     feedbackFocusToken,
     handleSubmitFeedback,

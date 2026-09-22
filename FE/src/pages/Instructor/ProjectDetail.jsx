@@ -1130,6 +1130,9 @@ export default function ProjectDetail() {
   const projectMembers = members;
   const hasAssignedSections = sections.some(s => s.assignedUserId);
   const projectReadOnly = ['SUBMITTED_FOR_REVIEW', 'APPROVED', 'ARCHIVED', 'PENDING_DELETE'].includes(project.status) || Boolean(project.deletionScheduledAt);
+  // ponytail: sources follow the same mutability as everything else — the
+  // backend rejects writes on read-only/scheduled projects, so hide them here.
+  const canModifySources = !projectReadOnly;
   const sectionStructureLocked = hasAssignedSections || projectReadOnly;
   const standardViewSection = displaySections.find(section => String(section.id) === String(standardViewSectionId)) || null;
   const projectActionState = {
@@ -1237,7 +1240,7 @@ export default function ProjectDetail() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full overflow-hidden">
             <div id="source-documents" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm sm:p-6 h-full min-h-0 overflow-hidden flex flex-col">
               <div className="mb-3 shrink-0">
-                <ActionExpandHeader title={t('instructor.projectDetail.sourceDocuments')} placeholder={t('instructor.projectDetail.searchSource')} searchValue={sourceSearch} onSearch={setSourceSearch} onAdd={() => setShowAddSource(true)} addLabel={t('instructor.projectDetail.addSource')} />
+                <ActionExpandHeader title={t('instructor.projectDetail.sourceDocuments')} placeholder={t('instructor.projectDetail.searchSource')} searchValue={sourceSearch} onSearch={setSourceSearch} onAdd={() => setShowAddSource(true)} addLabel={t('instructor.projectDetail.addSource')} hideAdd={!canModifySources} />
               </div>
               {selectedProjectSourceIds.length > 0 && (
                 <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
@@ -1248,7 +1251,8 @@ export default function ProjectDetail() {
                     triggerLabel={t('instructor.projectDetail.removeSelectedSources')}
                     confirmLabel={t('instructor.projectDetail.removeSelectedSources')}
                     cancelLabel={t('cancel')}
-                    className="rounded-md bg-rose-600 px-2.5 py-1.5 font-bold text-white transition hover:bg-rose-700"
+                    disabled={!canModifySources}
+                    className="rounded-md bg-rose-600 px-2.5 py-1.5 font-bold text-white transition hover:bg-rose-700 disabled:opacity-50"
                   >
                     {t('instructor.projectDetail.removeSelectedSources')}
                   </DeleteConfirm>
@@ -1264,23 +1268,28 @@ export default function ProjectDetail() {
                         type="checkbox"
                         checked={selectedProjectSourceIds.includes(String(s.id))}
                         onChange={() => toggleProjectSourceSelection(s.id)}
+                        disabled={!canModifySources || s.referenced}
+                        title={s.referenced ? t('instructor.projectDetail.removeSourceReferenced') : undefined}
                         aria-label={t('instructor.projectDetail.selectSource', { name: s.title || s.originalFilename || s.id })}
-                        className="h-4 w-4 shrink-0 rounded border-[var(--border)] text-[var(--brand)] focus:ring-[var(--brand)]"
+                        className="h-4 w-4 shrink-0 rounded border-[var(--border)] text-[var(--brand)] focus:ring-[var(--brand)] disabled:opacity-50"
                       />
                       <button onClick={() => { setSourceDetail(s); setShowSourceDetail(true); }} className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left">
                         <span className="min-w-0 truncate font-medium">{s.title || s.originalFilename || t('unknown')}</span>
                         <StatusBadge status={s.processingStatus || 'READY'} />
                       </button>
+                      <span title={s.referenced ? t('instructor.projectDetail.removeSourceReferenced') : undefined}>
                       <DeleteConfirm
                         message={t('instructor.projectDetail.removeSourceConfirm')}
                         onConfirm={() => handleRemoveSource(s.id)}
                         triggerLabel={t('instructor.projectDetail.removeSource')}
                         confirmLabel={t('instructor.projectDetail.removeSource')}
                         cancelLabel={t('cancel')}
-                        className="shrink-0 rounded-lg p-1.5 text-[var(--text-tertiary)] transition hover:bg-rose-100 hover:text-rose-600"
+                        disabled={!canModifySources || s.referenced}
+                        className="shrink-0 rounded-lg p-1.5 text-[var(--text-tertiary)] transition hover:bg-rose-100 hover:text-rose-600 disabled:opacity-50"
                       >
                         <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="2"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M10 11v6M14 11v6" /></svg>
                       </DeleteConfirm>
+                      </span>
                     </div>
                   ))}
                 </div>

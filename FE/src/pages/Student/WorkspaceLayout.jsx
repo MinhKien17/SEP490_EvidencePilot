@@ -1842,7 +1842,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
     <div role="region" aria-label={t('feedbackProjectWorkspace')} className="h-screen w-full flex flex-col bg-(--surface-secondary) overflow-hidden font-sans antialiased text-(--text-primary)">
       <WorkspaceHeader workspaceMode={workspaceMode} project={project} navigate={navigate} onShowHistory={isReview ? undefined : () => setShowHistoryModal(true)} historyDisabled={editableSections.length === 0}
         reviewRound={isReview ? review.workflow : null}
-        reviewGuide={isReview ? <InstructorReviewGuide review={review.workflow} selectedSection={currentSection} /> : null}
+        reviewGuide={isReview ? <InstructorReviewGuide review={review.workflow} selectedSection={currentSection} plain /> : null}
         review={isReview ? review.workflow : null} reviewSection={isReview ? currentSection : null}
         notifications={notifications} unreadCount={unreadCount} showNotifications={showNotifications} setShowNotifications={setShowNotifications} onMarkNotificationRead={handleMarkNotificationRead} onMarkAllNotificationsRead={handleMarkAllNotificationsRead} onOpenNotification={handleOpenNotification}
         showExportMenu={showExportMenu} setShowExportMenu={setShowExportMenu} handleExportTexArchive={handleExportTexArchive} handleExportTraceabilityJson={handleExportTraceabilityJson} handleExportTraceabilityCsv={handleExportTraceabilityCsv} tourSteps={isReview ? undefined : tourSteps} tourKey="student-workspace"
