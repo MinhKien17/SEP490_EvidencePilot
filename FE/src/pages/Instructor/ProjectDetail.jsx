@@ -1154,8 +1154,6 @@ export default function ProjectDetail() {
             <div className="mt-4">
               <ProjectDeletionNotice
                 deadline={project.deletionScheduledAt}
-                canRevoke={hasProjectAction(projectActionState, 'revokeDeletion')}
-                onRevoke={handleRevokeDeletion}
               />
             </div>
           )}
