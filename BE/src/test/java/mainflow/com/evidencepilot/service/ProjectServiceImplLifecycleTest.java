@@ -18,6 +18,7 @@ import com.evidencepilot.repository.ProjectMemberRepository;
 import com.evidencepilot.repository.ProjectRepository;
 import com.evidencepilot.repository.UserRepository;
 import com.evidencepilot.service.impl.ProjectServiceImpl;
+import com.evidencepilot.event.EntityChangedEvent;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -32,6 +33,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doThrow;
@@ -501,6 +503,24 @@ class ProjectServiceImplLifecycleTest {
 
         assertThat(member.getRole()).isEqualTo(ProjectRole.LEADER);
         verify(projectMemberRepository).save(member);
+        verify(eventPublisher).publishEvent(new EntityChangedEvent(
+                "PROJECT", project.getId(), "MEMBER_ROLE_CHANGED", null));
+    }
+
+    @Test
+    void updateMemberRoleDoesNotPublishForSameRole() {
+        User user = user();
+        Project project = project(ProjectStatus.IN_PROGRESS);
+        ProjectMember member = member(project, ProjectRole.MEMBER);
+        when(currentUserService.requireCurrentUser()).thenReturn(user);
+        when(projectRepository.findById(project.getId())).thenReturn(Optional.of(project));
+        when(projectMemberRepository.findByProjectIdAndUserId(project.getId(), member.getUser().getId()))
+                .thenReturn(List.of(member));
+
+        service().updateMemberRole(project.getId(), member.getUser().getId(), ProjectRole.MEMBER);
+
+        verify(projectMemberRepository, never()).save(member);
+        verify(eventPublisher, never()).publishEvent(any(EntityChangedEvent.class));
     }
 
     @Test
