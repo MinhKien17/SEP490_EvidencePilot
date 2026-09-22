@@ -21,6 +21,7 @@ import StandardRequirementsModal from '../../components/Instructor/sections/Stan
 import ProjectEditModal from '../../components/Instructor/ProjectEditModal.jsx';
 import ProjectDeletionNotice from '../../components/projects/ProjectDeletionNotice.jsx';
 import { useAuth } from '../../context/AuthContext';
+import { useNotification } from '../../context/NotificationContext';
 import { hasProjectAction } from '../../utils/projectActions.js';
 import { formatDate, formatDateTime } from '../../utils/formatters/date.js';
 
@@ -49,6 +50,7 @@ export default function ProjectDetail() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
+  const { subscribeToEntityChanges } = useNotification();
   const { pending: pendingDelete, start: startDelete } = useUndoDelete();
   // rationale: common action labels for SectionManager/SectionRow/StandardConfigModal (were an undefined `ct` → crash).
   const ct = { delete: t('delete'), add: t('add'), cancel: t('cancel'), saving: t('saving'), save: t('save') };
@@ -211,6 +213,12 @@ export default function ProjectDetail() {
   const [standardViewSectionId, setStandardViewSectionId] = useState(null);
   const sectionLoadRequestRef = useRef(0);
   const anyDirty = draftDirty;
+  const anyDirtyRef = useRef(anyDirty);
+  const selectedPaperIdRef = useRef(null);
+  const selectedCollectionIdRef = useRef('');
+  anyDirtyRef.current = anyDirty;
+  selectedPaperIdRef.current = selectedPaper?.id || null;
+  selectedCollectionIdRef.current = selectedCollectionId;
 
   const collectionSources = useMemo(
     () => Object.values(collectionSourcePages).flat(),
@@ -285,7 +293,7 @@ export default function ProjectDetail() {
   const loadFeedback = useCallback(async () => {
     try {
       const fbRes = await api.get('/api/feedback-requests');
-      const projectFbs = (fbRes.data || []).filter(fb => fb.projectId === id);
+      const projectFbs = (fbRes.data || []).filter(fb => String(fb.projectId) === String(id));
       setFeedbackRequests(projectFbs);
     } catch { }
   }, [id]);
@@ -348,6 +356,32 @@ export default function ProjectDetail() {
 
   useEffect(() => { loadProject(); }, [loadProject]);
   useEffect(() => { if (project) { loadPapers(); loadSources(); loadUsers(); } }, [project, loadPapers, loadSources, loadUsers]);
+
+  useEffect(() => subscribeToEntityChanges(event => {
+    if (!event) return;
+    if (event.entity === 'PROJECT' && String(event.id) === String(id)) {
+      void loadProject(false);
+      void loadPapers();
+      return;
+    }
+    if (event.entity === 'DOCUMENT' && String(event.projectId) === String(id)) {
+      void loadSources();
+      void loadPapers();
+      if (selectedPaperIdRef.current && String(event.id) === String(selectedPaperIdRef.current) && !anyDirtyRef.current) {
+        void loadSections(event.id);
+      }
+      return;
+    }
+    if (event.entity === 'FEEDBACK' && String(event.projectId) === String(id)) {
+      void loadFeedback();
+      void loadProject(false);
+      return;
+    }
+    if (event.entity === 'COLLECTION' && event.action === 'SOURCE_CHANGED') {
+      void loadSources();
+      if (String(event.id) === String(selectedCollectionIdRef.current)) void loadCollections();
+    }
+  }), [id, loadCollections, loadFeedback, loadPapers, loadProject, loadSections, loadSources, subscribeToEntityChanges]);
 
   const sectionDiff = useMemo(() => {
     if (!checkpointDiff) return null;
@@ -1047,6 +1081,7 @@ export default function ProjectDetail() {
           clearInterval(interval);
           setUploadState(null);
           if (res.data.processingStatus === 'READY') loadSections(res.data.id);
+          loadSources();
           loadPapers();
         }
       } catch { clearInterval(interval); }

@@ -432,6 +432,8 @@ public class ProjectServiceImpl {
                 project.getId(),
                 currentUser.getEmail() + " changed your role in project \"" + project.getTitle()
                         + "\" to " + role + ".");
+        events.publishEvent(new EntityChangedEvent(
+                "PROJECT", project.getId(), "MEMBER_ROLE_CHANGED", null));
     }
 
     @Transactional

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppHeader from '../../components/layout/AppHeader.jsx';
 import Breadcrumb from '../../components/layout/Breadcrumb.jsx';
@@ -17,10 +17,12 @@ import ProjectEditModal from '../../components/Instructor/ProjectEditModal.jsx';
 import { getProjectActions, hasProjectAction } from '../../utils/projectActions.js';
 import useUndoDelete from '../../components/ui/UndoDelete.jsx';
 import ProjectDeletionNotice from '../../components/projects/ProjectDeletionNotice.jsx';
+import { useNotification } from '../../context/NotificationContext';
 
 export default function ProjectManagement() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
+  const { subscribeToEntityChanges } = useNotification();
 
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -73,7 +75,7 @@ export default function ProjectManagement() {
       setProjects(r.data?.content || r.data || []);
       setTotal(r.data?.totalElements || 0);
     } catch (err) {
-      if (err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
+      if (!signal?.aborted && err?.name !== 'CanceledError' && err?.code !== 'ERR_CANCELED') {
         setProjects([]);
         setTotal(0);
       }
@@ -82,11 +84,22 @@ export default function ProjectManagement() {
     }
   }, [page, debouncedSearch, statusFilter, showTrash]);
 
-  useEffect(() => {
+  const requestControllerRef = useRef(null);
+  const reloadProjects = useCallback(() => {
+    requestControllerRef.current?.abort();
     const controller = new AbortController();
-    fetchProjects(controller.signal);
-    return () => controller.abort();
+    requestControllerRef.current = controller;
+    return fetchProjects(controller.signal);
   }, [fetchProjects]);
+
+  useEffect(() => {
+    reloadProjects();
+    return () => requestControllerRef.current?.abort();
+  }, [reloadProjects]);
+
+  useEffect(() => subscribeToEntityChanges(event => {
+    if (event?.entity === 'PROJECT') void reloadProjects();
+  }), [reloadProjects, subscribeToEntityChanges]);
 
   const statusOptions = useMemo(() => (
     PROJECT_STATUSES.map(st => ({
@@ -105,7 +118,7 @@ export default function ProjectManagement() {
       setShowCreate(false);
       setNewTitle('');
       setNewDescription('');
-      fetchProjects();
+      reloadProjects();
     } catch {
       alert(t('instructor.projectManagement.createProjectFailed'));
     } finally {
@@ -119,7 +132,7 @@ export default function ProjectManagement() {
     try {
       await api.put(API_ROUTES.PROJECTS.BY_ID(editingProject.id), { title, description });
       setEditingProject(null);
-      await fetchProjects();
+      await reloadProjects();
     } catch {
       alert(t('instructor.projectManagement.updateProjectFailed'));
     } finally {
@@ -138,7 +151,7 @@ export default function ProjectManagement() {
       setDeletingId(id);
       try {
         await api.delete(API_ROUTES.PROJECTS.BY_ID(id));
-        await fetchProjects();
+        await reloadProjects();
       } catch {
         alert(t('instructor.projectManagement.deleteProjectFailed'));
       } finally {
@@ -150,7 +163,7 @@ export default function ProjectManagement() {
   const handleRestore = async (id) => {
     try {
       await api.patch(API_ROUTES.PROJECTS.RESTORE(id));
-      await fetchProjects();
+      await reloadProjects();
     } catch {
       alert(t('instructor.projectManagement.restoreProjectFailed'));
     }
@@ -159,7 +172,7 @@ export default function ProjectManagement() {
   const handleRevokeDeletion = async (id) => {
     try {
       await api.patch(API_ROUTES.PROJECTS.CANCEL_DELETION(id));
-      await fetchProjects();
+      await reloadProjects();
     } catch {
       alert(t('instructor.projectManagement.revokeDeletionFailed'));
     }
@@ -168,12 +181,12 @@ export default function ProjectManagement() {
   const handlePatch = async (id, action) => {
     try {
       await api.patch(`/api/projects/${id}/${action}`);
-      await fetchProjects();
+      await reloadProjects();
     } catch {
       alert(t('instructor.projectManagement.projectActionFailed', {
         action: t(`instructor.projectManagement.action.${['archive', 'unarchive', 'complete'].includes(action) ? action : 'UNKNOWN'}`),
       }));
-      await fetchProjects();
+      await reloadProjects();
     }
   };
 
