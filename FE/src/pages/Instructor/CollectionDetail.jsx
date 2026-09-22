@@ -7,7 +7,7 @@ import { useCollectionSources } from '../../hooks/useCollections';
 import api from '../../services/api';
 import SourceGraph from '../../components/features/SourceGraph.jsx';
 import { collectionGraph, sourceAuthors } from '../../utils/sourceGraph.js';
-import useUndoDelete, { UndoToast } from '../../components/ui/UndoDelete.jsx';
+import useUndoDelete from '../../components/ui/UndoDelete.jsx';
 import DeleteConfirm from '../../components/ui/DeleteConfirm.jsx';
 
 import {
@@ -250,7 +250,7 @@ export default function CollectionDetail() {
   const { t, i18n } = useTranslation();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { pending: pendingDelete, start: startDelete, undo: undoDelete, dismiss: dismissDelete } = useUndoDelete();
+  const { start: startDelete } = useUndoDelete();
   const undoStrings = {
     header: t('instructor.collectionDetail.undoHeader'),
     bodyTemplate: t('instructor.collectionDetail.undoBodyTemplate'),
@@ -901,8 +901,6 @@ export default function CollectionDetail() {
           onClose={() => setViewerFile(null)}
         />
       )}
-
-      {pendingDelete && <UndoToast pending={pendingDelete} onUndo={undoDelete} onDismiss={dismissDelete} />}
     </div>
   );
 }

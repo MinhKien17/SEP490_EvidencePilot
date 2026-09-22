@@ -12,13 +12,14 @@ import {
   isSourceSharedWithProject,
 } from '../../utils/instructor/sourceShareSelection';
 import { getStudentSuggestions, paginateStudents, studentDisplayName } from '../../utils/instructor/studentSearch';
-import useUndoDelete, { UndoToast } from '../../components/ui/UndoDelete.jsx';
+import useUndoDelete from '../../components/ui/UndoDelete.jsx';
 import DeleteConfirm from '../../components/ui/DeleteConfirm.jsx';
 import ActionExpandHeader from '../../components/Instructor/ActionExpandHeader.jsx';
 import ContributionGraph from '../../components/Instructor/ContributionGraph.jsx';
 import EditPaperSectionModal from '../../components/Instructor/EditPaperSectionModal.jsx';
 import StandardRequirementsModal from '../../components/Instructor/sections/StandardRequirementsModal.jsx';
 import ProjectEditModal from '../../components/Instructor/ProjectEditModal.jsx';
+import ProjectDeletionNotice from '../../components/projects/ProjectDeletionNotice.jsx';
 import { useAuth } from '../../context/AuthContext';
 import { hasProjectAction } from '../../utils/projectActions.js';
 import { formatDate, formatDateTime } from '../../utils/formatters/date.js';
@@ -48,7 +49,7 @@ export default function ProjectDetail() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
-  const { pending: pendingDelete, start: startDelete, undo: undoDelete, dismiss: dismissDelete } = useUndoDelete();
+  const { pending: pendingDelete, start: startDelete } = useUndoDelete();
   // rationale: common action labels for SectionManager/SectionRow/StandardConfigModal (were an undefined `ct` → crash).
   const ct = { delete: t('delete'), add: t('add'), cancel: t('cancel'), saving: t('saving'), save: t('save') };
   // rationale: section components take a scoped label object, not the i18next
@@ -121,14 +122,6 @@ export default function ProjectDetail() {
     previewMode: t('instructor.projectDetail.previewMode'),
     closePages: t('instructor.projectDetail.closePages'),
     closeEditor: t('instructor.projectDetail.closeEditor'),
-  };
-  const undoStrings = {
-    header: t('instructor.projectDetail.undoHeader'),
-    bodyTemplate: t('instructor.projectDetail.undoBodyTemplate'),
-    caution: t('instructor.projectDetail.undoCaution'),
-    undoLabel: t('instructor.projectDetail.undoLabel'),
-    undoRemaining: t('instructor.projectDetail.undoRemaining'),
-    dismissLabel: t('instructor.projectDetail.dismissLabel'),
   };
   const [activeTab, setActiveTab] = useState('setup');
   const [loading, setLoading] = useState(true);
@@ -792,58 +785,34 @@ export default function ProjectDetail() {
     setShowEditPaper(false);
   };
 
-  const handleDeleteSection = async (sectionId) => {
+  const handleDeleteSection = (sectionId) => {
     if (!selectedPaper) return;
-    const serverIndex = sections.findIndex(s => String(s.id) === String(sectionId));
-    const draftIndex = draftSections.findIndex(s => String(s.id) === String(sectionId));
-    const section = sections[serverIndex] || draftSections[draftIndex];
-    const draftSection = draftSections[draftIndex];
-    const restoreAt = (items, item, index) => {
-      if (!item || items.some(s => String(s.id) === String(item.id))) return items;
-      const next = [...items];
-      next.splice(Math.max(0, index), 0, item);
-      return next;
-    };
-    setSections(prev => prev.filter(s => String(s.id) !== String(sectionId)));
-    setDraftSections(prev => prev.filter(s => String(s.id) !== String(sectionId)));
+    const section = sections.find(s => String(s.id) === String(sectionId))
+      || draftSections.find(s => String(s.id) === String(sectionId));
     startDelete({
-      ...undoStrings,
       entityName: section?.sectionTitle || sectionId,
       entityDetails: sectionId,
     }, async () => {
       try {
         await api.delete(`/api/papers/${selectedPaper.id}/sections/${sectionId}`);
+        setSections(prev => prev.filter(s => String(s.id) !== String(sectionId)));
+        setDraftSections(prev => prev.filter(s => String(s.id) !== String(sectionId)));
       } catch (err) {
-        setSections(prev => restoreAt(prev, section, serverIndex));
-        setDraftSections(prev => restoreAt(prev, draftSection || section, draftIndex));
         alert(err?.response?.data?.message || t('instructor.projectDetail.deleteSectionFailed'));
       }
-    }, async () => {
-      setSections(prev => restoreAt(prev, section, serverIndex));
-      setDraftSections(prev => restoreAt(prev, draftSection || section, draftIndex));
     });
   };
 
   const handleRemoveSource = async (sourceId) => {
-    const src = sources.find(s => String(s.id) === String(sourceId));
-    setSources(prev => prev.filter(s => String(s.id) !== String(sourceId)));
-    startDelete({
-      ...undoStrings,
-      entityName: src?.title || src?.originalFilename || sourceId,
-      entityDetails: sourceId,
-    }, async () => {
-      try {
-        await api.post(`/api/sources/projects/${id}/unshare`, { sourceIds: [sourceId] });
-      } catch (err) {
-        const blocked = err?.response?.data?.blocked || [];
-        alert(blocked.length > 0
-          ? `${t('instructor.projectDetail.removeSourceBlocked')}: ${blocked.length}`
-          : (err?.response?.data?.message || t('instructor.projectDetail.removeSourceFailed')));
-      }
-      await loadSources();
-    }, async () => {
-      await loadSources();
-    });
+    try {
+      await api.post(`/api/sources/projects/${id}/unshare`, { sourceIds: [sourceId] });
+    } catch (err) {
+      const blocked = err?.response?.data?.blocked || [];
+      alert(blocked.length > 0
+        ? `${t('instructor.projectDetail.removeSourceBlocked')}: ${blocked.length}`
+        : (err?.response?.data?.message || t('instructor.projectDetail.removeSourceFailed')));
+    }
+    await loadSources();
   };
 
   const toggleProjectSourceSelection = (sourceId) => {
@@ -882,7 +851,6 @@ export default function ProjectDetail() {
 
   const handleConfirmAssign = async (userId, sectionId) => {
     setPendingAssign(null);
-    // Draft-only for assignment too (Mandate 1) — persists on Save Changes batch
     setDraftSections(prev => prev.map(s => String(s.id) === String(sectionId) ? { ...s, assignedUserId: userId || null } : s));
   };
 
@@ -913,8 +881,7 @@ export default function ProjectDetail() {
   };
 
   const handleStudentSearchKeyDown = (event) => {
-    if (event.key === 'Escape' && memberSuggestionsOpen) {
-      event.preventDefault();
+    if (event.key === 'Escape') {
       event.stopPropagation();
       setMemberSuggestionsOpen(false);
       return;
@@ -980,6 +947,41 @@ export default function ProjectDetail() {
     )));
   };
 
+  const handleDeleteProject = () => {
+    if (!project || deletingProject) return;
+    startDelete({
+      entityName: project.title || id,
+      entityDetails: id,
+    }, async () => {
+      setDeletingProject(true);
+      try {
+        const { data } = await api.delete(API_ROUTES.PROJECTS.BY_ID(id));
+        if (data?.deletionScheduledAt) {
+          setProject(data);
+        } else {
+          await loadProject();
+        }
+      } catch (err) {
+        alert(err?.response?.data?.message || t('instructor.projectManagement.deleteProjectFailed'));
+      } finally {
+        setDeletingProject(false);
+      }
+    });
+  };
+
+  const handleRevokeDeletion = async () => {
+    try {
+      const { data } = await api.patch(API_ROUTES.PROJECTS.CANCEL_DELETION(id));
+      if (data) {
+        setProject(data);
+      } else {
+        await loadProject();
+      }
+    } catch {
+      alert(t('instructor.projectManagement.revokeDeletionFailed'));
+    }
+  };
+
   const handlePatch = async (action) => {
     setStatusPending(action);
     try {
@@ -991,19 +993,6 @@ export default function ProjectDetail() {
       }));
     }
     finally { setStatusPending(null); }
-  };
-
-  const handleDeleteProject = async () => {
-    if (deletingProject) return;
-    setDeletingProject(true);
-    try {
-      await api.delete(API_ROUTES.PROJECTS.BY_ID(id));
-      navigate('/instructor/projects');
-    } catch {
-      alert(t('instructor.projectManagement.deleteProjectFailed'));
-    } finally {
-      setDeletingProject(false);
-    }
   };
 
   const handleUpdateProject = async ({ title, description }) => {
@@ -1089,7 +1078,7 @@ export default function ProjectDetail() {
 
   const projectMembers = members;
   const hasAssignedSections = sections.some(s => s.assignedUserId);
-  const projectReadOnly = ['SUBMITTED_FOR_REVIEW', 'APPROVED', 'ARCHIVED'].includes(project.status);
+  const projectReadOnly = ['SUBMITTED_FOR_REVIEW', 'APPROVED', 'ARCHIVED'].includes(project.status) || Boolean(project.deletionScheduledAt);
   const sectionStructureLocked = hasAssignedSections || projectReadOnly;
   const standardViewSection = displaySections.find(section => String(section.id) === String(standardViewSectionId)) || null;
   const projectActionState = {
@@ -1117,6 +1106,11 @@ export default function ProjectDetail() {
               <p className="mt-1 flex flex-wrap items-center gap-1 text-xs text-[var(--text-tertiary)]"><StatusBadge status={project.status} /></p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {hasProjectAction(projectActionState, 'revokeDeletion') && (
+                <button onClick={handleRevokeDeletion} className="rounded-lg border border-amber-500 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 transition hover:bg-amber-100 cursor-pointer">
+                  {t('instructor.projectManagement.revokeDeletion')}
+                </button>
+              )}
               {hasProjectAction(projectActionState, 'edit') && (
                 <button onClick={() => setShowEditProject(true)} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-bold text-[var(--brand-foreground)] transition hover:border-[var(--brand)] hover:bg-[var(--brand-soft)]">
                   {t('instructor.projectManagement.commonEdit')}
@@ -1125,7 +1119,7 @@ export default function ProjectDetail() {
               {/* PHASE 1: Status Control lifted from Settings tab — replaces View Evidence Trace */}
               {hasProjectAction(projectActionState, 'delete') && (
                 <DeleteConfirm
-                  message={t('instructor.projectManagement.deleteProjectConfirm')}
+                  message={t('instructor.projectManagement.deleteProjectConfirmSchedule')}
                   onConfirm={handleDeleteProject}
                   triggerLabel={t('delete')}
                   confirmLabel={t('delete')}
@@ -1156,6 +1150,15 @@ export default function ProjectDetail() {
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-sm font-bold text-[var(--text-secondary)] shadow-sm transition-all hover:border-indigo-300 hover:bg-[var(--brand-soft)] hover:text-[var(--brand-foreground)]" />
             </div>
           </div>
+          {project.deletionScheduledAt && (
+            <div className="mt-4">
+              <ProjectDeletionNotice
+                deadline={project.deletionScheduledAt}
+                canRevoke={hasProjectAction(projectActionState, 'revokeDeletion')}
+                onRevoke={handleRevokeDeletion}
+              />
+            </div>
+          )}
         </div>
 
         {/* Tabs — Static, wrap not scroll */}
@@ -2004,8 +2007,6 @@ export default function ProjectDetail() {
           </Marker>
         </Modal>
       )}
-
-      {pendingDelete && <UndoToast pending={pendingDelete} onUndo={undoDelete} onDismiss={dismissDelete} />}
     </div>
   );
 }

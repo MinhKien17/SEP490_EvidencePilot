@@ -501,6 +501,7 @@ public class FeedbackServiceImpl {
     private FeedbackRequest requireFeedbackAccessForUpdate(UUID id, User currentUser, boolean instructorOnly) {
         FeedbackRequest request = feedbackRequestRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> notFound("Feedback request", id));
+        currentUserService.requireProjectMutationAllowed(request.getProject());
         requireFeedbackAccess(request, currentUser, instructorOnly);
         return request;
     }
@@ -549,6 +550,7 @@ public class FeedbackServiceImpl {
 
     private void requirePendingReview(FeedbackRequest request) {
         if (request.getStatus() != FeedbackStatus.PENDING) throw conflict("Feedback request closed.");
+        currentUserService.requireProjectMutationAllowed(request.getProject());
         if (request.getProject().getStatus().isReadOnly()) throw conflict("Project is read-only.");
     }
 
@@ -562,6 +564,7 @@ public class FeedbackServiceImpl {
     private Project lockProject(FeedbackRequest request) {
         Project project = projectRepository.findByIdForUpdate(request.getProject().getId())
                 .orElseThrow(() -> notFound("Project", request.getProject().getId()));
+        currentUserService.requireProjectMutationAllowed(project);
         request.setProject(project);
         return project;
     }

@@ -486,6 +486,7 @@ public class PaperReferenceService {
     }
 
     private void requireStudentWriter(User requester, Project project) {
+        currentUserService.requireProjectMutationAllowed(project);
         if (project.getStatus().isReadOnly()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Project is read-only.");
         }
