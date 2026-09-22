@@ -126,7 +126,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout, user, role } = useAuth();
-  const { notifications, unreadCount, markRead, markAllRead } = useNotification();
+  const { notifications, unreadCount, markRead, markAllRead, subscribeToEntityChanges } = useNotification();
   const { t, i18n } = useTranslation();
   const { pending: pendingDelete, start: startDelete } = useUndoDelete();
   const [activeTab, setActiveTab] = useState(() => {
@@ -268,6 +268,8 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
   const aiReviewJobRef = useRef(null);
   const aiReviewRequestRef = useRef(0);
   const aiSourceRequestRef = useRef(0);
+  const realtimeSectionIdRef = useRef(null);
+  const realtimePaperIdRef = useRef(null);
 
   const updateCode = (newVal) => {
     if (isReview) return;
@@ -745,6 +747,8 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
   const editableSections = sections.filter(canEditSection);
   const currentSection = sections.find(section =>
     String(section.id) === String(selectedSectionId));
+  realtimeSectionIdRef.current = currentSection?.id || null;
+  realtimePaperIdRef.current = selectedPaper?.id || null;
   const handleHandoffChanged = useCallback((handoff) => {
     const sectionId = String(handoff.sectionId);
     sectionRevisionRef.current.set(sectionId, handoff.revision);
@@ -842,6 +846,48 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
   }, [paperRefs.clearCheck, paperRefs.reloadReferences]);
 
   useEffect(() => {
+    if (isReview || !project?.id) return undefined;
+    return subscribeToEntityChanges(event => {
+      if (!event) return;
+      const projectMatches = String(event.projectId) === String(project.id);
+      if (event.entity === 'FEEDBACK' && projectMatches) {
+        void feedback.refresh();
+        return;
+      }
+      if (event.entity === 'REFERENCE' && realtimePaperIdRef.current && String(event.id) === String(realtimePaperIdRef.current)) {
+        void refreshReferences();
+        return;
+      }
+      if ((event.entity === 'DOCUMENT' && projectMatches)
+        || (event.entity === 'COLLECTION' && event.action === 'SOURCE_CHANGED')) {
+        const refreshDocumentData = async () => {
+          try {
+            const [sourceList, paperResponse, mediaResponse] = await Promise.all([
+              loadAllProjectSources(project.id),
+              api.get(`/api/projects/${project.id}/papers`),
+              api.get(`/api/media/projects/${project.id}`),
+            ]);
+            setSources(sourceList);
+            setMediaAssets(mediaResponse.data || []);
+            const paperList = paperResponse.data || [];
+            setPapers(paperList);
+            setSelectedPaper(current => {
+              const updated = paperList.find(paper => String(paper.id) === String(current?.id));
+              return updated && updated.processingStatus !== current.processingStatus ? updated : current;
+            });
+            const currentSectionIsDirty = realtimeSectionIdRef.current
+              && dirtySectionsRef.current.has(String(realtimeSectionIdRef.current));
+            if (!currentSectionIsDirty) await refreshReferences();
+          } catch {
+            // The existing extraction polling remains the retry path.
+          }
+        };
+        void refreshDocumentData();
+      }
+    });
+  }, [feedback.refresh, isReview, project?.id, refreshReferences, subscribeToEntityChanges]);
+
+  useEffect(() => {
     const sectionId = String(currentSection?.id ?? '');
     const staleCheckVisible = paperRefs.check || paperRefs.checkLoading || paperRefs.checkError;
     if (sectionId
@@ -933,6 +979,8 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
         if (controller.signal.aborted) return;
         const list = r.data || [];
         setSections(list);
+        const currentSectionId = String(selectedSectionIdRef.current || '');
+        if (currentSectionId && dirtySectionsRef.current.has(currentSectionId)) return;
         const mine = user ? list.filter(s => String(s.assignedUserId) === String(user.id)) : [];
         const target = list.find(section => String(section.id) === String(pendingFeedbackRef.current?.sectionId)) || mine[0];
         if (target) {
@@ -951,7 +999,7 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
       })
       .catch(() => { if (!controller.signal.aborted) setSections([]); });
     return () => controller.abort();
-  }, [selectedPaper, user]);
+  }, [selectedPaper?.id, selectedPaper?.processingStatus, user?.id]);
 
   useEffect(() => {
     const pending = pendingFeedbackRef.current;
