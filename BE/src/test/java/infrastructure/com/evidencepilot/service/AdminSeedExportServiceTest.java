@@ -8,6 +8,7 @@ import com.evidencepilot.model.CollectionDocument;
 import com.evidencepilot.model.Document;
 import com.evidencepilot.model.Project;
 import com.evidencepilot.model.ProjectMember;
+import com.evidencepilot.model.ProjectCollection;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.DocumentType;
@@ -144,6 +145,10 @@ class AdminSeedExportServiceTest {
         CollectionDocument membership = new CollectionDocument();
         membership.setCollection(collection);
         membership.setDocument(source);
+        ProjectCollection projectCollection = new ProjectCollection();
+        projectCollection.setProject(project);
+        projectCollection.setCollection(collection);
+        projectCollection.setLinkedBy(instructor);
 
         var projects = mock(com.evidencepilot.repository.ProjectRepository.class);
         var members = mock(com.evidencepilot.repository.ProjectMemberRepository.class);
@@ -183,10 +188,11 @@ class AdminSeedExportServiceTest {
         assertThat(parsed.sheets().get("papers").getFirst().get("paper_file"))
                 .startsWith("papers/");
         assertThat(parsed.sheets().get("collections")).hasSize(1);
+        assertThat(parsed.sheets().get("project_collections")).hasSize(1);
     }
 
     @Test
-    void stubPaperExportsAsStandardRow() throws Exception {
+    void stubPaperIsSkippedFromV2Export() throws Exception {
         User instructor = user("prof@example.test", UserRole.INSTRUCTOR, null);
         Project project = project("P1");
         ProjectMember member = new ProjectMember();
@@ -225,8 +231,7 @@ class AdminSeedExportServiceTest {
             parsed = seedService().parse(in, bundle.xlsx().length);
         }
         assertThat(parsed.errors()).as(String.join("; ", parsed.errors())).isEmpty();
-        assertThat(parsed.sheets().get("papers")).hasSize(1);
-        assertThat(parsed.sheets().get("papers").getFirst().get("paper_standard")).isEqualTo("IEEE");
+        assertThat(parsed.sheets().get("papers")).isEmpty();
         assertThat(bundle.paperFiles()).isEmpty();
     }
 
