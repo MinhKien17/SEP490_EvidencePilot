@@ -94,12 +94,16 @@ export default function ProjectDetail() {
     standardRequirements: t('instructor.projectDetail.standardRequirements'),
     noStandardRequirements: t('instructor.projectDetail.noStandardRequirements'),
     changesSaved: t('instructor.projectDetail.changesSaved'),
+    saveChangesFailed: t('instructor.projectDetail.reorderSectionsFailed'),
+    assignmentsApplied: t('instructor.projectDetail.assignmentsApplied'),
+    assignmentsApplyFailed: t('instructor.projectDetail.assignmentsApplyFailed'),
     configStandard: t('instructor.projectDetail.configStandard'),
     standards: t('instructor.projectDetail.standards'),
     referenceSharedEditors: t('instructor.projectDetail.referenceSharedEditors'),
     bulkAssign: t('instructor.projectDetail.bulkAssign'),
     bulkAssignHint: t('instructor.projectDetail.bulkAssignHint'),
     bulkAssignmentStudent: t('instructor.projectDetail.bulkAssignmentStudent'),
+    bulkAssignAll: t('instructor.projectDetail.bulkAssignAll'),
     selectStudent: t('instructor.projectDetail.selectStudent'),
     applyAssignment: t('instructor.projectDetail.applyAssignment'),
     unassignAll: t('instructor.projectDetail.unassignAll'),
@@ -750,43 +754,73 @@ export default function ProjectDetail() {
   };
 
   // Single batch endpoint — replaces Promise.all N-transaction trap.
+  const persistSectionBatch = async (nextSections) => {
+    const payload = {
+      sections: nextSections.map(s => ({
+        id: s.id,
+        sectionOrder: s.sectionOrder,
+        sectionTitle: s.sectionTitle,
+        assignedUserId: s.assignedUserId || null,
+        contentTex: s.contentTex,
+        expectedRevision: s.revision ?? s.optVersion ?? null,
+      }))
+    };
+    const { data } = await api.put(`/api/papers/${selectedPaper.id}/sections/batch`, payload);
+    setSections(data || []);
+    setDraftSections(data || []);
+    await loadProject(false);
+    return data;
+  };
+
+  // ponytail: result objects let the modal pop its own toast (global toasts
+  // hide from the AX tree while aria-modal is open; the portal host stays).
   const handleSaveAllSections = async () => {
-    if (!selectedPaper || !anyDirty || pendingDelete) return false;
+    if (!selectedPaper || !anyDirty || pendingDelete) return { ok: false, conflict: false, message: '' };
     setSectionStructureSaving(true);
     setConflictSectionId(null);
     try {
-      const payload = {
-        sections: draftSections.map(s => ({
-          id: s.id,
-          sectionOrder: s.sectionOrder,
-          sectionTitle: s.sectionTitle,
-          assignedUserId: s.assignedUserId || null,
-          contentTex: s.contentTex,
-          expectedRevision: s.revision ?? s.optVersion ?? null,
-        }))
-      };
-      const { data } = await api.put(`/api/papers/${selectedPaper.id}/sections/batch`, payload);
-      setSections(data || []);
-      setDraftSections(data || []);
-      await loadProject(false);
-      return true;
+      await persistSectionBatch(draftSections);
+      return { ok: true };
     } catch (err) {
       const fieldErrors = err?.response?.data?.fieldErrors;
       const sid = fieldErrors?.sectionId || err?.response?.data?.details?.sectionId;
       if (err?.response?.status === 409 && sid) {
         setConflictSectionId(String(sid));
-      } else {
-        alert(err?.response?.data?.message || t('instructor.projectDetail.reorderSectionsFailed'));
+        return { ok: false, conflict: true, message: '' };
       }
-      return false;
+      return { ok: false, conflict: false, message: err?.response?.data?.message || t('instructor.projectDetail.reorderSectionsFailed') };
+    } finally {
+      setSectionStructureSaving(false);
+    }
+  };
+
+  // ponytail: assignments persist immediately via one batch PUT (no Save click).
+  // Payload builds from the live draft so unsaved title/content edits ride along.
+  const handleApplyAssignmentsNow = async (nextSections) => {
+    if (!selectedPaper || sectionStructureSaving) return { ok: false, conflict: false, message: '' };
+    setSectionStructureSaving(true);
+    setConflictSectionId(null);
+    setDraftSections(nextSections);
+    try {
+      await persistSectionBatch(nextSections);
+      return { ok: true };
+    } catch (err) {
+      const fieldErrors = err?.response?.data?.fieldErrors;
+      const sid = fieldErrors?.sectionId || err?.response?.data?.details?.sectionId;
+      if (err?.response?.status === 409 && sid) {
+        setConflictSectionId(String(sid));
+        return { ok: false, conflict: true, message: '' };
+      }
+      return { ok: false, conflict: false, message: err?.response?.data?.message || t('instructor.projectDetail.assignmentsApplyFailed') };
     } finally {
       setSectionStructureSaving(false);
     }
   };
 
   const handleAddSection = async () => {
-    const structureLockedNow = sections.some(section => section.assignedUserId)
-      || ['SUBMITTED_FOR_REVIEW', 'APPROVED', 'ARCHIVED', 'PENDING_DELETE'].includes(project?.status);
+    // ponytail: status-only gate; per-section assigned checks live in the
+    // edit modal + BE guards. Appending a section never touches assigned work.
+    const structureLockedNow = ['SUBMITTED_FOR_REVIEW', 'APPROVED', 'ARCHIVED', 'PENDING_DELETE'].includes(project?.status);
     if (!selectedPaper || structureLockedNow || sectionStructureSaving) return;
     setSectionStructureSaving(true);
     try {
@@ -975,11 +1009,11 @@ export default function ProjectDetail() {
     }
   };
 
-  const handleUnassignAll = () => {
-    setDraftSections(current => current.map(section => (
+  const handleUnassignAll = () => handleApplyAssignmentsNow(
+    draftSections.map(section => (
       section.sectionType === 'REFERENCE' ? section : { ...section, assignedUserId: null }
-    )));
-  };
+    )),
+  );
 
   const handleDeleteProject = () => {
     if (!project || deletingProject) return;
@@ -1133,6 +1167,9 @@ export default function ProjectDetail() {
   // Keep source controls aligned with the backend read-only guard for frozen
   // and scheduled projects.
   const canModifySources = !projectReadOnly;
+  // ponytail: global freeze stays for whole-paper setup ops (re-extract /
+  // reset-standard are destructive). The edit-paper modal uses per-section
+  // locks instead — only the assigned section locks title/standards/delete.
   const sectionStructureLocked = hasAssignedSections || projectReadOnly;
   const standardViewSection = displaySections.find(section => String(section.id) === String(standardViewSectionId)) || null;
   const projectActionState = {
@@ -1435,9 +1472,9 @@ export default function ProjectDetail() {
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3 shrink-0">
                 <div>
                   <h2 className="text-sm font-bold text-[var(--brand-foreground)]">{t('instructor.projectDetail.projectSections')}</h2>
-                  {selectedPaper && sectionStructureLocked && (
+                  {selectedPaper && projectReadOnly && (
                     <p className="text-[10px] text-amber-700 mt-1">
-                      {projectReadOnly ? t('instructor.projectDetail.projectReadOnly') : t('instructor.projectDetail.sectionStructureLocked')}
+                      {t('instructor.projectDetail.projectReadOnly')}
                     </p>
                   )}
                 </div>
@@ -1501,7 +1538,18 @@ export default function ProjectDetail() {
                           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--brand-soft)] text-xs font-black text-[var(--brand-foreground)]">{index + 1}</span>
                           <div className="min-w-0">
                             <p className="truncate text-xs font-bold text-[var(--text-primary)]">{section.sectionTitle || t('untitled')}</p>
-                            <p className="truncate text-[10px] text-[var(--text-tertiary)]">{section.sectionType === 'REFERENCE' ? t('instructor.projectDetail.referenceSharedEditors') : (assignedMember ? studentDisplayName(assignedMember) : t('instructor.projectDetail.unassigned'))}</p>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {section.sectionType === 'REFERENCE' ? (
+                                <span className="text-[10px] italic text-[var(--text-tertiary)]">{t('instructor.projectDetail.referenceSharedEditors')}</span>
+                              ) : (
+                                <span data-testid={`tab-assignee-badge-${section.id}`} className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${assignedMember ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-500'}`}>
+                                  {assignedMember ? studentDisplayName(assignedMember) : t('instructor.projectDetail.unassigned')}
+                                </span>
+                              )}
+                              <span data-testid={`tab-standard-badge-${section.id}`} className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${evaluation?.requirements?.length ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
+                                {evaluation?.requirements?.length ? t('instructor.projectDetail.standardConfigured') : t('instructor.projectDetail.standardNotConfigured')}
+                              </span>
+                            </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
@@ -1696,7 +1744,7 @@ export default function ProjectDetail() {
               {filteredMembers.length === 0 ? (
                 <p className="text-xs italic text-[var(--text-tertiary)]">{memberSearch ? t('instructor.projectDetail.noStudentsFound') : t('instructor.projectDetail.noStudentsAssigned')}</p>
               ) : (
-                <div className="space-y-1 max-h-[60vh] overflow-y-auto pr-1">
+                <div className="space-y-1 pr-1">
                   {filteredMembers.map(m => {
                     const isSelected = selectedMember && String(selectedMember.userId||selectedMember.id) === String(m.userId||m.id);
                     return (
@@ -1983,7 +2031,10 @@ export default function ProjectDetail() {
         projectMembers={projectMembers}
         users={users}
         projectReadOnly={projectReadOnly}
-        sectionStructureLocked={sectionStructureLocked}
+        // ponytail: status-only — per-section assigned locks are enforced
+        // inside the modal + BE. Setup-level sectionStructureLocked stays
+        // global (whole-paper ops are destructive).
+        sectionStructureLocked={projectReadOnly}
         sectionStructureSaving={sectionStructureSaving}
         conflictSectionId={conflictSectionId}
         onClose={() => setShowEditPaper(false)}
@@ -1998,6 +2049,7 @@ export default function ProjectDetail() {
         onReloadConflict={handleReloadConflictSection}
         onSaveStandard={saveSectionStandard}
         onUnassignAll={handleUnassignAll}
+        onApplyAssignmentsNow={handleApplyAssignmentsNow}
         t={paperEditorT}
         ct={ct}
       />
