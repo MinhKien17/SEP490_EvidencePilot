@@ -61,6 +61,18 @@ async function setup(page) {
     revision: 1,
   }],
   sectionStandards: {},
+  progressReport: {
+    projectId,
+    sections: [
+      { sectionId: 'section-1', sectionTitle: 'Introduction', wordCount: 120, assignedUserId: null, assignedUserName: null, version: 2, lastUpdated: '2026-09-20T08:00:00Z', feedbackResolved: 0, feedbackOpen: 2 },
+      { sectionId: 'section-2', sectionTitle: 'Methodology', wordCount: 0, assignedUserId: null, assignedUserName: null, version: 1, lastUpdated: '2026-09-20T08:00:00Z', feedbackResolved: 0, feedbackOpen: 0 },
+    ],
+    contributions: [
+      { userId: 'student-1', userName: 'Student One', assignedSectionCount: 0, currentWordCount: 0, saveCount: 3, wordDelta: 40, wordsAdded: 50, wordsRemoved: 10, lastEditedAt: '2026-09-20T08:00:00Z', feedbackResolved: 0, feedbackOpen: 0, editedSections: ['Introduction'], dailyWordDeltas: [{ date: '2026-09-20', saveCount: 3, wordDelta: 40, wordsAdded: 50, wordsRemoved: 10 }] },
+      { userId: 'student-2', userName: 'Student Two', assignedSectionCount: 0, currentWordCount: 0, saveCount: 0, wordDelta: 0, wordsAdded: 0, wordsRemoved: 0, lastEditedAt: null, feedbackResolved: 0, feedbackOpen: 0, editedSections: [], dailyWordDeltas: [] },
+    ],
+    readiness: { score: 50, contentCoveragePercent: 50, metrics: [] },
+  },
   batchAttempts: 0,
   batchConflictOnce: false,
   puts: [], paperPuts: [], sectionPuts: [], sectionCreates: [], unassignAll: [], deleteProject: [], cancelProjectDeletion: [], errors: [], unhandled: [] };
@@ -183,7 +195,7 @@ async function setup(page) {
     } else if (path === `/api/projects/${projectId}/evidence-traces`) {
       json = [];
     } else if (path === `/api/projects/${projectId}/progress-report`) {
-      json = null;
+      json = state.progressReport;
     } else if (path === `/api/projects/${projectId}/checkpoints/diff`) {
       json = null;
     } else if (path === `/api/projects/${projectId}/collections`) {
@@ -578,7 +590,7 @@ test('Edit Paper Section respects structure locks without hiding instructor cont
   expect(state.unhandled).toEqual([]);
 });
 
-test('Unassign all is available in Sections instead of Assign Students', async ({ page }) => {
+test('Unassign all is available in Sections instead of Project members', async ({ page }) => {
   const state = await setup(page);
   state.sections[0].sectionOrder = 1024;
   state.sections[1].sectionOrder = 2048;
@@ -609,7 +621,7 @@ test('Unassign all is available in Sections instead of Assign Students', async (
   ]);
   await page.keyboard.press('Escape');
   await expect(editor).toBeHidden();
-  await page.getByRole('button', { name: 'Assign Students', exact: true }).click();
+  await page.getByRole('button', { name: 'Project members', exact: true }).click();
   await expect(page.locator('#project-members').getByRole('button', { name: 'Unassign all sections', exact: true })).toHaveCount(0);
   expect(state.errors).toEqual([]);
   expect(state.unhandled).toEqual([]);
@@ -640,4 +652,50 @@ test('project delete schedules a read-only deadline and instructor can revoke it
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
   expect(state.deleteProject).toEqual([projectId]);
   expect(state.cancelProjectDeletion).toEqual([projectId]);
+});
+
+test('Project members panel shows assignments, activity, and open feedback', async ({ page }) => {
+  const state = await setup(page);
+  state.sections[0].assignedUserId = 'student-1';
+  state.sections[0].assignedUserName = 'Student One';
+  state.progressReport.sections[0].assignedUserId = 'student-1';
+  state.progressReport.sections[0].assignedUserName = 'Student One';
+  await page.goto(`${baseUrl}/instructor/projects/${projectId}`);
+  await page.getByRole('button', { name: 'Project members', exact: true }).click();
+
+  const panel = page.locator('#project-members').locator('..');
+  await expect(page.getByTestId('member-student-1')).toBeVisible();
+  await page.getByTestId('member-student-1').click();
+  await expect(panel.getByText('Introduction', { exact: true }).first()).toBeVisible();
+  await expect(panel.getByText('No recorded edits in this project yet.')).toHaveCount(0);
+  expect(state.errors).toEqual([]);
+  expect(state.unhandled).toEqual([]);
+});
+
+test('Progress report shows attention list, table, and daily chart', async ({ page }) => {
+  const state = await setup(page);
+  state.progressReport.sections[0].assignedUserId = 'student-1';
+  state.progressReport.sections[0].assignedUserName = 'Student One';
+  state.progressReport.contributions[0].assignedSectionCount = 1;
+  state.progressReport.contributions[0].currentWordCount = 120;
+  state.progressReport.contributions[0].feedbackOpen = 2;
+  await page.goto(`${baseUrl}/instructor/projects/${projectId}`);
+  await page.getByRole('button', { name: 'Project progress report', exact: true }).click();
+
+  await expect(page.getByText('Needs attention', { exact: true })).toBeVisible();
+  await expect(page.getByText('1 unassigned sections')).toBeVisible();
+  await expect(page.getByText('2 open feedback threads')).toBeVisible();
+  await expect(page.getByText('1 sections with no recorded edits in this period')).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Student One' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Student Two' })).toBeVisible();
+
+  await page.getByPlaceholder('Search students…').fill('two');
+  await expect(page.getByRole('cell', { name: 'Student One' })).toHaveCount(0);
+  await expect(page.getByRole('cell', { name: 'Student Two' })).toBeVisible();
+  await page.getByPlaceholder('Search students…').fill('');
+
+  await page.getByRole('button', { name: 'Student One' }).click();
+  await expect(page.getByText('Edits per day', { exact: true })).toBeVisible();
+  expect(state.errors).toEqual([]);
+  expect(state.unhandled).toEqual([]);
 });
