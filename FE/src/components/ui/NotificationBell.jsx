@@ -7,13 +7,27 @@ import { useNotification } from '../../context/NotificationContext';
 import api from '../../services/api.js';
 import { formatDateTime } from '../../utils/formatters/date';
 
-export default function NotificationBell({ onOpen }) {
+// ponytail: single bell for every header. Workspace headers pass controlled
+// open state + a custom item handler (deep-link inside the open workspace
+// instead of navigating away); everywhere else it manages itself.
+export default function NotificationBell({
+  onOpen,
+  open: openProp,
+  onOpenChange,
+  onOpenNotification,
+  onMarkNotificationRead,
+  onMarkAllNotificationsRead,
+  onToggleExtra,
+  tourId,
+}) {
   const { token, role } = useAuth();
   const navigate = useNavigate();
   const { language } = useLanguage();
   const { t } = useTranslation();
   const { notifications, unreadCount, markRead, markAllRead } = useNotification();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const rootRef = useRef(null);
 
   // ponytail: no X button — outside click closes the dropdown.
@@ -31,18 +45,25 @@ export default function NotificationBell({ onOpen }) {
       document.removeEventListener('mousedown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [open ]);
+  }, [open, setOpen ]);
 
   if (!token) return null;
 
   const toggle = () => {
     setOpen(current => {
-      if (!current) onOpen?.();
+      if (!current) {
+        onOpen?.();
+        onToggleExtra?.();
+      }
       return !current;
     });
   };
 
   const handleClick = async (notification) => {
+    if (onOpenNotification) {
+      await onOpenNotification(notification);
+      return;
+    }
     if (!notification.read) {
       markRead(notification.id);
     }
@@ -68,11 +89,21 @@ export default function NotificationBell({ onOpen }) {
     }
   };
 
+  const handleMarkRead = (id) => {
+    if (onMarkNotificationRead) return onMarkNotificationRead(id);
+    markRead(id);
+  };
+
+  const handleMarkAllRead = () => {
+    if (onMarkAllNotificationsRead) return onMarkAllNotificationsRead();
+    void markAllRead();
+  };
+
   const iconButton = 'p-2 text-(--text-secondary) hover:text-(--brand-foreground) hover:bg-(--surface-secondary) rounded-lg transition-colors cursor-pointer';
 
   return (
     <div ref={rootRef} className="relative shrink-0">
-      <button type="button" onClick={toggle} className={`relative ${iconButton}`} title={t('notifications')} aria-label={t('notifications')} aria-expanded={open} aria-haspopup="true">
+      <button type="button" onClick={toggle} data-tour={tourId} className={`relative ${iconButton}`} title={t('notifications')} aria-label={t('notifications')} aria-expanded={open} aria-haspopup="true">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
         {unreadCount > 0 && <span className="absolute -top-0.5 -right-0.5 bg-rose-500 text-white text-[9px] font-bold min-w-4 h-4 px-0.5 flex items-center justify-center rounded-full shadow-sm">{unreadCount > 9 ? '9+' : unreadCount}</span>}
       </button>
@@ -82,7 +113,7 @@ export default function NotificationBell({ onOpen }) {
           <div className="sticky top-0 bg-(--surface) border-b border-(--border-light) px-4 py-3 flex justify-between items-center z-10">
             <span className="text-xs font-bold text-(--text-primary)">{t('notifications')}</span>
             <div className="flex items-center gap-1">
-              <button type="button" onClick={() => { void markAllRead(); }} disabled={unreadCount === 0} className="px-2 py-1 text-[10px] font-bold text-(--brand) hover:underline disabled:opacity-40 disabled:no-underline" aria-label={t('markAllNotificationsRead')}>
+              <button type="button" onClick={handleMarkAllRead} disabled={unreadCount === 0} className="px-2 py-1 text-[10px] font-bold text-(--brand) hover:underline disabled:opacity-40 disabled:no-underline" aria-label={t('markAllNotificationsRead')}>
                 {t('markAllNotificationsRead')}
               </button>
             </div>
@@ -93,7 +124,10 @@ export default function NotificationBell({ onOpen }) {
             <button
               type="button"
               key={notification.id}
-              onClick={() => handleClick(notification)}
+              onClick={() => {
+                if (!notification.read) handleMarkRead(notification.id);
+                handleClick(notification);
+              }}
               className={`block w-full text-left px-4 py-3 border-b border-(--border-light) hover:bg-(--surface-secondary) transition-colors cursor-pointer ${notification.read ? 'opacity-60' : 'bg-(--brand-soft)'}`}
             >
               <p className="text-xs font-semibold text-(--text-primary)">{notification.message || notification.title || t('notifications')}</p>
