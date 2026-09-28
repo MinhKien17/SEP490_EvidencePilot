@@ -166,10 +166,14 @@ class AdminSeedExportServiceTest {
         when(memberships.findByCollectionId(collection.getId())).thenReturn(List.of(membership));
         when(storage.exists("objects/paper.pdf")).thenReturn(true);
 
-        AdminSeedExportService.SeedBundle bundle =
-                exportService(projects, members, documents, texts, sections,
-                        mock(com.evidencepilot.repository.FeedbackRequestRepository.class),
-                        collections, memberships, storage).buildBundle(null);
+        var projectCollections = mock(com.evidencepilot.repository.ProjectCollectionRepository.class);
+        when(projectCollections.findAll()).thenReturn(List.of(projectCollection));
+        var exporter = exportService(projects, members, documents, texts, sections,
+                mock(com.evidencepilot.repository.FeedbackRequestRepository.class),
+                collections, memberships, storage);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                exporter, "projectCollectionRepository", projectCollections);
+        AdminSeedExportService.SeedBundle bundle = exporter.buildBundle(null);
 
         assertThat(bundle.paperFiles()).singleElement().satisfies(file ->
                 assertThat(file.zipPath()).startsWith("papers/"));

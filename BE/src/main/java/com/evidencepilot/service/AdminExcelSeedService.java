@@ -282,7 +282,7 @@ public class AdminExcelSeedService {
                             List.of("limits", "xlsx <= 10MiB; 200 rows/sheet; members <= 500"),
                             List.of("silent_accounts", "send_invitation FALSE or blank creates ACTIVE accounts through the existing local/test seed policy"),
                             List.of("status", "SUBMITTED_FOR_REVIEW, APPROVED, ARCHIVED are applied only after paper extraction and handoff readiness"),
-                            List.of("source", "sources.doi is required and resolved through OpenAlex; missing OA PDF may remain METADATA_FETCHED")));
+                            List.of("source", "sources.doi is required and resolved through OpenAlex; missing OA PDF may remain METADATA_FETCHED"),
                             List.of("Bundle = seed.xlsx + papers/<slug>/ folders only. Fill users→projects→members→sources→papers→collections. Reference by email/project_title/doi. Sections come from extraction (file papers) or the standard (paper_standard papers) — no sections sheet."),
                             List.of("papers.paper_folder must equal the <slug> in papers.paper_file (^[a-z0-9-]{1,80}$). Main file must be named <slug>.pdf|.docx|.tex after its folder; images/ goes beside it."),
                             List.of("Precedence: paper_file, then paper_standard, then content_tex. Max 1 paper per project. xlsx<=10MiB, bounded ZIP spooled to disk, 200 rows/sheet (members: 500)."),
@@ -298,7 +298,7 @@ public class AdminExcelSeedService {
                     List.of(List.of("demo01@example.test", "An", "Nguyen", "STUDENT", "AB123456", "FALSE"),
                             List.of("prof@example.test", "Binh", "Tran", "INSTRUCTOR", "", "FALSE")));
             sheet(wb, "projects", List.of("project_title", "description", "status", "target_standard"),
-                    List.of(List.of("EP-DEMO-Retrieval", "Demo project", "RETURNED", "CUSTOM")));
+                    List.of(List.of("EP-DEMO-Retrieval", "Demo project", "IN_PROGRESS", "CUSTOM")));
             sheet(wb, "members", List.of("project_title", "user_email", "project_role"),
                     List.of(List.of("EP-DEMO-Retrieval", "demo01@example.test", "LEADER"),
                             List.of("EP-DEMO-Retrieval", "prof@example.test", "INSTRUCTOR")));
@@ -310,10 +310,6 @@ public class AdminExcelSeedService {
                     List.of(List.of("EP-DEMO-Retrieval Methods", "Shared method papers", "prof@example.test", "10.48550/arXiv.2004.04906")));
             sheet(wb, "project_collections", List.of("project_title", "collection_title"),
                     List.of(List.of("EP-DEMO-Retrieval", "EP-DEMO-Retrieval Methods")));
-            sheet(wb, "sections", List.of("project_title", "section_title", "section_order", "content_tex", "assigned_user_email"),
-                    List.of(List.of("EP-DEMO-Retrieval", "Introduction", "0", "Seeded introduction content.", "demo01@example.test")));
-            sheet(wb, "feedback_requests", List.of("project_title", "reviewer_email", "student_email", "requested_at", "returned_at"),
-                    List.of(List.of("EP-DEMO-Retrieval", "prof@example.test", "demo01@example.test", "", "")));
             wb.write(out);
             return out.toByteArray();
         }
@@ -363,24 +359,24 @@ public class AdminExcelSeedService {
         int formatVersion = FORMAT_V1;
         try (Workbook wb = new XSSFWorkbook(in)) {
             formatVersion = readFormatVersion(wb.getSheet("README"), errors);
-            int maxSheets = formatVersion == FORMAT_V2 ? 8 : 7;
+            // rationale: sections + feedback_requests seed genuine returned-review
+            // state; parsed whenever present, in either format.
+            List<String> sheetNames = new ArrayList<>(formatVersion == FORMAT_V2 ? SHEETS_V2 : SHEETS_V1);
+            sheetNames.add("sections");
+            sheetNames.add("feedback_requests");
+            int maxSheets = sheetNames.size() + 1;
             if (wb.getNumberOfSheets() > maxSheets) {
-                errors.add(formatVersion == FORMAT_V2
-                        ? "too many sheets (max README + 7 data sheets)"
-                        : "too many sheets (max README + 6 data sheets)");
+                errors.add("too many sheets (max README + " + sheetNames.size() + " data sheets)");
             }
             if (formatVersion == FORMAT_V2) {
-                Set<String> allowed = new java.util.HashSet<>(SHEETS_V2);
+                Set<String> allowed = new java.util.HashSet<>(sheetNames);
                 allowed.add("README");
                 for (int index = 0; index < wb.getNumberOfSheets(); index++) {
                     String sheetName = wb.getSheetName(index);
                     if (!allowed.contains(sheetName)) errors.add("unsupported v2 sheet: " + sheetName);
                 }
             }
-            List<String> sheetNames = formatVersion == FORMAT_V2 ? SHEETS_V2 : SHEETS_V1;
             for (String name : sheetNames) {
-            if (wb.getNumberOfSheets() > 9) errors.add("too many sheets (max README + 8 data sheets)");
-            for (String name : SHEETS) {
                 Sheet s = wb.getSheet(name);
                 if (s == null) continue;
                 List<String> headers = new ArrayList<>();
@@ -768,7 +764,9 @@ public class AdminExcelSeedService {
             String rawStatus = row.getOrDefault("status", "CREATED").trim().toUpperCase(Locale.ROOT);
             try {
                 ProjectStatus status = ProjectStatus.valueOf(rawStatus.isBlank() ? "CREATED" : rawStatus);
-                if (status == ProjectStatus.RETURNED || status == ProjectStatus.PENDING_DELETE) {
+                // rationale: RETURNED is seedable (sections + feedback_requests rows
+                // rebuild the returned snapshot); only PENDING_DELETE is unrestorable.
+                if (status == ProjectStatus.PENDING_DELETE) {
                     errors.add(at + "status is not supported in seed_format_version=2: " + rawStatus);
                 } else {
                     statuses.put(title, status);
@@ -1094,7 +1092,7 @@ public class AdminExcelSeedService {
         try {
             job.result = Map.of("users", 0, "projects", 0, "members", 0, "sources", 0,
                     "collections", 0, "project_collections", 0, "papers", 0, "sections", 0,
-                    "review_states", 0);
+                    "feedback_requests", 0);
             if (parsed.formatVersion() == FORMAT_V2) runV2(job, parsed, bundle);
             else {
                 var userRows = parsed.sheets().getOrDefault("users", List.of());
@@ -1105,18 +1103,9 @@ public class AdminExcelSeedService {
                 commitCollections(parsed.sheets().getOrDefault("collections", List.of()), job);
                 commitPapers(parsed.sheets().getOrDefault("papers", List.of()), bundle.files(), job, projects);
                 commitSections(parsed.sheets().getOrDefault("sections", List.of()), job, projects);
+                commitFeedbackRequests(parsed.sheets().getOrDefault("feedback_requests", List.of()),
+                        parsed.sheets().getOrDefault("sections", List.of()), job, projects);
             }
-            job.result = Map.of("users", 0, "projects", 0, "members", 0, "sources", 0, "collections", 0, "papers", 0, "sections", 0, "feedback_requests", 0);
-            var userRows = parsed.sheets().getOrDefault("users", List.of());
-            commitUsers(userRows, job);
-            var projects = commitProjects(parsed.sheets().getOrDefault("projects", List.of()), job);
-            commitMembers(parsed.sheets().getOrDefault("members", List.of()), job, projects);
-            commitSources(parsed.sheets().getOrDefault("sources", List.of()), job, projects);
-            commitCollections(parsed.sheets().getOrDefault("collections", List.of()), job);
-            commitPapers(parsed.sheets().getOrDefault("papers", List.of()), bundle.files(), job, projects);
-            commitSections(parsed.sheets().getOrDefault("sections", List.of()), job, projects);
-            commitFeedbackRequests(parsed.sheets().getOrDefault("feedback_requests", List.of()),
-                    parsed.sheets().getOrDefault("sections", List.of()), job, projects);
         } catch (Exception e) {
             log.error("Seed job {} failed", job.getId(), e);
             job.failed(job.currentStep + ": " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()), job.pendingRows);
@@ -2089,7 +2078,6 @@ public class AdminExcelSeedService {
     private static void failRow(SeedJob job, String sheet, Map<String, String> row, Exception failure) {
         if (job != null) job.markIncomplete(row.get("project_title"));
         failRows(job, sheet + " row " + row.getOrDefault("_row", "?"), 1, failure);
-    private static void failRow(SeedJob job, String sheet, Map<String, String> row, Exception failure) {        failRows(job, sheet + " row " + row.getOrDefault("_row", "?"), 1, failure);
     }
 
     private static void failRows(SeedJob job, String label, int count, Exception failure) {

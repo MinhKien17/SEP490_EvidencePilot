@@ -12,6 +12,7 @@ import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.DocumentType;
 import com.evidencepilot.model.enums.ProjectStatus;
+import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.UserRole;
 import com.evidencepilot.repository.CollectionDocumentRepository;
 import com.evidencepilot.repository.CollectionRepository;
@@ -109,8 +110,7 @@ public class AdminSeedExportService {
             boolean review = project.getStatus() == com.evidencepilot.model.enums.ProjectStatus.SUBMITTED_FOR_REVIEW
                     || project.getStatus() == com.evidencepilot.model.enums.ProjectStatus.APPROVED
                     || project.getStatus() == com.evidencepilot.model.enums.ProjectStatus.ARCHIVED;
-            if (project.getStatus() == com.evidencepilot.model.enums.ProjectStatus.RETURNED
-                    || project.getStatus() == com.evidencepilot.model.enums.ProjectStatus.PENDING_DELETE) return false;
+            if (project.getStatus() == com.evidencepilot.model.enums.ProjectStatus.PENDING_DELETE) return false;
             if (!review) return true;
             long leaders = projectMembers.stream().filter(member -> member.getRole() == com.evidencepilot.model.enums.ProjectRole.LEADER)
                     .map(ProjectMember::getUser)
@@ -304,6 +304,18 @@ public class AdminSeedExportService {
                     emailOf(owner),
                     String.join("; ", dois)));
         }
+        if (projectCollectionRepository != null) {
+            for (var link : projectCollectionRepository.findAll()) {
+                if (link.getProject() == null || link.getCollection() == null
+                        || !projectIds.contains(link.getProject().getId())
+                        || (projectId != null && !projectId.equals(link.getProject().getId()))
+                        || !link.getCollection().isActive()) continue;
+                String collectionTitle = exportedCollectionTitlesById.get(link.getCollection().getId());
+                if (collectionTitle == null) continue;
+                projectCollectionRows.add(List.of(
+                        link.getProject().getTitle(), collectionTitle));
+            }
+        }
 
         // Sections + returned-review requests: emitted in import format (titles and
         // content, never IDs) so a reimport rebuilds live rows and a fresh snapshot
@@ -395,6 +407,7 @@ public class AdminSeedExportService {
             sheet(wb, "sources", List.of("project_title", "doi"), sourceRows);
             sheet(wb, "papers", List.of("project_title", "paper_file"), paperRows);
             sheet(wb, "collections", List.of("collection_title", "description", "owner_email", "source_dois"), collectionRows);
+            sheet(wb, "project_collections", List.of("project_title", "collection_title"), projectCollectionRows);
             sheet(wb, "sections", List.of("project_title", "section_title", "section_order", "content_tex", "assigned_user_email"), sectionRows);
             sheet(wb, "feedback_requests", List.of("project_title", "reviewer_email", "student_email", "requested_at", "returned_at"), feedbackRows);
             wb.write(out);
