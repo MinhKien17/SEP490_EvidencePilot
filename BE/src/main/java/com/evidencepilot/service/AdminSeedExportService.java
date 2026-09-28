@@ -11,6 +11,7 @@ import com.evidencepilot.model.ProjectMember;
 import com.evidencepilot.model.User;
 import com.evidencepilot.model.enums.AccountStatus;
 import com.evidencepilot.model.enums.DocumentType;
+import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.ProjectStatus;
 import com.evidencepilot.model.enums.ProjectRole;
 import com.evidencepilot.model.enums.UserRole;
@@ -87,6 +88,9 @@ public class AdminSeedExportService {
         List<Project> candidates = projectId == null
                 ? projectRepository.findAll().stream().filter(Project::isActive).toList()
                 : projectRepository.findById(projectId).filter(Project::isActive).map(List::of).orElse(List.of());
+        boolean returnedFormat = candidates.stream().anyMatch(project -> project.getStatus() == ProjectStatus.RETURNED)
+                && candidates.stream().noneMatch(project -> project.getStatus() == ProjectStatus.SUBMITTED_FOR_REVIEW
+                        || project.getStatus() == ProjectStatus.APPROVED || project.getStatus() == ProjectStatus.ARCHIVED);
         List<ProjectMember> allMembers = memberRepository.findAll();
         List<Document> documents = documentRepository.findAll().stream()
                 .filter(Document::isActive)
@@ -110,7 +114,8 @@ public class AdminSeedExportService {
             boolean review = project.getStatus() == com.evidencepilot.model.enums.ProjectStatus.SUBMITTED_FOR_REVIEW
                     || project.getStatus() == com.evidencepilot.model.enums.ProjectStatus.APPROVED
                     || project.getStatus() == com.evidencepilot.model.enums.ProjectStatus.ARCHIVED;
-            if (project.getStatus() == com.evidencepilot.model.enums.ProjectStatus.PENDING_DELETE) return false;
+            if ((project.getStatus() == ProjectStatus.RETURNED && !returnedFormat)
+                    || project.getStatus() == ProjectStatus.PENDING_DELETE) return false;
             if (!review) return true;
             long leaders = projectMembers.stream().filter(member -> member.getRole() == com.evidencepilot.model.enums.ProjectRole.LEADER)
                     .map(ProjectMember::getUser)
@@ -304,7 +309,8 @@ public class AdminSeedExportService {
                     emailOf(owner),
                     String.join("; ", dois)));
         }
-        if (projectCollectionRepository != null) {
+
+        if (!returnedFormat && projectCollectionRepository != null) {
             for (var link : projectCollectionRepository.findAll()) {
                 if (link.getProject() == null || link.getCollection() == null
                         || !projectIds.contains(link.getProject().getId())
@@ -312,8 +318,7 @@ public class AdminSeedExportService {
                         || !link.getCollection().isActive()) continue;
                 String collectionTitle = exportedCollectionTitlesById.get(link.getCollection().getId());
                 if (collectionTitle == null) continue;
-                projectCollectionRows.add(List.of(
-                        link.getProject().getTitle(), collectionTitle));
+                projectCollectionRows.add(List.of(link.getProject().getTitle(), collectionTitle));
             }
         }
 
@@ -323,7 +328,8 @@ public class AdminSeedExportService {
         List<List<String>> sectionRows = new ArrayList<>();
         int skippedSections = 0;
         for (Document paper : inScopePapers) {
-            if (paper.getProject() == null) continue;
+            if (!returnedFormat || paper.getProject() == null
+                    || paper.getProject().getStatus() != ProjectStatus.RETURNED) continue;
             List<PaperSection> paperSections;
             try {
                 paperSections = paperSectionRepository.findByDocumentIdOrderBySectionOrderAsc(paper.getId());
@@ -353,7 +359,7 @@ public class AdminSeedExportService {
         List<List<String>> feedbackRows = new ArrayList<>();
         int skippedFeedbackRequests = 0;
         for (Project project : projects) {
-            if (project.getStatus() != ProjectStatus.RETURNED) continue;
+            if (!returnedFormat || project.getStatus() != ProjectStatus.RETURNED) continue;
             FeedbackRequest returned;
             try {
                 returned = feedbackRequestRepository.findByProjectIdOrderByRequestedAtDesc(project.getId()).stream()
@@ -379,6 +385,10 @@ public class AdminSeedExportService {
                     returned.getReturnedAt() == null ? "" : returned.getReturnedAt().toString()));
         }
 
+        validateExportCaps(userRows, projects, keptMemberRows, sourceRows, paperRows,
+                collectionRows, returnedFormat ? sectionRows : projectCollectionRows);
+        if (feedbackRows.size() > 200) throw new IllegalStateException("seed export exceeds the 200-row sheet limit");
+
         String summary = "Backup bundle exported " + LocalDateTime.now()
                 + ": " + userRows.size() + " users, " + projects.size() + " projects, "
                 + keptMemberRows.size() + " members, " + sourceRows.size() + " sources, "
@@ -391,11 +401,12 @@ public class AdminSeedExportService {
                 + skippedSections + " sections, " + skippedFeedbackRequests + " feedback_requests).";
         byte[] xlsx;
         try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            sheet(wb, "README", List.of("key", "value"), List.of(
-                    List.of("seed_format_version", "2"),
-                    List.of("bundle", "Backup bundle — seed.xlsx at root + papers/<slug>/ files."),
-                    List.of("papers", "Only stored PDF/DOCX/TEX papers are exported; standard/text-only papers are skipped."),
-                    List.of("summary", summary)));
+            List<List<String>> readme = new ArrayList<>();
+            if (!returnedFormat) readme.add(List.of("seed_format_version", "2"));
+            readme.add(List.of("bundle", "Backup bundle — seed.xlsx at root + papers/<slug>/ files."));
+            readme.add(List.of("papers", "Only stored PDF/DOCX/TEX papers are exported; standard/text-only papers are skipped."));
+            readme.add(List.of("summary", summary));
+            sheet(wb, "README", List.of("key", "value"), readme);
             sheet(wb, "users", List.of("email", "first_name", "last_name", "role", "student_code", "send_invitation"), userRows);
             sheet(wb, "projects", List.of("project_title", "description", "status", "target_standard"),
                     projects.stream().map(p -> List.of(
@@ -407,9 +418,12 @@ public class AdminSeedExportService {
             sheet(wb, "sources", List.of("project_title", "doi"), sourceRows);
             sheet(wb, "papers", List.of("project_title", "paper_file"), paperRows);
             sheet(wb, "collections", List.of("collection_title", "description", "owner_email", "source_dois"), collectionRows);
-            sheet(wb, "project_collections", List.of("project_title", "collection_title"), projectCollectionRows);
-            sheet(wb, "sections", List.of("project_title", "section_title", "section_order", "content_tex", "assigned_user_email"), sectionRows);
-            sheet(wb, "feedback_requests", List.of("project_title", "reviewer_email", "student_email", "requested_at", "returned_at"), feedbackRows);
+            if (returnedFormat) {
+                sheet(wb, "sections", List.of("project_title", "section_title", "section_order", "content_tex", "assigned_user_email"), sectionRows);
+                sheet(wb, "feedback_requests", List.of("project_title", "reviewer_email", "student_email", "requested_at", "returned_at"), feedbackRows);
+            } else {
+                sheet(wb, "project_collections", List.of("project_title", "collection_title"), projectCollectionRows);
+            }
             wb.write(out);
             xlsx = out.toByteArray();
         } catch (IOException e) {
@@ -421,12 +435,12 @@ public class AdminSeedExportService {
     private static void validateExportCaps(List<List<String>> users, List<Project> projects,
                                            List<List<String>> members, List<List<String>> sources,
                                            List<List<String>> papers, List<List<String>> collections,
-                                           List<List<String>> projectCollections) {
+                                           List<List<String>> extraRows) {
         if (users.size() > 200 || projects.size() > 200 || sources.size() > 200
-                || papers.size() > 200 || collections.size() > 200 || projectCollections.size() > 200) {
-            throw new IllegalStateException("v2 seed export exceeds the 200-row sheet limit");
+                || papers.size() > 200 || collections.size() > 200 || extraRows.size() > 200) {
+            throw new IllegalStateException("seed export exceeds the 200-row sheet limit");
         }
-        if (members.size() > 500) throw new IllegalStateException("v2 seed export exceeds the 500-row members limit");
+        if (members.size() > 500) throw new IllegalStateException("seed export exceeds the 500-row members limit");
     }
 
     private record ScoredPaperRow(List<String> values, PaperFileEntry file, int score) {

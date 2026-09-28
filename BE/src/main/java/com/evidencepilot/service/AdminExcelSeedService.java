@@ -88,8 +88,7 @@ import java.util.zip.ZipInputStream;
 
 /**
  * Excel + folder-per-paper ZIP seed. Streaming-light: caps enforced
- * (v1: 6 sheets; v2: 7 data sheets, 200 rows/sheet with members at 500, 10MB xlsx). ZIP bundles are uncapped and
- * (8 sheets, 200 rows/sheet with members at 500, 10MB xlsx). ZIP bundles are uncapped and
+ * (v1: up to 8 data sheets; v2: 7 data sheets; 200 rows/sheet with members at 500, 10MB xlsx). ZIP bundles are uncapped and
  * spooled entry-by-entry to temp files (never heap) with per-job cleanup.
  * Reuses AdminService user validation, DocumentServiceImpl extraction pipeline,
  * MediaAssetService for images. Async jobs with in-memory progress (pollable).
@@ -104,16 +103,12 @@ public class AdminExcelSeedService {
     // across 60+ projects exceeds the default cap, so members get headroom
     private static final int MAX_ROWS_MEMBERS = 500;
     private static final long MAX_XLSX_BYTES = 10L * 1024 * 1024;
-    // rationale: sections are always produced by paper extraction; v2 adds only
-    // the explicit collection-to-project relationship sheet.
-    private static final List<String> SHEETS_V1 = List.of("users", "projects", "members", "sources", "papers", "collections");
+    // v1 accepts optional sections and returned-review snapshots; v2 uses the
+    // extraction and lifecycle flow with an explicit project-collections sheet.
+    private static final List<String> SHEETS_V1 = List.of("users", "projects", "members", "sources", "papers", "collections", "sections", "feedback_requests");
     private static final List<String> SHEETS_V2 = List.of("users", "projects", "members", "sources", "papers", "collections", "project_collections");
     private static final int FORMAT_V1 = 1;
     private static final int FORMAT_V2 = 2;
-    // rationale: sections + feedback_requests sheets seed genuine returned-review
-    // state (bare RETURNED status otherwise blocks resubmission forever — the
-    // resubmit guard compares live content against a RETURNED request snapshot).
-    private static final List<String> SHEETS = List.of("users", "projects", "members", "sources", "papers", "collections", "sections", "feedback_requests");
     private static final Set<String> INVITE_TRUE_TOKENS = Set.of("TRUE", "1", "YES", "Y");
     private static final Set<String> INVITE_FALSE_TOKENS = Set.of("FALSE", "0", "NO", "N");
     // rationale: mirrors OpenAlexIngestionServiceImpl — per-PDF cap + header scan
@@ -298,6 +293,7 @@ public class AdminExcelSeedService {
                     List.of(List.of("demo01@example.test", "An", "Nguyen", "STUDENT", "AB123456", "FALSE"),
                             List.of("prof@example.test", "Binh", "Tran", "INSTRUCTOR", "", "FALSE")));
             sheet(wb, "projects", List.of("project_title", "description", "status", "target_standard"),
+                    List.of(List.of("EP-DEMO-Retrieval", "Demo project", "IN_PROGRESS", "CUSTOM")));
                     List.of(List.of("EP-DEMO-Retrieval", "Demo project", "IN_PROGRESS", "CUSTOM")));
             sheet(wb, "members", List.of("project_title", "user_email", "project_role"),
                     List.of(List.of("EP-DEMO-Retrieval", "demo01@example.test", "LEADER"),
@@ -1095,6 +1091,17 @@ public class AdminExcelSeedService {
                     "feedback_requests", 0);
             if (parsed.formatVersion() == FORMAT_V2) runV2(job, parsed, bundle);
             else {
+                var userRows = parsed.sheets().getOrDefault("users", List.of());
+                commitUsers(userRows, job);
+                var projects = commitProjects(parsed.sheets().getOrDefault("projects", List.of()), job);
+                commitMembers(parsed.sheets().getOrDefault("members", List.of()), job, projects);
+                commitSources(parsed.sheets().getOrDefault("sources", List.of()), job, projects);
+                commitCollections(parsed.sheets().getOrDefault("collections", List.of()), job);
+                commitPapers(parsed.sheets().getOrDefault("papers", List.of()), bundle.files(), job, projects);
+                commitSections(parsed.sheets().getOrDefault("sections", List.of()), job, projects);
+                commitFeedbackRequests(parsed.sheets().getOrDefault("feedback_requests", List.of()),
+                        parsed.sheets().getOrDefault("sections", List.of()), job, projects);
+            }
                 var userRows = parsed.sheets().getOrDefault("users", List.of());
                 commitUsers(userRows, job);
                 var projects = commitProjects(parsed.sheets().getOrDefault("projects", List.of()), job);

@@ -182,6 +182,7 @@ class AdminSeedExportServiceTest {
         try (var in = new ByteArrayInputStream(bundle.xlsx())) {
             parsed = seedService().parse(in, bundle.xlsx().length);
         }
+        assertThat(parsed.formatVersion()).isEqualTo(2);
         assertThat(parsed.errors()).as(String.join("; ", parsed.errors())).isEmpty();
         assertThat(parsed.sheets().get("users")).hasSize(2);
         assertThat(parsed.sheets().get("projects")).hasSize(1);
@@ -369,6 +370,7 @@ class AdminSeedExportServiceTest {
         try (var in = new ByteArrayInputStream(bundle.xlsx())) {
             parsed = seedService().parse(in, bundle.xlsx().length);
         }
+        assertThat(parsed.formatVersion()).isEqualTo(1);
         assertThat(parsed.errors()).as(String.join("; ", parsed.errors())).isEmpty();
         assertThat(parsed.sheets().get("sections")).hasSize(2);
         assertThat(parsed.sheets().get("feedback_requests")).hasSize(1);
