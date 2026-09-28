@@ -294,7 +294,6 @@ public class AdminExcelSeedService {
                             List.of("prof@example.test", "Binh", "Tran", "INSTRUCTOR", "", "FALSE")));
             sheet(wb, "projects", List.of("project_title", "description", "status", "target_standard"),
                     List.of(List.of("EP-DEMO-Retrieval", "Demo project", "IN_PROGRESS", "CUSTOM")));
-                    List.of(List.of("EP-DEMO-Retrieval", "Demo project", "IN_PROGRESS", "CUSTOM")));
             sheet(wb, "members", List.of("project_title", "user_email", "project_role"),
                     List.of(List.of("EP-DEMO-Retrieval", "demo01@example.test", "LEADER"),
                             List.of("EP-DEMO-Retrieval", "prof@example.test", "INSTRUCTOR")));
@@ -1091,17 +1090,6 @@ public class AdminExcelSeedService {
                     "feedback_requests", 0);
             if (parsed.formatVersion() == FORMAT_V2) runV2(job, parsed, bundle);
             else {
-                var userRows = parsed.sheets().getOrDefault("users", List.of());
-                commitUsers(userRows, job);
-                var projects = commitProjects(parsed.sheets().getOrDefault("projects", List.of()), job);
-                commitMembers(parsed.sheets().getOrDefault("members", List.of()), job, projects);
-                commitSources(parsed.sheets().getOrDefault("sources", List.of()), job, projects);
-                commitCollections(parsed.sheets().getOrDefault("collections", List.of()), job);
-                commitPapers(parsed.sheets().getOrDefault("papers", List.of()), bundle.files(), job, projects);
-                commitSections(parsed.sheets().getOrDefault("sections", List.of()), job, projects);
-                commitFeedbackRequests(parsed.sheets().getOrDefault("feedback_requests", List.of()),
-                        parsed.sheets().getOrDefault("sections", List.of()), job, projects);
-            }
                 var userRows = parsed.sheets().getOrDefault("users", List.of());
                 commitUsers(userRows, job);
                 var projects = commitProjects(parsed.sheets().getOrDefault("projects", List.of()), job);

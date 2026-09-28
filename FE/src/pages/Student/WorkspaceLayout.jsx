@@ -2045,7 +2045,6 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
           onRunReferenceCheck: handleRunReviewReferenceCheck,
           referenceBusy: paperRefs.checkLoading,
           referenceDisabled: !selectedPaper?.id || currentSection?.sectionType !== 'REFERENCE',
-          citationReadOnly: reviewCitationReadOnly,
         } : null} />
 
       {project?.deletionScheduledAt && (
