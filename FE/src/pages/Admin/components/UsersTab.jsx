@@ -241,7 +241,7 @@ function UsersSection({ api }) {
                   <input name="studentCode" maxLength={50} placeholder="SE170608" value={createForm.studentCode} onChange={e => setCreateForm(p => ({ ...p, studentCode: e.target.value }))} required className="w-full border border-gray-300 rounded-xl px-3.5 py-2 text-xs uppercase focus:ring-2 focus:ring-blue-500 focus:outline-none" />
                 </div>
               )}
-              
+
               {createErr && <div className="text-xs text-rose-600 bg-rose-50 p-2.5 rounded-lg border border-rose-100 font-semibold">{createErr}</div>}
               <div className="flex gap-2.5 justify-end pt-2">
                 <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 text-xs font-bold text-(--text-secondary) border border-(--border) rounded-xl hover:bg-(--surface-secondary) transition">{t('admin.cancel')}</button>
