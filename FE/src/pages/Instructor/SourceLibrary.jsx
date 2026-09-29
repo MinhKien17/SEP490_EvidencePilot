@@ -1,17 +1,10 @@
 import AppHeader from '../../components/layout/AppHeader.jsx';
 import Breadcrumb from '../../components/layout/Breadcrumb.jsx';
 import SourceLibraryPanel from '../../components/Instructor/SourceLibraryPanel.jsx';
-import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { recordRecentDestination } from '../../utils/recentDestinations.js';
 
 export default function SourceLibrary() {
   const { t } = useTranslation();
-
-  // Phase B: intentional library open -> private recent shortcut (debounced, silent).
-  useEffect(() => {
-    recordRecentDestination('SOURCE_LIBRARY', null, null);
-  }, []);
 
   return (
     <div className="min-h-screen bg-(--page-bg) text-(--text-primary) font-sans">

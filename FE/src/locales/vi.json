@@ -2412,7 +2412,5 @@
   "projectDeletion.remainingHours_plural": "Còn {{count}} giờ",
   "projectDeletion.remainingMinutes": "Còn {{count}} phút",
   "projectDeletion.remainingMinutes_plural": "Còn {{count}} phút",
-  "projectDeletion.awaitingPurge": "Đang chờ xóa vĩnh viễn.",
-  "profile.places.description": "Các dự án, bộ sưu tập và thư viện bạn đã mở gần đây, trên mọi thiết bị.",
-  "profile.places.sourceLibrary": "Thư viện nguồn"
+  "projectDeletion.awaitingPurge": "Đang chờ xóa vĩnh viễn."
 }

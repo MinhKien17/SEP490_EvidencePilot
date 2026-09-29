@@ -104,8 +104,6 @@ const PROFILE_KEYS = [
   'profile.password.strength.strong',
   'profile.password.strength.weak',
   'profile.password.updateFailed',
-  'profile.places.description',
-  'profile.places.sourceLibrary',
   'profile.tabs.label',
   'profile.updateClaimInvalid',
   'profile.updateFailed',

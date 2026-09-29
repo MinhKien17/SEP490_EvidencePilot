@@ -332,9 +332,6 @@ export function ProfileContent({ embedded = false, onNavigate }) {
   const [activity, setActivity] = useState([]);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState('');
-  // Phase B: private recent destinations (server-side shortcuts, not audit).
-  const [places, setPlaces] = useState([]);
-  const [placesLoading, setPlacesLoading] = useState(false);
   const [activityQuery, setActivityQuery] = useState('');
   const [activitySort, setActivitySort] = useState('latest');
   const [activityPage, setActivityPage] = useState(1);
@@ -388,43 +385,22 @@ export function ProfileContent({ embedded = false, onNavigate }) {
     if (currentTab !== 'activity') return;
     setActivityLoading(true);
     setActivityError('');
-    api.get('/api/users/me/activity', { params: { limit: 20 } })
+    api.get('/api/users/me/activity', { params: { limit: 10 } })
       .then((res) => setActivity(res.data?.items || []))
       .catch((err) => setActivityError(err.response?.data?.message || t('profile.activity.loadFailed')))
       .finally(() => setActivityLoading(false));
   }, [currentTab, language]);
 
-  // Fetch private recent destinations with the activity tab.
-  useEffect(() => {
-    if (currentTab !== 'activity') return;
-    setPlacesLoading(true);
-    api.get('/api/users/me/recent-destinations')
-      .then((res) => setPlaces(Array.isArray(res.data) ? res.data : []))
-      .catch(() => setPlaces([]))
-      .finally(() => setPlacesLoading(false));
-  }, [currentTab]);
-
-  // rationale: one interleaved timeline — private shortcuts and completed
-  // actions merged, searched, sorted, and paged together.
+  // rationale: client-side search + sort + 4-per-page over the fetched feed.
   const visibleActivity = useMemo(() => {
     const q = activityQuery.trim().toLowerCase();
-    const placeRows = places.map((place) => ({
-      key: `place-${place.kind}-${place.refId || 'none'}-${place.tab || 'root'}-${place.lastOpenedAt}`,
-      kind: 'place',
-      title: place.label || t('profile.places.sourceLibrary'),
-      subtitle: [place.context, place.tab].filter(Boolean).join(' / '),
-      time: place.lastOpenedAt,
-      link: place.link,
-    }));
-    const actRows = activity.map((item, i) => ({
+    const rows = activity.map((item, i) => ({
       key: `act-${item.type}-${item.entityId || item.title}-${item.occurredAt}-${i}`,
-      kind: 'activity',
       title: item.title,
       subtitle: [item.subtitle, item.status, item.type].filter(Boolean).join(' '),
       time: item.occurredAt,
       item,
-    }));
-    const rows = [...placeRows, ...actRows].filter((row) => {
+    })).filter((row) => {
       if (!q) return true;
       return [row.title, row.subtitle]
         .filter(Boolean)
@@ -436,7 +412,7 @@ export function ProfileContent({ embedded = false, onNavigate }) {
       return activitySort === 'oldest' ? ta - tb : tb - ta;
     });
     return rows;
-  }, [activity, places, activityQuery, activitySort, t]);
+  }, [activity, activityQuery, activitySort]);
 
   const totalActivityPages = Math.max(1, Math.ceil(visibleActivity.length / ACTIVITY_PAGE_SIZE));
   const safeActivityPage = Math.min(Math.max(1, activityPage), totalActivityPages);
@@ -1071,7 +1047,7 @@ export function ProfileContent({ embedded = false, onNavigate }) {
                 </select>
               </div>
 
-              {activityLoading || placesLoading ? (
+              {activityLoading ? (
                 <div className="space-y-3">
                   {Array.from({ length: 4 }).map((_, i) => (
                     <div key={i} className="h-14 bg-(--surface-secondary) rounded-xl animate-pulse" />
@@ -1083,7 +1059,7 @@ export function ProfileContent({ embedded = false, onNavigate }) {
                 </div>
               ) : visibleActivity.length === 0 ? (
                 <div className="p-6 text-center text-xs text-(--text-tertiary) italic">
-                  {activity.length === 0 && places.length === 0
+                  {activity.length === 0
                     ? t('profile.activity.empty')
                     : t('profile.activity.noMatches')}
                 </div>
@@ -1091,28 +1067,7 @@ export function ProfileContent({ embedded = false, onNavigate }) {
                 <>
                   <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
                     {pagedActivity
-                      .map((row) => row.kind === 'place' ? (
-                        <Link
-                          key={row.key}
-                          to={row.link}
-                          onClick={() => onNavigate?.()}
-                          className="block p-3 rounded-xl border border-(--border-light) bg-(--surface-secondary)/50 hover:bg-(--surface-secondary) hover:border-(--brand)/40 transition-colors"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-(--text-primary) truncate">
-                                {row.title}
-                              </p>
-                              <p className="text-[10px] text-(--text-tertiary) mt-0.5 truncate">
-                                {row.subtitle}
-                              </p>
-                            </div>
-                            <span className="text-[10px] font-mono text-(--text-tertiary) shrink-0">
-                              {formatActivityTime(row.time, language)}
-                            </span>
-                          </div>
-                        </Link>
-                      ) : (
+                      .map((row) => (
                         <ActivityLogItem
                           key={row.key}
                           item={row.item}

@@ -10,7 +10,6 @@ import { hasNoEvidence, wrapFindingIndex } from '../../utils/citationReviewPopov
 import { normalizeCitationReviewReload } from '../../utils/citationReviewJob.js';
 import { isReferenceCandidate } from '../../utils/paperReferences.js';
 import api from '../../services/api.js';
-import { recordRecentDestination } from '../../utils/recentDestinations.js';
 import { useNotification } from '../../context/NotificationContext';
 import WorkspaceHeader from '../../components/Student/WorkspaceHeader.jsx';
 import FilePanel from '../../components/Student/FilePanel.jsx';
@@ -110,10 +109,6 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
   const isReview = workspaceMode === 'review';
   const compactAtLoad = typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches;
   const { projectId } = useParams();
-  // Phase B: intentional project open -> private recent shortcut (debounced, silent).
-  useEffect(() => {
-    if (projectId) recordRecentDestination('PROJECT', projectId, null);
-  }, [projectId]);
   const review = useInstructorReview({ projectId, enabled: isReview });
   const studentWorkspace = {
     project: null,

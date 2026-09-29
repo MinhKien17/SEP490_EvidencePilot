@@ -6,7 +6,6 @@ import { useTheme } from '../../context/ThemeContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useCollectionSources } from '../../hooks/useCollections';
 import api from '../../services/api';
-import { recordRecentDestination } from '../../utils/recentDestinations.js';
 import SourceGraph from '../../components/features/SourceGraph.jsx';
 import { collectionGraph, sourceAuthors } from '../../utils/sourceGraph.js';
 import useUndoDelete from '../../components/ui/UndoDelete.jsx';
@@ -254,10 +253,6 @@ function VisualizeMapPanel({ collectionId, isDark, t, graphRefreshToken }) {
 
 export default function CollectionDetail() {
   const { id } = useParams();
-  // Phase B: intentional collection open -> private recent shortcut (debounced, silent).
-  useEffect(() => {
-    if (id) recordRecentDestination('COLLECTION', id, null);
-  }, [id]);
   const { t, i18n } = useTranslation();
   const { theme } = useTheme();
   const { subscribeToEntityChanges } = useNotification();

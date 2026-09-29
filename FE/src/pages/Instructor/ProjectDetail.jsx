@@ -5,7 +5,6 @@ import FileViewerModal from '../../components/features/FileViewerModal';
 import { Marker, MarkerIcon, MarkerContent } from '../../components/ui/Marker';
 import { useTranslation } from 'react-i18next';
 import api from '../../services/api';
-import { recordRecentDestination } from '../../utils/recentDestinations.js';
 import {
   getSourceShareChanges,
   getBlockedSources,
@@ -51,10 +50,6 @@ const reportDate = (daysAgo) => {
 
 export default function ProjectDetail() {
   const { id } = useParams();
-  // Phase B: intentional project open -> private recent shortcut (debounced, silent).
-  useEffect(() => {
-    if (id) recordRecentDestination('PROJECT', id, null);
-  }, [id]);
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const { user } = useAuth();

@@ -2412,7 +2412,5 @@
   "projectDeletion.remainingHours_plural": "{{count}} hours remaining",
   "projectDeletion.remainingMinutes": "{{count}} minute remaining",
   "projectDeletion.remainingMinutes_plural": "{{count}} minutes remaining",
-  "projectDeletion.awaitingPurge": "Awaiting permanent removal.",
-  "profile.places.description": "Projects, collections, and libraries you opened recently, on any device.",
-  "profile.places.sourceLibrary": "Source Library"
+  "projectDeletion.awaitingPurge": "Awaiting permanent removal."
 }
