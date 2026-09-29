@@ -73,6 +73,10 @@ async function setup(page) {
     ],
     readiness: { score: 50, contentCoveragePercent: 50, metrics: [] },
   },
+  progressReportError: false,
+  progressReportDelayedFailureFor: null,
+  releaseProgressReport: null,
+  progressReportUrls: [],
   batchAttempts: 0,
   batchConflictOnce: false,
   puts: [], paperPuts: [], sectionPuts: [], sectionCreates: [], unassignAll: [], deleteProject: [], cancelProjectDeletion: [], errors: [], unhandled: [] };
@@ -195,6 +199,12 @@ async function setup(page) {
     } else if (path === `/api/projects/${projectId}/evidence-traces`) {
       json = [];
     } else if (path === `/api/projects/${projectId}/progress-report`) {
+      state.progressReportUrls.push(request.url());
+      if (state.progressReportDelayedFailureFor === new URL(request.url()).searchParams.get('memberFilter')) {
+        await new Promise(resolve => { state.releaseProgressReport = resolve; });
+        return route.fulfill({ status: 503, json: { message: 'Older report unavailable' } });
+      }
+      if (state.progressReportError) return route.fulfill({ status: 503, json: { message: 'Report unavailable' } });
       json = state.progressReport;
     } else if (path === `/api/projects/${projectId}/checkpoints/diff`) {
       json = null;
@@ -692,14 +702,66 @@ test('Progress report shows attention list, table, and daily chart', async ({ pa
   await expect(page.getByText('1 sections with no recorded edits in this period')).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Student One' })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Student Two' })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('progress-report-desktop.png') });
 
   await page.getByPlaceholder('Search students…').fill('two');
   await expect(page.getByRole('cell', { name: 'Student One' })).toHaveCount(0);
   await expect(page.getByRole('cell', { name: 'Student Two' })).toBeVisible();
   await page.getByPlaceholder('Search students…').fill('');
 
+  const reportParams = () => new URL(state.progressReportUrls.at(-1)).searchParams;
+  expect(reportParams().get('memberFilter')).toBe('ALL');
+  expect(reportParams().has('from')).toBe(true);
+  expect(reportParams().has('to')).toBe(true);
   await page.getByRole('button', { name: 'Student One' }).click();
   await expect(page.getByText('Edits per day', { exact: true })).toBeVisible();
+  await expect.poll(() => reportParams().get('memberFilter')).toBe('student-1');
+  await page.getByRole('combobox', { name: 'Section' }).selectOption('section-1');
+  await expect(page.getByRole('cell', { name: 'Student Two' })).toHaveCount(0);
+  await page.getByRole('combobox', { name: 'Student' }).selectOption('student-2');
+  await expect.poll(() => reportParams().get('memberFilter')).toBe('student-2');
+  await page.getByRole('button', { name: 'All time' }).click();
+  await expect.poll(() => reportParams().has('from')).toBe(false);
+  expect(reportParams().has('to')).toBe(false);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByText('Edits per day', { exact: true }).scrollIntoViewIfNeeded();
+  await expect(page.getByText('Edits per day', { exact: true })).toBeInViewport();
+  await page.screenshot({ path: test.info().outputPath('progress-report-mobile.png') });
   expect(state.errors).toEqual([]);
   expect(state.unhandled).toEqual([]);
+});
+
+test('Progress report shows a retry action when loading fails', async ({ page }) => {
+  const state = await setup(page);
+  state.progressReportError = true;
+  await page.goto(`${baseUrl}/instructor/projects/${projectId}`);
+  await page.getByRole('button', { name: 'Project progress report', exact: true }).click();
+
+  await expect(page.getByRole('alert')).toContainText('Could not load project progress report.');
+  state.progressReportError = false;
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.getByText('Needs attention', { exact: true })).toBeVisible();
+  expect(state.errors).toEqual([]);
+});
+
+test('Progress report ignores a stale failure after a student filter change', async ({ page }) => {
+  const state = await setup(page);
+  await page.goto(`${baseUrl}/instructor/projects/${projectId}`);
+  await page.getByRole('button', { name: 'Project progress report', exact: true }).click();
+  await expect(page.getByText('Needs attention', { exact: true })).toBeVisible();
+
+  state.progressReportDelayedFailureFor = 'student-1';
+  await page.getByRole('combobox', { name: 'Student' }).selectOption('student-1');
+  await expect.poll(() => typeof state.releaseProgressReport).toBe('function');
+  await page.getByRole('combobox', { name: 'Student' }).selectOption('student-2');
+  await expect.poll(() => new URL(state.progressReportUrls.at(-1)).searchParams.get('memberFilter')).toBe('student-2');
+  await expect(page.getByText('Needs attention', { exact: true })).toBeVisible();
+
+  const staleResponse = page.waitForResponse(response => response.url().includes('memberFilter=student-1') && response.status() === 503);
+  state.releaseProgressReport();
+  await staleResponse;
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByText('Needs attention', { exact: true })).toBeVisible();
+  expect(state.errors).toEqual([]);
 });

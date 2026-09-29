@@ -1985,6 +1985,8 @@
   "instructor.projectDetail.projectProgressReport": "Báo cáo tiến độ dự án",
   "instructor.projectDetail.searchSource": "Tìm kiếm nguồn...",
   "instructor.projectDetail.addSource": "Thêm nguồn",
+  "instructor.projectDetail.progressLoadFailed": "Không thể tải báo cáo tiến độ dự án.",
+  "instructor.projectDetail.progressRetry": "Thử lại",
   "instructor.projectDetail.noStudentsFound": "Không tìm thấy sinh viên phù hợp.",
   "instructor.projectDetail.noStudentsAssigned": "Dự án chưa có sinh viên được phân công.",
   "instructor.projectDetail.noSourceDocuments": "Chưa có tài liệu nguồn. Hãy thêm nguồn để nhập tài liệu.",

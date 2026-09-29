@@ -1985,6 +1985,8 @@
   "instructor.projectDetail.projectProgressReport": "Project progress report",
   "instructor.projectDetail.searchSource": "Search sources...",
   "instructor.projectDetail.addSource": "Add source",
+  "instructor.projectDetail.progressLoadFailed": "Could not load project progress report.",
+  "instructor.projectDetail.progressRetry": "Retry",
   "instructor.projectDetail.noStudentsFound": "No matching students.",
   "instructor.projectDetail.noStudentsAssigned": "No students are assigned to this project.",
   "instructor.projectDetail.noSourceDocuments": "No source documents yet. Add a source to import one.",
