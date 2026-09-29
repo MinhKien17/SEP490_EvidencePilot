@@ -121,6 +121,58 @@ test('Student export downloads project JSON and CSV table ZIP', async ({ page })
   expect(state.errors).toEqual([]);
 });
 
+test('Student Source Map shows saved links and gives the graph more height on mobile', async ({ page }) => {
+  const { projectId, state } = await setupStudent(page, { role: 'MEMBER', userId: 'member-1' });
+  await page.route(`**/api/projects/${projectId}/source-map`, route => route.fulfill({ json: {
+    project: { id: projectId, title: 'Student fixture' },
+    nodes: [
+      { id: `project:${projectId}`, type: 'PROJECT', title: 'Student fixture' },
+      { id: 'source:a', type: 'SOURCE', documentId: 'a', title: 'Source A', doi: '10.1/a', fileAvailable: true },
+      { id: 'source:b', type: 'SOURCE', documentId: 'b', title: 'Source B', doi: '10.1/b', fileAvailable: true },
+      { id: 'reference:c', type: 'REFERENCE', title: 'Outside C', doi: '10.1/c', fileAvailable: false },
+    ],
+    edges: [
+      { sourceId: `project:${projectId}`, targetId: 'source:a', type: 'PROJECT_SOURCE' },
+      { sourceId: `project:${projectId}`, targetId: 'source:b', type: 'PROJECT_SOURCE' },
+      { sourceId: 'source:a', targetId: 'source:b', type: 'CITES' },
+      { sourceId: 'source:b', targetId: 'reference:c', type: 'CITES' },
+    ],
+    limitations: ['SAVED_METADATA_ONLY'],
+  } }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/student/projects/${projectId}`);
+  await expect(page.locator('.cm-content')).toContainText('Member section text.', { timeout: 15000 });
+  await page.getByRole('button', { name: 'Preview', exact: true }).click();
+  await page.locator('button[aria-label="Source Map"]:visible').first().click();
+
+  const dialog = page.getByRole('dialog', { name: 'Source Map' });
+  await expect(dialog.getByRole('region', { name: 'Project sources and citation relationships' })).toBeVisible();
+  const graph = await dialog.locator('#project-source-map-canvas').boundingBox();
+  console.log(`mobile source graph: ${Math.round(graph.width)}x${Math.round(graph.height)}`);
+  expect(graph.height).toBeGreaterThan(410);
+  await expect(dialog.getByRole('button', { name: 'Fit graph' })).toBeVisible();
+  await expect(dialog.getByText('2 sources · 2 citation relationships')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Source B' }).last().click();
+  await expect(dialog.getByRole('region', { name: 'Project sources and citation relationships' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Outside C' })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Outside C' }).click();
+  await expect(dialog.getByText('Reference outside project', { exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'All project sources' }).click();
+  await expect(dialog.getByRole('button', { name: 'Close' })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('source-map-mobile.png') });
+  const sourceList = dialog.getByRole('heading', { name: 'Sources (2)' });
+  await sourceList.scrollIntoViewIfNeeded();
+  await expect(sourceList).toBeInViewport();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const desktopGraph = await dialog.locator('#project-source-map-canvas').boundingBox();
+  console.log(`desktop source graph: ${Math.round(desktopGraph.width)}x${Math.round(desktopGraph.height)}`);
+  expect(desktopGraph.height).toBeGreaterThan(500);
+  await expect(dialog.getByRole('button', { name: 'Fit graph' })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Close' })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('source-map-desktop.png') });
+  expect(state.errors).toEqual([]);
+});
+
 async function openStudentFeedback(page, projectId, expectedText = 'Member section text.') {
   await page.goto(`${baseUrl}/student/projects/${projectId}`);
   await expect(page.locator('.cm-content')).toContainText(expectedText, { timeout: 15000 });
