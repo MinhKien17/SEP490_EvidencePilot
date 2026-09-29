@@ -6,6 +6,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useCollectionSources } from '../../hooks/useCollections';
 import api from '../../services/api';
+import { recordRecentDestination } from '../../utils/recentDestinations.js';
 import SourceGraph from '../../components/features/SourceGraph.jsx';
 import { collectionGraph, sourceAuthors } from '../../utils/sourceGraph.js';
 import useUndoDelete from '../../components/ui/UndoDelete.jsx';
@@ -253,8 +254,13 @@ function VisualizeMapPanel({ collectionId, isDark, t, graphRefreshToken }) {
 
 export default function CollectionDetail() {
   const { id } = useParams();
+  // Phase B: intentional collection open -> private recent shortcut (debounced, silent).
+  useEffect(() => {
+    if (id) recordRecentDestination('COLLECTION', id, null);
+  }, [id]);
   const { t, i18n } = useTranslation();
   const { theme } = useTheme();
+  const { subscribeToEntityChanges } = useNotification();
   const isDark = theme === 'dark';
   const { start: startDelete } = useUndoDelete();
   const undoStrings = {
@@ -296,6 +302,14 @@ export default function CollectionDetail() {
   useEffect(() => {
     api.get(API_ROUTES.COLLECTIONS.CATEGORIES).then(r => setCategories(r.data)).catch(() => { });
   }, []);
+
+  // Live update (2-way): an admin adding/renaming a category refreshes this
+  // form's options without a page reload.
+  useEffect(() => subscribeToEntityChanges(event => {
+    if (event?.entity === 'CATEGORY') {
+      api.get(API_ROUTES.COLLECTIONS.CATEGORIES).then(r => setCategories(r.data)).catch(() => { });
+    }
+  }), [subscribeToEntityChanges]);
 
   useEffect(() => {
     api.get(API_ROUTES.PROJECTS.BASE, { params: { page: DEFAULT_PAGE, size: MAX_BATCH_FETCH_SIZE } }).then(r => setProjects(r.data?.content || [])).catch(() => { });

@@ -84,6 +84,23 @@ class DocumentPersistenceServiceTest {
     }
 
     @Test
+    void uploadCommitsWhenAuditFails() {
+        UUID id = UUID.randomUUID();
+        Document document = new Document();
+        document.setId(id);
+        when(documents.findById(id)).thenReturn(Optional.of(document));
+        when(documents.save(document)).thenReturn(document);
+        doThrow(new RuntimeException("audit store down")).when(audit)
+                .record(any(), any(), any(), any(), any(), any());
+
+        Document saved = service.markDocumentAsUploaded(id, "file-key", "hash");
+
+        assertThat(saved.getId()).isEqualTo(id);
+        assertThat(saved.getFileUrl()).isEqualTo("file-key");
+        verify(documents).save(document);
+    }
+
+    @Test
     void markDocumentAsUploaded_persistsDownloadedSizeOnFreshEntity() {
         UUID id = UUID.randomUUID();
         Document reloaded = new Document();

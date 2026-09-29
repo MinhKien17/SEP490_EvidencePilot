@@ -260,6 +260,12 @@
     },
     "protectedRoute": {
       "verifyingSession": "Verifying session..."
+    },
+    "banned": {
+      "title": "Account suspended",
+      "message": "Your account has been banned, please contact Admin for more information.",
+      "countdown": "Redirecting in {{s}}s",
+      "dismiss": "Understood"
     }
   },
   "shell": {
@@ -282,7 +288,7 @@
     "profile": {
       "label": "Profile",
       "accountSettings": "Account Settings",
-      "myActivity": "My Activity",
+      "myActivity": "My Activities",
       "account": "Account",
       "activity": "Activity",
       "signOut": "Sign Out",
@@ -637,7 +643,7 @@
   "profile.actions.resend": "Resend",
   "profile.actions.saveChanges": "Save Changes",
   "profile.actions.updating": "Updating...",
-  "profile.activity.description": "Projects, collections, sources and sections you have interacted with recently.",
+  "profile.activity.description": "Places you opened recently, plus projects, collections, sources and sections you have interacted with.",
   "profile.activity.empty": "No recent activity recorded yet.",
   "profile.activity.latest": "Latest",
   "profile.activity.loadFailed": "Failed to load recent activity.",
@@ -650,7 +656,7 @@
   "profile.activity.searchPlaceholder": "Search activity...",
   "profile.activity.sortLabel": "Sort",
   "profile.activity.sourceCount": "{{count}} sources",
-  "profile.activity.title": "Recent Activity",
+  "profile.activity.title": "My Activities",
   "profile.avatar.change": "Change avatar",
   "profile.avatar.cropTitle": "Crop avatar",
   "profile.avatar.errors.cropRequired": "Please select a crop area.",
@@ -1107,7 +1113,7 @@
     "categories": "categories",
     "collections": "Collections",
     "userAccounts": "User Accounts",
-    "createUser": "Create User",
+    "createUser": "Invite User",
     "sendInvitation": "Send Invitation",
     "sending": "Sending...",
     "invitationSent": "Invitation sent successfully.",
@@ -1233,8 +1239,8 @@
     "activeProjectsHint": "across active workspaces",
     "guideDashStatus": "User status breakdown: active vs banned accounts.",
     "guideDashDone": "Dashboard overview complete.",
-    "guideUsersDesc": "User management: create, ban, reset password, or delete accounts.",
-    "guideUsersCreate": "Create one Student or Instructor. The temporary password comes from the email.",
+    "guideUsersDesc": "User management: invite, ban, reset password, or delete accounts.",
+    "guideUsersCreate": "Invite one Student or Instructor. They receive a set-password invitation by email.",
     "guideUsersImport": "Upload one JSON file containing up to 200 users of one role.",
     "guideUsersTable": "Lists users with email, name, student code, immutable role, status, and actions.",
     "guideUsersActions": "Ban/activate, reset password, or delete a user.",
@@ -1685,7 +1691,19 @@
     "zipNoPreview": "ZIP uploads go straight to background job after layout check.",
     "guideDataTemplate": "Download the multi-sheet template first.",
     "previewInvitations": "Rows requesting invitations: {{invite}}; silent rows: {{silent}}. These are import intentions, not delivery confirmations.",
-    "previewDois": "Unique DOIs to resolve live: {{count}} (PDFs download once each)"
+    "previewDois": "Unique DOIs to resolve live: {{count}} (PDFs download once each)",
+    "userDetail": {
+      "id": "ID",
+      "name": "Name",
+      "studentCode": "Student Code",
+      "email": "Email",
+      "role": "Role",
+      "status": "Status",
+      "systemDate": "System Date"
+    },
+    "guideDashPlatform": "Platform Overview holds live counts of Collections, Active Projects, and Active Documents.",
+    "guideDashHealth": "System Health shows backing-service status; Degraded means part of the pipeline is down.",
+    "guideDashLogs": "Recent System Logs lists the latest platform events with Vietnam timestamps."
   },
   "instructor.sourceLibrary.sourceExtractionFailedDesc": "Extraction failed. Try again using the file already stored in the library.",
   "instructor.sourceLibrary.sourceExtractionUnavailable": "The extraction service is temporarily unavailable. You do not need to upload the file again.",
@@ -1888,8 +1906,8 @@
   "instructor.evidenceTrace.project": "Project",
   "instructor.evidenceTrace.evidenceTraceReview": "Evidence trace review",
   "instructor.evidenceTrace.reviewRounds": "Review rounds",
-    "instructor.evidenceTrace.findingsLabel": "findings",
-    "instructor.evidenceTrace.usedLabel": "Used",
+  "instructor.evidenceTrace.findingsLabel": "findings",
+  "instructor.evidenceTrace.usedLabel": "Used",
   "instructor.evidenceTrace.studentAddressed": "Student addressed",
   "instructor.evidenceTrace.actionRate": "action rate",
   "instructor.evidenceTrace.pendingInstructor": "Pending Instructor",
@@ -2398,5 +2416,7 @@
   "projectDeletion.remainingHours_plural": "{{count}} hours remaining",
   "projectDeletion.remainingMinutes": "{{count}} minute remaining",
   "projectDeletion.remainingMinutes_plural": "{{count}} minutes remaining",
-  "projectDeletion.awaitingPurge": "Awaiting permanent removal."
+  "projectDeletion.awaitingPurge": "Awaiting permanent removal.",
+  "profile.places.description": "Projects, collections, and libraries you opened recently, on any device.",
+  "profile.places.sourceLibrary": "Source Library"
 }

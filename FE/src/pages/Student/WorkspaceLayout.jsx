@@ -10,6 +10,7 @@ import { hasNoEvidence, wrapFindingIndex } from '../../utils/citationReviewPopov
 import { normalizeCitationReviewReload } from '../../utils/citationReviewJob.js';
 import { isReferenceCandidate } from '../../utils/paperReferences.js';
 import api from '../../services/api.js';
+import { recordRecentDestination } from '../../utils/recentDestinations.js';
 import { useNotification } from '../../context/NotificationContext';
 import WorkspaceHeader from '../../components/Student/WorkspaceHeader.jsx';
 import FilePanel from '../../components/Student/FilePanel.jsx';
@@ -109,6 +110,10 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
   const isReview = workspaceMode === 'review';
   const compactAtLoad = typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches;
   const { projectId } = useParams();
+  // Phase B: intentional project open -> private recent shortcut (debounced, silent).
+  useEffect(() => {
+    if (projectId) recordRecentDestination('PROJECT', projectId, null);
+  }, [projectId]);
   const review = useInstructorReview({ projectId, enabled: isReview });
   const studentWorkspace = {
     project: null,
@@ -1469,7 +1474,10 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
       const rawMessage = error.response?.data?.message || '';
       const status = error.response?.status || error.status;
       // rationale: prompt/model drift needs different guidance than content drift.
-      const message = status === 409
+      // P0a: append the server correlation reference so support can trace the failure.
+      const ref = error.response?.data?.correlationId || error.response?.headers?.['x-correlation-id'] || '';
+      const shortRef = ref ? String(ref).slice(0, 8) : '';
+      const base = status === 409
         ? (/prompt changed/i.test(rawMessage) ? t('reviewPromptChanged')
           : /model configuration changed/i.test(rawMessage) ? t('reviewModelChanged')
             : t('reviewSectionChanged'))
@@ -1480,7 +1488,8 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
             : status === 502
               ? t('aiInvalidResponse')
               : t('aiReviewFailed');
-      setAiReviewError({ status, message });
+      const message = shortRef ? `${base} (ref ${shortRef})` : base;
+      setAiReviewError({ status, message, reference: ref || undefined });
       showToast(message);
     } finally {
       if (saved?.sectionId) clearReviewJob(saved.sectionId);
@@ -1610,12 +1619,16 @@ export default function WorkspaceLayout({ workspaceMode = 'student' }) {
     } catch (error) {
       if (aiReviewRequestRef.current !== requestId) return;
       const status = error.response?.status || error.status;
-      const message = status === 429 ? t('aiProviderRateLimited')
+      // P0a: append the server correlation reference so support can trace the failure.
+      const ref = error.response?.data?.correlationId || error.response?.headers?.['x-correlation-id'] || '';
+      const shortRef = ref ? String(ref).slice(0, 8) : '';
+      const base = status === 429 ? t('aiProviderRateLimited')
         : status === 503 ? t('aiWorkerUnavailable')
           : status === 502 ? t('aiInvalidResponse')
             : (status === 403 || status === 409) ? t('projectLocked')
               : t('aiReviewFailed');
-      setAiReviewError({ status, message });
+      const message = shortRef ? `${base} (ref ${shortRef})` : base;
+      setAiReviewError({ status, message, reference: ref || undefined });
       showToast(message);
     } finally {
       clearReviewJob(selectedSectionId);
