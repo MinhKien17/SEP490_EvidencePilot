@@ -7,7 +7,7 @@ const baseUrl = 'http://localhost:5173';
 const SEC1 = 'Member section text.';
 const CONTENT = (body) => [body, ...Array.from({ length: 20 }, (_, i) => `Filler line ${i}.`)].join('\n\n');
 
-async function setupStudent(page, { role, userId }) {
+async function setupStudent(page, { role, userId, status = 'RETURNED' }) {
   const projectId = 'student-proj';
   const paperId = 'student-paper';
   const state = { errors: [], feedbackCalls: [] };
@@ -55,13 +55,16 @@ async function setupStudent(page, { role, userId }) {
     } else if (path === '/api/notifications/unread-count') {
       json = { count: 0 };
     } else if (path === '/api/projects') {
-      json = { content: [{ id: projectId, title: 'Student fixture', status: 'RETURNED', currentUserRole: role }], last: true };
+      json = { content: [{ id: projectId, title: 'Student fixture', status, currentUserRole: role }], last: true };
     } else if (path === `/api/projects/${projectId}`) {
-      json = { id: projectId, title: 'Student fixture', status: 'RETURNED', currentUserRole: role };
+      json = { id: projectId, title: 'Student fixture', status, currentUserRole: role };
     } else if (path === `/api/projects/${projectId}/papers`) {
       json = [{ id: paperId, title: 'Student paper', originalFilename: 'student.tex', processingStatus: 'READY' }];
     } else if (path === `/api/projects/${projectId}/sources`) {
       json = { content: [], last: true };
+    } else if (path === `/api/projects/${projectId}/source-map`) {
+      json = { project: { id: projectId, title: 'Student fixture' },
+        nodes: [{ id: projectId, type: 'PROJECT', title: 'Student fixture' }], edges: [], limitations: [] };
     } else if (path === `/api/papers/${paperId}/sections`) {
       json = [
         { id: 'sec-1', documentId: paperId, sectionTitle: 'Introduction', sectionOrder: 0,
@@ -95,6 +98,28 @@ async function setupStudent(page, { role, userId }) {
 
   return { projectId, state };
 }
+
+test('Student export downloads project JSON and CSV table ZIP', async ({ page }) => {
+  const { projectId, state } = await setupStudent(page, { role: 'MEMBER', userId: 'member-1', status: 'APPROVED' });
+  await page.route(`**/api/projects/${projectId}/traceability`, route => route.fulfill({ json: {
+    projectTitle: 'Student fixture', papers: [], sources: [], memberProgress: [{ userId: 'member-1', saveCount: 2 }],
+  } }));
+  await page.route(`**/api/projects/${projectId}/traceability/csv`, route => route.fulfill({
+    contentType: 'application/zip', body: Buffer.from([80, 75, 3, 4]),
+  }));
+  await page.goto(`${baseUrl}/student/projects/${projectId}`);
+  await expect(page.locator('[data-tour="header-export"]')).toBeEnabled();
+  for (const [label, filename] of [
+    ['Project data (JSON)', 'project-data-Student fixture.json'],
+    ['Project data (CSV tables)', 'project-data-csv-Student fixture.zip'],
+  ]) {
+    await page.locator('[data-tour="header-export"]').click();
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: label, exact: true }).click();
+    expect((await download).suggestedFilename()).toBe(filename);
+  }
+  expect(state.errors).toEqual([]);
+});
 
 async function openStudentFeedback(page, projectId, expectedText = 'Member section text.') {
   await page.goto(`${baseUrl}/student/projects/${projectId}`);

@@ -765,3 +765,36 @@ test('Progress report ignores a stale failure after a student filter change', as
   await expect(page.getByText('Needs attention', { exact: true })).toBeVisible();
   expect(state.errors).toEqual([]);
 });
+
+test('Project export offers distinct TeX, JSON, and CSV table downloads', async ({ page }) => {
+  const state = await setup(page);
+  state.project.status = 'IN_PROGRESS';
+  const paths = [];
+  await page.route(`**/api/projects/${projectId}/export?format=tex`, route => {
+    paths.push('tex');
+    return route.fulfill({ contentType: 'application/zip', body: Buffer.from([80, 75, 3, 4]) });
+  });
+  await page.route(`**/api/projects/${projectId}/traceability/csv`, route => {
+    paths.push('csv');
+    return route.fulfill({ contentType: 'application/zip', body: Buffer.from([80, 75, 3, 4]) });
+  });
+  await page.route(`**/api/projects/${projectId}/traceability`, route => {
+    paths.push('json');
+    return route.fulfill({ json: { projectTitle: state.project.title,
+      papers: [{ id: paperId }], sources: [], sourceRelations: [], feedbackComments: [], traces: [],
+      memberProgress: [{ userId: 'student-1', saveCount: 3 }] } });
+  });
+  await page.goto(`${baseUrl}/instructor/projects/${projectId}`);
+  for (const [label, format, filename] of [
+    ['Paper (.tex archive)', 'tex', 'papers-Original project title.zip'],
+    ['Project data (JSON)', 'json', 'project-data-Original project title.json'],
+    ['Project data (CSV tables)', 'csv', 'project-data-csv-Original project title.zip'],
+  ]) {
+    await page.getByRole('button', { name: 'Export', exact: true }).click();
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: new RegExp(`^${label.replace(/[().]/g, '\\$&')}`) }).click();
+    expect((await download).suggestedFilename()).toBe(filename);
+    expect(paths.at(-1)).toBe(format);
+  }
+  expect(state.errors).toEqual([]);
+});

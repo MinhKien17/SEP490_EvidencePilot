@@ -1141,6 +1141,6 @@ public class PaperProcessingServiceImpl {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new ResourceNotFoundException(projectId, "Project"));
         currentUserService.requireProjectAccess(currentUser, project);
-        return texArchiveBuilder.build(projectId);
+        return texArchiveBuilder.build(projectId, currentUser);
     }
 }

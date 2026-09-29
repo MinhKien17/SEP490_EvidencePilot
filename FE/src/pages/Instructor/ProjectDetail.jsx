@@ -2227,7 +2227,7 @@ export default function ProjectDetail() {
               const r = await api.get(`/api/projects/${id}/traceability`);
               const blob = new Blob([JSON.stringify(r.data, null, 2)], { type: 'application/json' });
               const url = URL.createObjectURL(blob);
-              const a = document.createElement('a'); a.href = url; a.download = `traceability-${project?.title || 'export'}.json`;
+              const a = document.createElement('a'); a.href = url; a.download = `project-data-${project?.title || 'export'}.json`;
               a.click(); URL.revokeObjectURL(url);
               setShowExportModal(false);
             } catch { alert(t('instructor.projectDetail.exportFailed')); }
@@ -2239,7 +2239,7 @@ export default function ProjectDetail() {
             try {
               const r = await api.get(`/api/projects/${id}/traceability/csv`, { responseType: 'blob' });
               const url = URL.createObjectURL(r.data);
-              const a = document.createElement('a'); a.href = url; a.download = `traceability-${project?.title || 'export'}.csv`;
+              const a = document.createElement('a'); a.href = url; a.download = `project-data-csv-${project?.title || 'export'}.zip`;
               a.click(); URL.revokeObjectURL(url);
               setShowExportModal(false);
             } catch { alert(t('instructor.projectDetail.exportFailed')); }
