@@ -55,7 +55,7 @@ export default function InstructorFeedbackPanel({ review, selectedSection, proje
 
       <div className="p-4 sm:p-5">
         {panelTab === 'feedback' && (
-          <FeedbackThreadsTab review={review} selectedSection={selectedSection} projectId={projectId} composerFocusToken={composerFocusToken} />
+          <FeedbackThreadsTab review={review} selectedSection={selectedSection} composerFocusToken={composerFocusToken} />
         )}
 
         {panelTab === 'overview' && (
