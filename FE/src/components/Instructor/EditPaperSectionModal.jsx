@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import api from '../../services/api.js';
 import PaperSectionSidebar from './sections/PaperSectionSidebar.jsx';
 import PaperSectionEditorPane from './sections/PaperSectionEditorPane.jsx';
 
@@ -48,6 +49,18 @@ export default function EditPaperSectionModal({
   // ponytail: portal-local popup — the global top-right toast host sits outside
   // aria-modal, so Chromium hides it from the AX tree while this dialog is open.
   const [notice, setNotice] = useState(null);
+  // rationale: instructors never manage Media Assets, but the preview pane
+  // resolves images through them — read-only load so figures render instead
+  // of "missing image".
+  const [mediaAssets, setMediaAssets] = useState([]);
+  useEffect(() => {
+    if (!open || !paper?.id) { setMediaAssets([]); return undefined; }
+    let cancelled = false;
+    api.get(`/api/media/papers/${paper.id}`)
+      .then(response => { if (!cancelled) setMediaAssets(response.data || []); })
+      .catch(() => { if (!cancelled) setMediaAssets([]); });
+    return () => { cancelled = true; };
+  }, [open, paper?.id]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -301,6 +314,7 @@ export default function EditPaperSectionModal({
 
         <PaperSectionEditorPane
           sections={sections}
+          mediaAssets={mediaAssets}
           selectedSection={selectedSection}
           sectionEvals={sectionEvals}
           assignableMembers={assignableMembers}
