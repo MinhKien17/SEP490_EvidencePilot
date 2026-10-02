@@ -10,7 +10,9 @@ import { formatDateTime } from '../../utils/formatters/date';
 
 // ponytail: single bell for every header. Workspace headers pass controlled
 // open state + a custom item handler (deep-link inside the open workspace
-// instead of navigating away); everywhere else it manages itself.
+// instead of navigating away); everywhere else it manages itself. Ceiling:
+// one bell carries errors + notifications together. Revisit when volume
+// needs separate channels (accepted single-bell until then).
 export default function NotificationBell({
   onOpen,
   open: openProp,
@@ -20,7 +22,7 @@ export default function NotificationBell({
   onMarkAllNotificationsRead,
   onToggleExtra,
   tourId,
-  // ponytail: header error text was removed in favor of the bell — while an
+  // ponytail: header error text folded into the bell (see above) — while an
   // error is present the bell rings, keeps a dot, and pins the message on top
   // of the dropdown until the error clears (next run / section switch).
   alertMessage = '',
@@ -31,8 +33,8 @@ export default function NotificationBell({
   const { t } = useTranslation();
   const { notifications, unreadCount, markRead, markAllRead } = useNotification();
   const [internalOpen, setInternalOpen] = useState(false);
-  // ponytail: the error row behaves like a notification — unread (highlighted)
-  // until clicked or marked all-read; a new message re-arms it. Acknowledgment
+  // ponytail: the error row behaves like a notification (see above) — unread
+  // (highlighted) until clicked or marked all-read; a new message re-arms it. Acknowledgment
   // is session-persisted per message so a refresh (which re-polls the same
   // failed job and re-sets the same error) does not ping again.
   const [alertRead, setAlertRead] = useState(false);
@@ -49,7 +51,8 @@ export default function NotificationBell({
   const setOpen = onOpenChange ?? setInternalOpen;
   const rootRef = useRef(null);
 
-  // ponytail: no X button — outside click closes the dropdown.
+  // ponytail: no X button — outside click closes the dropdown. Accepted
+  // intentional (matches the shared Dropdown dismiss behavior).
   useEffect(() => {
     if (!open) return undefined;
     const onPointerDown = (event) => {

@@ -39,6 +39,7 @@ export default function PaperSectionEditorPane({
   // ponytail: per-section lock — the assigned row freezes title, content
   // and standards (BE rejects instructor content edits on assigned rows
   // too). Assignment stays status-gated so instructors can reassign.
+  // Accepted intentional (mirrors the BE per-section guards).
   const selectedLocked = Boolean(selectedSection?.assignedUserId) || projectReadOnly;
   const assigneeName = selectedSection?.assignedUserId
     ? studentDisplayName(studentMembers.find(member => String(member.userId) === String(selectedSection.assignedUserId)) || {})

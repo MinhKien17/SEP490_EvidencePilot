@@ -48,6 +48,8 @@ export default function EditPaperSectionModal({
   const [paperRenameTitle, setPaperRenameTitle] = useState('');
   // ponytail: portal-local popup — the global top-right toast host sits outside
   // aria-modal, so Chromium hides it from the AX tree while this dialog is open.
+  // (Canonical AX-tree note: see NotificationBell.) Revisit when the toast
+  // host moves inside the dialog provider.
   const [notice, setNotice] = useState(null);
   // rationale: instructors never manage Media Assets, but the preview pane
   // resolves images through them — read-only load so figures render instead
@@ -169,6 +171,7 @@ export default function EditPaperSectionModal({
     if (bulkTouchedIds.length === 0) return;
     // ponytail: assignments persist immediately (single batch PUT in parent) —
     // no Save click needed. Parent syncs server truth back into the draft.
+    // Accepted intentional (matches the parent batch contract).
     const next = sections.map(section => bulkTouchedIds.includes(String(section.id)) && section.sectionType !== 'REFERENCE'
       ? { ...section, assignedUserId: bulkAssignments[String(section.id)] || null }
       : section);
@@ -184,6 +187,7 @@ export default function EditPaperSectionModal({
   const assignBulkToStudent = (userId) => {
     if (!userId) return;
     // ponytail: no select step — assign-all covers every assignable row.
+    // Accepted intentional (matches the highlight-on-assignment rows).
     const ids = sections
       .filter(section => section.sectionType !== 'REFERENCE')
       .map(section => String(section.id));
